@@ -106,15 +106,26 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
 
     dim sLine as String = GetLineText(hWnd, i, nLineLen)
     dim dResult as Double
+    dim sResult as String
+    dim bIsArray as Boolean
 
-    if Parser_TryEvaluate(sLine, dResult) then
-      if i >= nFirstVisible andalso ptClient_y > -10000 then
-        bVisible = TRUE
-        dim sRes as String = FormatResult(dResult)
-        dim sz as SIZE
-        GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
-        if sz.cx > maxTextWidth then maxTextWidth = sz.cx
+    dim sRes as String = ""
+    if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
+      if bIsArray then
+        sRes = " = " & sResult
+      else
+        sRes = FormatResult(dResult)
       end if
+    else
+      dim sErr as String = Parser_GetLastError()
+      if len(sErr) > 0 then sRes = " ! " & sErr
+    end if
+
+    if len(sRes) > 0 andalso i >= nFirstVisible andalso ptClient_y > -10000 then
+      bVisible = TRUE
+      dim sz as SIZE
+      GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
+      if sz.cx > maxTextWidth then maxTextWidth = sz.cx
     end if
   next i
 
@@ -192,10 +203,27 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
 
     dim sLine as String = GetLineText(hWnd, i, nLineLen)
     dim dResult as Double
+    dim sResult as String
+    dim bIsArray as Boolean
 
-    if Parser_TryEvaluate(sLine, dResult) then
+    dim sRes as String = ""
+    dim bIsError as Boolean = FALSE
+    if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
+      if bIsArray then
+        sRes = " = " & sResult
+      else
+        sRes = FormatResult(dResult)
+      end if
+    else
+      dim sErr as String = Parser_GetLastError()
+      if len(sErr) > 0 then
+        sRes = " ! " & sErr
+        bIsError = TRUE
+      end if
+    end if
+
+    if len(sRes) > 0 then
       if i >= nFirstVisible andalso ptClient_y > -10000 then
-        dim sRes as String = FormatResult(dResult)
         dim sz as SIZE
         GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
 
@@ -211,7 +239,11 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
           FillRect(hDC, @lineRect, hBrushActive)
         end if
 
-        SetTextColor(hDC, g_crResultColor)
+        if bIsError then
+          SetTextColor(hDC, &H0000FF)
+        else
+          SetTextColor(hDC, g_crResultColor)
+        end if
         dim drawX as Integer = rcClient.right - sz.cx - 10
         dim drawY as Integer = lineRect.top + ((lineRect.bottom - lineRect.top) - sz.cy) \ 2
         TextOut(hDC, drawX, drawY, strptr(sRes), Len(sRes))
