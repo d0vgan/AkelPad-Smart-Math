@@ -620,6 +620,26 @@ private function ParseFactor() as EvalValue
           pStream += 1
         wend
       end if
+      ' exponent
+      if pStream[0] = 101 orelse pStream[0] = 69 then ' "e" or "E"
+        dim pExp as ZString ptr = pStream + 1
+        dim expVal as integer = 0
+        dim expSign as integer = 1
+        if pExp[0] = 45 then     ' "e-"
+          expSign = -1
+          pExp += 1
+        elseif pExp[0] = 43 then ' "e+"
+          pExp += 1
+        end if
+        if pExp[0] >= 48 andalso pExp[0] <= 57 then ' at least one numeric char
+          pStream = pExp
+          while pStream[0] >= 48 andalso pStream[0] <= 57
+            expVal = expVal * 10 + (pStream[0] - 48)
+            pStream += 1
+          wend
+          dVal *= (10 ^ (expSign * expVal))
+        end if
+      end if
     end if
 
     ValueSetScalar(n, dVal)
