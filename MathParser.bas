@@ -586,19 +586,42 @@ private function ParseFactor() as EvalValue
 
   SkipSpaces()
   if (pStream[0] >= 48 andalso pStream[0] <= 57) orelse (pStream[0] = 46) then
-    dim dVal as Double = 0, fract as Double = 1
-    while pStream[0] >= 48 andalso pStream[0] <= 57
-      dVal = dVal * 10 + (pStream[0] - 48)
-      pStream += 1
-    wend
-    if pStream[0] = 46 then ' "."
-      pStream += 1
-      while pStream[0] >= 48 andalso pStream[0] <= 57
-        fract /= 10
-        dVal += (pStream[0] - 48) * fract
+    dim dVal as Double = 0
+    if pStream[0] = 48 andalso (pStream[1] = 120 orelse pStream[1] = 88) then
+      ' hex number
+      pStream += 2 ' Skip the "0x"
+      while true
+        dim c as ubyte = pStream[0]
+        dim digitValue as integer = -1
+        if c >= 48 andalso c <= 57 then       ' 0-9
+          digitValue = c - 48
+        elseif c >= 65 andalso c <= 70 then   ' A-F
+          digitValue = c - 55
+        elseif c >= 97 andalso c <= 102 then  ' a-f
+          digitValue = c - 87
+        else
+          exit while ' Not a hex digit
+        end if
+        dVal = dVal * 16 + digitValue
         pStream += 1
       wend
+    else
+      ' decimal number
+      dim fract as Double = 1
+      while pStream[0] >= 48 andalso pStream[0] <= 57
+        dVal = dVal * 10 + (pStream[0] - 48)
+        pStream += 1
+      wend
+      if pStream[0] = 46 then ' "."
+        pStream += 1
+        while pStream[0] >= 48 andalso pStream[0] <= 57
+          fract /= 10
+          dVal += (pStream[0] - 48) * fract
+          pStream += 1
+        wend
+      end if
     end if
+
     ValueSetScalar(n, dVal)
   elseif (pStream[0] >= 65 andalso pStream[0] <= 90) orelse (pStream[0] >= 97 andalso pStream[0] <= 122) orelse (pStream[0] = 95) then
     dim pStart as ZString ptr = pStream
@@ -959,7 +982,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   parseError = 0
   dim outV as EvalValue = ParseExpression()
   SkipSpaces()
-  
+
   if unknownVarsText <> "" then
     SetParseError("unknown variables: " & unknownVarsText)
   end if
