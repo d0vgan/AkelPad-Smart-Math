@@ -165,6 +165,27 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     case "abs"
       hint = "abs(value)"
       return TRUE
+    case "floor"
+      hint = "floor(value)"
+      return TRUE
+    case "ceil"
+      hint = "ceil(value)"
+      return TRUE
+    case "trunc"
+      hint = "trunc(value)"
+      return TRUE
+    case "round"
+      hint = "round(value)"
+      return TRUE
+    case "sign"
+      hint = "sign(value)"
+      return TRUE
+    case "deg"
+      hint = "deg(...)"
+      return TRUE
+    case "rad"
+      hint = "rad(...)"
+      return TRUE
     case "sum"
       hint = "sum(...)"
       return TRUE
@@ -186,8 +207,11 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     case "fact", "factorial"
       hint = "fact(n)"
       return TRUE
-    case "avg", "mean"
+    case "avg"
       hint = "avg(...)"
+      return TRUE
+    case "mean"
+      hint = "mean(...)"
       return TRUE
     case "mod"
       hint = "mod(value, divisor)"

@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 243) as SmokeCase
+  dim tests(1 to 251) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -337,6 +337,14 @@ sub Main()
   tests(241).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(241).expectedErrContains = "unknown functions" ' [regression-lock]
   tests(242).expr = "deg(pi/2,pi/4)":   tests(242).expected = "(90,45)" ' [ok-array]
   tests(243).expr = "rad(180,90)":      tests(243).expected = "(3.141592653589793,1.570796326794897)" ' [ok-array]
+  tests(244).expr = "mean":             tests(244).expectedErrContains = "function: mean(...)" ' [hint]
+  tests(245).expr = "floor":            tests(245).expectedErrContains = "function: floor(value)" ' [hint]
+  tests(246).expr = "ceil":             tests(246).expectedErrContains = "function: ceil(value)" ' [hint]
+  tests(247).expr = "trunc":            tests(247).expectedErrContains = "function: trunc(value)" ' [hint]
+  tests(248).expr = "round":            tests(248).expectedErrContains = "function: round(value)" ' [hint]
+  tests(249).expr = "sign":             tests(249).expectedErrContains = "function: sign(value)" ' [hint]
+  tests(250).expr = "deg":              tests(250).expectedErrContains = "function: deg(...)" ' [hint]
+  tests(251).expr = "rad":              tests(251).expectedErrContains = "function: rad(...)" ' [hint]
 
   g_total = ubound(tests) - lbound(tests) + 1
 
