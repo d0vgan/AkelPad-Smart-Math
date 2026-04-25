@@ -26,6 +26,20 @@ private function TrimTrailingFractionZeros(byref s as String) as String
   return outText
 end function
 
+private function AddArrayCommaSpacing(byref s as String) as String
+  dim outText as String = ""
+  dim i as Integer
+  for i = 1 to Len(s)
+    dim ch as String = Mid(s, i, 1)
+    if ch = "," then
+      outText &= ", "
+    else
+      outText &= ch
+    end if
+  next i
+  return outText
+end function
+
 private function FormatNumericValue(byval d as Double) as String
   dim sRes as String
 
@@ -170,11 +184,13 @@ function FormatResult(byval d as Double) as String
 end function
 
 function FormatArrayResultText(byref sArrayText as String) as String
-  if g_nDecimals < 0 andalso g_bUseThousandsSeparator = FALSE then return SMARTMATH_RESULT_PREFIX & sArrayText
+  if g_nDecimals < 0 andalso g_bUseThousandsSeparator = FALSE then
+    return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
+  end if
 
   dim t as String = LCase(sArrayText)
   if InStr(t, "0x") > 0 orelse InStr(t, "0b") > 0 then
-    return SMARTMATH_RESULT_PREFIX & sArrayText
+    return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
   end if
 
   dim outText as String = ""
@@ -209,5 +225,5 @@ function FormatArrayResultText(byref sArrayText as String) as String
     end if
   wend
 
-  return SMARTMATH_RESULT_PREFIX & outText
+  return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(outText)
 end function
