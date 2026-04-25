@@ -8,6 +8,8 @@ dim shared g_bOldRichEdit as BOOL = FALSE
 dim shared rcOldMargin as RECT
 dim shared nOldFirstLine as Integer = -1
 dim shared nOldCaretLine as Integer = -1
+dim shared nLastNavSelStart as Integer = -1
+dim shared nLastNavSelEnd as Integer = -1
 dim shared nOldMargin as Integer = 0
 dim shared dwOldAkelOptions as DWORD = 0
 
@@ -528,10 +530,28 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
           dim nFirstVisible as Integer = SendMessage(hWnd, EM_GETFIRSTVISIBLELINE, 0, 0)
           dim nCaretLine as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, -1)
 
+          dim bForceKeyRedraw as BOOL = ((uMsg = WM_KEYDOWN) orelse (uMsg = WM_KEYUP))
+          if (uMsg = WM_KEYDOWN) orelse (uMsg = WM_SYSKEYDOWN) then
+            if (wParam = VK_UP) orelse (wParam = VK_DOWN) orelse (wParam = VK_LEFT) orelse (wParam = VK_RIGHT) orelse _
+               (wParam = VK_HOME) orelse (wParam = VK_END) orelse (wParam = VK_PRIOR) orelse (wParam = VK_NEXT) then
+              dim selStart as Integer = 0, selEnd as Integer = 0
+              SendMessage(hWnd, EM_GETSEL, cast(WPARAM, @selStart), cast(LPARAM, @selEnd))
+              if (selStart = nLastNavSelStart) andalso (selEnd = nLastNavSelEnd) then
+                bForceKeyRedraw = FALSE ' selection not changed -> no need to redraw
+              else
+                nLastNavSelStart = selStart
+                nLastNavSelEnd = selEnd
+              end if
+            else
+              nLastNavSelStart = -1
+              nLastNavSelEnd = -1
+            end if
+          end if
+
           if bVisible then
             if (rcNewMargin.left <> rcOldMargin.left) or (rcNewMargin.right <> rcOldMargin.right) or _
                (nFirstVisible <> nOldFirstLine) or (nCaretLine <> nOldCaretLine) or _
-               (uMsg = WM_CHAR) or (uMsg = WM_KEYDOWN) or (uMsg = WM_KEYUP) then
+               (uMsg = WM_CHAR) orelse bForceKeyRedraw then
 
               if rcOldMargin.right > 0 then InvalidateRect(hWnd, @rcOldMargin, TRUE)
               InvalidateRect(hWnd, @rcNewMargin, TRUE)
@@ -547,6 +567,8 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
               rcOldMargin.top = 0  : rcOldMargin.bottom = 0
               nOldFirstLine = -1
               nOldCaretLine = -1
+              nLastNavSelStart = -1
+              nLastNavSelEnd = -1
             end if
           end if
         end if
@@ -618,6 +640,8 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     rcOldMargin.top = 0  : rcOldMargin.bottom = 0
     nOldFirstLine = -1
     nOldCaretLine = -1
+    nLastNavSelStart = -1
+    nLastNavSelEnd = -1
     nOldMargin = 0
 
     SendMessage(pd->hMainWnd, AKD_SETEDITPROC, cast(WPARAM, @EditGlobalProc), cast(LPARAM, @lpEditProcData))
