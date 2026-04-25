@@ -67,40 +67,46 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 179) as SmokeCase
-  ' Inline tag legend: [ok-core] [ok-func] [ok-array] [hint] [arity]
+  dim tests(1 to 241) as SmokeCase
+  ' Inline tag legend:
+  ' [spec] = intended language behavior (primary contract)
+  ' [regression-lock] = current behavior intentionally locked for compatibility
+  ' Default rule: unless explicitly marked [regression-lock], each test is [spec].
+  ' [ok-core] [ok-func] [ok-array] [hint] [arity]
   ' [type-int-only] [shape] [shape/broadcast] [syntax] [edge] [overflow]
 
+  ' === SPEC / intended behavior ===
+  '
   ' === A) Operator precedence, core operators, and integer-only operator checks ===
-  tests(1).expr = "2**3":               tests(1).expected = "8" ' [ok-core]
-  tests(2).expr = "16**-0.5":           tests(2).expected = "0.25" ' [ok-core]
-  tests(3).expr = "+5":                 tests(3).expected = "5" ' [ok-core]
-  tests(4).expr = "-5":                 tests(4).expected = "-5" ' [ok-core]
-  tests(5).expr = "~5":                 tests(5).expected = "-6" ' [ok-core]
-  tests(6).expr = "5%3":                tests(6).expected = "2" ' [ok-core]
-  tests(7).expr = "200 + 15%":          tests(7).expected = "230" ' [ok-core]
-  tests(8).expr = "200 - 15%":          tests(8).expected = "170" ' [ok-core]
-  tests(9).expr = "8>>1":               tests(9).expected = "4" ' [ok-core]
-  tests(10).expr = "3<<2":              tests(10).expected = "12" ' [ok-core]
-  tests(11).expr = "6&3":               tests(11).expected = "2" ' [ok-core]
-  tests(12).expr = "6^3":               tests(12).expected = "5" ' [ok-core]
-  tests(13).expr = "6|3":               tests(13).expected = "7" ' [ok-core]
-  tests(14).expr = "2(3+4)":            tests(14).expected = "14" ' [ok-core]
-  tests(15).expr = "2(3+4)**2":         tests(15).expected = "98" ' [ok-core]
-  tests(16).expr = "2+3<<1":            tests(16).expected = "10" ' [ok-core]
-  tests(17).expr = "1|2^3&6<<1":        tests(17).expected = "3" ' [ok-core]
-  tests(18).expr = "2(1+2)%4":          tests(18).expected = "2" ' [ok-core]
-  tests(19).expr = "5.5&1":             tests(19).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(20).expr = "5|1.1":             tests(20).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(21).expr = "3.2^1":             tests(21).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(22).expr = "8.1>>1":            tests(22).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(23).expr = "8<<1.2":            tests(23).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(24).expr = "~2.5":              tests(24).expectedErrContains = "bitwise operands must be integer values" ' [type-int-only]
-  tests(25).expr = "5.5%2":             tests(25).expectedErrContains = "modulo operands must be integer values" ' [type-int-only]
-  tests(26).expr = "5%2.2":             tests(26).expectedErrContains = "modulo operands must be integer values" ' [type-int-only]
-  tests(27).expr = "2(1+2.5)%4.2":      tests(27).expectedErrContains = "modulo operands must be integer values" ' [type-int-only]
+  tests(1).expr = "2**3":               tests(1).expected = "8" ' [spec][ok-core]
+  tests(2).expr = "16**-0.5":           tests(2).expected = "0.25" ' [spec][ok-core]
+  tests(3).expr = "+5":                 tests(3).expected = "5" ' [spec][ok-core]
+  tests(4).expr = "-5":                 tests(4).expected = "-5" ' [spec][ok-core]
+  tests(5).expr = "~5":                 tests(5).expected = "-6" ' [spec][ok-core]
+  tests(6).expr = "5%3":                tests(6).expected = "2" ' [spec][ok-core]
+  tests(7).expr = "200 + 15%":          tests(7).expected = "230" ' [spec][ok-core]
+  tests(8).expr = "200 - 15%":          tests(8).expected = "170" ' [spec][ok-core]
+  tests(9).expr = "8>>1":               tests(9).expected = "4" ' [spec][ok-core]
+  tests(10).expr = "3<<2":              tests(10).expected = "12" ' [spec][ok-core]
+  tests(11).expr = "6&3":               tests(11).expected = "2" ' [spec][ok-core]
+  tests(12).expr = "6^3":               tests(12).expected = "5" ' [spec][ok-core]
+  tests(13).expr = "6|3":               tests(13).expected = "7" ' [spec][ok-core]
+  tests(14).expr = "2(3+4)":            tests(14).expected = "14" ' [spec][ok-core]
+  tests(15).expr = "2(3+4)**2":         tests(15).expected = "98" ' [spec][ok-core]
+  tests(16).expr = "2+3<<1":            tests(16).expected = "10" ' [spec][ok-core]
+  tests(17).expr = "1|2^3&6<<1":        tests(17).expected = "3" ' [spec][ok-core]
+  tests(18).expr = "2(1+2)%4":          tests(18).expected = "2" ' [spec][ok-core]
+  tests(19).expr = "5.5&1":             tests(19).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(20).expr = "5|1.1":             tests(20).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(21).expr = "3.2^1":             tests(21).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(22).expr = "8.1>>1":            tests(22).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(23).expr = "8<<1.2":            tests(23).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(24).expr = "~2.5":              tests(24).expectedErrContains = "bitwise operands must be integer values" ' [spec][type-int-only]
+  tests(25).expr = "5.5%2":             tests(25).expectedErrContains = "modulo operands must be integer values" ' [spec][type-int-only]
+  tests(26).expr = "5%2.2":             tests(26).expectedErrContains = "modulo operands must be integer values" ' [spec][type-int-only]
+  tests(27).expr = "2(1+2.5)%4.2":      tests(27).expectedErrContains = "modulo operands must be integer values" ' [spec][type-int-only]
 
-  ' === B) Function hints, comments, parser diagnostics, and literal parsing ===
+  ' === B) [spec] Function hints, comments, parser diagnostics, and literal parsing ===
   tests(28).expr = "pow(2,3)":          tests(28).expected = "8" ' [ok-func]
   tests(29).expr = "prod(2,3,4)":       tests(29).expected = "24" ' [ok-func]
   tests(30).expr = "pow":               tests(30).expectedErrContains = "function: pow(" ' [hint]
@@ -119,7 +125,7 @@ sub Main()
   tests(43).expr = "hex((12,255))":     tests(43).expected = "(0xC,0xFF)" ' [ok-array]
   tests(44).expr = "10 + hex(12) + 14": tests(44).expected = "36" ' [ok-func]
   tests(45).expr = "hex(12.5)":         tests(45).expectedErrContains = "hex() expects integer values" ' [type-int-only]
-  tests(46).expr = "hex":               tests(46).expectedErrContains = "function: hex(value_or_array)" ' [hint]
+  tests(46).expr = "hex":               tests(46).expectedErrContains = "function: hex(...)" ' [hint]
   tests(47).expr = "0x":                tests(47).expectedErrContains = "invalid hex literal" ' [syntax]
   tests(48).expr = "0xG":               tests(48).expectedErrContains = "invalid hex literal" ' [syntax]
   tests(49).expr = "hex(0x7FFFFFFFFFFFFFFF)": tests(49).expected = "0x7FFFFFFFFFFFFFFF" ' [ok-func]
@@ -130,9 +136,9 @@ sub Main()
   tests(54).expr = "10 + bin(12) + 14": tests(54).expected = "36" ' [ok-func]
   tests(55).expr = "0b":                tests(55).expectedErrContains = "invalid binary literal" ' [syntax]
   tests(56).expr = "bin(12.5)":         tests(56).expectedErrContains = "bin() expects integer values" ' [type-int-only]
-  tests(57).expr = "bin":               tests(57).expectedErrContains = "function: bin(value_or_array)" ' [hint]
+  tests(57).expr = "bin":               tests(57).expectedErrContains = "function: bin(...)" ' [hint]
 
-  ' === C) Integer-accuracy / overflow-path regression cases ===
+  ' === C) [spec] Integer-accuracy / overflow-path regression cases ===
   tests(58).expr = "9007199254740991+1": tests(58).expected = "9007199254740992" ' [overflow]
   tests(59).expr = "9007199254740992+1": tests(59).expected = "9007199254740993" ' [overflow]
   tests(60).expr = "3037000499*3037000499": tests(60).expected = "9223372030926249001" ' [overflow]
@@ -148,7 +154,7 @@ sub Main()
   tests(70).expr = "9223372036854775807+0.5": tests(70).expected = "9.223372036854778e+018" ' [overflow]
   tests(71).expr = "hex(9223372036854775807+1)": tests(71).expectedErrContains = "hex() expects integer values" ' [overflow]
 
-  ' === D) Built-ins and ans variable baseline behavior ===
+  ' === D) [spec] Built-ins and ans variable baseline behavior ===
   tests(72).expr = "log(8,2)":          tests(72).expected = "3" ' [ok-func]
   tests(73).expr = "log(100,10)":       tests(73).expected = "2" ' [ok-func]
   tests(74).expr = "log(8)":            tests(74).expectedErrContains = "log() expects 2 argument(s)" ' [arity]
@@ -192,7 +198,7 @@ sub Main()
   tests(112).expr = "random":           tests(112).expectedErrContains = "function: random(min, max)" ' [hint]
   tests(113).expr = "median":           tests(113).expectedErrContains = "function: median(...)" ' [hint]
 
-  ' === E) sort/unique baseline behavior ===
+  ' === E) [spec] sort/unique baseline behavior ===
   tests(114).expr = "sort((3,1,2))":    tests(114).expected = "(1,2,3)" ' [ok-array]
   tests(115).expr = "a=(5,2,9);sort(a)": tests(115).expected = "(2,5,9)" ' [ok-array]
   tests(116).expr = "sort(5)":          tests(116).expected = "(5)" ' [ok-func]
@@ -204,7 +210,7 @@ sub Main()
   tests(122).expr = "unique(1,2,1,2,3)": tests(122).expected = "(1,2,3)" ' [ok-func]
   tests(123).expr = "unique":           tests(123).expectedErrContains = "function: unique(...)" ' [hint]
 
-  ' === F) Stress matrix: argument shape, arity, syntax, and edge-case validation ===
+  ' === F) [spec] Stress matrix: argument shape, arity, syntax, and edge-case validation ===
   tests(124).expr = "(1,2)+(3)":        tests(124).expected = "(4,5)" ' [shape/broadcast]
   tests(125).expr = "(1,2)*(3,4,5)":    tests(125).expectedErrContains = "incompatible operands" ' [shape]
   tests(126).expr = "1<<64":            tests(126).expectedErrContains = "incompatible operands" ' [edge]
@@ -228,10 +234,10 @@ sub Main()
   tests(144).expr = "gcd(6.5,3)":       tests(144).expectedErrContains = "expects integer values" ' [type-int-only]
   tests(145).expr = "lcm(6,0)":         tests(145).expected = "0" ' [edge]
   tests(146).expr = "lcm(6.5,3)":       tests(146).expectedErrContains = "expects integer values" ' [type-int-only]
-  tests(147).expr = "hex()":            tests(147).expectedErrContains = "expects 1 argument(s)" ' [arity]
-  tests(148).expr = "hex(1,2)":         tests(148).expectedErrContains = "expects 1 argument(s)" ' [arity]
-  tests(149).expr = "bin()":            tests(149).expectedErrContains = "expects 1 argument(s)" ' [arity]
-  tests(150).expr = "bin(1,2)":         tests(150).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(147).expr = "hex()":            tests(147).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(148).expr = "hex(1,2)":         tests(148).expected = "(0x1,0x2)" ' [ok-array]
+  tests(149).expr = "bin()":            tests(149).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(150).expr = "bin(1,2)":         tests(150).expected = "(0b1,0b10)" ' [ok-array]
   tests(151).expr = "clamp()":          tests(151).expectedErrContains = "expects 3 argument(s)" ' [arity]
   tests(152).expr = "clamp(1,2)":       tests(152).expectedErrContains = "expects 3 argument(s)" ' [arity]
   tests(153).expr = "clamp(1,2,3,4)":   tests(153).expectedErrContains = "expects 3 argument(s)" ' [arity]
@@ -261,6 +267,74 @@ sub Main()
   tests(177).expr = "factorial(1,2)":   tests(177).expectedErrContains = "expects 1 argument(s)" ' [arity]
   tests(178).expr = "pow(2,)":          tests(178).expectedErrContains = "unexpected comma" ' [syntax]
   tests(179).expr = "sum((1,2),)":      tests(179).expectedErrContains = "unexpected comma" ' [syntax]
+
+  ' === G) [spec] Extended negative matrix: malformed syntax, aliases, and mismatch paths ===
+  tests(180).expr = "1/":               tests(180).expectedErrContains = "unexpected token" ' [syntax]
+  tests(181).expr = "1**":              tests(181).expectedErrContains = "unexpected token" ' [syntax]
+  tests(182).expr = "1<<":              tests(182).expectedErrContains = "unexpected token" ' [syntax]
+  tests(183).expr = "1>>":              tests(183).expectedErrContains = "unexpected token" ' [syntax]
+  tests(184).expr = "1&":               tests(184).expectedErrContains = "unexpected token" ' [syntax]
+  tests(185).expr = "1|":               tests(185).expectedErrContains = "unexpected token" ' [syntax]
+  tests(186).expr = "1^":               tests(186).expectedErrContains = "unexpected token" ' [syntax]
+  tests(187).expr = "1%":               tests(187).expected = "0.01" ' [edge]
+  tests(188).expr = "pow(,2)":          tests(188).expectedErrContains = "unexpected" ' [syntax]
+  tests(189).expr = "atan2(,2)":        tests(189).expectedErrContains = "unexpected" ' [syntax]
+  tests(190).expr = "random(,2)":       tests(190).expectedErrContains = "unexpected" ' [syntax]
+  tests(191).expr = "clamp(1,,3)":      tests(191).expectedErrContains = "unexpected" ' [syntax]
+  tests(192).expr = "sum(,1)":          tests(192).expectedErrContains = "unexpected" ' [syntax]
+  tests(193).expr = "sin()":            tests(193).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(194).expr = "tan()":            tests(194).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(195).expr = "asin()":           tests(195).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(196).expr = "acos()":           tests(196).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(197).expr = "atan()":           tests(197).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(198).expr = "sinh()":           tests(198).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(199).expr = "cosh()":           tests(199).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(200).expr = "tanh()":           tests(200).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(201).expr = "exp()":            tests(201).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(202).expr = "log10()":          tests(202).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(203).expr = "abs()":            tests(203).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(204).expr = "floor()":          tests(204).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(205).expr = "ceil()":           tests(205).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(206).expr = "trunc()":          tests(206).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(207).expr = "round()":          tests(207).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(208).expr = "sign()":           tests(208).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(209).expr = "deg()":            tests(209).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(210).expr = "rad()":            tests(210).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(211).expr = "ln((1,2))":        tests(211).expected = "(0,0.6931471805599453)" ' [ok-array]
+  tests(212).expr = "sqrt((1,2))":      tests(212).expected = "(1,1.414213562373095)" ' [ok-array]
+  tests(213).expr = "abs((1,2))":       tests(213).expected = "(1,2)" ' [ok-array]
+  tests(214).expr = "arcsin(1)":        tests(214).expected = "1.570796326794897" ' [ok-func]
+  tests(215).expr = "arccos(1)":        tests(215).expected = "0" ' [ok-func]
+  tests(216).expr = "arctan(1)":        tests(216).expected = "0.7853981633974483" ' [ok-func]
+  tests(217).expr = "prod()":           tests(217).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(218).expr = "mean()":           tests(218).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(219).expr = "variance(( ))":    tests(219).expectedErrContains = "unexpected token" ' [syntax]
+  tests(220).expr = "stddev(( ))":      tests(220).expectedErrContains = "unexpected token" ' [syntax]
+  tests(221).expr = "gcd(1)":           tests(221).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(222).expr = "lcm(1)":           tests(222).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(223).expr = "mod(1)":           tests(223).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(224).expr = "hypot(1)":         tests(224).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(225).expr = "atan2(1)":         tests(225).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(226).expr = "log((1,2),10)":    tests(226).expected = "(0,0.3010299956639812)" ' [ok-array]
+  tests(227).expr = "log(10,(2,3))":    tests(227).expected = "(3.321928094887362,2.095903274289384)" ' [ok-array]
+  tests(228).expr = "pow((2,3),2)":     tests(228).expected = "(4,9)" ' [ok-array]
+  tests(229).expr = "pow(2,(2,3))":     tests(229).expected = "(4,8)" ' [ok-array]
+  tests(230).expr = "hex((1,2,3),(4))": tests(230).expected = "(0x1,0x2,0x3,0x4)" ' [ok-array]
+  tests(231).expr = "bin((1,2,3),(4))": tests(231).expected = "(0b1,0b10,0b11,0b100)" ' [ok-array]
+  tests(232).expr = "random(10,10)":    tests(232).expected = "10" ' [edge]
+  tests(233).expr = "random(1.5,1.5)":  tests(233).expected = "1.5" ' [edge]
+  tests(234).expr = "random(3.5,3.5)":  tests(234).expected = "3.5" ' [edge]
+  tests(235).expr = "fact((1,2))":      tests(235).expectedErrContains = "expects an integer in range [0..20]" ' [shape]
+  tests(236).expr = "factorial((1,2))": tests(236).expectedErrContains = "expects an integer in range [0..20]" ' [shape]
+  '
+  ' === REGRESSION-LOCK / compatibility behavior ===
+  ' These cases intentionally lock currently observed behavior that may look odd,
+  ' but should not change accidentally without an explicit decision.
+  tests(237).expr = "clamp((1,2,3),(4,5),6)": tests(237).expected = "(0,0,0)" ' [regression-lock][shape]
+  tests(238).expr = "sum((1,2),(3,4),5)": tests(238).expected = "15" ' [ok-array]
+  tests(239).expr = "sort(( ))":        tests(239).expectedErrContains = "unexpected token" ' [syntax]
+  tests(240).expr = "unique(( ))":      tests(240).expectedErrContains = "unexpected token" ' [syntax]
+  tests(241).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(241).expectedErrContains = "unknown functions" ' [regression-lock]
 
   g_total = ubound(tests) - lbound(tests) + 1
 

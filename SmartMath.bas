@@ -16,6 +16,7 @@ dim shared dwOldAkelOptions as DWORD = 0
 dim shared g_nDecimals as Integer = -1
 dim shared g_crResultColor as COLORREF = &H008000
 dim shared g_bUseThousandsSeparator as BOOL = FALSE
+dim shared g_bLogParsedLines as BOOL = FALSE
 dim shared hSmartMathMenu as HMENU = 0
 dim shared hSubMenuDecimals as HMENU = 0
 dim shared hSubMenuColor as HMENU = 0
@@ -23,6 +24,64 @@ dim shared g_hMainWnd as HWND = 0
 dim shared g_hMainMenu as HMENU = 0
 dim shared g_hWndEdit as HWND = 0
 dim shared g_bShuttingDown as BOOL = FALSE
+dim shared g_cacheLineCount as Integer = -1
+dim shared g_cacheReady as BOOL = FALSE
+redim shared g_cachedLineText(0 to 0) as String
+redim shared g_cachedRenderText(0 to 0) as String
+
+private sub InvalidateRenderCache()
+  g_cacheReady = FALSE
+  g_cacheLineCount = -1
+end sub
+
+private function IsVolatilePureExpressionLine(byref sLine as String) as BOOL
+  dim t as String = lcase(trim(sLine))
+  if len(t) = 0 then return FALSE
+  if instr(t, "=") > 0 then return FALSE
+  if instr(t, ";") > 0 then return FALSE
+  if instr(t, "rand(") > 0 then return TRUE
+  if instr(t, "random(") > 0 then return TRUE
+  return FALSE
+end function
+
+private function IsLikelyCodeLine(byref sLine as String) as BOOL
+  dim t as String = lcase(trim(sLine))
+  if len(t) = 0 then return FALSE
+  if left(t, 1) = "'" orelse left(t, 1) = "#" orelse left(t, 2) = "//" then return TRUE
+  if left(t, 8) = "#include" then return TRUE
+  if left(t, 4) = "dim " orelse left(t, 6) = "const " orelse left(t, 5) = "type " _
+     orelse left(t, 5) = "enum " orelse left(t, 4) = "sub " orelse left(t, 9) = "function " _
+     orelse left(t, 8) = "private " orelse left(t, 7) = "public " orelse left(t, 8) = "declare " _
+     orelse left(t, 7) = "extern " orelse left(t, 4) = "end " orelse left(t, 7) = "return " then
+    return TRUE
+  end if
+
+  ' Defensive skip for source-like call chains that are not typical math input.
+  if instr(t, "_") > 0 andalso instr(t, "(") > 0 andalso instr(t, ")") > 0 _
+     andalso instr(t, "=") = 0 andalso instr(t, ";") = 0 andalso instr(t, ",") = 0 then
+    dim hasDigit as BOOL = FALSE
+    for i as Integer = 1 to len(t)
+      dim ch as String = mid(t, i, 1)
+      if ch >= "0" andalso ch <= "9" then
+        hasDigit = TRUE
+        exit for
+      end if
+    next i
+    if hasDigit = FALSE then return TRUE
+  end if
+  return FALSE
+end function
+
+private sub RestoreAnsFromCachedRender(byref sRender as String)
+  if left(sRender, Len(SMARTMATH_RESULT_PREFIX)) <> SMARTMATH_RESULT_PREFIX then exit sub
+  dim sExpr as String = mid(sRender, Len(SMARTMATH_RESULT_PREFIX) + 1)
+  if len(trim(sExpr)) = 0 then exit sub
+
+  dim dResult as Double
+  dim sResult as String
+  dim bIsArray as Boolean
+  Parser_TryEvaluateEx(sExpr, dResult, sResult, bIsArray)
+end sub
 
 ' FIX: Use a plain Win32 WNDPROC pointer instead of AKD_SETMAINPROC / WNDPROCDATA.
 dim shared g_pfnOldMainProc as WNDPROC = 0
@@ -41,17 +100,20 @@ end sub
 ' -----------------------------------------------------------------------------
 function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen as Integer) as String
   if lineLen <= 0 then return ""
+  const MAX_EM_GETLINE_CHARS as Integer = 32760
+  dim safeLen as Integer = lineLen
+  if safeLen > MAX_EM_GETLINE_CHARS then safeLen = MAX_EM_GETLINE_CHARS
   dim as String sRet = ""
 
   if IsWindowUnicode(hWnd) then
-    dim wBuf as WString ptr = cast(WString ptr, callocate((lineLen + 2) * 2))
-    cast(Short ptr, wBuf)[0] = lineLen
+    dim wBuf as WString ptr = cast(WString ptr, callocate((safeLen + 2) * 2))
+    cast(Short ptr, wBuf)[0] = safeLen
     dim lenRead as Integer = SendMessageW(hWnd, EM_GETLINE, lineIdx, cast(LPARAM, wBuf))
     if lenRead > 0 then sRet = Left(*wBuf, lenRead)
     deallocate(wBuf)
   else
-    dim zBuf as ZString ptr = cast(ZString ptr, callocate(lineLen + 2))
-    cast(Short ptr, zBuf)[0] = lineLen
+    dim zBuf as ZString ptr = cast(ZString ptr, callocate(safeLen + 2))
+    cast(Short ptr, zBuf)[0] = safeLen
     dim lenRead as Integer = SendMessageA(hWnd, EM_GETLINE, lineIdx, cast(LPARAM, zBuf))
     if lenRead > 0 then sRet = Left(*zBuf, lenRead)
     deallocate(zBuf)
@@ -60,10 +122,23 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
-function BuildLineRenderText(byval hWnd as HWND, byval lineIdx as Integer) as String
-  dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
-  dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
-  dim sLine as String = GetLineText(hWnd, lineIdx, nLineLen)
+private sub BuildRenderedResultText(byref sLine as String, byref sRes as String, byref bIsError as Boolean, byval lineIdx as Integer = -1)
+  sRes = ""
+  bIsError = FALSE
+  if IsLikelyCodeLine(sLine) then exit sub
+
+  if g_bLogParsedLines then
+    const MAX_LOG_LINE_LEN as Integer = 220
+    dim logLine as String = sLine
+    if len(logLine) > MAX_LOG_LINE_LEN then
+      logLine = left(logLine, MAX_LOG_LINE_LEN) & " ...[truncated]"
+    end if
+    if lineIdx >= 0 then
+      LogInfo("parse-line begin [" & ltrim(str(lineIdx)) & "]: " & logLine)
+    else
+      LogInfo("parse-line begin: " & logLine)
+    end if
+  end if
 
   dim dResult as Double
   dim sResult as String
@@ -74,35 +149,140 @@ function BuildLineRenderText(byval hWnd as HWND, byval lineIdx as Integer) as St
     dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
                                   orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
     if lcase(left(trim(sResult), 8)) = "defined " then
-      return ""
-    elseif bIsArray orelse bPrefixedScalar then
-      return " = " & sResult
+      sRes = ""
+    elseif bIsArray then
+      sRes = FormatArrayResultText(sResult)
+    elseif bPrefixedScalar then
+      sRes = SMARTMATH_RESULT_PREFIX & sResult
     else
-      return FormatResult(dResult)
+      sRes = FormatResult(dResult)
+    end if
+  else
+    dim sErr as String = Parser_GetLastError()
+    if len(sErr) > 0 then
+      sRes = SMARTMATH_ERROR_PREFIX & sErr
+      bIsError = TRUE
     end if
   end if
 
-  dim sErr as String = Parser_GetLastError()
-  if len(sErr) > 0 then return " ! " & sErr
-  return ""
+  if g_bLogParsedLines then
+    if lineIdx >= 0 then
+      LogInfo("parse-line end [" & ltrim(str(lineIdx)) & "]")
+    else
+      LogInfo("parse-line end")
+    end if
+  end if
+end sub
+
+private sub EnsureRenderCache(byval hWnd as HWND)
+  dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
+  if nLineCount <= 0 then
+    g_cacheLineCount = 0
+    erase g_cachedLineText
+    erase g_cachedRenderText
+    g_cacheReady = TRUE
+    exit sub
+  end if
+
+  dim hasChanges as BOOL = IIf(g_cacheReady = FALSE orelse nLineCount <> g_cacheLineCount, TRUE, FALSE)
+  dim firstChanged as Integer = -1
+  dim minCount as Integer = IIf(nLineCount < g_cacheLineCount, nLineCount, g_cacheLineCount)
+
+  redim currentLineText(0 to nLineCount - 1) as String
+  dim i as Integer
+  for i = 0 to nLineCount - 1
+    dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
+    dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+    currentLineText(i) = GetLineText(hWnd, i, nLineLen)
+  next i
+
+  if g_cacheReady andalso (nLineCount = g_cacheLineCount) then
+    for i = 0 to nLineCount - 1
+      if currentLineText(i) <> g_cachedLineText(i) then
+        hasChanges = TRUE
+        firstChanged = i
+        exit for
+      end if
+    next i
+  end if
+
+  if hasChanges = FALSE then exit sub
+  if firstChanged < 0 then
+    if g_cacheReady = FALSE then
+      firstChanged = 0
+    else
+      firstChanged = minCount
+    end if
+  end if
+
+  redim oldLineText(0 to 0) as String
+  redim oldRenderText(0 to 0) as String
+  dim oldCount as Integer = g_cacheLineCount
+  if g_cacheReady andalso oldCount > 0 then
+    redim oldLineText(0 to oldCount - 1)
+    redim oldRenderText(0 to oldCount - 1)
+    for i = 0 to oldCount - 1
+      oldLineText(i) = g_cachedLineText(i)
+      oldRenderText(i) = g_cachedRenderText(i)
+    next i
+  end if
+
+  redim g_cachedLineText(0 to nLineCount - 1)
+  redim g_cachedRenderText(0 to nLineCount - 1)
+  for i = 0 to nLineCount - 1
+    g_cachedLineText(i) = currentLineText(i)
+  next i
+
+  g_cacheLineCount = nLineCount
+
+  Parser_ClearVariables()
+  for i = 0 to nLineCount - 1
+    dim sRes as String = ""
+    dim bIsError as Boolean = FALSE
+  BuildRenderedResultText(g_cachedLineText(i), sRes, bIsError, i)
+
+    if (i < firstChanged) andalso g_cacheReady andalso (i < oldCount) andalso (g_cachedLineText(i) = oldLineText(i)) then
+      g_cachedRenderText(i) = oldRenderText(i)
+      if IsVolatilePureExpressionLine(g_cachedLineText(i)) then
+        ' Keep ans chain consistent with frozen rendered output for volatile pure expressions.
+        RestoreAnsFromCachedRender(g_cachedRenderText(i))
+      end if
+    else
+      g_cachedRenderText(i) = sRes
+    end if
+  next i
+
+  g_cacheReady = TRUE
+end sub
+
+function BuildLineRenderText(byval hWnd as HWND, byval lineIdx as Integer) as String
+  EnsureRenderCache(hWnd)
+  if lineIdx < 0 orelse lineIdx >= g_cacheLineCount then return ""
+  return g_cachedRenderText(lineIdx)
 end function
 
 function BuildResultTextForLine(byval hWnd as HWND, byval targetLine as Integer) as String
   dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
   if targetLine < 0 orelse targetLine >= nLineCount then return ""
-
-  Parser_ClearVariables()
-  dim i as Integer
-  for i = 0 to targetLine
-    dim sRes as String = BuildLineRenderText(hWnd, i)
-    if i = targetLine then return sRes
-  next i
-  return ""
+  EnsureRenderCache(hWnd)
+  return BuildLineRenderText(hWnd, targetLine)
 end function
 
 function NormalizeCopiedResult(byref sRes as String) as String
-  if left(sRes, 3) = " = " orelse left(sRes, 3) = " ! " then
-    return mid(sRes, 4)
+  if left(sRes, Len(SMARTMATH_RESULT_PREFIX)) = SMARTMATH_RESULT_PREFIX then
+    dim sOut as String = mid(sRes, Len(SMARTMATH_RESULT_PREFIX) + 1)
+    if g_bUseThousandsSeparator then
+      dim i as Integer
+      dim sNoSep as String = ""
+      for i = 1 to len(sOut)
+        dim ch as String = mid(sOut, i, 1)
+        if ch <> SMARTMATH_THOUSANDS_SEPARATOR then sNoSep &= ch
+      next i
+      sOut = sNoSep
+    end if
+    return sOut
+  elseif left(sRes, Len(SMARTMATH_ERROR_PREFIX)) = SMARTMATH_ERROR_PREFIX then
+    return mid(sRes, Len(SMARTMATH_ERROR_PREFIX) + 1)
   end if
   return sRes
 end function
@@ -154,7 +334,7 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
 
   dim maxTextWidth as Integer = 0
 
-  Parser_ClearVariables()
+  EnsureRenderCache(hWnd)
 
   dim i as Integer
   for i = 0 to nLineCount - 1
@@ -177,28 +357,8 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
       if ptClient_y > rcClient.bottom then exit for
     end if
 
-    dim sLine as String = GetLineText(hWnd, i, nLineLen)
-    dim dResult as Double
-    dim sResult as String
-    dim bIsArray as Boolean
-
     dim sRes as String = ""
-    if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
-      dim sTrimResult as String = lcase(trim(sResult))
-      dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
-                                    orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
-      if lcase(left(trim(sResult), 8)) = "defined " then
-        ' Function definition line: keep margin clean (no "= 0").
-        sRes = ""
-      elseif bIsArray orelse bPrefixedScalar then
-        sRes = " = " & sResult
-      else
-        sRes = FormatResult(dResult)
-      end if
-    else
-      dim sErr as String = Parser_GetLastError()
-      if len(sErr) > 0 then sRes = " ! " & sErr
-    end if
+    if i >= 0 andalso i < g_cacheLineCount then sRes = g_cachedRenderText(i)
 
     if len(sRes) > 0 andalso i >= nFirstVisible andalso ptClient_y > -10000 then
       bVisible = TRUE
@@ -211,8 +371,9 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
   if hFont then SelectObject(hDC, hOldFont)
   ReleaseDC(hWnd, hDC)
 
-  dim nRequiredMargin as Integer = maxTextWidth + 30
-  if maxTextWidth = 0 then nRequiredMargin = 0
+  ' Keep editor layout untouched to avoid soft-wrap side effects on long lines.
+  ' Results are rendered as an overlay and clipped on the right side in drawing code.
+  dim nRequiredMargin as Integer = 0
 
   if nRequiredMargin <> nOldMargin then
     SendMessage(hWnd, EM_SETMARGINS, EC_RIGHTMARGIN, nRequiredMargin shl 16)
@@ -257,13 +418,14 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
 
   SetBkMode(hDC, TRANSPARENT)
 
-  Parser_ClearVariables()
+  EnsureRenderCache(hWnd)
 
   dim i as Integer
   for i = 0 to nLineCount - 1
     dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
     dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
 
+    dim ptClient_x as Integer = -10001
     dim ptClient_y as Integer = -10001
 
     if i >= nFirstVisible then
@@ -271,41 +433,20 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
       dim res as LRESULT
       if g_bOldRichEdit then
         res = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
+        ptClient_x = cast(short, LoWord(res))
         ptClient_y = cast(short, HiWord(res))
       else
         SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptClient), nLineIndex + nLineLen)
+        ptClient_x = ptClient.x
         ptClient_y = ptClient.y
       end if
 
       if ptClient_y > rcClient.bottom then exit for
     end if
 
-    dim sLine as String = GetLineText(hWnd, i, nLineLen)
-    dim dResult as Double
-    dim sResult as String
-    dim bIsArray as Boolean
-
     dim sRes as String = ""
-    dim bIsError as Boolean = FALSE
-    if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
-      dim sTrimResult as String = lcase(trim(sResult))
-      dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
-                                    orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
-      if lcase(left(trim(sResult), 8)) = "defined " then
-        ' Function definition line: keep margin clean (no "= 0").
-        sRes = ""
-      elseif bIsArray orelse bPrefixedScalar then
-        sRes = " = " & sResult
-      else
-        sRes = FormatResult(dResult)
-      end if
-    else
-      dim sErr as String = Parser_GetLastError()
-      if len(sErr) > 0 then
-        sRes = " ! " & sErr
-        bIsError = TRUE
-      end if
-    end if
+    if i >= 0 andalso i < g_cacheLineCount then sRes = g_cachedRenderText(i)
+    dim bIsError as Boolean = (left(sRes, Len(SMARTMATH_ERROR_PREFIX)) = SMARTMATH_ERROR_PREFIX)
 
     if len(sRes) > 0 then
       if i >= nFirstVisible andalso ptClient_y > -10000 then
@@ -315,12 +456,14 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
         if nCharHeight <= 0 then nCharHeight = sz.cy
 
         dim lineRect as RECT
-        lineRect.left = rcClient.right - nOldMargin
+        lineRect.left = IIf(nOldMargin > 0, rcClient.right - nOldMargin, rcClient.left)
         lineRect.right = rcClient.right
         lineRect.top = ptClient_y
         lineRect.bottom = ptClient_y + nCharHeight
 
-        if bFillActive andalso (i = nCaretLine) andalso hBrushActive then
+        ' In overlay mode (nOldMargin = 0), never paint active-line background here:
+        ' it can cover editor text because this drawing runs after editor paint.
+        if bFillActive andalso (nOldMargin > 0) andalso (i = nCaretLine) andalso hBrushActive then
           FillRect(hDC, @lineRect, hBrushActive)
         end if
 
@@ -331,7 +474,18 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
         end if
         dim drawX as Integer = rcClient.right - sz.cx - 10
         dim drawY as Integer = lineRect.top + ((lineRect.bottom - lineRect.top) - sz.cy) \ 2
-        TextOut(hDC, drawX, drawY, strptr(sRes), Len(sRes))
+        dim minDrawX as Integer = ptClient_x + 6
+        if minDrawX < rcClient.left then minDrawX = rcClient.left
+        if minDrawX < rcClient.right then
+          dim clipRect as RECT
+          clipRect.left = IIf(drawX > minDrawX, drawX, minDrawX)
+          clipRect.top = lineRect.top
+          clipRect.right = rcClient.right
+          clipRect.bottom = lineRect.bottom
+          if clipRect.left < clipRect.right then
+            ExtTextOut(hDC, drawX, drawY, ETO_CLIPPED, @clipRect, strptr(sRes), Len(sRes), 0)
+          end if
+        end if
       end if
     end if
   next i
@@ -350,6 +504,7 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
 
     if nCmd = IDM_DECIMAL_BASE then
       g_nDecimals = -1
+      InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
       if g_hWndEdit then
@@ -361,6 +516,7 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
 
     elseif nCmd > IDM_DECIMAL_BASE andalso nCmd <= IDM_DECIMAL_BASE + 15 then
       g_nDecimals = nCmd - IDM_DECIMAL_BASE - 1
+      InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
       if g_hWndEdit then
@@ -392,6 +548,7 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
       else
         g_bUseThousandsSeparator = TRUE
       end if
+      InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
       if g_hWndEdit then
@@ -467,31 +624,67 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       if rcOldMargin.right > 0 then InvalidateRect(hWnd, @rcOldMargin, TRUE)
 
     case WM_LBUTTONDBLCLK
-      if nOldMargin > 0 then
-        dim xPos as Integer = cast(short, loword(lParam))
-        dim yPos as Integer = cast(short, hiword(lParam))
-        dim rcClient as RECT
-        GetClientRect(hWnd, @rcClient)
-        dim nMarginLeft as Integer = rcClient.right - nOldMargin
-        if xPos >= nMarginLeft then
-          dim charPos as Integer = -1
-          if g_bOldRichEdit then
-            dim posRes as LRESULT = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, MAKELPARAM(xPos, yPos)))
-            charPos = cast(short, loword(posRes))
+      dim xPos as Integer = cast(short, loword(lParam))
+      dim yPos as Integer = cast(short, hiword(lParam))
+      dim rcClient as RECT
+      GetClientRect(hWnd, @rcClient)
+
+      dim charPos as Integer = -1
+      if g_bOldRichEdit then
+        dim posRes as LRESULT = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, MAKELPARAM(xPos, yPos)))
+        charPos = cast(short, loword(posRes))
+      else
+        dim pt as POINT
+        pt.x = xPos
+        pt.y = yPos
+        charPos = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, @pt))
+      end if
+
+      if charPos >= 0 then
+        dim lineIdx as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, charPos)
+        dim sRes as String = BuildResultTextForLine(hWnd, lineIdx)
+        if len(sRes) > 0 then
+          dim hitResultArea as BOOL = FALSE
+          if nOldMargin > 0 then
+            dim nMarginLeft as Integer = rcClient.right - nOldMargin
+            if xPos >= nMarginLeft then hitResultArea = TRUE
           else
-            dim pt as POINT
-            pt.x = xPos
-            pt.y = yPos
-            charPos = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, @pt))
-          end if
-          if charPos >= 0 then
-            dim lineIdx as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, charPos)
-            dim sRes as String = BuildResultTextForLine(hWnd, lineIdx)
-            if len(sRes) > 0 then
-              dim sCopy as String = NormalizeCopiedResult(sRes)
-              if CopyTextToClipboard(hWnd, sCopy) then
-                return 0
+            dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
+            dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+            dim ptLineEndX as Integer = rcClient.left
+            if nLineIndex >= 0 then
+              if g_bOldRichEdit then
+                dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
+                ptLineEndX = cast(short, LoWord(res))
+              else
+                dim ptLine as POINT
+                SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptLine), nLineIndex + nLineLen)
+                ptLineEndX = ptLine.x
               end if
+            end if
+
+            dim hDC as HDC = GetDC(hWnd)
+            if hDC <> 0 then
+              dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
+              dim hOldFont as HFONT
+              if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
+              dim sz as SIZE
+              GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
+              if hFont then SelectObject(hDC, hOldFont)
+              ReleaseDC(hWnd, hDC)
+
+              dim drawX as Integer = rcClient.right - sz.cx - 10
+              dim minDrawX as Integer = ptLineEndX + 6
+              if minDrawX < rcClient.left then minDrawX = rcClient.left
+              dim clipLeft as Integer = IIf(drawX > minDrawX, drawX, minDrawX)
+              if xPos >= clipLeft andalso xPos <= rcClient.right then hitResultArea = TRUE
+            end if
+          end if
+
+          if hitResultArea then
+            dim sCopy as String = NormalizeCopiedResult(sRes)
+            if CopyTextToClipboard(hWnd, sCopy) then
+              return 0
             end if
           end if
         end if
@@ -522,10 +715,14 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
           GetClientRect(hWnd, @rcClient)
 
           dim rcNewMargin as RECT
-          rcNewMargin.left = rcClient.right - nOldMargin
-          rcNewMargin.top = rcClient.top
-          rcNewMargin.right = rcClient.right
-          rcNewMargin.bottom = rcClient.bottom
+          if nOldMargin > 0 then
+            rcNewMargin.left = rcClient.right - nOldMargin
+            rcNewMargin.top = rcClient.top
+            rcNewMargin.right = rcClient.right
+            rcNewMargin.bottom = rcClient.bottom
+          else
+            rcNewMargin = rcClient
+          end if
 
           dim nFirstVisible as Integer = SendMessage(hWnd, EM_GETFIRSTVISIBLELINE, 0, 0)
           dim nCaretLine as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, -1)
@@ -610,6 +807,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
 
     SendMessage(pd->hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
     bSmartMathActive = FALSE
+    InvalidateRenderCache()
 
     if pd->hWndEdit then
       SendMessage(pd->hWndEdit, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
@@ -635,6 +833,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     LoadSettings()
 
     g_bShuttingDown = FALSE
+    InvalidateRenderCache()
 
     rcOldMargin.left = 0 : rcOldMargin.right = 0
     rcOldMargin.top = 0  : rcOldMargin.bottom = 0

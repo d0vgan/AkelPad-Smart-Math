@@ -106,10 +106,10 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
       hint = "random(min, max)"
       return TRUE
     case "bin"
-      hint = "bin(value_or_array)"
+      hint = "bin(...)"
       return TRUE
     case "hex"
-      hint = "hex(value_or_array)"
+      hint = "hex(...)"
       return TRUE
     case "pow"
       hint = "pow(value, power)"
@@ -1094,24 +1094,29 @@ end function
 private function CollectArgsAsFlat(args() as EvalValue, flat() as Double) as Integer
   dim count as Integer = 0
   dim i as Integer, j as Integer
+
   for i = lbound(args) to ubound(args)
     if args(i).kind = VK_SCALAR then
-      if count = 0 then
-        redim flat(0)
-      else
-        redim preserve flat(0 to count)
-      end if
-      flat(count) = args(i).scalar
-      count += 1
+      count = count + 1
     else
       for j = lbound(args(i).arr) to ubound(args(i).arr)
-        if count = 0 then
-          redim flat(0)
-        else
-          redim preserve flat(0 to count)
-        end if
-        flat(count) = args(i).arr(j)
-        count += 1
+        count = count + 1
+      next j
+    end if
+  next i
+
+  if count <= 0 then return 0
+  redim flat(0 to count - 1)
+
+  dim flatPos as Integer = 0
+  for i = lbound(args) to ubound(args)
+    if args(i).kind = VK_SCALAR then
+      flat(flatPos) = args(i).scalar
+      flatPos = flatPos + 1
+    else
+      for j = lbound(args(i).arr) to ubound(args(i).arr)
+        flat(flatPos) = args(i).arr(j)
+        flatPos = flatPos + 1
       next j
     end if
   next i
@@ -1395,12 +1400,20 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fn = "hex" orelse fn = "bin" then
-    if ubound(args) <> 0 then
-      dim argc as Integer = ubound(args) + 1
-      SetParseError(fnName & "() expects 1 argument(s), " & ltrim(str(argc)) & " given")
+    if ubound(args) = -1 then
+      SetParseError(fnName & "() expects at least 1 argument")
       return outV
     end if
-    outV = args(0)
+    if ubound(args) = 0 then
+      outV = args(0)
+    else
+      c = CollectArgsAsFlat(args(), flat())
+      if c <= 0 then
+        SetParseError(fnName & "() expects at least 1 argument")
+        return outV
+      end if
+      ValueSetArray(outV, flat())
+    end if
     dim fmtBase as Integer = IIf(fn = "hex", 16, 2)
     if outV.kind = VK_SCALAR then
       if outV.exactUInt64Valid = FALSE then
@@ -1908,6 +1921,7 @@ end function
 
 function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
   dim exprInput as String = StripLineComment(sExpr)
+  const PARSER_MAX_EXPR_LEN as Integer = 32760
   evalDepth += 1
   if evalDepth = 1 then
     lastErrorText = ""
@@ -1917,6 +1931,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     rootInputExpr = exprInput
   end if
   if Len(exprInput) = 0 then
+    evalDepth -= 1
+    return FALSE
+  end if
+  if Len(exprInput) > PARSER_MAX_EXPR_LEN then
+    SetParseError("expression is too long")
     evalDepth -= 1
     return FALSE
   end if

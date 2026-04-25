@@ -78,11 +78,15 @@ Notes:
 - Example on `(1,2,3)`: `variance(...)` = `2/3` and `stddev(...)` = `sqrt(2/3)` (~`0.81649658`), while sample values would be `1` and `1`.
 
 ### 1.6 Output-Formatting Helpers
-- `hex(value_or_array)` - renders final value in hexadecimal form
-- `bin(value_or_array)` - renders final value in binary form
+- `hex(...)` - renders final value in hexadecimal form
+- `bin(...)` - renders final value in binary form
 
 Notes:
 - `hex()` and `bin()` require integer values.
+- `hex(...)` and `bin(...)` accept:
+  - a single scalar value (`hex(12)`)
+  - a list of scalar values (`hex(1,2,3)`)
+  - an array value (`hex((1,2,3))`)
 - When `hex()` / `bin()` appear inside larger arithmetic expressions, normal arithmetic continues and final result is decimal unless the final top-level value is still formatted by `hex()` / `bin()`.
 
 Examples:
@@ -101,6 +105,8 @@ Examples:
 - `rand()` -> random value in `[0,1)`, `random(10,20)` -> random value in `[10,20)`
 - `sort((3,1,2))` -> `(1,2,3)`, `sort(2,5,1)` -> `(1,2,5)`
 - `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
+- `hex(12)` -> `0xC`, `hex(1,2,3)` -> `(0x1,0x2,0x3)`, `hex((1,2,3))` -> `(0x1,0x2,0x3)`
+- `bin(5)` -> `0b101`, `bin(1,2,3)` -> `(0b1,0b10,0b11)`, `bin((1,2,3))` -> `(0b1,0b10,0b11)`
 
 ## 2) Operators and Precedence
 
@@ -219,6 +225,8 @@ Examples:
 - `hex` / `bin` can render array outputs:
   - `hex((12,255))` -> `(0xC,0xFF)`
   - `bin((1,2,5))` -> `(0b1,0b10,0b101)`
+  - `hex(12,255)` -> `(0xC,0xFF)`
+  - `bin(1,2,5)` -> `(0b1,0b10,0b101)`
 
 ## 6) Variables and User-Defined Functions
 
@@ -290,8 +298,25 @@ Examples:
 - `function: sin(angle)`
 - `function: sum(...)`
 - `function: median(...)`
-- `function: hex(value_or_array)`
-- `function: bin(value_or_array)`
+- `function: hex(...)`
+- `function: bin(...)`
 
 Error messages include line/column and inline caret previews.
+
+## 10) Troubleshooting
+
+If you need to diagnose a crash or a problematic input line, you can enable per-line parser logging in `SmartMath.ini`.
+
+`SmartMath.ini` (`[Settings]` section):
+
+```ini
+LogParsedLines=1
+```
+
+Notes:
+- `LogParsedLines=0` disables this logging (default).
+- After editing `SmartMath.ini`, toggle SmartMath off/on (or restart AkelPad) to reload settings.
+- Logs are emitted via Windows `OutputDebugString`.
+- You can view these logs in [DbgView (Sysinternals)](https://learn.microsoft.com/sysinternals/downloads/debugview).
+- Log entries include `parse-line begin [...]` / `parse-line end [...]`, which helps identify the last processed line before a failure.
 

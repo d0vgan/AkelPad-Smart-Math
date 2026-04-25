@@ -15,7 +15,7 @@
 *   **Smart Percentage Logic:** Intuitive handling of the `%` character relative to the left operand (e.g., `500 + 21%` correctly yields `605`).
 *   **Advanced Number Formatting:** 
     *   Customizable precision from 0 up to 14 decimal places.
-    *   Optional **Thousands Separator** with smart locale handling (uses `.` for thousands and `,` for decimals, e.g., `1.000.500,50`).
+    *   Optional **Thousands Separator** with `.` as decimal separator and `'` as thousands separator (e.g., `1'000'500.50`).
 *   **Customizable Aesthetics:** Choose from 6 different text colors (Green, Blue, Red, Yellow, White, Black) to match your AkelPad theme. It also perfectly integrates with AkelPad's "Active Line" background highlight.
 *   **Native Autoload:** Integrates directly with AkelPad's plugin manager to remember its active state across sessions.
 

@@ -19,6 +19,13 @@ sub LoadSettings()
     else
       g_bUseThousandsSeparator = FALSE
     end if
+
+    GetPrivateProfileStringW(wstr("Settings"), wstr("LogParsedLines"), wstr("0"), @sVal, 32, g_wszIniPath)
+    if Val(sVal) <> 0 then
+      g_bLogParsedLines = TRUE
+    else
+      g_bLogParsedLines = FALSE
+    end if
   end if
 end sub
 
@@ -32,5 +39,8 @@ sub SaveSettings()
     
     if g_bUseThousandsSeparator then sVal = wstr("1") else sVal = wstr("0")
     WritePrivateProfileStringW(wstr("Settings"), wstr("ThousandsSeparator"), sVal, g_wszIniPath)
+
+    if g_bLogParsedLines then sVal = wstr("1") else sVal = wstr("0")
+    WritePrivateProfileStringW(wstr("Settings"), wstr("LogParsedLines"), sVal, g_wszIniPath)
   end if
 end sub

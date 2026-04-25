@@ -40,6 +40,14 @@ const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
 
 ' -----------------------------------------------------------------------------
+'  Shared formatting/render constants
+' -----------------------------------------------------------------------------
+const SMARTMATH_DECIMAL_SEPARATOR   = "."
+const SMARTMATH_THOUSANDS_SEPARATOR = "'"
+const SMARTMATH_RESULT_PREFIX       = " = "
+const SMARTMATH_ERROR_PREFIX        = " ! "
+
+' -----------------------------------------------------------------------------
 '  Global Variables (Extern)
 ' -----------------------------------------------------------------------------
 extern lpEditProcData as WNDPROCDATA ptr
@@ -55,6 +63,7 @@ extern dwOldAkelOptions as DWORD
 extern g_nDecimals as Integer
 extern g_crResultColor as COLORREF
 extern g_bUseThousandsSeparator as BOOL
+extern g_bLogParsedLines as BOOL
 extern hSmartMathMenu as HMENU
 extern hSubMenuDecimals as HMENU
 extern hSubMenuColor as HMENU
@@ -71,6 +80,7 @@ extern g_wszIniPath as WString * 260
 declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
+declare function FormatArrayResultText(byref sArrayText as String) as String
 declare sub InitSmartMathMenu()
 declare sub UpdateMenuChecks()
 declare sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
