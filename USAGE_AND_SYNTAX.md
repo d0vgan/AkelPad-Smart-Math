@@ -19,8 +19,8 @@ It focuses on parser/evaluator behavior (functions, operators, precedence, array
 - `acos(value)`, `arccos(value)`
 - `atan(value)`, `arctan(value)`
 - `atan2(y, x)` - angle of vector `(x,y)` in radians
-- `deg(value)` - radians -> degrees
-- `rad(value)` - degrees -> radians
+- `deg(...)` - radians -> degrees (supports scalar, array, or multiple values)
+- `rad(...)` - degrees -> radians (supports scalar, array, or multiple values)
 - `sinh(value)`
 - `cosh(value)`
 - `tanh(value)`
@@ -94,6 +94,7 @@ Examples:
 - `floor(2.9)` -> `2`, `ceil(2.1)` -> `3`, `trunc(-2.9)` -> `-2`
 - `round(2.5)` -> `3`, `sign(-123)` -> `-1`
 - `deg(pi)` -> `180`, `rad(180)` -> `pi`
+- `deg(pi/2, pi/4)` -> `(90, 45)`, `rad(180, 90)` -> `(pi, pi/2)`
 - `hypot(3,4)` -> `5`
 - `mod(17,5)` -> `2`
 - `avg(1,2,3,4)` -> `2.5`, `mean((1,2,3),9)` -> `3.75`

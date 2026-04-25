@@ -1458,6 +1458,36 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
+  if fn = "deg" orelse fn = "rad" then
+    if ubound(args) = -1 then
+      SetParseError(fnName & "() expects at least 1 argument")
+      return outV
+    end if
+    if ubound(args) = 0 then
+      if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+      return outV
+    end if
+
+    c = CollectArgsAsFlat(args(), flat())
+    if c <= 0 then
+      SetParseError(fnName & "() expects at least 1 argument")
+      return outV
+    end if
+
+    redim outV.arr(0 to c - 1)
+    outV.kind = VK_ARRAY
+    for i as Integer = 0 to c - 1
+      dim tmpIn as EvalValue, tmpOut as EvalValue
+      ValueSetScalar(tmpIn, flat(i))
+      if ApplyUnaryFunction(fn, tmpIn, tmpOut) = FALSE then
+        SetParseError("numeric error in " & fnName & "()")
+        return outV
+      end if
+      outV.arr(i) = tmpOut.scalar
+    next i
+    return outV
+  end if
+
   if IsUnaryBuiltin(fnName) then
     if ubound(args) <> 0 then
       dim argc as Integer = ubound(args) + 1

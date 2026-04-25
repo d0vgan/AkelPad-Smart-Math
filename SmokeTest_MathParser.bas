@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 241) as SmokeCase
+  dim tests(1 to 243) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -298,8 +298,8 @@ sub Main()
   tests(206).expr = "trunc()":          tests(206).expectedErrContains = "expects 1 argument(s)" ' [arity]
   tests(207).expr = "round()":          tests(207).expectedErrContains = "expects 1 argument(s)" ' [arity]
   tests(208).expr = "sign()":           tests(208).expectedErrContains = "expects 1 argument(s)" ' [arity]
-  tests(209).expr = "deg()":            tests(209).expectedErrContains = "expects 1 argument(s)" ' [arity]
-  tests(210).expr = "rad()":            tests(210).expectedErrContains = "expects 1 argument(s)" ' [arity]
+  tests(209).expr = "deg()":            tests(209).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(210).expr = "rad()":            tests(210).expectedErrContains = "expects at least 1 argument" ' [arity]
   tests(211).expr = "ln((1,2))":        tests(211).expected = "(0,0.6931471805599453)" ' [ok-array]
   tests(212).expr = "sqrt((1,2))":      tests(212).expected = "(1,1.414213562373095)" ' [ok-array]
   tests(213).expr = "abs((1,2))":       tests(213).expected = "(1,2)" ' [ok-array]
@@ -335,6 +335,8 @@ sub Main()
   tests(239).expr = "sort(( ))":        tests(239).expectedErrContains = "unexpected token" ' [syntax]
   tests(240).expr = "unique(( ))":      tests(240).expectedErrContains = "unexpected token" ' [syntax]
   tests(241).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(241).expectedErrContains = "unknown functions" ' [regression-lock]
+  tests(242).expr = "deg(pi/2,pi/4)":   tests(242).expected = "(90,45)" ' [ok-array]
+  tests(243).expr = "rad(180,90)":      tests(243).expected = "(3.141592653589793,1.570796326794897)" ' [ok-array]
 
   g_total = ubound(tests) - lbound(tests) + 1
 
