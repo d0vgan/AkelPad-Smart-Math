@@ -33,6 +33,10 @@ To compile the plugin yourself:
 2.  Open a terminal in the project's root folder.
 3.  Run the `Compile.bat` file. This will link all the modules (`SmartMath.bas`, `SmartMath_Config.bas`, etc.) into a single DLL.
 
+### 📘 Language Reference
+The full expression language reference (functions, operators, precedence, arrays, variables, comments, and usage tips) is documented in:
+- `USAGE_AND_SYNTAX.md`
+
 ### 📦 Installation
 1.  Locate your AkelPad installation directory.
 2.  Copy the compiled DLL (`SmartMath.dll`) into the `AkelFiles\Plugs\` folder.

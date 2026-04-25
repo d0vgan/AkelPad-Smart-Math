@@ -58,6 +58,77 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
+function BuildLineRenderText(byval hWnd as HWND, byval lineIdx as Integer) as String
+  dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
+  dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+  dim sLine as String = GetLineText(hWnd, lineIdx, nLineLen)
+
+  dim dResult as Double
+  dim sResult as String
+  dim bIsArray as Boolean
+
+  if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
+    dim sTrimResult as String = lcase(trim(sResult))
+    dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
+                                  orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
+    if lcase(left(trim(sResult), 8)) = "defined " then
+      return ""
+    elseif bIsArray orelse bPrefixedScalar then
+      return " = " & sResult
+    else
+      return FormatResult(dResult)
+    end if
+  end if
+
+  dim sErr as String = Parser_GetLastError()
+  if len(sErr) > 0 then return " ! " & sErr
+  return ""
+end function
+
+function BuildResultTextForLine(byval hWnd as HWND, byval targetLine as Integer) as String
+  dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
+  if targetLine < 0 orelse targetLine >= nLineCount then return ""
+
+  Parser_ClearVariables()
+  dim i as Integer
+  for i = 0 to targetLine
+    dim sRes as String = BuildLineRenderText(hWnd, i)
+    if i = targetLine then return sRes
+  next i
+  return ""
+end function
+
+function NormalizeCopiedResult(byref sRes as String) as String
+  if left(sRes, 3) = " = " orelse left(sRes, 3) = " ! " then
+    return mid(sRes, 4)
+  end if
+  return sRes
+end function
+
+function CopyTextToClipboard(byval hWndOwner as HWND, byref sText as String) as BOOL
+  if len(sText) = 0 then return FALSE
+  if OpenClipboard(hWndOwner) = FALSE then return FALSE
+  EmptyClipboard()
+
+  dim cbBytes as Integer = len(sText) + 1
+  dim hMem as HGLOBAL = GlobalAlloc(GMEM_MOVEABLE, cbBytes)
+  if hMem = 0 then
+    CloseClipboard()
+    return FALSE
+  end if
+  dim pMem as any ptr = GlobalLock(hMem)
+  if pMem then
+    memcpy(pMem, strptr(sText), cbBytes)
+    GlobalUnlock(hMem)
+    SetClipboardData(CF_TEXT, hMem)
+    CloseClipboard()
+    return TRUE
+  end if
+  GlobalFree(hMem)
+  CloseClipboard()
+  return FALSE
+end function
+
 ' -----------------------------------------------------------------------------
 '  Drawing Logic & Positioning
 ' -----------------------------------------------------------------------------
@@ -111,7 +182,13 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
 
     dim sRes as String = ""
     if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
-      if bIsArray then
+      dim sTrimResult as String = lcase(trim(sResult))
+      dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
+                                    orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
+      if lcase(left(trim(sResult), 8)) = "defined " then
+        ' Function definition line: keep margin clean (no "= 0").
+        sRes = ""
+      elseif bIsArray orelse bPrefixedScalar then
         sRes = " = " & sResult
       else
         sRes = FormatResult(dResult)
@@ -209,7 +286,13 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
     dim sRes as String = ""
     dim bIsError as Boolean = FALSE
     if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
-      if bIsArray then
+      dim sTrimResult as String = lcase(trim(sResult))
+      dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
+                                    orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
+      if lcase(left(trim(sResult), 8)) = "defined " then
+        ' Function definition line: keep margin clean (no "= 0").
+        sRes = ""
+      elseif bIsArray orelse bPrefixedScalar then
         sRes = " = " & sResult
       else
         sRes = FormatResult(dResult)
@@ -380,6 +463,37 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 
     case WM_SIZE, WM_MOUSEWHEEL, WM_VSCROLL, WM_HSCROLL
       if rcOldMargin.right > 0 then InvalidateRect(hWnd, @rcOldMargin, TRUE)
+
+    case WM_LBUTTONDBLCLK
+      if nOldMargin > 0 then
+        dim xPos as Integer = cast(short, loword(lParam))
+        dim yPos as Integer = cast(short, hiword(lParam))
+        dim rcClient as RECT
+        GetClientRect(hWnd, @rcClient)
+        dim nMarginLeft as Integer = rcClient.right - nOldMargin
+        if xPos >= nMarginLeft then
+          dim charPos as Integer = -1
+          if g_bOldRichEdit then
+            dim posRes as LRESULT = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, MAKELPARAM(xPos, yPos)))
+            charPos = cast(short, loword(posRes))
+          else
+            dim pt as POINT
+            pt.x = xPos
+            pt.y = yPos
+            charPos = SendMessage(hWnd, EM_CHARFROMPOS, 0, cast(LPARAM, @pt))
+          end if
+          if charPos >= 0 then
+            dim lineIdx as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, charPos)
+            dim sRes as String = BuildResultTextForLine(hWnd, lineIdx)
+            if len(sRes) > 0 then
+              dim sCopy as String = NormalizeCopiedResult(sRes)
+              if CopyTextToClipboard(hWnd, sCopy) then
+                return 0
+              end if
+            end if
+          end if
+        end if
+      end if
   end select
 
   if lpEditProcData andalso lpEditProcData->NextProc then
