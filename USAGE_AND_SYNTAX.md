@@ -45,6 +45,9 @@ Note:
 - `floor(value)` - largest integer <= value
 - `ceil(value)` - smallest integer >= value
 - `trunc(value)` - truncate fractional part toward zero
+- `int(value)` - integer part toward zero (same behavior as `trunc(value)`)
+- `frac(value)` - fractional part after truncation (`value - int(value)`)
+- `fract(value)` - alias of `frac(value)`
 - `round(value)` - nearest integer
 - `abs(value)`
 - `sign(value)` - returns -1, 0, or 1
@@ -92,6 +95,8 @@ Notes:
 Examples:
 - `atan2(1,1)` -> `0.7853981633974483`
 - `floor(2.9)` -> `2`, `ceil(2.1)` -> `3`, `trunc(-2.9)` -> `-2`
+- `int(2.9)` -> `2`, `int(-2.9)` -> `-2`
+- `frac(2.5)` -> `0.5`, `frac(-2.5)` -> `-0.5`
 - `round(2.5)` -> `3`, `sign(-123)` -> `-1`
 - `deg(pi)` -> `180`, `rad(180)` -> `pi`
 - `deg(pi/2, pi/4)` -> `(90, 45)`, `rad(180, 90)` -> `(pi, pi/2)`

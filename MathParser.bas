@@ -90,7 +90,7 @@ end sub
 private function IsUnaryBuiltin(byref fn as String) as Boolean
   select case lcase(fn)
     case "sin", "cos", "tan", "asin", "arcsin", "acos", "arccos", "atan", "arctan", _
-         "sinh", "cosh", "tanh", "exp", "ln", "log10", "sqrt", "sqr", "abs", _
+         "sinh", "cosh", "tanh", "exp", "ln", "log10", "sqrt", "sqr", "int", "frac", "fract", "abs", _
          "floor", "ceil", "trunc", "round", "sign", "deg", "rad"
       return TRUE
   end select
@@ -161,6 +161,12 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
       return TRUE
     case "sqr"
       hint = "sqr(value)"
+      return TRUE
+    case "int"
+      hint = "int(value)"
+      return TRUE
+    case "frac", "fract"
+      hint = "frac(value)"
       return TRUE
     case "abs"
       hint = "abs(value)"
@@ -894,6 +900,10 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
         ValueSetScalar(outV, sqr(v.scalar))
       case "sqr"
         ValueSetScalar(outV, v.scalar * v.scalar)
+      case "int"
+        ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
+      case "frac", "fract"
+        ValueSetScalar(outV, v.scalar - Fix(v.scalar))
       case "abs":   ValueSetScalar(outV, abs(v.scalar))
       case "floor"
         ValueSetInt64(outV, CLngInt(Int(v.scalar)))

@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 251) as SmokeCase
+  dim tests(1 to 262) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -345,6 +345,17 @@ sub Main()
   tests(249).expr = "sign":             tests(249).expectedErrContains = "function: sign(value)" ' [hint]
   tests(250).expr = "deg":              tests(250).expectedErrContains = "function: deg(...)" ' [hint]
   tests(251).expr = "rad":              tests(251).expectedErrContains = "function: rad(...)" ' [hint]
+  tests(252).expr = "int(2.9)":         tests(252).expected = "2" ' [ok-func]
+  tests(253).expr = "int(-2.9)":        tests(253).expected = "-2" ' [ok-func]
+  tests(254).expr = "frac(2.9)":        tests(254).expected = "0.8999999999999999" ' [ok-func]
+  tests(255).expr = "frac(-2.9)":       tests(255).expected = "-0.8999999999999999" ' [ok-func]
+  tests(256).expr = "int((2.9,-2.9))":  tests(256).expected = "(2,-2)" ' [ok-array]
+  tests(257).expr = "frac((2.9,-2.9))": tests(257).expected = "(0.8999999999999999,-0.8999999999999999)" ' [ok-array]
+  tests(258).expr = "int":              tests(258).expectedErrContains = "function: int(value)" ' [hint]
+  tests(259).expr = "frac":             tests(259).expectedErrContains = "function: frac(value)" ' [hint]
+  tests(260).expr = "fract(2.9)":       tests(260).expected = "0.8999999999999999" ' [ok-func]
+  tests(261).expr = "fract((2.9,-2.9))": tests(261).expected = "(0.8999999999999999,-0.8999999999999999)" ' [ok-array]
+  tests(262).expr = "fract":            tests(262).expectedErrContains = "function: frac(value)" ' [hint]
 
   g_total = ubound(tests) - lbound(tests) + 1
 
