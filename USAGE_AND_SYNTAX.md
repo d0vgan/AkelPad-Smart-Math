@@ -38,8 +38,8 @@ It focuses on parser/evaluator behavior (functions, operators, precedence, array
 - `hypot(x, y)` - sqrt(x*x + y*y)
 
 Note:
-- You can compute an y-th root using `pow(x, 1/y)`.
-  - Example: `pow(27, 1/3)` -> `3`
+- You can compute an y-th root using `pow(x, 1/y)` or `x**(1/y)`.
+  - Example: `pow(27, 1/3)` -> `3`, `25**(1/2)` -> `5`
 
 ### 1.4 Numeric Utilities
 - `floor(value)` - largest integer <= value
@@ -81,7 +81,7 @@ Aggregation functions accept scalar and array arguments. Array arguments are fla
 Notes:
 - `variance(...)` and `stddev(...)` use population formulas (divide by `N`).
 - Sample formulas (divide by `N-1`) are not currently implemented.
-- Example on `(1,2,3)`: `variance(...)` = `2/3` and `stddev(...)` = `sqrt(2/3)` (~`0.81649658`), while sample values would be `1` and `1`.
+- Example on `a=(1,2,3)`: `variance(a)` = `2/3` and `stddev(a)` = `sqrt(2/3)` (~`0.81649658`), while sample values would be `1` and `1`.
 
 ### 1.6 Output-Formatting Helpers
 - `hex(...)` - renders final value in hexadecimal form
@@ -136,7 +136,7 @@ Supported operators:
 - Logical NOT: `!x`, `not x`
 - Logical AND: `x && y`, `x and y`
 - Logical OR: `x || y`, `x or y`
-- Postfix percentage: `x%` (percentage form, see section 3.5)
+- Postfix percentage: `x%` (percentage form, see section 3.6)
 
 Implicit multiplication:
 - Supported only before opening parenthesis:
@@ -251,6 +251,7 @@ Important range note:
 Examples:
 - `(1,2,3) + 10` -> `(11,12,13)`
 - `(1,2,3) * 10` -> `(10,20,30)`
+- `(1,2,3) ** 3` -> `(1, 8, 27)`
 - `(1,2,3) + (10,20,30)` -> `(11,22,33)`
 - `(1,2,3) + (10,20)` -> error (incompatible operands; array lengths must match)
 - `(1,2,3) * (4,5,6)` -> `(4,10,18)`
@@ -269,6 +270,7 @@ Examples:
 - `(1,2,3) = (1,2,3)` -> `1`
 - `(1,2,3) < (1,2,4)` -> `1`
 - `(1,2) < (1,2,0)` -> `1`
+- `(1,3) > (1,2,3)` -> `1`
 
 ### 5.4 Indexing
 - Array index syntax:
@@ -384,7 +386,6 @@ Examples:
 - `function: sum(...)`
 - `function: median(...)`
 - `function: hex(...)`
-- `function: oct(...)`
 - `function: bin(...)`
 
 Parser errors are one line, in this form:
