@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 398) as SmokeCase
+  dim tests(1 to 408) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -500,6 +500,18 @@ sub Main()
   tests(396).expr = "f(e)=e+1":               tests(396).expectedErrContains = "reserved constant name" ' [syntax] param
   tests(397).expr = "pi(x)=x":                tests(397).expectedErrContains = "reserved constant name" ' [syntax] function name
   tests(398).expr = "log(e,e)":                tests(398).expected = "1" ' [spec] e still usable as constant in expressions
+
+  ' === hex() signed magnitude vs uhex/uoct/ubin (unsigned / two's complement) ===
+  tests(399).expr = "hex(~0x0D)":             tests(399).expected = "-0xE" ' signed: -14
+  tests(400).expr = "hex(-1)":                tests(400).expected = "-0x1"
+  tests(401).expr = "uhex(~0x0D)":           tests(401).expected = "0xFFFFFFFFFFFFFFF2"
+  tests(402).expr = "uhex(-1)":              tests(402).expected = "0xFFFFFFFFFFFFFFFF"
+  tests(403).expr = "ubin(-1)":              tests(403).expected = "0b1111111111111111111111111111111111111111111111111111111111111111"
+  tests(404).expr = "uoct(-1)":              tests(404).expected = "0o1777777777777777777777"
+  tests(405).expr = "uhex()":                tests(405).expectedErrContains = "expects at least 1 argument"
+  tests(406).expr = "uhex":                  tests(406).expectedErrContains = "function: uhex(...)"
+  tests(407).expr = "uhex(1,2)":             tests(407).expected = "(0x1,0x2)"
+  tests(408).expr = "bin(-2)":               tests(408).expected = "-0b10" ' bin/oct/hex still signed magnitude
 
   g_total = ubound(tests) - lbound(tests) + 1
 

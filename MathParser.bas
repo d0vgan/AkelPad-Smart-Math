@@ -12,6 +12,7 @@ type EvalValue
   arr(any) as Double
   expandArgs as Boolean
   renderBase as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
+  renderUnsigned as Boolean ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
   exactInt64Valid as Boolean
   exactInt64 as LongInt
   exactUInt64Valid as Boolean
@@ -150,6 +151,9 @@ enum BuiltinFunctionId
   FUNC_PROD
   FUNC_MIN
   FUNC_MAX
+  FUNC_UHEX
+  FUNC_UOCT
+  FUNC_UBIN
   FUNC__COUNT
 end enum
 
@@ -235,6 +239,9 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_PROD) = "prod"
   FunctionNames(FUNC_MIN) = "min"
   FunctionNames(FUNC_MAX) = "max"
+  FunctionNames(FUNC_UHEX) = "uhex"
+  FunctionNames(FUNC_UOCT) = "uoct"
+  FunctionNames(FUNC_UBIN) = "ubin"
   FunctionNamesInitialized = TRUE
 end sub
 
@@ -301,7 +308,8 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     hint = GetFunctionName(FUNC_RAND) & "()"
   elseif IsFn(fn, FUNC_RANDOM) then
     hint = GetFunctionName(FUNC_RANDOM) & "(min, max)"
-  elseif IsFn(fn, FUNC_BIN) orelse IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) then
+  elseif IsFn(fn, FUNC_BIN) orelse IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) orelse _
+         IsFn(fn, FUNC_UBIN) orelse IsFn(fn, FUNC_UHEX) orelse IsFn(fn, FUNC_UOCT) then
     hint = lcase(fn) & "(...)"
   elseif IsFn(fn, FUNC_POW) then
     hint = GetFunctionName(FUNC_POW) & "(value, power)"
@@ -375,6 +383,7 @@ private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   v.scalar = n
   v.expandArgs = FALSE
   v.renderBase = 0
+  v.renderUnsigned = FALSE
   v.exactInt64Valid = FALSE
   v.exactInt64 = 0
   v.exactUInt64Valid = FALSE
@@ -387,6 +396,7 @@ private sub ValueSetArray(byref v as EvalValue, a() as Double)
   v.scalar = 0
   v.expandArgs = FALSE
   v.renderBase = 0
+  v.renderUnsigned = FALSE
   v.exactInt64Valid = FALSE
   v.exactInt64 = 0
   v.exactUInt64Valid = FALSE
@@ -516,10 +526,12 @@ private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byre
   return TRUE
 end function
 
-private function FormatHexScalar(byval n as Double, byref outText as String) as Boolean
+private function FormatHexScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if iv < 0 then
+  if asUnsigned then
+    outText = "0x" & Hex(CULngInt(iv))
+  elseif iv < 0 then
     outText = "-0x" & Hex(CULngInt(-iv))
   else
     outText = "0x" & Hex(CULngInt(iv))
@@ -531,10 +543,12 @@ private function FormatHexUInt64(byval u as ULongInt) as String
   return "0x" & Hex(u)
 end function
 
-private function FormatBinScalar(byval n as Double, byref outText as String) as Boolean
+private function FormatBinScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if iv < 0 then
+  if asUnsigned then
+    outText = "0b" & Bin(CULngInt(iv))
+  elseif iv < 0 then
     outText = "-0b" & Bin(CULngInt(-iv))
   else
     outText = "0b" & Bin(CULngInt(iv))
@@ -546,10 +560,12 @@ private function FormatBinUInt64(byval u as ULongInt) as String
   return "0b" & Bin(u)
 end function
 
-private function FormatOctScalar(byval n as Double, byref outText as String) as Boolean
+private function FormatOctScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if iv < 0 then
+  if asUnsigned then
+    outText = "0o" & Oct(CULngInt(iv))
+  elseif iv < 0 then
     outText = "-0o" & Oct(CULngInt(-iv))
   else
     outText = "0o" & Oct(CULngInt(iv))
@@ -566,15 +582,15 @@ private function ValueToString(byref v as EvalValue) as String
     if v.renderBase = 16 then
       if v.exactUInt64Valid then return FormatHexUInt64(v.exactUInt64)
       dim fmtText as String
-      if FormatHexScalar(v.scalar, fmtText) then return fmtText
+      if FormatHexScalar(v.scalar, fmtText, v.renderUnsigned) then return fmtText
     elseif v.renderBase = 8 then
       if v.exactUInt64Valid then return FormatOctUInt64(v.exactUInt64)
       dim fmtText as String
-      if FormatOctScalar(v.scalar, fmtText) then return fmtText
+      if FormatOctScalar(v.scalar, fmtText, v.renderUnsigned) then return fmtText
     elseif v.renderBase = 2 then
       if v.exactUInt64Valid then return FormatBinUInt64(v.exactUInt64)
       dim fmtText as String
-      if FormatBinScalar(v.scalar, fmtText) then return fmtText
+      if FormatBinScalar(v.scalar, fmtText, v.renderUnsigned) then return fmtText
     end if
     if v.exactInt64Valid then return ltrim(str(v.exactInt64))
     return ltrim(str(v.scalar))
@@ -586,21 +602,21 @@ private function ValueToString(byref v as EvalValue) as String
     if i > lbound(v.arr) then s &= ","
     if v.renderBase = 16 then
       dim fmtText as String
-      if FormatHexScalar(v.arr(i), fmtText) then
+      if FormatHexScalar(v.arr(i), fmtText, v.renderUnsigned) then
         s &= fmtText
       else
         s &= ltrim(str(v.arr(i)))
       end if
     elseif v.renderBase = 8 then
       dim fmtText as String
-      if FormatOctScalar(v.arr(i), fmtText) then
+      if FormatOctScalar(v.arr(i), fmtText, v.renderUnsigned) then
         s &= fmtText
       else
         s &= ltrim(str(v.arr(i)))
       end if
     elseif v.renderBase = 2 then
       dim fmtText as String
-      if FormatBinScalar(v.arr(i), fmtText) then
+      if FormatBinScalar(v.arr(i), fmtText, v.renderUnsigned) then
         s &= fmtText
       else
         s &= ltrim(str(v.arr(i)))
@@ -1818,7 +1834,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) orelse IsFn(fn, FUNC_BIN) then
+  if IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) orelse IsFn(fn, FUNC_BIN) orelse _
+     IsFn(fn, FUNC_UHEX) orelse IsFn(fn, FUNC_UOCT) orelse IsFn(fn, FUNC_UBIN) then
     if ubound(args) = -1 then
       SetParseError(fnName & "() expects at least 1 argument")
       return outV
@@ -1833,17 +1850,19 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       end if
       ValueSetArray(outV, flat())
     end if
-    dim fmtBase as Integer = IIf(IsFn(fn, FUNC_HEX), 16, IIf(IsFn(fn, FUNC_OCT), 8, 2))
+    dim fmtBase as Integer = IIf(IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_UHEX), 16, _
+                                 IIf(IsFn(fn, FUNC_OCT) orelse IsFn(fn, FUNC_UOCT), 8, 2))
+    dim asUnsigned as Boolean = (IsFn(fn, FUNC_UHEX) orelse IsFn(fn, FUNC_UOCT) orelse IsFn(fn, FUNC_UBIN))
     if outV.kind = VK_SCALAR then
       if outV.exactUInt64Valid = FALSE then
         dim fmtText as String
         dim okFmt as Boolean
         if fmtBase = 16 then
-          okFmt = FormatHexScalar(outV.scalar, fmtText)
+          okFmt = FormatHexScalar(outV.scalar, fmtText, asUnsigned)
         elseif fmtBase = 8 then
-          okFmt = FormatOctScalar(outV.scalar, fmtText)
+          okFmt = FormatOctScalar(outV.scalar, fmtText, asUnsigned)
         else
-          okFmt = FormatBinScalar(outV.scalar, fmtText)
+          okFmt = FormatBinScalar(outV.scalar, fmtText, asUnsigned)
         end if
         if okFmt = FALSE then
           SetParseError(fnName & "() expects integer values")
@@ -1855,11 +1874,11 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         dim fmtText as String
         dim okFmt as Boolean
         if fmtBase = 16 then
-          okFmt = FormatHexScalar(outV.arr(i), fmtText)
+          okFmt = FormatHexScalar(outV.arr(i), fmtText, asUnsigned)
         elseif fmtBase = 8 then
-          okFmt = FormatOctScalar(outV.arr(i), fmtText)
+          okFmt = FormatOctScalar(outV.arr(i), fmtText, asUnsigned)
         else
-          okFmt = FormatBinScalar(outV.arr(i), fmtText)
+          okFmt = FormatBinScalar(outV.arr(i), fmtText, asUnsigned)
         end if
         if okFmt = FALSE then
           SetParseError(fnName & "() expects integer values")
@@ -1868,6 +1887,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       next i
     end if
     outV.renderBase = fmtBase
+    outV.renderUnsigned = asUnsigned
     return outV
   end if
 

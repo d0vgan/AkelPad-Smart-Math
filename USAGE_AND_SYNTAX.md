@@ -88,10 +88,21 @@ Notes:
 - `hex(...)` - renders final value in hexadecimal form
 - `oct(...)` - renders final value in octal form
 - `bin(...)` - renders final value in binary form
+- `uhex(...)`, `uoct(...)`, `ubin(...)` - same inputs as `hex`, `oct`, and `bin`.
+- For **negative** numbers, they **do not** show a minus sign. They show the value as an **unsigned 64-bit integer** (typical “hex dump” / CPU register style). Positives look the same as with `hex` / `oct` / `bin`.
 
 Notes:
-- `hex()`, `oct()`, and `bin()` require integer values.
-- `hex(...)`, `oct(...)`, and `bin(...)` accept:
+- `hex()`, `oct()`, `bin()`, `uhex()`, `uoct()`, and `ubin()` require integer values.
+- In C `printf`, `%x` and `%o` are unsigned. There is no standard “signed hex” flag.
+- `hex` / `oct` / `bin` use a minus sign and the magnitude for negatives.
+  - `hex(-1)` -> `-0x1`
+  - `oct(-1)` -> `-0o1`
+- `uhex` / `uoct` / `ubin` use that “all bits, no minus sign” style for negatives.
+  - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF` (every hex digit is `F`)
+  - `uhex(~0x0D)` -> `0xFFFFFFFFFFFFFFF2` (same idea after bitwise `~`)
+- For a **32-bit**-wide display, mask first.
+  - `uhex(0xFFFFFFFF & (~0x0D))` -> `0xFFFFFFF2`
+- `hex(...)`, `oct(...)`, `bin(...)`, `uhex(...)`, `uoct(...)`, and `ubin(...)` accept:
   - a single scalar value (`hex(12)`)
   - a list of scalar values (`hex(1,2,3)`)
   - an array value (`hex((1,2,3))`)
@@ -121,9 +132,17 @@ Examples:
 - `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
 - `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
 - `f(x,y,z)=x+y+z; f(unpack(1,2,3))` -> `6`
-- `hex(12)` -> `0xC`, `hex(1,2,3)` -> `(0x1,0x2,0x3)`, `hex((1,2,3))` -> `(0x1,0x2,0x3)`
-- `oct(12)` -> `0o14`, `oct(1,2,3)` -> `(0o1,0o2,0o3)`, `oct((1,2,3))` -> `(0o1,0o2,0o3)`
-- `bin(5)` -> `0b101`, `bin(1,2,3)` -> `(0b1,0b10,0b11)`, `bin((1,2,3))` -> `(0b1,0b10,0b11)`
+- `hex(12)` -> `0xC`
+- `hex(1,2,3)` -> `(0x1,0x2,0x3)`
+- `hex((1,2,3))` -> `(0x1,0x2,0x3)`
+- `hex(-1)` -> `-0x1`
+- `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
+- `oct(12)` -> `0o14`
+- `oct(1,2,3)` -> `(0o1,0o2,0o3)`
+- `oct((1,2,3))` -> `(0o1,0o2,0o3)`
+- `bin(5)` -> `0b101`
+- `bin(1,2,3)` -> `(0b1,0b10,0b11)`
+- `bin((1,2,3))` -> `(0b1,0b10,0b11)`
 - `0o64` -> `52`, `0b110011 & 0x37 | 0o64` -> `55`
 
 ## 2) Operators and Precedence
@@ -314,13 +333,14 @@ Examples:
   - `pow(unpack((5,2)))` -> `25`
   - `sum(unpack((1,2,3)))` -> `6`
   - `sum(unpack((1,2),3,(4,5)))` -> `15`
-- `hex` / `oct` / `bin` can render array outputs:
+- `hex` / `oct` / `bin` (and `uhex` / `uoct` / `ubin`) can render array outputs:
   - `hex((12,255))` -> `(0xC,0xFF)`
-  - `oct((12,255))` -> `(0o14,0o377)`
-  - `bin((1,2,5))` -> `(0b1,0b10,0b101)`
   - `hex(12,255)` -> `(0xC,0xFF)`
+  - `oct((12,255))` -> `(0o14,0o377)`
   - `oct(12,255)` -> `(0o14,0o377)`
+  - `bin((1,2,5))` -> `(0b1,0b10,0b101)`
   - `bin(1,2,5)` -> `(0b1,0b10,0b101)`
+  - `uhex(1,2)` -> `(0x1,0x2)`
 
 ## 6) Variables and User-Defined Functions
 
@@ -414,6 +434,7 @@ Examples:
 - `function: sum(...)`
 - `function: median(...)`
 - `function: hex(...)`
+- `function: uhex(...)`
 - `function: bin(...)`
 
 Parser errors are one line, in this form:
