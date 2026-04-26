@@ -1886,6 +1886,11 @@ private function ParseFactor() as EvalValue
       dim canIndex as Boolean = TRUE
       if TryGetConstant(nam, n) = FALSE then
         if GetVariable(nam, n) = FALSE then
+          dim lowNam as String = lcase(nam)
+          if (lowNam = "and") orelse (lowNam = "or") then
+            SetParseError("unexpected token")
+            return n
+          end if
           dim fnHint as String
           if TryGetBuiltinSignatureHint(nam, fnHint) then
             SetParseError("function: " & fnHint)
@@ -2013,6 +2018,11 @@ private function ParseUnary() as EvalValue
   elseif pStream[0] = 33 andalso pStream[1] <> 61 then
     pStream += 1
     dim v as EvalValue = ParseUnary()
+    if parseError then return v
+    ValueSetBoolResult(not EvalValueIsTruthy(v), v)
+    return v
+  elseif MatchKeywordOperator("not") then
+    dim v as EvalValue = ParseLogicalNot()
     if parseError then return v
     ValueSetBoolResult(not EvalValueIsTruthy(v), v)
     return v
