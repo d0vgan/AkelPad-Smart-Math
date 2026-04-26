@@ -302,14 +302,15 @@ Examples:
 - `reversed(...)` is an alias of `reverse(...)`.
 - `unique(...)` flattens scalar/array arguments, then keeps first occurrences.
 - `unpack(...)` unpacks scalar/array arguments into separate arguments:
-  - scalar inputs are passed as-is;
-  - array inputs are expanded element-by-element.
+  - scalar inputs are passed as-is: `unpack(1,2,3)` -> `1,2,3`;
+  - array inputs are expanded element-by-element: `unpack((1,2),3)` -> `1,2,3`.
 - Examples of standard functions with array values:
   - `sin((0,pi/4,pi/2))` -> `(0,0.70710678,1)` (element-wise unary function)
   - `sum((1,2,3),10)` -> `16` (flattened aggregation)
   - `sort((5,2,9))` -> `(2,5,9)`
   - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
   - `unique((5,2,5,9,2))` -> `(5,2,9)`
+  - `pow(unpack((5,2)))` -> `25`
   - `sum(unpack((1,2,3)))` -> `6`
   - `sum(unpack((1,2),3,(4,5)))` -> `15`
 - `hex` / `oct` / `bin` can render array outputs:
@@ -352,6 +353,7 @@ Examples:
   - `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
   - `f(x,y,z)=x+y+z; f(unpack((1,2,3)))` -> `6`
   - `f(a,b,c,d,t)=a+b+c+d+t; f(unpack((1,2),3,(4,5)))` -> `15`
+  - `f(a,b,c)=a*b*c; v=(2,3,4); f(unpack(v))` -> `24`
 
 User-defined functions also accept array arguments when the expression supports
 array math:
