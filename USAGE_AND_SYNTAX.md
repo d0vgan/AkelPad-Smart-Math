@@ -319,7 +319,15 @@ Examples:
 - `function: oct(...)`
 - `function: bin(...)`
 
-Error messages include line/column and inline caret previews.
+Parser errors are one line, in this form:
+
+- `{message} at col {C}:  {excerpt-with-|}`
+
+The short excerpt includes `|` inserted at the exact reported column position so the location is visible even when the excerpt is taken from the middle of the input.
+
+When `Parser_SetShowErrorLine(TRUE)` is used, the middle part becomes `at line 1, col {C}:  ` (still one physical line in the editor). Default is `FALSE`.
+
+Example: `unexpected token at col 5:  5*5 |: 25`
 
 ## 10) Troubleshooting
 

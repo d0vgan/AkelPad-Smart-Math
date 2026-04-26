@@ -5,5 +5,7 @@ declare sub Parser_ClearVariables()
 declare function Parser_TryEvaluate(byref sExpr as String, byref result as Double) as Boolean
 declare function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
 declare function Parser_GetLastError() as String
+declare sub Parser_SetShowErrorLine(byval showLine as Boolean)
+declare function Parser_GetShowErrorLine() as Boolean
 
 #endif

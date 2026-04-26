@@ -40,8 +40,9 @@ dim shared evalDepth as Integer
 dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
+dim shared Parser_ShowErrorLine as Boolean = FALSE
 
-private function BuildInlineCaretPreview(byval col as Integer) as String
+private function BuildErrorSnippet(byval col as Integer) as String
   if len(rootInputExpr) = 0 then return ""
 
   dim exprLen as Integer = len(rootInputExpr)
@@ -57,23 +58,24 @@ private function BuildInlineCaretPreview(byval col as Integer) as String
   if endPos < startPos then endPos = startPos
 
   dim snippet as String = mid(rootInputExpr, startPos, endPos - startPos + 1)
-  dim caretPos as Integer = col - startPos + 1
-  if caretPos < 1 then caretPos = 1
-  if caretPos > len(snippet) + 1 then caretPos = len(snippet) + 1
-
-  return " | " & snippet & " | " & String(caretPos - 1, " ") & "^"
+  dim markerPos as Integer = col - startPos + 1
+  if markerPos < 1 then markerPos = 1
+  if markerPos > len(snippet) + 1 then markerPos = len(snippet) + 1
+  return left(snippet, markerPos - 1) & "|" & mid(snippet, markerPos)
 end function
 
 private sub SetParseError(byref msg as String)
   if parseError = 0 then parseError = 1
   if lastErrorText = "" then
-    dim posText as String = ""
-    dim col as Integer = 1
     if (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart) then
-      col = errorBaseCol + (pStream - exprStart)
-      posText = " at line 1, col " & ltrim(str(col))
+      dim col as Integer = errorBaseCol + (pStream - exprStart)
+      dim locationPart as String = " at "
+      if Parser_ShowErrorLine then locationPart = locationPart & "line 1, "
+      locationPart = locationPart & "col " & ltrim(str(col)) & ":  "
+      lastErrorText = msg & locationPart & BuildErrorSnippet(col)
+    else
+      lastErrorText = msg
     end if
-    lastErrorText = msg & posText & BuildInlineCaretPreview(col)
   end if
 end sub
 
@@ -2337,4 +2339,12 @@ end function
 function Parser_GetLastError() as String
   if lastErrorText <> "" then return lastErrorText
   return ""
+end function
+
+sub Parser_SetShowErrorLine(byval showLine as Boolean)
+  Parser_ShowErrorLine = showLine
+end sub
+
+function Parser_GetShowErrorLine() as Boolean
+  return Parser_ShowErrorLine
 end function
