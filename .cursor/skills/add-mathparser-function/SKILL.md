@@ -1,13 +1,13 @@
 ---
 name: add-mathparser-function
-description: Add a new builtin math function to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function in MathParser, extend function syntax hints, add smoke tests, or update USAGE_AND_SYNTAX documentation with consistent style and logic.
+description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, update reserved-name checks for constants, or update USAGE_AND_SYNTAX documentation with consistent style and logic.
 ---
 
-# Add MathParser Function
+# Add MathParser Function or Builtin Constant
 
 ## Purpose
 
-Implement a new builtin function consistently across parser code, signature hints, tests, and docs.
+Implement a new builtin function or builtin constant consistently across parser code, signature hints (functions only), reserved-name rules (constants), tests, and docs.
 
 ## When To Use
 
@@ -18,6 +18,7 @@ Use this skill when a request includes phrases like:
 - register function signature
 - add parser tests and docs
 - add function docs with same style/logic
+- add builtin constant / reserved name (e.g. alongside `pi`, `e`)
 - добавить новую функцию
 - добавить сигнатуру/подсказку функции
 - обновить тесты и документацию функции
@@ -42,6 +43,8 @@ If requirements are ambiguous, ask concise clarifying questions before coding.
 1. `MathParser.bas`
 2. `SmokeTest_MathParser.bas`
 3. `USAGE_AND_SYNTAX.md`
+
+For **builtin constants**, also keep the standalone C++ reference parser in sync when the repo maintains it: `cpp/MathParser.cpp` (constant registration and any reserved-name logic there).
 
 ## Required Workflow
 
@@ -127,6 +130,57 @@ Minimum recommended coverage:
 - Keep terminology, tone, wording density, and explanation logic consistent with existing document sections.
 - Do not introduce a new writing style for one function; this file should read as if written by one author.
 
+## Adding a Builtin Constant (Reserved Names)
+
+Use this branch of the workflow when introducing a new identifier that is parsed as a **constant** (like `pi` and `e`), not a function call.
+
+### Canonical table in `MathParser.bas`
+
+Builtin constants use the same pattern as `FunctionNames`:
+
+- **`BuiltinConstId`** — enum with `CONST_*` entries and a sentinel `CONST__COUNT`.
+- **`ConstNames(0 to CONST__COUNT - 1)`** — lowercase spellings filled in **`EnsureConstNames()`** (e.g. `ConstNames(CONST_PI) = "pi"`).
+- **`TryGetConstant`** — resolves a name via `TryFindBuiltinConstId` / `ConstNames`, then a `select case` on `BuiltinConstId` assigns the numeric value.
+- **`IsBuiltinConstantName`** — returns true when `TryFindBuiltinConstId` finds an index (reserved for assignment / UDF names / parameters).
+
+When adding a constant: extend the enum, add one line in `EnsureConstNames`, add one `case` branch in `TryGetConstant`. Do not register the spelling only in `TryGetConstant` without `EnsureConstNames` — reserved-name checks would miss it.
+
+### Code paths that rely on `IsBuiltinConstantName`
+
+After updating the constant table, confirm nothing else needs the new name:
+
+- Assignment targets and related errors already go through `IsBuiltinConstantName` (search the file for calls if the parser gains new binding forms).
+- Do not add a second hardcoded list of constant spellings; keep **`EnsureConstNames`** as the single source for strings.
+
+### C++ parity (`cpp/MathParser.cpp`)
+
+Constants are registered (e.g. via `addConst`). When adding a constant:
+
+- Register the same identifier and value semantics there.
+- If the C++ layer adds or already has reserved-name checks for assignments / UDFs, extend that set to match `IsBuiltinConstantName` in Basic.
+
+### Tests (`SmokeTest_MathParser.bas`)
+
+Mirror existing coverage for `pi` / `e`:
+
+- Assignment LHS rejected (`expectedErrContains` matching `reserved constant name`).
+- Case-insensitive variant if behavior is case-insensitive.
+- UDF parameter name and UDF function name rejected when they match the new constant.
+
+### Documentation (`USAGE_AND_SYNTAX.md`)
+
+Update **every** place that documents builtin constants and reserved names so the new constant is listed **consistently** with `pi` and `e`. At minimum, scan the file for:
+
+- The **Built-in constants** list (bullet list of constant identifiers).
+- Sections that explain **reserved** names, assignment restrictions, and UDF/parameter restrictions.
+- Examples that say constants resolve **before** variables (extend or add an example if it helps, same tone as `(e=3)` style notes).
+
+Match the existing document’s structure, terminology, and density; do not document the new constant in only one section while older constants are described in several.
+
+### Build and smoke
+
+Same as for functions: `Compile.bat`, then `RunSmokeTests.bat`, until clean.
+
 ## Validation Checklist
 
 Before finishing, verify:
@@ -136,6 +190,7 @@ Before finishing, verify:
 - Signature hint and docs match real behavior exactly.
 - Tests cover success + failure paths relevant to the function contract.
 - User-defined function names are explicitly blocked from colliding with built-in function names and operator keywords (including the newly added names).
+- For **new builtin constants**: `BuiltinConstId`, `EnsureConstNames`, and `TryGetConstant` are extended together; smoke tests cover assignment, UDF name, and parameter rejection; `USAGE_AND_SYNTAX.md` lists and explains the constant everywhere `pi`/`e` are described; C++ `addConst` (and any C++ reserved-name logic) matches if present in the repo.
 - There is still one and only one canonical `FunctionNames` array and one and only one canonical `OperatorNames` array; new names were integrated by named index and reused everywhere relevant.
 - `USAGE_AND_SYNTAX.md` changes match neighboring sections in style and reasoning flow.
 - No unrelated behavior was changed.

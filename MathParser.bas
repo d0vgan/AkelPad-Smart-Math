@@ -161,10 +161,18 @@ enum OperatorNameId
   OP__COUNT
 end enum
 
+enum BuiltinConstId
+  CONST_PI = 0
+  CONST_E
+  CONST__COUNT
+end enum
+
 dim shared FunctionNames(0 to FUNC__COUNT - 1) as String
 dim shared OperatorNames(0 to OP__COUNT - 1) as String
+dim shared ConstNames(0 to CONST__COUNT - 1) as String
 dim shared FunctionNamesInitialized as Boolean = FALSE
 dim shared OperatorNamesInitialized as Boolean = FALSE
+dim shared ConstNamesInitialized as Boolean = FALSE
 
 private sub EnsureFunctionNames()
   if FunctionNamesInitialized then exit sub
@@ -238,6 +246,24 @@ private sub EnsureOperatorNames()
   OperatorNames(OP_MOD) = "mod"
   OperatorNamesInitialized = TRUE
 end sub
+
+'' Spelling for each BuiltinConstId; keep TryGetConstant in sync when adding constants.
+private sub EnsureConstNames()
+  if ConstNamesInitialized then exit sub
+  ConstNames(CONST_PI) = "pi"
+  ConstNames(CONST_E) = "e"
+  ConstNamesInitialized = TRUE
+end sub
+
+private function TryFindBuiltinConstId(byref n as String) as Integer
+  EnsureConstNames()
+  dim low as String = lcase(n)
+  dim i as Integer
+  for i = 0 to CONST__COUNT - 1
+    if low = ConstNames(i) then return i
+  next i
+  return -1
+end function
 
 private function GetFunctionName(byval id as BuiltinFunctionId) as String
   EnsureFunctionNames()
@@ -389,6 +415,20 @@ private sub ValueSetInt64(byref v as EvalValue, byval n as LongInt)
   if n >= 0 then
     v.exactUInt64Valid = TRUE
     v.exactUInt64 = CULngInt(n)
+  end if
+end sub
+
+'' If n rounds to an exact LongInt in IEEE double, attach the same metadata as ValueSetInt64.
+private sub ValueSetScalarPromoteExactInt64(byref v as EvalValue, byval n as Double)
+  ValueSetScalar(v, n)
+  dim t as LongInt = CLngInt(n)
+  if n = CDbl(t) then
+    v.exactInt64Valid = TRUE
+    v.exactInt64 = t
+    if t >= 0 then
+      v.exactUInt64Valid = TRUE
+      v.exactUInt64 = CULngInt(t)
+    end if
   end if
 end sub
 
@@ -615,16 +655,22 @@ private function StripLineComment(byref s as String) as String
   return s
 end function
 
+private function IsBuiltinConstantName(byref n as String) as Boolean
+  return TryFindBuiltinConstId(n) >= 0
+end function
+
 private function TryGetConstant(byref n as String, byref v as EvalValue) as Boolean
-  select case lcase(n)
-    case "pi"
+  dim cid as Integer = TryFindBuiltinConstId(n)
+  if cid < 0 then return FALSE
+  select case cast(BuiltinConstId, cid)
+    case CONST_PI
       ValueSetScalar(v, 4.0 * atn(1.0))
-      return TRUE
-    case "e"
+    case CONST_E
       ValueSetScalar(v, exp(1.0))
-      return TRUE
+    case else
+      return FALSE
   end select
-  return FALSE
+  return TRUE
 end function
 
 private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
@@ -775,7 +821,7 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
     return FALSE
   end if
 
-  ValueSetScalar(outValue, baseValue.arr(lbound(baseValue.arr) + idxInt))
+  ValueSetScalarPromoteExactInt64(outValue, baseValue.arr(lbound(baseValue.arr) + idxInt))
   return TRUE
 end function
 
@@ -865,7 +911,7 @@ end function
 private function ApplyLogWithBase(byref valueV as EvalValue, byref baseV as EvalValue, byref outV as EvalValue) as Boolean
   if valueV.kind = VK_SCALAR andalso baseV.kind = VK_SCALAR then
     if valueV.scalar <= 0 orelse baseV.scalar <= 0 orelse baseV.scalar = 1 then return FALSE
-    ValueSetScalar(outV, log(valueV.scalar) / log(baseV.scalar))
+    ValueSetScalarPromoteExactInt64(outV, log(valueV.scalar) / log(baseV.scalar))
     return TRUE
   end if
 
@@ -912,7 +958,7 @@ private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, 
     dim v as Double = valueV.scalar
     if v < minV.scalar then v = minV.scalar
     if v > maxV.scalar then v = maxV.scalar
-    ValueSetScalar(outV, v)
+    ValueSetScalarPromoteExactInt64(outV, v)
     return TRUE
   end if
 
@@ -1027,39 +1073,39 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
   dim i as Integer
   if v.kind = VK_SCALAR then
     if IsFn(fn, FUNC_SIN) then
-      ValueSetScalar(outV, sin(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, sin(v.scalar))
     elseif IsFn(fn, FUNC_COS) then
-      ValueSetScalar(outV, cos(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, cos(v.scalar))
     elseif IsFn(fn, FUNC_TAN) then
-      ValueSetScalar(outV, tan(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, tan(v.scalar))
     elseif IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) then
-      ValueSetScalar(outV, asin(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, asin(v.scalar))
     elseif IsFn(fn, FUNC_ACOS) orelse IsFn(fn, FUNC_ARCCOS) then
-      ValueSetScalar(outV, acos(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, acos(v.scalar))
     elseif IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) then
-      ValueSetScalar(outV, atn(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, atn(v.scalar))
     elseif IsFn(fn, FUNC_SINH) then
-      ValueSetScalar(outV, sinh(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, sinh(v.scalar))
     elseif IsFn(fn, FUNC_COSH) then
-      ValueSetScalar(outV, cosh(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, cosh(v.scalar))
     elseif IsFn(fn, FUNC_TANH) then
-      ValueSetScalar(outV, tanh(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, tanh(v.scalar))
     elseif IsFn(fn, FUNC_EXP) then
-      ValueSetScalar(outV, exp(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, exp(v.scalar))
     elseif IsFn(fn, FUNC_LN) then
-      ValueSetScalar(outV, log(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, log(v.scalar))
     elseif IsFn(fn, FUNC_LOG10) then
-      ValueSetScalar(outV, log(v.scalar) / log(10.0))
+      ValueSetScalarPromoteExactInt64(outV, log(v.scalar) / log(10.0))
     elseif IsFn(fn, FUNC_SQRT) then
-      ValueSetScalar(outV, sqr(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, sqr(v.scalar))
     elseif IsFn(fn, FUNC_SQR) then
-      ValueSetScalar(outV, v.scalar * v.scalar)
+      ValueSetScalarPromoteExactInt64(outV, v.scalar * v.scalar)
     elseif IsFn(fn, FUNC_INT) then
       ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
     elseif IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) then
-      ValueSetScalar(outV, v.scalar - Fix(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, v.scalar - Fix(v.scalar))
     elseif IsFn(fn, FUNC_ABS) then
-      ValueSetScalar(outV, abs(v.scalar))
+      ValueSetScalarPromoteExactInt64(outV, abs(v.scalar))
     elseif IsFn(fn, FUNC_FLOOR) then
       ValueSetInt64(outV, CLngInt(Int(v.scalar)))
     elseif IsFn(fn, FUNC_CEIL) then
@@ -1081,9 +1127,9 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
         ValueSetInt64(outV, 0)
       end if
     elseif IsFn(fn, FUNC_DEG) then
-      ValueSetScalar(outV, v.scalar * 180.0 / (4.0 * atn(1.0)))
+      ValueSetScalarPromoteExactInt64(outV, v.scalar * 180.0 / (4.0 * atn(1.0)))
     elseif IsFn(fn, FUNC_RAD) then
-      ValueSetScalar(outV, v.scalar * (4.0 * atn(1.0)) / 180.0)
+      ValueSetScalarPromoteExactInt64(outV, v.scalar * (4.0 * atn(1.0)) / 180.0)
     else
       return FALSE
     end if
@@ -1125,12 +1171,12 @@ private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as Eval
     end if
 
     select case op
-      case 42: ValueSetScalar(outV, leftV.scalar * rightV.scalar)
+      case 42: ValueSetScalarPromoteExactInt64(outV, leftV.scalar * rightV.scalar)
       case 47
-        ValueSetScalar(outV, leftV.scalar / rightV.scalar)
-      case 43: ValueSetScalar(outV, leftV.scalar + rightV.scalar)
-      case 45: ValueSetScalar(outV, leftV.scalar - rightV.scalar)
-      case 94: ValueSetScalar(outV, leftV.scalar ^ rightV.scalar)
+        ValueSetScalarPromoteExactInt64(outV, leftV.scalar / rightV.scalar)
+      case 43: ValueSetScalarPromoteExactInt64(outV, leftV.scalar + rightV.scalar)
+      case 45: ValueSetScalarPromoteExactInt64(outV, leftV.scalar - rightV.scalar)
+      case 94: ValueSetScalarPromoteExactInt64(outV, leftV.scalar ^ rightV.scalar)
       case else: return FALSE
     end select
     return TRUE
@@ -1427,7 +1473,7 @@ private function ExpandUnpackedArgs(argsIn() as EvalValue, argsOut() as EvalValu
           else
             redim preserve argsOut(outCount)
           end if
-          ValueSetScalar(argsOut(outCount), argsIn(i).arr(j))
+          ValueSetScalarPromoteExactInt64(argsOut(outCount), argsIn(i).arr(j))
           outCount += 1
         next j
       else
@@ -1590,7 +1636,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         if flat(i) > acc then acc = flat(i)
       next i
     end if
-    ValueSetScalar(outV, acc)
+    ValueSetScalarPromoteExactInt64(outV, acc)
     return outV
   end if
 
@@ -1682,7 +1728,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       return outV
     end if
     if args(0).kind = VK_SCALAR andalso args(1).kind = VK_SCALAR then
-      ValueSetScalar(outV, Atan2Compat(args(0).scalar, args(1).scalar))
+      ValueSetScalarPromoteExactInt64(outV, Atan2Compat(args(0).scalar, args(1).scalar))
     else
       SetParseError("numeric error in " & fnName & "()")
     end if
@@ -1732,7 +1778,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       SetParseError(fnName & "() expects 0 argument(s), " & ltrim(str(argc)) & " given")
       return outV
     end if
-    ValueSetScalar(outV, rnd)
+    ValueSetScalarPromoteExactInt64(outV, rnd)
     return outV
   end if
 
@@ -1746,7 +1792,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       SetParseError(fnName & "() expects scalar values")
       return outV
     end if
-    ValueSetScalar(outV, args(0).scalar + (args(1).scalar - args(0).scalar) * rnd)
+    ValueSetScalarPromoteExactInt64(outV, args(0).scalar + (args(1).scalar - args(0).scalar) * rnd)
     return outV
   end if
 
@@ -1878,13 +1924,13 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if EvaluateUserFunction(fnName, args(), outV) then return outV
 
   AppendUniqueName(unknownFuncsText, fnName)
-  ValueSetScalar(outV, 0)
+  ValueSetInt64(outV, 0)
   return outV
 end function
 
 private function ParseFactor() as EvalValue
   dim n as EvalValue
-  ValueSetScalar(n, 0)
+  ValueSetInt64(n, 0)
   wasPercentage = FALSE
 
   SkipSpaces()
@@ -2071,7 +2117,7 @@ private function ParseFactor() as EvalValue
             return n
           else
             AppendUniqueName(unknownVarsText, nam)
-            ValueSetScalar(n, 0)
+            ValueSetInt64(n, 0)
             canIndex = FALSE
           end if
         end if
@@ -2177,7 +2223,7 @@ private function ParseUnary() as EvalValue
     dim v as EvalValue = ParseUnary()
     if parseError then return v
     dim minusOne as EvalValue, outV as EvalValue
-    ValueSetScalar(minusOne, -1)
+    ValueSetInt64(minusOne, -1)
     if ValueApplyBinary(v, minusOne, 42, outV) = FALSE then SetParseError("incompatible operands")
     return outV
   elseif pStream[0] = 126 then
@@ -2186,7 +2232,7 @@ private function ParseUnary() as EvalValue
     dim outV as EvalValue
     dim op as String = "^"
     dim minusOne as EvalValue
-    ValueSetScalar(minusOne, -1)
+    ValueSetInt64(minusOne, -1)
     if ValueApplyBinaryInt64(v, minusOne, op, outV) = FALSE then SetParseError("incompatible operands")
     return outV
   elseif pStream[0] = 33 andalso pStream[1] <> 61 then
@@ -2678,6 +2724,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           end if
           if ubound(fnParams) >= lbound(fnParams) then
             for iParam as Integer = lbound(fnParams) to ubound(fnParams)
+              if IsBuiltinConstantName(fnParams(iParam)) then
+                SetParseError("reserved constant name: " & fnParams(iParam))
+                evalDepth -= 1
+                return FALSE
+              end if
               for jParam as Integer = iParam + 1 to ubound(fnParams)
                 if fnParams(iParam) = fnParams(jParam) then
                   SetParseError("duplicate parameter name: " & fnParams(iParam))
@@ -2686,6 +2737,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
                 end if
               next jParam
             next iParam
+          end if
+          if IsBuiltinConstantName(varName) then
+            SetParseError("reserved constant name: " & varName)
+            evalDepth -= 1
+            return FALSE
           end if
           dim body as String = *pStream
           if len(trim(body)) = 0 then
@@ -2713,7 +2769,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       pStream = savedPos
     end if
 
-    if pStream[0] = 61 then ' =
+    ' Single '=' is assignment; '==' is equality (do not consume the first '=' of '==').
+    if pStream[0] = 61 andalso pStream[1] <> 61 then
       pStream += 1
       dim exprV as EvalValue = ParseExpression()
       SkipSpaces()
@@ -2728,6 +2785,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         end if
       end if
       if pStream[0] = 0 andalso parseError = 0 then
+        if IsBuiltinConstantName(varName) then
+          SetParseError("reserved constant name: " & varName)
+          evalDepth -= 1
+          return FALSE
+        end if
         SetVariable(varName, exprV)
         SetAnsValue(exprV)
         resultText = ValueToString(exprV)

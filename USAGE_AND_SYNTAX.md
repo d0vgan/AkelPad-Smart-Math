@@ -217,6 +217,7 @@ For arrays (Python-compatible truthiness):
   - an operand is floating-point, or
   - an operation inherently yields floating-point (for example division), or
   - exact int64 result cannot be represented (overflow path).
+- When a computation goes through floating-point but the result is exactly representable as a signed 64-bit integer (for example `sqrt(9)`, `abs(-4)`, or `sum(3,5)`), that exact integer form is retained for integer-only operators (shifts, bitwise, modulo) and for decimal display when applicable. Array elements are still stored as doubles; indexing a single element can recover exact-integer metadata when the stored value is an exact integer.
 
 ### 3.6 `%` Has Two Meanings
 - Binary modulo operator:
@@ -329,6 +330,14 @@ Examples:
   - `ans` updates after each successful evaluated expression/statement.
 - Assignment:
   - `a = 10`
+- Names **`pi`** and **`e`** are reserved built-in constants (case-insensitive): you cannot assign to them (`e = 1` is an error), and they cannot be used as user-defined function names or parameter names. In expressions they always refer to π and Euler’s number.
+- Equality comparison uses two equals signs: `a == 10`. At the start of a statement, a single `=` after a name means assignment; `==` is never split into assign-then-equals, so expressions like `a==b` compare rather than assign.
+- **When a single `=` means comparison:** the input must **not** be parsed as that special “identifier at the very beginning” form. Then `=` is handled inside the expression parser as equality (same meaning as `==`). Examples:
+  - `5 = 5` → comparison (expression starts with a digit).
+  - `(x) = (x)` → comparison (expression starts with `(`).
+  - `1|2=3` → comparison (expression starts with a digit after optional leading ops / the left side is not “bare name at column 1”).
+- **`x = x` at the start of a line/statement is assignment:** the right-hand `x` is evaluated, then stored back into `x` (same as any `x = expr`). For boolean equality on variables, use `x == x` or parenthesize, e.g. `(x) = (x)`.
+- If anything other than spaces follows the first identifier before `=`, the line is an expression and `=` is comparison: e.g. `x + y = x` means `(x + y) = x`; `x * y = x * y` means `(x * y) = (x * y)` (equality test, `0` or `1`).
 - Usage:
   - `a * 3`
 - Array assignment:
@@ -365,6 +374,7 @@ Rules:
 - Function definitions are stored and reused in subsequent expressions.
 - User-defined function names cannot match built-in function names.
 - User-defined function names cannot match built-in operator keywords (`not`, `and`, `or`).
+- User-defined function names and parameter names cannot match built-in constants (`pi`, `e`).
 
 ### 6.3 Statement Separator
 - Top-level semicolon separates statements:
@@ -387,6 +397,10 @@ Examples:
 Built-in constants:
 - `pi`
 - `e`
+
+In expressions, these names are always resolved as constants **before** variables. For example `(e=3)` compares Euler’s number to `3` (false), not a user variable `e`. Use another name (e.g. `t`) if you need a variable.
+
+You cannot create a variable or function parameter named `pi` or `e`; the parser reports `reserved constant name: …`.
 
 ## 9) Function Hints and Diagnostics
 

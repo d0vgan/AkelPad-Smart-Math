@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 367) as SmokeCase
+  dim tests(1 to 398) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -461,6 +461,45 @@ sub Main()
   tests(365).expr = "f(x,y,z)=x+y+z; f(unpack(1,2,3))": tests(365).expected = "6" ' [ok-func]
   tests(366).expr = "f(a,b,c,d,t)=a+b+c+d+t; f(unpack((1,2),3,(4,5)))": tests(366).expected = "15" ' [ok-array]
   tests(367).expr = "unpack((1,2),3,(4,5))": tests(367).expected = "(1,2,3,4,5)" ' [ok-array]
+
+  ' === Leading identifier: '=' assignment vs '==' equality (must not steal '=' from '==') ===
+  tests(368).expr = "a=5; a==5":              tests(368).expected = "1" ' [syntax] single == after assign
+  tests(369).expr = "b=3; b==4":              tests(369).expected = "0" ' [syntax]
+  tests(370).expr = "7==7":                   tests(370).expected = "1" ' [ok-core] one ==, literals only
+  tests(371).expr = "3==3 && 4==4 && 5==5":   tests(371).expected = "1" ' [ok-core] multiple ==
+  tests(372).expr = "(1==1)==(0==0)":         tests(372).expected = "1" ' [ok-core] multiple ==
+  tests(373).expr = "5==5==1":                tests(373).expected = "1" ' [ok-core] chained ==
+  tests(374).expr = "u=2; v=2; u==v":         tests(374).expected = "1" ' [syntax] = and ==
+  tests(375).expr = "k=9; k==9 && k==3+6":    tests(375).expected = "1" ' [syntax] = and multiple ==
+  tests(376).expr = "a=1; b=1; a==b==1":      tests(376).expected = "1" ' [syntax] = and chained ==
+
+  ' === [spec] Float-derived scalars promote to exact int64 when representable (bitwise/shift/metadata) ===
+  tests(377).expr = "int(7/3) << 60":         tests(377).expected = "2305843009213693952" ' 2<<60, int from float
+  tests(378).expr = "sqrt(9) << 2":          tests(378).expected = "12" ' sqrt via float, then shift
+  tests(379).expr = "abs(-4) << 1":           tests(379).expected = "8"
+  tests(380).expr = "sum(3,5) << 2":          tests(380).expected = "32" ' aggregate float path + shift
+  tests(381).expr = "(7/3.5) << 3":           tests(381).expected = "16" ' pure float division, exact int
+
+  ' === '=' assignment (leading identifier + single '=') vs '=' comparison in expressions ===
+  tests(382).expr = "x=7; x=x":                tests(382).expected = "7" ' [syntax] leading x=x is assign, not compare
+  tests(383).expr = "x=7; x==x":               tests(383).expected = "1" ' [syntax]
+  tests(384).expr = "x=7; (x)=(x)":           tests(384).expected = "1" ' [syntax] paren => full expr; = is compare
+  tests(385).expr = "x=5; x=x+1":             tests(385).expected = "6" ' [syntax] assign RHS uses +
+  tests(386).expr = "z=0; (z)=(z)":           tests(386).expected = "1" ' [syntax] compare; z defined first
+  tests(387).expr = "a=2; 1+a=3":             tests(387).expected = "1" ' [syntax] expr does not start with bare name; = compare
+  tests(388).expr = "b=2; b+0=2":             tests(388).expected = "1" ' [syntax] leading term is not lone identifier assign form
+  tests(389).expr = "c=1; c=2; c=c":           tests(389).expected = "2" ' [syntax] last c=c is assign
+  tests(390).expr = "d=4; d = d":             tests(390).expected = "4" ' [syntax] spaces around assign =
+  tests(391).expr = "t=3; (t=3)":             tests(391).expected = "1" ' [syntax] inner t=3 is compare ('e' is constant, not a var)
+  tests(392).expr = "x=2;y=5;x+y=x":          tests(392).expected = "0" ' [syntax] (x+y)=x compare, not assign; 7=2 -> false
+  tests(393).expr = "x=2;y=3;x*y=x*y":        tests(393).expected = "1" ' [syntax] (x*y)=(x*y) compare -> true
+
+  ' === [spec] Built-in constants (pi, e) cannot be variable/function/param names ===
+  tests(394).expr = "e=1":                    tests(394).expectedErrContains = "reserved constant name" ' [syntax]
+  tests(395).expr = "PI=2":                   tests(395).expectedErrContains = "reserved constant name" ' [syntax] case-insensitive
+  tests(396).expr = "f(e)=e+1":               tests(396).expectedErrContains = "reserved constant name" ' [syntax] param
+  tests(397).expr = "pi(x)=x":                tests(397).expectedErrContains = "reserved constant name" ' [syntax] function name
+  tests(398).expr = "log(e,e)":                tests(398).expected = "1" ' [spec] e still usable as constant in expressions
 
   g_total = ubound(tests) - lbound(tests) + 1
 
