@@ -75,6 +75,7 @@ Note:
 - `reverse(...)` - reverses all provided values (scalars/arrays) and returns an array
 - `reversed(...)` - alias of `reverse(...)`
 - `unique(...)` - keeps unique values from provided values (scalars/arrays), preserving first-occurrence order
+- `unpack(...)` - unpacks scalar/array arguments into separate arguments
 
 Aggregation functions accept scalar and array arguments. Array arguments are flattened into one sequence of scalar values.
 
@@ -118,6 +119,8 @@ Examples:
 - `reverse((3,1,2))` -> `(2,1,3)`, `reverse(2,5,1)` -> `(1,5,2)`
 - `reversed((1,2,3),(4,5))` -> `(5,4,3,2,1)`
 - `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
+- `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
+- `f(x,y,z)=x+y+z; f(unpack(1,2,3))` -> `6`
 - `hex(12)` -> `0xC`, `hex(1,2,3)` -> `(0x1,0x2,0x3)`, `hex((1,2,3))` -> `(0x1,0x2,0x3)`
 - `oct(12)` -> `0o14`, `oct(1,2,3)` -> `(0o1,0o2,0o3)`, `oct((1,2,3))` -> `(0o1,0o2,0o3)`
 - `bin(5)` -> `0b101`, `bin(1,2,3)` -> `(0b1,0b10,0b11)`, `bin((1,2,3))` -> `(0b1,0b10,0b11)`
@@ -298,12 +301,17 @@ Examples:
 - `reverse(...)` flattens scalar/array arguments, then returns values in reverse order.
 - `reversed(...)` is an alias of `reverse(...)`.
 - `unique(...)` flattens scalar/array arguments, then keeps first occurrences.
+- `unpack(...)` unpacks scalar/array arguments into separate arguments:
+  - scalar inputs are passed as-is;
+  - array inputs are expanded element-by-element.
 - Examples of standard functions with array values:
   - `sin((0,pi/4,pi/2))` -> `(0,0.70710678,1)` (element-wise unary function)
   - `sum((1,2,3),10)` -> `16` (flattened aggregation)
   - `sort((5,2,9))` -> `(2,5,9)`
   - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
   - `unique((5,2,5,9,2))` -> `(5,2,9)`
+  - `sum(unpack((1,2,3)))` -> `6`
+  - `sum(unpack((1,2),3,(4,5)))` -> `15`
 - `hex` / `oct` / `bin` can render array outputs:
   - `hex((12,255))` -> `(0xC,0xFF)`
   - `oct((12,255))` -> `(0o14,0o377)`
@@ -341,6 +349,9 @@ Examples:
 - Call:
   - `f(5)`
   - `mix(2,4)` -> `16`
+  - `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
+  - `f(x,y,z)=x+y+z; f(unpack((1,2,3)))` -> `6`
+  - `f(a,b,c,d,t)=a+b+c+d+t; f(unpack((1,2),3,(4,5)))` -> `15`
 
 User-defined functions also accept array arguments when the expression supports
 array math:

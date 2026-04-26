@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 356) as SmokeCase
+  dim tests(1 to 367) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -450,6 +450,17 @@ sub Main()
   tests(354).expr = "sin(x)=x":         tests(354).expectedErrContains = "reserved function name" ' [syntax]
   tests(355).expr = "oct(x)=x":         tests(355).expectedErrContains = "reserved function name" ' [syntax]
   tests(356).expr = "not(x)=x":         tests(356).expectedErrContains = "reserved function name" ' [syntax]
+  tests(357).expr = "f(x,y)=x*y; a=(2,3); f(unpack(a))": tests(357).expected = "6" ' [ok-func]
+  tests(358).expr = "f(x,y,z)=x+y+z; f(unpack((1,2,3)))": tests(358).expected = "6" ' [ok-array]
+  tests(359).expr = "unpack((1,2,3))":  tests(359).expected = "(1,2,3)" ' [ok-array]
+  tests(360).expr = "unpack(5)":        tests(360).expected = "5" ' [ok-func]
+  tests(361).expr = "unpack()":         tests(361).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(362).expr = "unpack":           tests(362).expectedErrContains = "function: unpack(...)" ' [hint]
+  tests(363).expr = "sum(unpack((1,2,3)))": tests(363).expected = "6" ' [ok-func]
+  tests(364).expr = "f(x,y)=x*y; f(unpack((2,3,4)))": tests(364).expectedErrContains = "expects 2 argument(s)" ' [arity]
+  tests(365).expr = "f(x,y,z)=x+y+z; f(unpack(1,2,3))": tests(365).expected = "6" ' [ok-func]
+  tests(366).expr = "f(a,b,c,d,t)=a+b+c+d+t; f(unpack((1,2),3,(4,5)))": tests(366).expected = "15" ' [ok-array]
+  tests(367).expr = "unpack((1,2),3,(4,5))": tests(367).expected = "(1,2,3,4,5)" ' [ok-array]
 
   g_total = ubound(tests) - lbound(tests) + 1
 

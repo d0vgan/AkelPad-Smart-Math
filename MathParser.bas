@@ -10,6 +10,7 @@ type EvalValue
   kind as ValueKind
   scalar as Double
   arr(any) as Double
+  expandArgs as Boolean
   renderBase as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
   exactInt64Valid as Boolean
   exactInt64 as LongInt
@@ -135,6 +136,7 @@ enum BuiltinFunctionId
   FUNC_REVERSE
   FUNC_REVERSED
   FUNC_UNIQUE
+  FUNC_UNPACK
   FUNC_FACT
   FUNC_FACTORIAL
   FUNC_AVG
@@ -211,6 +213,7 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_REVERSE) = "reverse"
   FunctionNames(FUNC_REVERSED) = "reversed"
   FunctionNames(FUNC_UNIQUE) = "unique"
+  FunctionNames(FUNC_UNPACK) = "unpack"
   FunctionNames(FUNC_FACT) = "fact"
   FunctionNames(FUNC_FACTORIAL) = "factorial"
   FunctionNames(FUNC_AVG) = "avg"
@@ -298,7 +301,7 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     hint = GetFunctionName(FUNC_LOG) & "(value, base)"
   elseif IsFn(fn, FUNC_DEG) orelse IsFn(fn, FUNC_RAD) orelse IsFn(fn, FUNC_SUM) orelse _
          IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) orelse _
-         IsFn(fn, FUNC_UNIQUE) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse _
+         IsFn(fn, FUNC_UNIQUE) orelse IsFn(fn, FUNC_UNPACK) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse _
          IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) then
     hint = lcase(fn) & "(...)"
   elseif IsFn(fn, FUNC_SORT) orelse IsFn(fn, FUNC_SORTED) then
@@ -344,6 +347,7 @@ end function
 private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   v.kind = VK_SCALAR
   v.scalar = n
+  v.expandArgs = FALSE
   v.renderBase = 0
   v.exactInt64Valid = FALSE
   v.exactInt64 = 0
@@ -355,6 +359,7 @@ end sub
 private sub ValueSetArray(byref v as EvalValue, a() as Double)
   v.kind = VK_ARRAY
   v.scalar = 0
+  v.expandArgs = FALSE
   v.renderBase = 0
   v.exactInt64Valid = FALSE
   v.exactInt64 = 0
@@ -1407,6 +1412,48 @@ private function CollectArgsAsFlat(args() as EvalValue, flat() as Double) as Int
   return count
 end function
 
+private function ExpandUnpackedArgs(argsIn() as EvalValue, argsOut() as EvalValue) as Integer
+  dim outCount as Integer = 0
+  dim i as Integer, j as Integer
+  erase argsOut
+  if ubound(argsIn) = -1 then return 0
+
+  for i = lbound(argsIn) to ubound(argsIn)
+    if argsIn(i).expandArgs then
+      if argsIn(i).kind = VK_ARRAY then
+        for j = lbound(argsIn(i).arr) to ubound(argsIn(i).arr)
+          if outCount = 0 then
+            redim argsOut(0)
+          else
+            redim preserve argsOut(outCount)
+          end if
+          ValueSetScalar(argsOut(outCount), argsIn(i).arr(j))
+          outCount += 1
+        next j
+      else
+        if outCount = 0 then
+          redim argsOut(0)
+        else
+          redim preserve argsOut(outCount)
+        end if
+        argsOut(outCount) = argsIn(i)
+        argsOut(outCount).expandArgs = FALSE
+        outCount += 1
+      end if
+    else
+      if outCount = 0 then
+        redim argsOut(0)
+      else
+        redim preserve argsOut(outCount)
+      end if
+      argsOut(outCount) = argsIn(i)
+      outCount += 1
+    end if
+  next i
+
+  return outCount
+end function
+
 private sub SortDoubleArray(a() as Double)
   dim i as Integer, j as Integer
   for i = lbound(a) to ubound(a) - 1
@@ -1487,6 +1534,17 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim fn as String = lcase(fnName)
   dim flat() as Double
   dim c as Integer = 0
+  dim expandedArgs() as EvalValue
+  dim expandedCount as Integer = ExpandUnpackedArgs(args(), expandedArgs())
+  if expandedCount > 0 then
+    erase args
+    redim args(0 to expandedCount - 1)
+    for i as Integer = 0 to expandedCount - 1
+      args(i) = expandedArgs(i)
+    next i
+  elseif ubound(args) <> -1 then
+    erase args
+  end if
 
   if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) _
      orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
@@ -1556,6 +1614,25 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       flat(c - 1 - i) = t
     next i
     ValueSetArray(outV, flat())
+    return outV
+  end if
+
+  if IsFn(fn, FUNC_UNPACK) then
+    if ubound(args) = -1 then
+      SetParseError(fnName & "() expects at least 1 argument")
+      return outV
+    end if
+    if ubound(args) = 0 then
+      outV = args(0)
+    else
+      c = CollectArgsAsFlat(args(), flat())
+      if c <= 0 then
+        SetParseError(fnName & "() expects at least 1 argument")
+        return outV
+      end if
+      ValueSetArray(outV, flat())
+    end if
+    outV.expandArgs = TRUE
     return outV
   end if
 
