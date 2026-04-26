@@ -10,7 +10,7 @@ type EvalValue
   kind as ValueKind
   scalar as Double
   arr(any) as Double
-  renderBase as Integer ' 0=decimal, 16=hex, 2=binary
+  renderBase as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
   exactInt64Valid as Boolean
   exactInt64 as LongInt
   exactUInt64Valid as Boolean
@@ -110,6 +110,9 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
       return TRUE
     case "hex"
       hint = "hex(...)"
+      return TRUE
+    case "oct"
+      hint = "oct(...)"
       return TRUE
     case "pow"
       hint = "pow(value, power)"
@@ -407,12 +410,31 @@ private function FormatBinUInt64(byval u as ULongInt) as String
   return "0b" & Bin(u)
 end function
 
+private function FormatOctScalar(byval n as Double, byref outText as String) as Boolean
+  dim iv as LongInt = CLngInt(n)
+  if n <> CDbl(iv) then return FALSE
+  if iv < 0 then
+    outText = "-0o" & Oct(CULngInt(-iv))
+  else
+    outText = "0o" & Oct(CULngInt(iv))
+  end if
+  return TRUE
+end function
+
+private function FormatOctUInt64(byval u as ULongInt) as String
+  return "0o" & Oct(u)
+end function
+
 private function ValueToString(byref v as EvalValue) as String
   if v.kind = VK_SCALAR then
     if v.renderBase = 16 then
       if v.exactUInt64Valid then return FormatHexUInt64(v.exactUInt64)
       dim fmtText as String
       if FormatHexScalar(v.scalar, fmtText) then return fmtText
+    elseif v.renderBase = 8 then
+      if v.exactUInt64Valid then return FormatOctUInt64(v.exactUInt64)
+      dim fmtText as String
+      if FormatOctScalar(v.scalar, fmtText) then return fmtText
     elseif v.renderBase = 2 then
       if v.exactUInt64Valid then return FormatBinUInt64(v.exactUInt64)
       dim fmtText as String
@@ -429,6 +451,13 @@ private function ValueToString(byref v as EvalValue) as String
     if v.renderBase = 16 then
       dim fmtText as String
       if FormatHexScalar(v.arr(i), fmtText) then
+        s &= fmtText
+      else
+        s &= ltrim(str(v.arr(i)))
+      end if
+    elseif v.renderBase = 8 then
+      dim fmtText as String
+      if FormatOctScalar(v.arr(i), fmtText) then
         s &= fmtText
       else
         s &= ltrim(str(v.arr(i)))
@@ -1433,7 +1462,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "hex" orelse fn = "bin" then
+  if fn = "hex" orelse fn = "oct" orelse fn = "bin" then
     if ubound(args) = -1 then
       SetParseError(fnName & "() expects at least 1 argument")
       return outV
@@ -1448,13 +1477,15 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       end if
       ValueSetArray(outV, flat())
     end if
-    dim fmtBase as Integer = IIf(fn = "hex", 16, 2)
+    dim fmtBase as Integer = IIf(fn = "hex", 16, IIf(fn = "oct", 8, 2))
     if outV.kind = VK_SCALAR then
       if outV.exactUInt64Valid = FALSE then
         dim fmtText as String
         dim okFmt as Boolean
         if fmtBase = 16 then
           okFmt = FormatHexScalar(outV.scalar, fmtText)
+        elseif fmtBase = 8 then
+          okFmt = FormatOctScalar(outV.scalar, fmtText)
         else
           okFmt = FormatBinScalar(outV.scalar, fmtText)
         end if
@@ -1469,6 +1500,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         dim okFmt as Boolean
         if fmtBase = 16 then
           okFmt = FormatHexScalar(outV.arr(i), fmtText)
+        elseif fmtBase = 8 then
+          okFmt = FormatOctScalar(outV.arr(i), fmtText)
         else
           okFmt = FormatBinScalar(outV.arr(i), fmtText)
         end if
@@ -1608,6 +1641,32 @@ private function ParseFactor() as EvalValue
       end if
       keepExactUInt = TRUE
       keepUInt = binVal
+    elseif pStream[0] = 48 andalso (pStream[1] = 111 orelse pStream[1] = 79) then
+      ' octal number
+      pStream += 2 ' Skip the "0o"
+      dim octDigits as Integer = 0
+      dim octVal as ULongInt = 0
+      while true
+        dim c as ubyte = pStream[0]
+        if c >= 48 andalso c <= 55 then
+          octVal = octVal * 8 + CULngInt(c - 48)
+          dVal = dVal * 8 + (c - 48)
+          octDigits += 1
+          pStream += 1
+        else
+          exit while
+        end if
+      wend
+      if octDigits = 0 then
+        SetParseError("invalid octal literal")
+        return n
+      end if
+      if octVal <= CULngInt(9223372036854775807) then
+        keepExactInt = TRUE
+        keepInt = CLngInt(octVal)
+      end if
+      keepExactUInt = TRUE
+      keepUInt = octVal
     else
       ' decimal number
       dim fract as Double = 1

@@ -82,15 +82,16 @@ Notes:
 
 ### 1.6 Output-Formatting Helpers
 - `hex(...)` - renders final value in hexadecimal form
+- `oct(...)` - renders final value in octal form
 - `bin(...)` - renders final value in binary form
 
 Notes:
-- `hex()` and `bin()` require integer values.
-- `hex(...)` and `bin(...)` accept:
+- `hex()`, `oct()`, and `bin()` require integer values.
+- `hex(...)`, `oct(...)`, and `bin(...)` accept:
   - a single scalar value (`hex(12)`)
   - a list of scalar values (`hex(1,2,3)`)
   - an array value (`hex((1,2,3))`)
-- When `hex()` / `bin()` appear inside larger arithmetic expressions, normal arithmetic continues and final result is decimal unless the final top-level value is still formatted by `hex()` / `bin()`.
+- When `hex()` / `oct()` / `bin()` appear inside larger arithmetic expressions, normal arithmetic continues and final result is decimal unless the final top-level value is still formatted by `hex()` / `oct()` / `bin()`.
 
 Examples:
 - `atan2(1,1)` -> `0.7853981633974483`
@@ -112,7 +113,9 @@ Examples:
 - `sort((3,1,2))` -> `(1,2,3)`, `sort(2,5,1)` -> `(1,2,5)`
 - `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
 - `hex(12)` -> `0xC`, `hex(1,2,3)` -> `(0x1,0x2,0x3)`, `hex((1,2,3))` -> `(0x1,0x2,0x3)`
+- `oct(12)` -> `0o14`, `oct(1,2,3)` -> `(0o1,0o2,0o3)`, `oct((1,2,3))` -> `(0o1,0o2,0o3)`
 - `bin(5)` -> `0b101`, `bin(1,2,3)` -> `(0b1,0b10,0b11)`, `bin((1,2,3))` -> `(0b1,0b10,0b11)`
+- `0o64` -> `52`, `0b110011 & 0x37 | 0o64` -> `55`
 
 ## 2) Operators and Precedence
 
@@ -164,14 +167,20 @@ Parentheses can override precedence.
 - Invalid form:
   - `0b` -> `invalid binary literal`
 
-### 3.4 Integer-Accuracy Policy
+### 3.4 Octal Literals
+- Prefix: `0o` / `0O`
+  - Example: `0o64`
+- Invalid form:
+  - `0o` -> `invalid octal literal`
+
+### 3.5 Integer-Accuracy Policy
 - Parser preserves exact signed 64-bit integer calculations whenever possible.
 - It automatically falls back to floating-point when:
   - an operand is floating-point, or
   - an operation inherently yields floating-point (for example division), or
   - exact int64 result cannot be represented (overflow path).
 
-### 3.5 `%` Has Two Meanings
+### 3.6 `%` Has Two Meanings
 - Binary modulo operator:
   - `x % y`
   - Requires integer operands.
@@ -228,10 +237,12 @@ Examples:
   - `sum((1,2,3),10)` -> `16` (flattened aggregation)
   - `sort((5,2,9))` -> `(2,5,9)`
   - `unique((5,2,5,9,2))` -> `(5,2,9)`
-- `hex` / `bin` can render array outputs:
+- `hex` / `oct` / `bin` can render array outputs:
   - `hex((12,255))` -> `(0xC,0xFF)`
+  - `oct((12,255))` -> `(0o14,0o377)`
   - `bin((1,2,5))` -> `(0b1,0b10,0b101)`
   - `hex(12,255)` -> `(0xC,0xFF)`
+  - `oct(12,255)` -> `(0o14,0o377)`
   - `bin(1,2,5)` -> `(0b1,0b10,0b101)`
 
 ## 6) Variables and User-Defined Functions
@@ -305,6 +316,7 @@ Examples:
 - `function: sum(...)`
 - `function: median(...)`
 - `function: hex(...)`
+- `function: oct(...)`
 - `function: bin(...)`
 
 Error messages include line/column and inline caret previews.

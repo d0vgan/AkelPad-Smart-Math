@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 262) as SmokeCase
+  dim tests(1 to 282) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -356,6 +356,26 @@ sub Main()
   tests(260).expr = "fract(2.9)":       tests(260).expected = "0.8999999999999999" ' [ok-func]
   tests(261).expr = "fract((2.9,-2.9))": tests(261).expected = "(0.8999999999999999,-0.8999999999999999)" ' [ok-array]
   tests(262).expr = "fract":            tests(262).expectedErrContains = "function: frac(value)" ' [hint]
+  tests(263).expr = "oct(12)":          tests(263).expected = "0o14" ' [ok-func]
+  tests(264).expr = "oct((12,255))":    tests(264).expected = "(0o14,0o377)" ' [ok-array]
+  tests(265).expr = "10 + oct(12) + 14": tests(265).expected = "36" ' [ok-func]
+  tests(266).expr = "oct(12.5)":        tests(266).expectedErrContains = "oct() expects integer values" ' [type-int-only]
+  tests(267).expr = "oct":              tests(267).expectedErrContains = "function: oct(...)" ' [hint]
+  tests(268).expr = "oct()":            tests(268).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(269).expr = "oct(1,2)":         tests(269).expected = "(0o1,0o2)" ' [ok-array]
+  tests(270).expr = "oct((1,2,3),(4))": tests(270).expected = "(0o1,0o2,0o3,0o4)" ' [ok-array]
+  tests(271).expr = "oct(15);ans":      tests(271).expected = "0o17" ' [ok-func]
+  tests(272).expr = "oct(9223372036854775807+1)": tests(272).expectedErrContains = "oct() expects integer values" ' [overflow]
+  tests(273).expr = "0O77":             tests(273).expected = "63" ' [ok-core]
+  tests(274).expr = "0o123 + 1":        tests(274).expected = "84" ' [ok-core]
+  tests(275).expr = "0o20 & 0xF":       tests(275).expected = "0" ' [ok-core]
+  tests(276).expr = "oct((0o7,0o10))":  tests(276).expected = "(0o7,0o10)" ' [ok-array]
+  tests(277).expr = "0o64":             tests(277).expected = "52" ' [ok-core]
+  tests(278).expr = "0o":               tests(278).expectedErrContains = "invalid octal literal" ' [syntax]
+  tests(279).expr = "oct(0o17)":        tests(279).expected = "0o17" ' [ok-func]
+  tests(280).expr = "0o10 + 8":         tests(280).expected = "16" ' [ok-core]
+  tests(281).expr = "0b110011 & 0x37 | 0o64": tests(281).expected = "55" ' [ok-core]
+  tests(282).expr = "0o8":              tests(282).expectedErrContains = "invalid octal literal" ' [syntax]
 
   g_total = ubound(tests) - lbound(tests) + 1
 
