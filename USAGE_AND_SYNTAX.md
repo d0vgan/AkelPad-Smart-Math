@@ -329,7 +329,27 @@ When `Parser_SetShowErrorLine(TRUE)` is used, the middle part becomes `at line 1
 
 Example: `unexpected token at col 5:  5*5 |: 25`
 
-## 10) Troubleshooting
+## 10) Manual Formatting Options (`SmartMath.ini`)
+
+In `[Settings]`, you can manually override one-character separators used by SmartMath rendering:
+
+```ini
+DecimalSeparatorChar=,
+ThousandsSeparatorChar=.
+ArrayOutputSeparatorChar=;
+```
+
+Rules:
+- Each value is treated as a single character.
+- If more than one character is provided, only the first character is used.
+- If a key is missing or empty, SmartMath falls back to defaults:
+  - `DecimalSeparatorChar=.`  
+  - `ThousandsSeparatorChar='`  
+  - `ArrayOutputSeparatorChar=,`
+- Input expression argument separator remains comma (`,`).
+- If `ArrayOutputSeparatorChar` is not comma, double-click copy normalizes array output back to comma so copied text is valid parser input.
+
+## 11) Troubleshooting
 
 If you need to diagnose a crash or a problematic input line, you can enable per-line parser logging in `SmartMath.ini`.
 

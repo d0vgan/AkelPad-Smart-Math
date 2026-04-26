@@ -15,11 +15,11 @@ end function
 
 private function TrimTrailingFractionZeros(byref s as String) as String
   dim outText as String = s
-  if InStr(outText, SMARTMATH_DECIMAL_SEPARATOR) > 0 orelse InStr(outText, ",") > 0 then
+  if InStr(outText, g_sDecimalSeparator) > 0 orelse InStr(outText, ",") > 0 then
     while Right(outText, 1) = "0"
       outText = Left(outText, Len(outText) - 1)
     wend
-    if Right(outText, 1) = SMARTMATH_DECIMAL_SEPARATOR orelse Right(outText, 1) = "," then
+    if Right(outText, 1) = g_sDecimalSeparator orelse Right(outText, 1) = "," then
       outText = Left(outText, Len(outText) - 1)
     end if
   end if
@@ -32,7 +32,7 @@ private function AddArrayCommaSpacing(byref s as String) as String
   for i = 1 to Len(s)
     dim ch as String = Mid(s, i, 1)
     if ch = "," then
-      outText &= ", "
+      outText &= g_sArrayOutputSeparator & " "
     else
       outText &= ch
     end if
@@ -141,8 +141,8 @@ private function FormatNumericValue(byval d as Double) as String
       sRes = Left(sRes, oldEPos - 1)
     end if
 
-    dim decPos as Integer = InStr(sRes, SMARTMATH_DECIMAL_SEPARATOR)
-    dim localThouSep as String = SMARTMATH_THOUSANDS_SEPARATOR
+    dim decPos as Integer = InStr(sRes, g_sDecimalSeparator)
+    dim localThouSep as String = g_sThousandsSeparator
 
     dim intPart as String
     dim decPart as String
@@ -198,18 +198,18 @@ function FormatArrayResultText(byref sArrayText as String) as String
   while i <= Len(sArrayText)
     dim ch as String = Mid(sArrayText, i, 1)
     dim isNumStart as Boolean = FALSE
-    if (ch >= "0" andalso ch <= "9") orelse ch = SMARTMATH_DECIMAL_SEPARATOR then
+    if (ch >= "0" andalso ch <= "9") orelse ch = g_sDecimalSeparator then
       isNumStart = TRUE
     elseif (ch = "-" orelse ch = "+") andalso i < Len(sArrayText) then
       dim nextCh as String = Mid(sArrayText, i + 1, 1)
-      if (nextCh >= "0" andalso nextCh <= "9") orelse nextCh = SMARTMATH_DECIMAL_SEPARATOR then isNumStart = TRUE
+      if (nextCh >= "0" andalso nextCh <= "9") orelse nextCh = g_sDecimalSeparator then isNumStart = TRUE
     end if
 
     if isNumStart then
       dim j as Integer = i
       while j <= Len(sArrayText)
         dim c as String = Mid(sArrayText, j, 1)
-        if (c >= "0" andalso c <= "9") orelse c = SMARTMATH_DECIMAL_SEPARATOR orelse c = "e" orelse c = "E" orelse c = "+" orelse c = "-" then
+        if (c >= "0" andalso c <= "9") orelse c = g_sDecimalSeparator orelse c = "e" orelse c = "E" orelse c = "+" orelse c = "-" then
           j += 1
         else
           exit while

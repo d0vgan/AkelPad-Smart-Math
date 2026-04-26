@@ -69,7 +69,17 @@ Follow all steps in order.
   - argument meaning and optional arguments.
 - Keep formatting consistent with neighboring hints.
 
-### 3) Add Tests In `SmokeTest_MathParser.bas`
+### 3) Build Sources (`Compile.bat`)
+
+- After implementation and signature-hint updates, run `Compile.bat`.
+- If compilation fails, treat it as a blocker:
+  - analyze build errors,
+  - fix sources,
+  - rerun `Compile.bat`.
+- Repeat analyze/fix/rerun loop until compilation succeeds.
+- If compilation cannot succeed due to environment/toolchain issues, report the exact blocker and include the last relevant output.
+
+### 4) Add Tests In `SmokeTest_MathParser.bas`
 
 - Add focused tests for normal behavior.
 - Add edge/negative tests for invalid arity or invalid argument types.
@@ -83,14 +93,14 @@ Minimum recommended coverage:
 - one failure case,
 - one array-related case (if arrays supported).
 
-### 4) Build And Run Smoke Tests
+### 5) Build And Run Smoke Tests
 
 - After updating `SmokeTest_MathParser.bas`, build the updated smoke-test executable.
 - Run smoke tests via `RunSmokeTests.bat`.
 - Treat smoke-test failures as blockers: investigate, fix, rebuild, and rerun until passing.
 - If the batch script is unavailable or fails due to environment/toolchain issues, report the exact blocker and include the last relevant output.
 
-### 5) Update `USAGE_AND_SYNTAX.md`
+### 6) Update `USAGE_AND_SYNTAX.md`
 
 - Add or update the function in the appropriate section.
 - First scan nearby sections in `USAGE_AND_SYNTAX.md` and mirror their structure.
@@ -110,6 +120,7 @@ Minimum recommended coverage:
 
 Before finishing, verify:
 - Implementation, hint, tests, and docs are all updated.
+- Sources were successfully built via `Compile.bat`.
 - Updated smoke tests were built and executed via `RunSmokeTests.bat`.
 - Signature hint and docs match real behavior exactly.
 - Tests cover success + failure paths relevant to the function contract.

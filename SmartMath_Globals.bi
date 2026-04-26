@@ -40,10 +40,11 @@ const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
 
 ' -----------------------------------------------------------------------------
-'  Shared formatting/render constants
+'  Shared formatting/render defaults
 ' -----------------------------------------------------------------------------
-const SMARTMATH_DECIMAL_SEPARATOR   = "."
-const SMARTMATH_THOUSANDS_SEPARATOR = "'"
+const SMARTMATH_DECIMAL_SEPARATOR_DEFAULT      = "."
+const SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT    = "'"
+const SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT = ","
 const SMARTMATH_RESULT_PREFIX       = " = "
 const SMARTMATH_ERROR_PREFIX        = " ! "
 
@@ -64,6 +65,9 @@ extern g_nDecimals as Integer
 extern g_crResultColor as COLORREF
 extern g_bUseThousandsSeparator as BOOL
 extern g_bLogParsedLines as BOOL
+extern g_sDecimalSeparator as String
+extern g_sThousandsSeparator as String
+extern g_sArrayOutputSeparator as String
 extern hSmartMathMenu as HMENU
 extern hSubMenuDecimals as HMENU
 extern hSubMenuColor as HMENU

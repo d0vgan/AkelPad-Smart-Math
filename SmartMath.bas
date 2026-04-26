@@ -17,6 +17,9 @@ dim shared g_nDecimals as Integer = -1
 dim shared g_crResultColor as COLORREF = &H008000
 dim shared g_bUseThousandsSeparator as BOOL = FALSE
 dim shared g_bLogParsedLines as BOOL = FALSE
+dim shared g_sDecimalSeparator as String
+dim shared g_sThousandsSeparator as String
+dim shared g_sArrayOutputSeparator as String
 dim shared hSmartMathMenu as HMENU = 0
 dim shared hSubMenuDecimals as HMENU = 0
 dim shared hSubMenuColor as HMENU = 0
@@ -276,10 +279,26 @@ function NormalizeCopiedResult(byref sRes as String) as String
       dim sNoSep as String = ""
       for i = 1 to len(sOut)
         dim ch as String = mid(sOut, i, 1)
-        if ch <> SMARTMATH_THOUSANDS_SEPARATOR then sNoSep &= ch
+        if ch <> g_sThousandsSeparator then sNoSep &= ch
       next i
       sOut = sNoSep
     end if
+
+    ' Clipboard copy should always use parser input separator (comma).
+    if g_sArrayOutputSeparator <> "," then
+      dim i as Integer
+      dim sNormalized as String = ""
+      for i = 1 to len(sOut)
+        dim ch as String = mid(sOut, i, 1)
+        if ch = g_sArrayOutputSeparator then
+          sNormalized &= ","
+        else
+          sNormalized &= ch
+        end if
+      next i
+      sOut = sNormalized
+    end if
+
     return sOut
   elseif left(sRes, Len(SMARTMATH_ERROR_PREFIX)) = SMARTMATH_ERROR_PREFIX then
     return mid(sRes, Len(SMARTMATH_ERROR_PREFIX) + 1)
