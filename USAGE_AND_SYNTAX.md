@@ -89,7 +89,8 @@ Notes:
 - `oct(...)` - renders final value in octal form
 - `bin(...)` - renders final value in binary form
 - `uhex(...)`, `uoct(...)`, `ubin(...)` - same inputs as `hex`, `oct`, and `bin`.
-- For **negative** numbers, they **do not** show a minus sign. They show the value as an **unsigned 64-bit integer** (typical “hex dump” / CPU register style). Positives look the same as with `hex` / `oct` / `bin`.
+  - **`uhex` / `uoct` / `ubin` and negatives:** no minus sign; the value is shown as an **unsigned 64-bit integer** (typical “hex dump” / CPU register style).
+  - **`uhex` / `uoct` / `ubin` and non-negative values:** same style as `hex` / `oct` / `bin`.
 
 Notes:
 - `hex()`, `oct()`, `bin()`, `uhex()`, `uoct()`, and `ubin()` require integer values.
