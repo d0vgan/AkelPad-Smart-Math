@@ -330,6 +330,8 @@ Examples:
   - `ans` updates after each successful evaluated expression/statement.
 - Assignment:
   - `a = 10`
+- Usage:
+  - `a * 3`
 - Names **`pi`** and **`e`** are reserved built-in constants (case-insensitive): you cannot assign to them (`e = 1` is an error), and they cannot be used as user-defined function names or parameter names. In expressions they always refer to π and Euler’s number.
 - Equality comparison uses two equals signs: `a == 10`. At the start of a statement, a single `=` after a name means assignment; `==` is never split into assign-then-equals, so expressions like `a==b` compare rather than assign.
 - **When a single `=` means comparison:** the input must **not** be parsed as that special “identifier at the very beginning” form. Then `=` is handled inside the expression parser as equality (same meaning as `==`). Examples:
@@ -338,8 +340,6 @@ Examples:
   - `1|2=3` → comparison (expression starts with a digit after optional leading ops / the left side is not “bare name at column 1”).
 - **`x = x` at the start of a line/statement is assignment:** the right-hand `x` is evaluated, then stored back into `x` (same as any `x = expr`). For boolean equality on variables, use `x == x` or parenthesize, e.g. `(x) = (x)`.
 - If anything other than spaces follows the first identifier before `=`, the line is an expression and `=` is comparison: e.g. `x + y = x` means `(x + y) = x`; `x * y = x * y` means `(x * y) = (x * y)` (equality test, `0` or `1`).
-- Usage:
-  - `a * 3`
 - Array assignment:
   - `v = (1,2,3)`
 - Passing array variables to functions:
@@ -366,8 +366,8 @@ Examples:
 
 User-defined functions also accept array arguments when the expression supports
 array math:
-- `scale(v,k) = v*k`
-- `scale((1,2,3),10)` -> `(10,20,30)`
+- `scale(v,k) = v*k  # definition`
+- `scale((1,2,3),10)  # usage` -> `(10,20,30)`
 
 Rules:
 - Duplicate parameter names are not allowed in definitions.
@@ -390,6 +390,7 @@ Single-line comments are supported with:
 Examples:
 - `1 + 2 # calculates 1 + 2`
 - `// whole line comment`
+- `# another whole line comment`
 - `sin(pi/2) // inline comment`
 
 ## 8) Constants
