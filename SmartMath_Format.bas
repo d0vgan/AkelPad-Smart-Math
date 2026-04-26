@@ -189,7 +189,7 @@ function FormatArrayResultText(byref sArrayText as String) as String
   end if
 
   dim t as String = LCase(sArrayText)
-  if InStr(t, "0x") > 0 orelse InStr(t, "0b") > 0 then
+  if InStr(t, "0x") > 0 orelse InStr(t, "0b") > 0 orelse InStr(t, "0o") > 0 then
     return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
   end if
 

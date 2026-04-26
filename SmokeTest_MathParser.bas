@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 350) as SmokeCase
+  dim tests(1 to 353) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -444,6 +444,9 @@ sub Main()
   tests(348).expr = "reversed((1,2,3,4))[-1]": tests(348).expected = "1" ' [ok-array]
   tests(349).expr = "3 + not 4":        tests(349).expected = "3" ' [ok-core]
   tests(350).expr = "3 + not 4 + 5":    tests(350).expected = "3" ' [ok-core]
+  tests(351).expr = "oct(80)":          tests(351).expected = "0o120" ' [ok-func]
+  tests(352).expr = "oct(0)":           tests(352).expected = "0o0" ' [edge]
+  tests(353).expr = "oct(-1)":          tests(353).expected = "-0o1" ' [edge]
 
   g_total = ubound(tests) - lbound(tests) + 1
 

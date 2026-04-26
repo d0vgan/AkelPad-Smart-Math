@@ -1491,8 +1491,6 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if EvaluateUserFunction(fnName, args(), outV) then return outV
-
   if fn = "log" then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
@@ -1702,6 +1700,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
     return outV
   end if
+
+  if EvaluateUserFunction(fnName, args(), outV) then return outV
 
   AppendUniqueName(unknownFuncsText, fnName)
   ValueSetScalar(outV, 0)

@@ -86,12 +86,17 @@ Follow all steps in order.
 - Add array/scalar combination tests when array support is expected.
 - Add variadic tests (minimum args + multiple extra args) when applicable.
 - Follow existing test naming and assertion style.
+- Always include single-argument coverage when function accepts 1 argument or variadic arguments:
+  - one normal single-argument case,
+  - one single-argument edge case,
+  - one single-argument overflow/range-limit case when numeric domain has limits.
 
 Minimum recommended coverage:
 - one happy-path scalar case,
 - one boundary or edge case,
 - one failure case,
 - one array-related case (if arrays supported).
+- one single-argument case (for 1-arg/variadic functions), plus single-arg edge and overflow checks when applicable.
 
 ### 5) Build And Run Smoke Tests
 

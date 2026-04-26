@@ -150,7 +150,8 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
   if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
     dim sTrimResult as String = lcase(trim(sResult))
     dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
-                                  orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b")
+                                  orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b") _
+                                  orelse (left(sTrimResult, 2) = "0o") orelse (left(sTrimResult, 3) = "-0o")
     if lcase(left(trim(sResult), 8)) = "defined " then
       sRes = ""
     elseif bIsArray then
