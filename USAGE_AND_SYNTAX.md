@@ -121,11 +121,15 @@ Examples:
 
 Supported operators:
 - Exponentiation: `x ** y`
-- Unary operators: `+x`, `-x`, `~x`
+- Unary operators: `+x`, `-x`, `~x`, `!x`
 - Multiplicative: `x * y`, `x / y`, `x % y`
 - Additive: `x + y`, `x - y`
 - Shifts: `x << y`, `x >> y`
 - Bitwise: `x & y`, `x ^ y`, `x | y`
+- Comparison: `x = y`, `x == y`, `x <> y`, `x != y`, `x > y`, `x >= y`, `x < y`, `x <= y`
+- Logical NOT: `!x`, `not x`
+- Logical AND: `x && y`, `x and y`
+- Logical OR: `x || y`, `x or y`
 - Postfix percentage: `x%` (percentage form, see section 3.5)
 
 Implicit multiplication:
@@ -136,15 +140,40 @@ Implicit multiplication:
 
 Operator precedence (highest -> lowest):
 1. `**`
-2. unary `+`, `-`, `~`
-3. `*`, `/`, `%`
-4. `+`, `-`
-5. `<<`, `>>`
-6. `&`
-7. `^`
-8. `|`
+2. unary `+`, `-`, `~`, `!` (C/C++-style logical NOT)
+3. postfix `%` (percentage form, `x%`)
+4. `*`, `/`, `%` (binary modulo)
+5. `+`, `-`
+6. `<<`, `>>`
+7. `&`
+8. `^`
+9. `|`
+10. `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
+11. logical NOT (Python-style): `not`
+12. logical AND: `&&`, `and`
+13. logical OR: `||`, `or`
 
 Parentheses can override precedence.
+
+Note on logical NOT precedence:
+- `!` is a high-precedence unary logical NOT, grouped with unary `+`, `-`, `~` (C/C++-style precedence).
+- `not` is a low-precedence logical NOT placed below comparisons (Python-style precedence).
+- Because they have different precedence, `!` and `not` are not interchangeable in mixed expressions.
+
+Note on chained comparisons:
+- Chained comparisons are evaluated left-to-right.
+- Example: `2 < 3 < 4` is interpreted as `(2 < 3) < 4`.
+- This differs from Python semantics:
+  - Python interprets `a < b < c` as `(a < b) and (b < c)`.
+  - Smart Math interprets it as `(a < b) < c`, where `(a < b)` becomes `1` or `0`.
+
+Logical operators return scalar integer results:
+- `1` for true
+- `0` for false
+
+For arrays (Python-compatible truthiness):
+- empty array is false;
+- non-empty array is true (regardless of element values).
 
 ## 3) Numbers, Literals, and Numeric Behavior
 
@@ -220,13 +249,28 @@ Examples:
 - `(1,2,3) + (10,20)` -> error (incompatible operands; array lengths must match)
 - `(1,2,3) * (4,5,6)` -> `(4,10,18)`
 
-### 5.3 Indexing
+### 5.3 Array Comparison Rules
+- Comparison operators return scalar integer results:
+  - `1` for true
+  - `0` for false
+- Arrays are compared lexicographically (Python-like behavior):
+  - Compare values from left to right.
+  - First mismatch determines the result.
+  - If one array is a full prefix of the other, the shorter array is less than the longer one.
+- Scalar-array comparisons are treated as comparison of one-element array against the other side.
+
+Examples:
+- `(1,2,3) = (1,2,3)` -> `1`
+- `(1,2,3) < (1,2,4)` -> `1`
+- `(1,2) < (1,2,0)` -> `1`
+
+### 5.4 Indexing
 - Array index syntax:
   - `arr[0]`
 - Index must be non-negative integer scalar.
 - Out-of-range access raises an error.
 
-### 5.4 Functions with Arrays
+### 5.5 Functions with Arrays
 - Unary math functions apply element-wise.
 - `sum`, `product`/`prod`, `min`, `max` flatten array arguments.
 - `median`, `variance`, `stddev` also flatten array arguments.

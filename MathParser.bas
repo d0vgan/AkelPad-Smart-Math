@@ -485,6 +485,26 @@ private sub SkipSpaces()
   wend
 end sub
 
+private function IsIdentChar(byval ch as UByte) as Boolean
+  return ((ch >= 65 andalso ch <= 90) orelse (ch >= 97 andalso ch <= 122) orelse (ch >= 48 andalso ch <= 57) orelse (ch = 95))
+end function
+
+private function MatchKeywordOperator(byref kw as String) as Boolean
+  dim kwLen as Integer = Len(kw)
+  if kwLen <= 0 then return FALSE
+  dim i as Integer
+  for i = 0 to kwLen - 1
+    dim c1 as UByte = pStream[i]
+    dim c2 as UByte = Asc(mid(kw, i + 1, 1))
+    if c1 >= 65 andalso c1 <= 90 then c1 += 32
+    if c2 >= 65 andalso c2 <= 90 then c2 += 32
+    if c1 <> c2 then return FALSE
+  next i
+  if IsIdentChar(CUByte(pStream[kwLen])) then return FALSE
+  pStream += kwLen
+  return TRUE
+end function
+
 private function StripLineComment(byref s as String) as String
   dim i as Integer
   for i = 1 to len(s)
@@ -597,6 +617,10 @@ private sub SetUserFunction(byref n as String, params() as String, byref expr as
 end sub
 
 declare function ParseExpression() as EvalValue
+declare function ParseLogicalOr() as EvalValue
+declare function ParseLogicalAnd() as EvalValue
+declare function ParseLogicalNot() as EvalValue
+declare function ParseComparison() as EvalValue
 declare function ParseBitwiseOr() as EvalValue
 declare function ParseBitwiseXor() as EvalValue
 declare function ParseBitwiseAnd() as EvalValue
@@ -1135,6 +1159,105 @@ private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as
   next i
   return TRUE
 end function
+
+private function CompareScalarArrayLex(byval scalarV as Double, byref arrV as EvalValue) as Integer
+  dim arrLen as Integer = ValueArrayLen(arrV)
+  if arrLen <= 0 then return 1
+  dim firstVal as Double = arrV.arr(lbound(arrV.arr))
+  if scalarV < firstVal then return -1
+  if scalarV > firstVal then return 1
+  if arrLen = 1 then return 0
+  return -1
+end function
+
+private function CompareEvalValues(byref leftV as EvalValue, byref rightV as EvalValue, byref cmp as Integer) as Boolean
+  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    if leftV.scalar < rightV.scalar then
+      cmp = -1
+    elseif leftV.scalar > rightV.scalar then
+      cmp = 1
+    else
+      cmp = 0
+    end if
+    return TRUE
+  end if
+
+  if leftV.kind = VK_SCALAR then
+    cmp = CompareScalarArrayLex(leftV.scalar, rightV)
+    return TRUE
+  end if
+  if rightV.kind = VK_SCALAR then
+    cmp = -CompareScalarArrayLex(rightV.scalar, leftV)
+    return TRUE
+  end if
+
+  dim leftLen as Integer = ValueArrayLen(leftV)
+  dim rightLen as Integer = ValueArrayLen(rightV)
+  dim minLen as Integer = IIf(leftLen < rightLen, leftLen, rightLen)
+  dim i as Integer
+  for i = 0 to minLen - 1
+    dim lv as Double = leftV.arr(lbound(leftV.arr) + i)
+    dim rv as Double = rightV.arr(lbound(rightV.arr) + i)
+    if lv < rv then
+      cmp = -1
+      return TRUE
+    elseif lv > rv then
+      cmp = 1
+      return TRUE
+    end if
+  next i
+  if leftLen < rightLen then
+    cmp = -1
+  elseif leftLen > rightLen then
+    cmp = 1
+  else
+    cmp = 0
+  end if
+  return TRUE
+end function
+
+private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+  dim cmp as Integer = 0
+  if CompareEvalValues(leftV, rightV, cmp) = FALSE then return FALSE
+  dim isTrue as Boolean = FALSE
+  select case op
+    case "=", "=="
+      isTrue = (cmp = 0)
+    case "<>", "!="
+      isTrue = (cmp <> 0)
+    case "<"
+      isTrue = (cmp < 0)
+    case "<="
+      isTrue = (cmp <= 0)
+    case ">"
+      isTrue = (cmp > 0)
+    case ">="
+      isTrue = (cmp >= 0)
+    case else
+      return FALSE
+  end select
+  if isTrue then
+    ValueSetInt64(outV, 1)
+  else
+    ValueSetInt64(outV, 0)
+  end if
+  return TRUE
+end function
+
+private function EvalValueIsTruthy(byref v as EvalValue) as Boolean
+  if v.kind = VK_ARRAY then
+    return (ValueArrayLen(v) > 0)
+  end if
+  return (v.scalar <> 0)
+end function
+
+private sub ValueSetBoolResult(byval b as Boolean, byref outV as EvalValue)
+  if b then
+    ValueSetInt64(outV, 1)
+  else
+    ValueSetInt64(outV, 0)
+  end if
+end sub
 
 private function IsPercentageTail() as Boolean
   dim p as ZString ptr = pStream
@@ -1874,6 +1997,12 @@ private function ParseUnary() as EvalValue
     ValueSetScalar(minusOne, -1)
     if ValueApplyBinaryInt64(v, minusOne, op, outV) = FALSE then SetParseError("incompatible operands")
     return outV
+  elseif pStream[0] = 33 andalso pStream[1] <> 61 then
+    pStream += 1
+    dim v as EvalValue = ParseUnary()
+    if parseError then return v
+    ValueSetBoolResult(not EvalValueIsTruthy(v), v)
+    return v
   end if
 
   dim n as EvalValue = ParsePower()
@@ -1984,7 +2113,7 @@ end function
 private function ParseBitwiseAnd() as EvalValue
   dim n as EvalValue = ParseShift()
   SkipSpaces()
-  while pStream[0] = 38
+  while pStream[0] = 38 andalso pStream[1] <> 38
     if parseError then exit while
     pStream += 1
     dim n2 as EvalValue = ParseShift()
@@ -2014,7 +2143,7 @@ end function
 private function ParseBitwiseOr() as EvalValue
   dim n as EvalValue = ParseBitwiseXor()
   SkipSpaces()
-  while pStream[0] = 124
+  while pStream[0] = 124 andalso pStream[1] <> 124
     if parseError then exit while
     pStream += 1
     dim n2 as EvalValue = ParseBitwiseXor()
@@ -2026,9 +2155,118 @@ private function ParseBitwiseOr() as EvalValue
   return n
 end function
 
+private function ParseComparison() as EvalValue
+  dim n as EvalValue = ParseBitwiseOr()
+  SkipSpaces()
+  while TRUE
+    if parseError then exit while
+    dim op as String = ""
+    if pStream[0] = 61 then
+      if pStream[1] = 61 then
+        op = "=="
+        pStream += 2
+      else
+        op = "="
+        pStream += 1
+      end if
+    elseif pStream[0] = 60 then
+      if pStream[1] = 62 then
+        op = "<>"
+        pStream += 2
+      elseif pStream[1] = 61 then
+        op = "<="
+        pStream += 2
+      elseif pStream[1] = 60 then
+        exit while
+      else
+        op = "<"
+        pStream += 1
+      end if
+    elseif pStream[0] = 62 then
+      if pStream[1] = 61 then
+        op = ">="
+        pStream += 2
+      elseif pStream[1] = 62 then
+        exit while
+      else
+        op = ">"
+        pStream += 1
+      end if
+    elseif pStream[0] = 33 then
+      if pStream[1] = 61 then
+        op = "!="
+        pStream += 2
+      else
+        exit while
+      end if
+    else
+      exit while
+    end if
+
+    dim n2 as EvalValue = ParseBitwiseOr()
+    dim outV as EvalValue
+    if ApplyComparison(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+    SkipSpaces()
+  wend
+  return n
+end function
+
+private function ParseLogicalNot() as EvalValue
+  SkipSpaces()
+  if MatchKeywordOperator("not") then
+    SkipSpaces()
+    dim rhs as EvalValue = ParseLogicalNot()
+    ValueSetBoolResult(not EvalValueIsTruthy(rhs), rhs)
+    return rhs
+  end if
+  return ParseComparison()
+end function
+
+private function ParseLogicalAnd() as EvalValue
+  dim n as EvalValue = ParseLogicalNot()
+  SkipSpaces()
+  while TRUE
+    if parseError then exit while
+    dim hasOp as Boolean = FALSE
+    if pStream[0] = 38 andalso pStream[1] = 38 then
+      pStream += 2
+      hasOp = TRUE
+    elseif MatchKeywordOperator("and") then
+      hasOp = TRUE
+    end if
+    if hasOp = FALSE then exit while
+
+    dim n2 as EvalValue = ParseLogicalNot()
+    ValueSetBoolResult(EvalValueIsTruthy(n) andalso EvalValueIsTruthy(n2), n)
+    SkipSpaces()
+  wend
+  return n
+end function
+
+private function ParseLogicalOr() as EvalValue
+  dim n as EvalValue = ParseLogicalAnd()
+  SkipSpaces()
+  while TRUE
+    if parseError then exit while
+    dim hasOp as Boolean = FALSE
+    if pStream[0] = 124 andalso pStream[1] = 124 then
+      pStream += 2
+      hasOp = TRUE
+    elseif MatchKeywordOperator("or") then
+      hasOp = TRUE
+    end if
+    if hasOp = FALSE then exit while
+
+    dim n2 as EvalValue = ParseLogicalAnd()
+    ValueSetBoolResult(EvalValueIsTruthy(n) orelse EvalValueIsTruthy(n2), n)
+    SkipSpaces()
+  wend
+  return n
+end function
+
 private function ParseExpression() as EvalValue
   wasPercentage = FALSE
-  return ParseBitwiseOr()
+  return ParseLogicalOr()
 end function
 
 sub Parser_ClearVariables()

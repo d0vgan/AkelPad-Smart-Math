@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 282) as SmokeCase
+  dim tests(1 to 324) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -376,6 +376,48 @@ sub Main()
   tests(280).expr = "0o10 + 8":         tests(280).expected = "16" ' [ok-core]
   tests(281).expr = "0b110011 & 0x37 | 0o64": tests(281).expected = "55" ' [ok-core]
   tests(282).expr = "0o8":              tests(282).expectedErrContains = "invalid octal literal" ' [syntax]
+  tests(283).expr = "5=5":              tests(283).expected = "1" ' [ok-core]
+  tests(284).expr = "5==4":             tests(284).expected = "0" ' [ok-core]
+  tests(285).expr = "5<>4":             tests(285).expected = "1" ' [ok-core]
+  tests(286).expr = "5!=5":             tests(286).expected = "0" ' [ok-core]
+  tests(287).expr = "5>4":              tests(287).expected = "1" ' [ok-core]
+  tests(288).expr = "5>=5":             tests(288).expected = "1" ' [ok-core]
+  tests(289).expr = "4<5":              tests(289).expected = "1" ' [ok-core]
+  tests(290).expr = "4<=4":             tests(290).expected = "1" ' [ok-core]
+  tests(291).expr = "1|2=3":            tests(291).expected = "1" ' [ok-core]
+  tests(292).expr = "1|2<2":            tests(292).expected = "0" ' [ok-core]
+  tests(293).expr = "(1,2,3)=(1,2,3)":  tests(293).expected = "1" ' [ok-array]
+  tests(294).expr = "(1,2,3)!=(1,2,4)": tests(294).expected = "1" ' [ok-array]
+  tests(295).expr = "(1,2)<(1,2,0)":    tests(295).expected = "1" ' [ok-array]
+  tests(296).expr = "(1,2,9)>(1,2,3)":  tests(296).expected = "1" ' [ok-array]
+  tests(297).expr = "(1,2,3)<=(1,2,3)": tests(297).expected = "1" ' [ok-array]
+  tests(298).expr = "(1)<(1,0)":        tests(298).expected = "1" ' [ok-array]
+  tests(299).expr = "(1,0)>(1)":        tests(299).expected = "1" ' [ok-array]
+  tests(300).expr = "5<(5,1)":          tests(300).expected = "1" ' [ok-array]
+  tests(301).expr = "(5,1)>5":          tests(301).expected = "1" ' [ok-array]
+  tests(302).expr = "2<3<4":            tests(302).expected = "1" ' [ok-core]
+  tests(303).expr = "!0":               tests(303).expected = "1" ' [ok-core]
+  tests(304).expr = "!5":               tests(304).expected = "0" ' [ok-core]
+  tests(305).expr = "not 0":            tests(305).expected = "1" ' [ok-core]
+  tests(306).expr = "not 2":            tests(306).expected = "0" ' [ok-core]
+  tests(307).expr = "1&&1":             tests(307).expected = "1" ' [ok-core]
+  tests(308).expr = "1&&0":             tests(308).expected = "0" ' [ok-core]
+  tests(309).expr = "1||0":             tests(309).expected = "1" ' [ok-core]
+  tests(310).expr = "0||0":             tests(310).expected = "0" ' [ok-core]
+  tests(311).expr = "1 and 1":          tests(311).expected = "1" ' [ok-core]
+  tests(312).expr = "1 and 0":          tests(312).expected = "0" ' [ok-core]
+  tests(313).expr = "1 or 0":           tests(313).expected = "1" ' [ok-core]
+  tests(314).expr = "0 or 0":           tests(314).expected = "0" ' [ok-core]
+  tests(315).expr = "!1=0":             tests(315).expected = "1" ' [ok-core]
+  tests(316).expr = "1=1 && 0=1":       tests(316).expected = "0" ' [ok-core]
+  tests(317).expr = "1|2==3 && 5>3":    tests(317).expected = "1" ' [ok-core]
+  tests(318).expr = "1 || 0 && 0":      tests(318).expected = "1" ' [ok-core]
+  tests(319).expr = "(0,0) && 1":       tests(319).expected = "1" ' [ok-array]
+  tests(320).expr = "(0,0) || 0":       tests(320).expected = "1" ' [ok-array]
+  tests(321).expr = "not (0,0)":        tests(321).expected = "0" ' [ok-array]
+  tests(322).expr = "0 or (0,0)":       tests(322).expected = "1" ' [ok-array]
+  tests(323).expr = "not 1<0":          tests(323).expected = "1" ' [ok-core]
+  tests(324).expr = "!1<0":             tests(324).expected = "0" ' [ok-core]
 
   g_total = ubound(tests) - lbound(tests) + 1
 
