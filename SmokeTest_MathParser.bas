@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 324) as SmokeCase
+  dim tests(1 to 348) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -418,6 +418,30 @@ sub Main()
   tests(322).expr = "0 or (0,0)":       tests(322).expected = "1" ' [ok-array]
   tests(323).expr = "not 1<0":          tests(323).expected = "1" ' [ok-core]
   tests(324).expr = "!1<0":             tests(324).expected = "0" ' [ok-core]
+  tests(325).expr = "reverse((3,1,2))": tests(325).expected = "(2,1,3)" ' [ok-array]
+  tests(326).expr = "reverse(2,5,1)":   tests(326).expected = "(1,5,2)" ' [ok-func]
+  tests(327).expr = "reverse((1,2,3),(4,5,6),(7,8,9))": tests(327).expected = "(9,8,7,6,5,4,3,2,1)" ' [ok-array]
+  tests(328).expr = "reverse(5)":       tests(328).expected = "(5)" ' [ok-func]
+  tests(329).expr = "reverse":          tests(329).expectedErrContains = "function: reverse(...)" ' [hint]
+  tests(330).expr = "reverse()":        tests(330).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(331).expr = "reverse((2,5,1),4,3)": tests(331).expected = "(3,4,1,5,2)" ' [ok-array]
+  tests(332).expr = "reverse(( ))":     tests(332).expectedErrContains = "unexpected token" ' [syntax]
+  tests(333).expr = "(10,20,30)[0]":    tests(333).expected = "10" ' [ok-array]
+  tests(334).expr = "(10,20,30)[2]":    tests(334).expected = "30" ' [ok-array]
+  tests(335).expr = "(10,20,30)[-1]":   tests(335).expected = "30" ' [ok-array]
+  tests(336).expr = "(10,20,30)[-2]":   tests(336).expected = "20" ' [ok-array]
+  tests(337).expr = "(10,20,30)[-3]":   tests(337).expected = "10" ' [ok-array]
+  tests(338).expr = "(10,20,30)[-4]":   tests(338).expectedErrContains = "array index is out of range" ' [edge]
+  tests(339).expr = "(10,20,30)[3]":    tests(339).expectedErrContains = "array index is out of range" ' [edge]
+  tests(340).expr = "sort((3,1,2,4))[-1]": tests(340).expected = "4" ' [ok-array]
+  tests(341).expr = "reverse((1,2,3,4))[-1]": tests(341).expected = "1" ' [ok-array]
+  tests(342).expr = "reverse((1,2,3,4))[0]": tests(342).expected = "4" ' [ok-array]
+  tests(343).expr = "sorted((3,1,2))":  tests(343).expected = "(1,2,3)" ' [ok-array]
+  tests(344).expr = "sorted(2,5,1)":    tests(344).expected = "(1,2,5)" ' [ok-func]
+  tests(345).expr = "sorted":           tests(345).expectedErrContains = "function: sort(...)" ' [hint]
+  tests(346).expr = "reversed((1,2,3),(4,5))": tests(346).expected = "(5,4,3,2,1)" ' [ok-array]
+  tests(347).expr = "reversed":         tests(347).expectedErrContains = "function: reverse(...)" ' [hint]
+  tests(348).expr = "reversed((1,2,3,4))[-1]": tests(348).expected = "1" ' [ok-array]
 
   g_total = ubound(tests) - lbound(tests) + 1
 

@@ -209,8 +209,11 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     case "stddev"
       hint = "stddev(...)"
       return TRUE
-    case "sort"
+    case "sort", "sorted"
       hint = "sort(...)"
+      return TRUE
+    case "reverse", "reversed"
+      hint = "reverse(...)"
       return TRUE
     case "unique"
       hint = "unique(...)"
@@ -661,11 +664,6 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
     SetParseError("array index must be an integer")
     return FALSE
   end if
-  if idxInt < 0 then
-    SetParseError("array index must be non-negative")
-    return FALSE
-  end if
-
   SkipSpaces()
   if pStream[0] <> 93 then
     if pStream[0] = 41 then
@@ -680,7 +678,8 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
   pStream += 1
 
   dim arrLen as Integer = ValueArrayLen(baseValue)
-  if idxInt >= arrLen then
+  if idxInt < 0 then idxInt = arrLen + idxInt
+  if idxInt < 0 orelse idxInt >= arrLen then
     SetParseError("array index is out of range")
     return FALSE
   end if
@@ -1440,11 +1439,25 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "sort" then
+  if fn = "sort" orelse fn = "sorted" then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     c = CollectArgsAsFlat(args(), flat())
     if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     SortDoubleArray(flat())
+    ValueSetArray(outV, flat())
+    return outV
+  end if
+
+  if fn = "reverse" orelse fn = "reversed" then
+    if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    c = CollectArgsAsFlat(args(), flat())
+    if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    dim i as Integer
+    for i = 0 to (c \ 2) - 1
+      dim t as Double = flat(i)
+      flat(i) = flat(c - 1 - i)
+      flat(c - 1 - i) = t
+    next i
     ValueSetArray(outV, flat())
     return outV
   end if
@@ -2007,6 +2020,14 @@ private function ParseUnary() as EvalValue
 
   dim n as EvalValue = ParsePower()
   if parseError then return n
+
+  SkipSpaces()
+  while pStream[0] = 91 ' [
+    dim indexed as EvalValue
+    if TryParseArrayIndex(n, indexed) = FALSE then return n
+    n = indexed
+    SkipSpaces()
+  wend
 
   SkipSpaces()
   if pStream[0] = 37 then ' "%" as postfix percentage

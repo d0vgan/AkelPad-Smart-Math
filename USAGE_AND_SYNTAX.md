@@ -71,6 +71,9 @@ Note:
 - `min(...)`
 - `max(...)`
 - `sort(...)` - sorts all provided values (scalars/arrays) and returns an array
+- `sorted(...)` - alias of `sort(...)`
+- `reverse(...)` - reverses all provided values (scalars/arrays) and returns an array
+- `reversed(...)` - alias of `reverse(...)`
 - `unique(...)` - keeps unique values from provided values (scalars/arrays), preserving first-occurrence order
 
 Aggregation functions accept scalar and array arguments. Array arguments are flattened into one sequence of scalar values.
@@ -111,6 +114,9 @@ Examples:
 - `fact(5)` -> `120`, `factorial(10)` -> `3628800`
 - `rand()` -> random value in `[0,1)`, `random(10,20)` -> random value in `[10,20)`
 - `sort((3,1,2))` -> `(1,2,3)`, `sort(2,5,1)` -> `(1,2,5)`
+- `sorted((3,1,2))` -> `(1,2,3)`
+- `reverse((3,1,2))` -> `(2,1,3)`, `reverse(2,5,1)` -> `(1,5,2)`
+- `reversed((1,2,3),(4,5))` -> `(5,4,3,2,1)`
 - `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
 - `hex(12)` -> `0xC`, `hex(1,2,3)` -> `(0x1,0x2,0x3)`, `hex((1,2,3))` -> `(0x1,0x2,0x3)`
 - `oct(12)` -> `0o14`, `oct(1,2,3)` -> `(0o1,0o2,0o3)`, `oct((1,2,3))` -> `(0o1,0o2,0o3)`
@@ -267,19 +273,34 @@ Examples:
 ### 5.4 Indexing
 - Array index syntax:
   - `arr[0]`
-- Index must be non-negative integer scalar.
+- Index must be an integer scalar.
+- Negative indexes are supported:
+  - `arr[-1]` = last item
+  - `arr[-2]` = second item from the end
 - Out-of-range access raises an error.
+
+Examples:
+- `(10,20,30)[0]` -> `10`
+- `(10,20,30)[-1]` -> `30`
+- `(10,20,30)[-2]` -> `20`
+- `sort((3,1,4,2))[-1]` -> `4`
+- `reverse((1,2,3,4))[0]` -> `4`
+- `reverse((1,2,3,4))[-1]` -> `1`
 
 ### 5.5 Functions with Arrays
 - Unary math functions apply element-wise.
 - `sum`, `product`/`prod`, `min`, `max` flatten array arguments.
 - `median`, `variance`, `stddev` also flatten array arguments.
 - `sort(...)` flattens scalar/array arguments, then returns sorted values.
+- `sorted(...)` is an alias of `sort(...)`.
+- `reverse(...)` flattens scalar/array arguments, then returns values in reverse order.
+- `reversed(...)` is an alias of `reverse(...)`.
 - `unique(...)` flattens scalar/array arguments, then keeps first occurrences.
 - Examples of standard functions with array values:
   - `sin((0,pi/4,pi/2))` -> `(0,0.70710678,1)` (element-wise unary function)
   - `sum((1,2,3),10)` -> `16` (flattened aggregation)
   - `sort((5,2,9))` -> `(2,5,9)`
+  - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
   - `unique((5,2,5,9,2))` -> `(5,2,9)`
 - `hex` / `oct` / `bin` can render array outputs:
   - `hex((12,255))` -> `(0xC,0xFF)`
@@ -305,6 +326,7 @@ Examples:
   - `sum(v)` -> `6`
   - `hex(v)` -> `(0x1,0x2,0x3)`
   - `a=(1,2,1,3,5,7,6,5); sort(a)` -> `(1,1,2,3,5,5,6,7)`
+  - `a=(1,2,3,4); reverse(a)` -> `(4,3,2,1)`
 - Examples with `ans`:
   - `2+3; ans/10` -> `0.5`
   - `(1,2,3); ans*10` -> `(10,20,30)`
@@ -375,7 +397,7 @@ Example: `unexpected token at col 5:  5*5 |: 25`
 
 ## 10) Manual Formatting Options (`SmartMath.ini`)
 
-In `[Settings]`, you can manually override one-character separators used by SmartMath rendering:
+In `[Settings]`, you can manually override one-character separators used by SmartMath rendering to e.g.:
 
 ```ini
 DecimalSeparatorChar=,
