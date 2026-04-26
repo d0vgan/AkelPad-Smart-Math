@@ -89,169 +89,255 @@ private sub AppendUniqueName(byref listText as String, byref n as String)
   end if
 end sub
 
+enum BuiltinFunctionId
+  FUNC_RAND = 0
+  FUNC_RANDOM
+  FUNC_BIN
+  FUNC_HEX
+  FUNC_OCT
+  FUNC_POW
+  FUNC_ATAN2
+  FUNC_SIN
+  FUNC_COS
+  FUNC_TAN
+  FUNC_ASIN
+  FUNC_ARCSIN
+  FUNC_ACOS
+  FUNC_ARCCOS
+  FUNC_ATAN
+  FUNC_ARCTAN
+  FUNC_SINH
+  FUNC_COSH
+  FUNC_TANH
+  FUNC_EXP
+  FUNC_LOG
+  FUNC_LN
+  FUNC_LOG10
+  FUNC_SQRT
+  FUNC_SQR
+  FUNC_INT
+  FUNC_FRAC
+  FUNC_FRACT
+  FUNC_ABS
+  FUNC_FLOOR
+  FUNC_CEIL
+  FUNC_TRUNC
+  FUNC_ROUND
+  FUNC_SIGN
+  FUNC_DEG
+  FUNC_RAD
+  FUNC_SUM
+  FUNC_MEDIAN
+  FUNC_VARIANCE
+  FUNC_STDDEV
+  FUNC_SORT
+  FUNC_SORTED
+  FUNC_REVERSE
+  FUNC_REVERSED
+  FUNC_UNIQUE
+  FUNC_FACT
+  FUNC_FACTORIAL
+  FUNC_AVG
+  FUNC_MEAN
+  FUNC_MOD
+  FUNC_CLAMP
+  FUNC_HYPOT
+  FUNC_GCD
+  FUNC_LCM
+  FUNC_PRODUCT
+  FUNC_PROD
+  FUNC_MIN
+  FUNC_MAX
+  FUNC__COUNT
+end enum
+
+enum OperatorNameId
+  OP_NOT = 0
+  OP_AND
+  OP_OR
+  OP_MOD
+  OP__COUNT
+end enum
+
+dim shared FunctionNames(0 to FUNC__COUNT - 1) as String
+dim shared OperatorNames(0 to OP__COUNT - 1) as String
+dim shared FunctionNamesInitialized as Boolean = FALSE
+dim shared OperatorNamesInitialized as Boolean = FALSE
+
+private sub EnsureFunctionNames()
+  if FunctionNamesInitialized then exit sub
+  FunctionNames(FUNC_RAND) = "rand"
+  FunctionNames(FUNC_RANDOM) = "random"
+  FunctionNames(FUNC_BIN) = "bin"
+  FunctionNames(FUNC_HEX) = "hex"
+  FunctionNames(FUNC_OCT) = "oct"
+  FunctionNames(FUNC_POW) = "pow"
+  FunctionNames(FUNC_ATAN2) = "atan2"
+  FunctionNames(FUNC_SIN) = "sin"
+  FunctionNames(FUNC_COS) = "cos"
+  FunctionNames(FUNC_TAN) = "tan"
+  FunctionNames(FUNC_ASIN) = "asin"
+  FunctionNames(FUNC_ARCSIN) = "arcsin"
+  FunctionNames(FUNC_ACOS) = "acos"
+  FunctionNames(FUNC_ARCCOS) = "arccos"
+  FunctionNames(FUNC_ATAN) = "atan"
+  FunctionNames(FUNC_ARCTAN) = "arctan"
+  FunctionNames(FUNC_SINH) = "sinh"
+  FunctionNames(FUNC_COSH) = "cosh"
+  FunctionNames(FUNC_TANH) = "tanh"
+  FunctionNames(FUNC_EXP) = "exp"
+  FunctionNames(FUNC_LOG) = "log"
+  FunctionNames(FUNC_LN) = "ln"
+  FunctionNames(FUNC_LOG10) = "log10"
+  FunctionNames(FUNC_SQRT) = "sqrt"
+  FunctionNames(FUNC_SQR) = "sqr"
+  FunctionNames(FUNC_INT) = "int"
+  FunctionNames(FUNC_FRAC) = "frac"
+  FunctionNames(FUNC_FRACT) = "fract"
+  FunctionNames(FUNC_ABS) = "abs"
+  FunctionNames(FUNC_FLOOR) = "floor"
+  FunctionNames(FUNC_CEIL) = "ceil"
+  FunctionNames(FUNC_TRUNC) = "trunc"
+  FunctionNames(FUNC_ROUND) = "round"
+  FunctionNames(FUNC_SIGN) = "sign"
+  FunctionNames(FUNC_DEG) = "deg"
+  FunctionNames(FUNC_RAD) = "rad"
+  FunctionNames(FUNC_SUM) = "sum"
+  FunctionNames(FUNC_MEDIAN) = "median"
+  FunctionNames(FUNC_VARIANCE) = "variance"
+  FunctionNames(FUNC_STDDEV) = "stddev"
+  FunctionNames(FUNC_SORT) = "sort"
+  FunctionNames(FUNC_SORTED) = "sorted"
+  FunctionNames(FUNC_REVERSE) = "reverse"
+  FunctionNames(FUNC_REVERSED) = "reversed"
+  FunctionNames(FUNC_UNIQUE) = "unique"
+  FunctionNames(FUNC_FACT) = "fact"
+  FunctionNames(FUNC_FACTORIAL) = "factorial"
+  FunctionNames(FUNC_AVG) = "avg"
+  FunctionNames(FUNC_MEAN) = "mean"
+  FunctionNames(FUNC_MOD) = "mod"
+  FunctionNames(FUNC_CLAMP) = "clamp"
+  FunctionNames(FUNC_HYPOT) = "hypot"
+  FunctionNames(FUNC_GCD) = "gcd"
+  FunctionNames(FUNC_LCM) = "lcm"
+  FunctionNames(FUNC_PRODUCT) = "product"
+  FunctionNames(FUNC_PROD) = "prod"
+  FunctionNames(FUNC_MIN) = "min"
+  FunctionNames(FUNC_MAX) = "max"
+  FunctionNamesInitialized = TRUE
+end sub
+
+private sub EnsureOperatorNames()
+  if OperatorNamesInitialized then exit sub
+  OperatorNames(OP_NOT) = "not"
+  OperatorNames(OP_AND) = "and"
+  OperatorNames(OP_OR) = "or"
+  OperatorNames(OP_MOD) = "mod"
+  OperatorNamesInitialized = TRUE
+end sub
+
+private function GetFunctionName(byval id as BuiltinFunctionId) as String
+  EnsureFunctionNames()
+  return FunctionNames(id)
+end function
+
+private function OpName(byval id as OperatorNameId) as String
+  EnsureOperatorNames()
+  return OperatorNames(id)
+end function
+
+private function IsFn(byref nameText as String, byval id as BuiltinFunctionId) as Boolean
+  return lcase(nameText) = GetFunctionName(id)
+end function
+
+private function IsOpKeyword(byref nameText as String, byval id as OperatorNameId) as Boolean
+  return lcase(nameText) = OpName(id)
+end function
+
 private function IsUnaryBuiltin(byref fn as String) as Boolean
-  select case lcase(fn)
-    case "sin", "cos", "tan", "asin", "arcsin", "acos", "arccos", "atan", "arctan", _
-         "sinh", "cosh", "tanh", "exp", "ln", "log10", "sqrt", "sqr", "int", "frac", "fract", "abs", _
-         "floor", "ceil", "trunc", "round", "sign", "deg", "rad"
-      return TRUE
-  end select
-  return FALSE
+  return IsFn(fn, FUNC_SIN) orelse IsFn(fn, FUNC_COS) orelse IsFn(fn, FUNC_TAN) orelse _
+         IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) orelse IsFn(fn, FUNC_ACOS) orelse _
+         IsFn(fn, FUNC_ARCCOS) orelse IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) orelse _
+         IsFn(fn, FUNC_SINH) orelse IsFn(fn, FUNC_COSH) orelse IsFn(fn, FUNC_TANH) orelse _
+         IsFn(fn, FUNC_EXP) orelse IsFn(fn, FUNC_LN) orelse IsFn(fn, FUNC_LOG10) orelse _
+         IsFn(fn, FUNC_SQRT) orelse IsFn(fn, FUNC_SQR) orelse IsFn(fn, FUNC_INT) orelse _
+         IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) orelse IsFn(fn, FUNC_ABS) orelse _
+         IsFn(fn, FUNC_FLOOR) orelse IsFn(fn, FUNC_CEIL) orelse IsFn(fn, FUNC_TRUNC) orelse _
+         IsFn(fn, FUNC_ROUND) orelse IsFn(fn, FUNC_SIGN) orelse IsFn(fn, FUNC_DEG) orelse _
+         IsFn(fn, FUNC_RAD)
 end function
 
 private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as String) as Boolean
-  select case lcase(fn)
-    case "rand"
-      hint = "rand()"
-      return TRUE
-    case "random"
-      hint = "random(min, max)"
-      return TRUE
-    case "bin"
-      hint = "bin(...)"
-      return TRUE
-    case "hex"
-      hint = "hex(...)"
-      return TRUE
-    case "oct"
-      hint = "oct(...)"
-      return TRUE
-    case "pow"
-      hint = "pow(value, power)"
-      return TRUE
-    case "atan2"
-      hint = "atan2(y, x)"
-      return TRUE
-    case "sin"
-      hint = "sin(angle)"
-      return TRUE
-    case "cos"
-      hint = "cos(angle)"
-      return TRUE
-    case "tan"
-      hint = "tan(angle)"
-      return TRUE
-    case "asin", "arcsin"
-      hint = "asin(value)"
-      return TRUE
-    case "acos", "arccos"
-      hint = "acos(value)"
-      return TRUE
-    case "atan", "arctan"
-      hint = "atan(value)"
-      return TRUE
-    case "sinh"
-      hint = "sinh(value)"
-      return TRUE
-    case "cosh"
-      hint = "cosh(value)"
-      return TRUE
-    case "tanh"
-      hint = "tanh(value)"
-      return TRUE
-    case "exp"
-      hint = "exp(value)"
-      return TRUE
-    case "log"
-      hint = "log(value, base)"
-      return TRUE
-    case "ln"
-      hint = "ln(value)"
-      return TRUE
-    case "log10"
-      hint = "log10(value)"
-      return TRUE
-    case "sqrt"
-      hint = "sqrt(value)"
-      return TRUE
-    case "sqr"
-      hint = "sqr(value)"
-      return TRUE
-    case "int"
-      hint = "int(value)"
-      return TRUE
-    case "frac", "fract"
-      hint = "frac(value)"
-      return TRUE
-    case "abs"
-      hint = "abs(value)"
-      return TRUE
-    case "floor"
-      hint = "floor(value)"
-      return TRUE
-    case "ceil"
-      hint = "ceil(value)"
-      return TRUE
-    case "trunc"
-      hint = "trunc(value)"
-      return TRUE
-    case "round"
-      hint = "round(value)"
-      return TRUE
-    case "sign"
-      hint = "sign(value)"
-      return TRUE
-    case "deg"
-      hint = "deg(...)"
-      return TRUE
-    case "rad"
-      hint = "rad(...)"
-      return TRUE
-    case "sum"
-      hint = "sum(...)"
-      return TRUE
-    case "median"
-      hint = "median(...)"
-      return TRUE
-    case "variance"
-      hint = "variance(...)"
-      return TRUE
-    case "stddev"
-      hint = "stddev(...)"
-      return TRUE
-    case "sort", "sorted"
-      hint = "sort(...)"
-      return TRUE
-    case "reverse", "reversed"
-      hint = "reverse(...)"
-      return TRUE
-    case "unique"
-      hint = "unique(...)"
-      return TRUE
-    case "fact", "factorial"
-      hint = "fact(n)"
-      return TRUE
-    case "avg"
-      hint = "avg(...)"
-      return TRUE
-    case "mean"
-      hint = "mean(...)"
-      return TRUE
-    case "mod"
-      hint = "mod(value, divisor)"
-      return TRUE
-    case "clamp"
-      hint = "clamp(value, min, max)"
-      return TRUE
-    case "hypot"
-      hint = "hypot(x, y)"
-      return TRUE
-    case "gcd"
-      hint = "gcd(a, b)"
-      return TRUE
-    case "lcm"
-      hint = "lcm(a, b)"
-      return TRUE
-    case "product", "prod"
-      hint = "product(...)"
-      return TRUE
-    case "min"
-      hint = "min(...)"
-      return TRUE
-    case "max"
-      hint = "max(...)"
-      return TRUE
-  end select
+  if IsFn(fn, FUNC_RAND) then
+    hint = GetFunctionName(FUNC_RAND) & "()"
+  elseif IsFn(fn, FUNC_RANDOM) then
+    hint = GetFunctionName(FUNC_RANDOM) & "(min, max)"
+  elseif IsFn(fn, FUNC_BIN) orelse IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) then
+    hint = lcase(fn) & "(...)"
+  elseif IsFn(fn, FUNC_POW) then
+    hint = GetFunctionName(FUNC_POW) & "(value, power)"
+  elseif IsFn(fn, FUNC_ATAN2) then
+    hint = GetFunctionName(FUNC_ATAN2) & "(y, x)"
+  elseif IsFn(fn, FUNC_SIN) orelse IsFn(fn, FUNC_COS) orelse IsFn(fn, FUNC_TAN) then
+    hint = lcase(fn) & "(angle)"
+  elseif IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) then
+    hint = GetFunctionName(FUNC_ASIN) & "(value)"
+  elseif IsFn(fn, FUNC_ACOS) orelse IsFn(fn, FUNC_ARCCOS) then
+    hint = GetFunctionName(FUNC_ACOS) & "(value)"
+  elseif IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) then
+    hint = GetFunctionName(FUNC_ATAN) & "(value)"
+  elseif IsFn(fn, FUNC_SINH) orelse IsFn(fn, FUNC_COSH) orelse IsFn(fn, FUNC_TANH) orelse _
+         IsFn(fn, FUNC_EXP) orelse IsFn(fn, FUNC_LN) orelse IsFn(fn, FUNC_LOG10) orelse _
+         IsFn(fn, FUNC_SQRT) orelse IsFn(fn, FUNC_SQR) orelse IsFn(fn, FUNC_INT) orelse _
+         IsFn(fn, FUNC_ABS) orelse IsFn(fn, FUNC_FLOOR) orelse IsFn(fn, FUNC_CEIL) orelse _
+         IsFn(fn, FUNC_TRUNC) orelse IsFn(fn, FUNC_ROUND) orelse IsFn(fn, FUNC_SIGN) then
+    hint = lcase(fn) & "(value)"
+  elseif IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) then
+    hint = GetFunctionName(FUNC_FRAC) & "(value)"
+  elseif IsFn(fn, FUNC_LOG) then
+    hint = GetFunctionName(FUNC_LOG) & "(value, base)"
+  elseif IsFn(fn, FUNC_DEG) orelse IsFn(fn, FUNC_RAD) orelse IsFn(fn, FUNC_SUM) orelse _
+         IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) orelse _
+         IsFn(fn, FUNC_UNIQUE) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse _
+         IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) then
+    hint = lcase(fn) & "(...)"
+  elseif IsFn(fn, FUNC_SORT) orelse IsFn(fn, FUNC_SORTED) then
+    hint = GetFunctionName(FUNC_SORT) & "(...)"
+  elseif IsFn(fn, FUNC_REVERSE) orelse IsFn(fn, FUNC_REVERSED) then
+    hint = GetFunctionName(FUNC_REVERSE) & "(...)"
+  elseif IsFn(fn, FUNC_FACT) orelse IsFn(fn, FUNC_FACTORIAL) then
+    hint = GetFunctionName(FUNC_FACT) & "(n)"
+  elseif IsFn(fn, FUNC_MOD) then
+    hint = GetFunctionName(FUNC_MOD) & "(value, divisor)"
+  elseif IsFn(fn, FUNC_CLAMP) then
+    hint = GetFunctionName(FUNC_CLAMP) & "(value, min, max)"
+  elseif IsFn(fn, FUNC_HYPOT) then
+    hint = GetFunctionName(FUNC_HYPOT) & "(x, y)"
+  elseif IsFn(fn, FUNC_GCD) orelse IsFn(fn, FUNC_LCM) then
+    hint = lcase(fn) & "(a, b)"
+  else
+    return FALSE
+  end if
+  return TRUE
+end function
+
+private function IsReservedOperatorKeyword(byref nameText as String) as Boolean
+  return IsOpKeyword(nameText, OP_NOT) orelse IsOpKeyword(nameText, OP_AND) orelse IsOpKeyword(nameText, OP_OR)
+end function
+
+private function IsBuiltinFunctionName(byref nameText as String) as Boolean
+  EnsureFunctionNames()
+  dim lowName as String = lcase(nameText)
+  dim i as Integer
+  for i = lbound(FunctionNames) to ubound(FunctionNames)
+    if lowName = FunctionNames(i) then return TRUE
+  next i
+  return FALSE
+end function
+
+private function IsReservedUserFunctionName(byref nameText as String) as Boolean
+  if IsBuiltinFunctionName(nameText) then return TRUE
+  if IsReservedOperatorKeyword(nameText) then return TRUE
   return FALSE
 end function
 
@@ -935,56 +1021,67 @@ end function
 private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, byref outV as EvalValue) as Boolean
   dim i as Integer
   if v.kind = VK_SCALAR then
-    select case lcase(fn)
-      case "sin":   ValueSetScalar(outV, sin(v.scalar))
-      case "cos":   ValueSetScalar(outV, cos(v.scalar))
-      case "tan":   ValueSetScalar(outV, tan(v.scalar))
-      case "asin", "arcsin": ValueSetScalar(outV, asin(v.scalar))
-      case "acos", "arccos": ValueSetScalar(outV, acos(v.scalar))
-      case "atan", "arctan": ValueSetScalar(outV, atn(v.scalar))
-      case "sinh":  ValueSetScalar(outV, sinh(v.scalar))
-      case "cosh":  ValueSetScalar(outV, cosh(v.scalar))
-      case "tanh":  ValueSetScalar(outV, tanh(v.scalar))
-      case "exp":   ValueSetScalar(outV, exp(v.scalar))
-      case "ln"
-        ValueSetScalar(outV, log(v.scalar))
-      case "log10"
-        ValueSetScalar(outV, log(v.scalar) / log(10.0))
-      case "sqrt"
-        ValueSetScalar(outV, sqr(v.scalar))
-      case "sqr"
-        ValueSetScalar(outV, v.scalar * v.scalar)
-      case "int"
-        ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
-      case "frac", "fract"
-        ValueSetScalar(outV, v.scalar - Fix(v.scalar))
-      case "abs":   ValueSetScalar(outV, abs(v.scalar))
-      case "floor"
-        ValueSetInt64(outV, CLngInt(Int(v.scalar)))
-      case "ceil"
-        ValueSetInt64(outV, CLngInt(-Int(-v.scalar)))
-      case "trunc"
-        ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
-      case "round"
-        if v.scalar >= 0 then
-          ValueSetInt64(outV, CLngInt(Int(v.scalar + 0.5)))
-        else
-          ValueSetInt64(outV, CLngInt(-Int(-v.scalar + 0.5)))
-        end if
-      case "sign"
-        if v.scalar > 0 then
-          ValueSetInt64(outV, 1)
-        elseif v.scalar < 0 then
-          ValueSetInt64(outV, -1)
-        else
-          ValueSetInt64(outV, 0)
-        end if
-      case "deg"
-        ValueSetScalar(outV, v.scalar * 180.0 / (4.0 * atn(1.0)))
-      case "rad"
-        ValueSetScalar(outV, v.scalar * (4.0 * atn(1.0)) / 180.0)
-      case else:    return FALSE
-    end select
+    if IsFn(fn, FUNC_SIN) then
+      ValueSetScalar(outV, sin(v.scalar))
+    elseif IsFn(fn, FUNC_COS) then
+      ValueSetScalar(outV, cos(v.scalar))
+    elseif IsFn(fn, FUNC_TAN) then
+      ValueSetScalar(outV, tan(v.scalar))
+    elseif IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) then
+      ValueSetScalar(outV, asin(v.scalar))
+    elseif IsFn(fn, FUNC_ACOS) orelse IsFn(fn, FUNC_ARCCOS) then
+      ValueSetScalar(outV, acos(v.scalar))
+    elseif IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) then
+      ValueSetScalar(outV, atn(v.scalar))
+    elseif IsFn(fn, FUNC_SINH) then
+      ValueSetScalar(outV, sinh(v.scalar))
+    elseif IsFn(fn, FUNC_COSH) then
+      ValueSetScalar(outV, cosh(v.scalar))
+    elseif IsFn(fn, FUNC_TANH) then
+      ValueSetScalar(outV, tanh(v.scalar))
+    elseif IsFn(fn, FUNC_EXP) then
+      ValueSetScalar(outV, exp(v.scalar))
+    elseif IsFn(fn, FUNC_LN) then
+      ValueSetScalar(outV, log(v.scalar))
+    elseif IsFn(fn, FUNC_LOG10) then
+      ValueSetScalar(outV, log(v.scalar) / log(10.0))
+    elseif IsFn(fn, FUNC_SQRT) then
+      ValueSetScalar(outV, sqr(v.scalar))
+    elseif IsFn(fn, FUNC_SQR) then
+      ValueSetScalar(outV, v.scalar * v.scalar)
+    elseif IsFn(fn, FUNC_INT) then
+      ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
+    elseif IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) then
+      ValueSetScalar(outV, v.scalar - Fix(v.scalar))
+    elseif IsFn(fn, FUNC_ABS) then
+      ValueSetScalar(outV, abs(v.scalar))
+    elseif IsFn(fn, FUNC_FLOOR) then
+      ValueSetInt64(outV, CLngInt(Int(v.scalar)))
+    elseif IsFn(fn, FUNC_CEIL) then
+      ValueSetInt64(outV, CLngInt(-Int(-v.scalar)))
+    elseif IsFn(fn, FUNC_TRUNC) then
+      ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
+    elseif IsFn(fn, FUNC_ROUND) then
+      if v.scalar >= 0 then
+        ValueSetInt64(outV, CLngInt(Int(v.scalar + 0.5)))
+      else
+        ValueSetInt64(outV, CLngInt(-Int(-v.scalar + 0.5)))
+      end if
+    elseif IsFn(fn, FUNC_SIGN) then
+      if v.scalar > 0 then
+        ValueSetInt64(outV, 1)
+      elseif v.scalar < 0 then
+        ValueSetInt64(outV, -1)
+      else
+        ValueSetInt64(outV, 0)
+      end if
+    elseif IsFn(fn, FUNC_DEG) then
+      ValueSetScalar(outV, v.scalar * 180.0 / (4.0 * atn(1.0)))
+    elseif IsFn(fn, FUNC_RAD) then
+      ValueSetScalar(outV, v.scalar * (4.0 * atn(1.0)) / 180.0)
+    else
+      return FALSE
+    end if
     return TRUE
   end if
 
@@ -1080,12 +1177,12 @@ end function
 private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
   dim i as Integer
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
-    dim requiresIntegers as Boolean = (op = "<<" orelse op = ">>" orelse op = "&" orelse op = "^" orelse op = "|" orelse op = "mod")
+    dim requiresIntegers as Boolean = (op = "<<" orelse op = ">>" orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
     dim l as LongInt, r as LongInt
 
     if requiresIntegers then
       if (TryGetExactInt64(leftV, l) = FALSE) orelse (TryGetExactInt64(rightV, r) = FALSE) then
-        if op = "mod" then
+        if op = OpName(OP_MOD) then
           SetParseError("modulo operands must be integer values")
         else
           SetParseError("bitwise operands must be integer values")
@@ -1107,7 +1204,7 @@ private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as
         ValueSetInt64(outV, l xor r)
       case "|"
         ValueSetInt64(outV, l or r)
-      case "mod"
+      case OpName(OP_MOD)
         if r = 0 then return FALSE
         ValueSetInt64(outV, l mod r)
       case else
@@ -1391,35 +1488,35 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim flat() as Double
   dim c as Integer = 0
 
-  if fn = "sum" orelse fn = "product" orelse fn = "prod" orelse fn = "min" orelse fn = "max" _
-     orelse fn = "avg" orelse fn = "mean" orelse fn = "median" orelse fn = "variance" orelse fn = "stddev" then
+  if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) _
+     orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     c = CollectArgsAsFlat(args(), flat())
     if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     dim acc as Double = flat(0)
     dim i as Integer
-    if fn = "sum" then
+    if IsFn(fn, FUNC_SUM) then
       acc = 0
       for i = 0 to c - 1: acc += flat(i): next i
-    elseif fn = "product" orelse fn = "prod" then
+    elseif IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) then
       acc = 1
       for i = 0 to c - 1: acc *= flat(i): next i
-    elseif fn = "min" then
+    elseif IsFn(fn, FUNC_MIN) then
       for i = 1 to c - 1
         if flat(i) < acc then acc = flat(i)
       next i
-    elseif fn = "avg" orelse fn = "mean" then
+    elseif IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then
       acc = 0
       for i = 0 to c - 1: acc += flat(i): next i
       acc /= c
-    elseif fn = "median" then
+    elseif IsFn(fn, FUNC_MEDIAN) then
       SortDoubleArray(flat())
       if (c and 1) = 1 then
         acc = flat(c \ 2)
       else
         acc = (flat((c \ 2) - 1) + flat(c \ 2)) / 2
       end if
-    elseif fn = "variance" orelse fn = "stddev" then
+    elseif IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
       dim meanVal as Double = 0
       for i = 0 to c - 1: meanVal += flat(i): next i
       meanVal /= c
@@ -1429,7 +1526,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         acc += d * d
       next i
       acc /= c
-      if fn = "stddev" then acc = sqr(acc)
+      if IsFn(fn, FUNC_STDDEV) then acc = sqr(acc)
     else
       for i = 1 to c - 1
         if flat(i) > acc then acc = flat(i)
@@ -1439,7 +1536,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "sort" orelse fn = "sorted" then
+  if IsFn(fn, FUNC_SORT) orelse IsFn(fn, FUNC_SORTED) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     c = CollectArgsAsFlat(args(), flat())
     if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
@@ -1448,7 +1545,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "reverse" orelse fn = "reversed" then
+  if IsFn(fn, FUNC_REVERSE) orelse IsFn(fn, FUNC_REVERSED) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     c = CollectArgsAsFlat(args(), flat())
     if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
@@ -1462,7 +1559,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "unique" then
+  if IsFn(fn, FUNC_UNIQUE) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
     c = CollectArgsAsFlat(args(), flat())
     if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
@@ -1491,7 +1588,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "log" then
+  if IsFn(fn, FUNC_LOG) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
@@ -1501,7 +1598,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "atan2" then
+  if IsFn(fn, FUNC_ATAN2) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
@@ -1515,7 +1612,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "hypot" then
+  if IsFn(fn, FUNC_HYPOT) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
@@ -1525,22 +1622,22 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if ValueApplyBinary(args(0), args(0), 42, a2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
     if ValueApplyBinary(args(1), args(1), 42, b2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
     if ValueApplyBinary(a2, b2, 43, s2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
-    if ApplyUnaryFunction("sqrt", s2, outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ApplyUnaryFunction(GetFunctionName(FUNC_SQRT), s2, outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
     return outV
   end if
 
-  if fn = "mod" then
+  if IsFn(fn, FUNC_MOD) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
       return outV
     end if
-    dim opMod as String = "mod"
+    dim opMod as String = OpName(OP_MOD)
     if ValueApplyBinaryInt64(args(0), args(1), opMod, outV) = FALSE andalso parseError = 0 then SetParseError("numeric error in " & fnName & "()")
     return outV
   end if
 
-  if fn = "fact" orelse fn = "factorial" then
+  if IsFn(fn, FUNC_FACT) orelse IsFn(fn, FUNC_FACTORIAL) then
     if ubound(args) <> 0 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 1 argument(s), " & ltrim(str(argc)) & " given")
@@ -1552,7 +1649,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "rand" then
+  if IsFn(fn, FUNC_RAND) then
     if ubound(args) <> -1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 0 argument(s), " & ltrim(str(argc)) & " given")
@@ -1562,7 +1659,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "random" then
+  if IsFn(fn, FUNC_RANDOM) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
@@ -1576,7 +1673,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "clamp" then
+  if IsFn(fn, FUNC_CLAMP) then
     if ubound(args) <> 2 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 3 argument(s), " & ltrim(str(argc)) & " given")
@@ -1586,19 +1683,19 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "gcd" orelse fn = "lcm" then
+  if IsFn(fn, FUNC_GCD) orelse IsFn(fn, FUNC_LCM) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
       return outV
     end if
-    if ApplyGcdLcm(args(0), args(1), (fn = "lcm"), outV) = FALSE then
+    if ApplyGcdLcm(args(0), args(1), IsFn(fn, FUNC_LCM), outV) = FALSE then
       SetParseError(fnName & "() expects integer values")
     end if
     return outV
   end if
 
-  if fn = "hex" orelse fn = "oct" orelse fn = "bin" then
+  if IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) orelse IsFn(fn, FUNC_BIN) then
     if ubound(args) = -1 then
       SetParseError(fnName & "() expects at least 1 argument")
       return outV
@@ -1613,7 +1710,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       end if
       ValueSetArray(outV, flat())
     end if
-    dim fmtBase as Integer = IIf(fn = "hex", 16, IIf(fn = "oct", 8, 2))
+    dim fmtBase as Integer = IIf(IsFn(fn, FUNC_HEX), 16, IIf(IsFn(fn, FUNC_OCT), 8, 2))
     if outV.kind = VK_SCALAR then
       if outV.exactUInt64Valid = FALSE then
         dim fmtText as String
@@ -1651,7 +1748,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "pow" then
+  if IsFn(fn, FUNC_POW) then
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
@@ -1661,7 +1758,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if fn = "deg" orelse fn = "rad" then
+  if IsFn(fn, FUNC_DEG) orelse IsFn(fn, FUNC_RAD) then
     if ubound(args) = -1 then
       SetParseError(fnName & "() expects at least 1 argument")
       return outV
@@ -1887,7 +1984,7 @@ private function ParseFactor() as EvalValue
       if TryGetConstant(nam, n) = FALSE then
         if GetVariable(nam, n) = FALSE then
           dim lowNam as String = lcase(nam)
-          if (lowNam = "and") orelse (lowNam = "or") then
+          if IsOpKeyword(lowNam, OP_AND) orelse IsOpKeyword(lowNam, OP_OR) then
             SetParseError("unexpected token")
             return n
           end if
@@ -2021,7 +2118,7 @@ private function ParseUnary() as EvalValue
     if parseError then return v
     ValueSetBoolResult(not EvalValueIsTruthy(v), v)
     return v
-  elseif MatchKeywordOperator("not") then
+  elseif MatchKeywordOperator(OpName(OP_NOT)) then
     dim v as EvalValue = ParseLogicalNot()
     if parseError then return v
     ValueSetBoolResult(not EvalValueIsTruthy(v), v)
@@ -2077,7 +2174,7 @@ private function ParseMultiplicative() as EvalValue
       pStream += 1
     elseif pStream[0] = 37 then
       useInt64 = TRUE
-      intOp = "mod"
+      intOp = OpName(OP_MOD)
       pStream += 1
     elseif IsImplicitMulStart() then
       op = 42
@@ -2244,7 +2341,7 @@ end function
 
 private function ParseLogicalNot() as EvalValue
   SkipSpaces()
-  if MatchKeywordOperator("not") then
+  if MatchKeywordOperator(OpName(OP_NOT)) then
     SkipSpaces()
     dim rhs as EvalValue = ParseLogicalNot()
     ValueSetBoolResult(not EvalValueIsTruthy(rhs), rhs)
@@ -2262,7 +2359,7 @@ private function ParseLogicalAnd() as EvalValue
     if pStream[0] = 38 andalso pStream[1] = 38 then
       pStream += 2
       hasOp = TRUE
-    elseif MatchKeywordOperator("and") then
+    elseif MatchKeywordOperator(OpName(OP_AND)) then
       hasOp = TRUE
     end if
     if hasOp = FALSE then exit while
@@ -2283,7 +2380,7 @@ private function ParseLogicalOr() as EvalValue
     if pStream[0] = 124 andalso pStream[1] = 124 then
       pStream += 2
       hasOp = TRUE
-    elseif MatchKeywordOperator("or") then
+    elseif MatchKeywordOperator(OpName(OP_OR)) then
       hasOp = TRUE
     end if
     if hasOp = FALSE then exit while
@@ -2497,6 +2594,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         if pStream[0] = 61 then
           pStream += 1
           SkipSpaces()
+          if IsReservedUserFunctionName(varName) then
+            SetParseError("reserved function name: " & varName)
+            evalDepth -= 1
+            return FALSE
+          end if
           if ubound(fnParams) >= lbound(fnParams) then
             for iParam as Integer = lbound(fnParams) to ubound(fnParams)
               for jParam as Integer = iParam + 1 to ubound(fnParams)

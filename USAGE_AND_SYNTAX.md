@@ -348,6 +348,8 @@ array math:
 Rules:
 - Duplicate parameter names are not allowed in definitions.
 - Function definitions are stored and reused in subsequent expressions.
+- User-defined function names cannot match built-in function names.
+- User-defined function names cannot match built-in operator keywords (`not`, `and`, `or`).
 
 ### 6.3 Statement Separator
 - Top-level semicolon separates statements:

@@ -67,7 +67,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 353) as SmokeCase
+  dim tests(1 to 356) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -447,6 +447,9 @@ sub Main()
   tests(351).expr = "oct(80)":          tests(351).expected = "0o120" ' [ok-func]
   tests(352).expr = "oct(0)":           tests(352).expected = "0o0" ' [edge]
   tests(353).expr = "oct(-1)":          tests(353).expected = "-0o1" ' [edge]
+  tests(354).expr = "sin(x)=x":         tests(354).expectedErrContains = "reserved function name" ' [syntax]
+  tests(355).expr = "oct(x)=x":         tests(355).expectedErrContains = "reserved function name" ' [syntax]
+  tests(356).expr = "not(x)=x":         tests(356).expectedErrContains = "reserved function name" ' [syntax]
 
   g_total = ubound(tests) - lbound(tests) + 1
 

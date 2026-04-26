@@ -58,6 +58,12 @@ Follow all steps in order.
   - return shape semantics.
 - If variadic, validate minimum argument count and process extra args deterministically.
 - Reuse existing helpers when possible; avoid introducing redundant utility code.
+- Maintain exactly one canonical `FunctionNames` array and one canonical `OperatorNames` array in parser code.
+- Add the new built-in/operator name only in these canonical arrays with a named index (e.g. `FUNC_*`, `OP_*`).
+- Wherever parser logic needs built-in/operator names (dispatch, hints, keyword matching, reserved-name checks), reference `FunctionNames[FUNC_*]` / `OperatorNames[OP_*]` (or helper wrappers over them), never hardcoded string literals.
+- Update reserved-name guards so user-defined functions cannot use:
+  - the new built-in function name (via `FunctionNames`),
+  - any newly introduced operator keyword names (via `OperatorNames`).
 
 ### 2) Add Signature Hint In `TryGetBuiltinSignatureHint`
 
@@ -129,6 +135,8 @@ Before finishing, verify:
 - Updated smoke tests were built and executed via `RunSmokeTests.bat`.
 - Signature hint and docs match real behavior exactly.
 - Tests cover success + failure paths relevant to the function contract.
+- User-defined function names are explicitly blocked from colliding with built-in function names and operator keywords (including the newly added names).
+- There is still one and only one canonical `FunctionNames` array and one and only one canonical `OperatorNames` array; new names were integrated by named index and reused everywhere relevant.
 - `USAGE_AND_SYNTAX.md` changes match neighboring sections in style and reasoning flow.
 - No unrelated behavior was changed.
 
