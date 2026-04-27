@@ -61,11 +61,13 @@ Base-prefixed integer forms:
 - Use element-wise math:
   - `(1,2,3)*10` -> `(10,20,30)`
   - `(1,2,3)+(10,20,30)` -> `(11, 22, 33)`
+  - `2**(3,5,6)` -> `(8, 32, 64)`
 - Index arrays with `[index]`:
   - `(10,20,30)[0]` -> `10` (first element)
   - `(10,20,30)[-1]` -> `30` (last element)
 - Pass array to functions:
   - `sqrt((9,25,36))` -> `(3, 5, 6)`
+  - `pow((3,2), 4)` -> `(81, 16)`
   - `sin((pi/4,pi/2))` -> `(0.707107, 1)`
 - Use array utilities:
   - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
@@ -78,7 +80,7 @@ Base-prefixed integer forms:
   - function names (for example `hex`, `random`, `sin`)
   - built-in constants (`pi`, `e`)
 - Reuse values:
-  - `a*3`
+  - `a*3` -> `30`
 - `ans` is the last successful result:
   - `2+3; ans*10` -> `50`
 - Assign and use arrays:
@@ -99,7 +101,7 @@ Base-prefixed integer forms:
   - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
 - Trailing formatter sugar after `;` is supported:
   - `0xAA; hex` -> `0xAA` (same as `0xAA; hex(ans)`)
-  - `(8,9); bin()` -> `(0b1000,0b1001)` (same as `(8,9); bin(ans)`)
+  - `(8,9,10); oct()` -> `(0o10, 0o11, 0o12)` (same as `(8,9,10); oct(ans)`)
 
 ### User-Defined Functions
 
@@ -122,7 +124,7 @@ Base-prefixed integer forms:
 - Useful for keeping notes next to expressions.
 
 Examples:
-- `2+3 # simple check` -> `5`
+- `2+3 # comment` -> `5`
 - `hex(255) // display as hex` -> `0xFF`
 
 ## Core Language Rules
@@ -141,19 +143,19 @@ Examples:
 
 ### Precedence (High -> Low)
 
-1. `**`          (power)
+1. `**` (power)
 2. unary `+`, `-`, `~`, `!`
-3. postfix `%`   (percentage form `x%`)
+3. postfix `%` (percentage form `x%`)
 4. `*`, `/`, `%` (modulo `x % y`)
 5. `+`, `-`
-6. `<<`, `>>`    (bitwise shift)
-7. `&`           (bitwise and)
-8. `^`           (bitwise xor)
-9. `|`           (bitwise or)
+6. `<<`, `>>` (bitwise shift)
+7. `&` (bitwise and)
+8. `^` (bitwise xor)
+9. `|` (bitwise or)
 10. `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
-11. `not`        (logical not)
-12. `&&`, `and`  (logical and)
-13. `||`, `or`   (logical or)
+11. `not` (logical not)
+12. `&&`, `and` (logical and)
+13. `||`, `or` (logical or)
 
 Use parentheses to make intent explicit.
 
@@ -486,7 +488,7 @@ ArrayOutputSeparatorChar=;
 
 Rules:
 
-- Each key uses one character (extra characters are ignored).
+- Each of these keys uses one character (extra characters are ignored).
 - Missing/empty key falls back to defaults:
   - `DecimalSeparatorChar=.`
   - `ThousandsSeparatorChar='`
