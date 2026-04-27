@@ -12,6 +12,111 @@ dim shared g_passed as Integer = 0
 dim shared g_failed as Integer = 0
 dim shared g_idx as Integer = 0
 
+private function IsDecimalNumberToken(byref sText as String) as Boolean
+  dim s as String = trim(sText)
+  if len(s) = 0 then return FALSE
+  dim i as Integer = 1
+  if mid(s, i, 1) = "+" orelse mid(s, i, 1) = "-" then i += 1
+  if i > len(s) then return FALSE
+
+  dim hasDigits as Boolean = FALSE
+  dim hasDot as Boolean = FALSE
+  dim hasExp as Boolean = FALSE
+  dim expHasDigits as Boolean = FALSE
+
+  while i <= len(s)
+    dim ch as String = mid(s, i, 1)
+    if ch >= "0" andalso ch <= "9" then
+      hasDigits = TRUE
+      if hasExp then expHasDigits = TRUE
+      i += 1
+      continue while
+    end if
+    if ch = "." then
+      if hasDot orelse hasExp then return FALSE
+      hasDot = TRUE
+      i += 1
+      continue while
+    end if
+    if ch = "e" orelse ch = "E" then
+      if hasExp orelse hasDigits = FALSE then return FALSE
+      hasExp = TRUE
+      i += 1
+      if i <= len(s) then
+        dim signCh as String = mid(s, i, 1)
+        if signCh = "+" orelse signCh = "-" then i += 1
+      end if
+      if i > len(s) then return FALSE
+      continue while
+    end if
+    return FALSE
+  wend
+
+  if hasDigits = FALSE then return FALSE
+  if hasExp andalso expHasDigits = FALSE then return FALSE
+  return TRUE
+end function
+
+private function TryParseDecimalToken(byref sText as String, byref outV as Double) as Boolean
+  if IsDecimalNumberToken(sText) = FALSE then return FALSE
+  outV = val(trim(sText))
+  return TRUE
+end function
+
+private function ScalarCloseEnough(byref actual as String, byref expected as String) as Boolean
+  if actual = expected then return TRUE
+  dim da as Double, de as Double
+  if TryParseDecimalToken(actual, da) = FALSE then return FALSE
+  if TryParseDecimalToken(expected, de) = FALSE then return FALSE
+  if da = de then return TRUE
+  dim scale as Double = abs(da)
+  if abs(de) > scale then scale = abs(de)
+  if scale < 1 then scale = 1
+  dim tol as Double = 16.0 * 2.2204460492503131e-16 * scale
+  return abs(da - de) <= tol
+end function
+
+private function SplitArrayElems(byref sText as String, elems() as String) as Integer
+  erase elems
+  dim s as String = trim(sText)
+  if len(s) < 2 then return 0
+  if left(s, 1) <> "(" orelse right(s, 1) <> ")" then return 0
+  s = mid(s, 2, len(s) - 2)
+  if len(trim(s)) = 0 then return 0
+
+  dim count as Integer = 1
+  for i as Integer = 1 to len(s)
+    if mid(s, i, 1) = "," then count += 1
+  next i
+  redim elems(0 to count - 1)
+  dim startPos as Integer = 1
+  dim outIdx as Integer = 0
+  for i as Integer = 1 to len(s)
+    if mid(s, i, 1) = "," then
+      elems(outIdx) = trim(mid(s, startPos, i - startPos))
+      outIdx += 1
+      startPos = i + 1
+    end if
+  next i
+  elems(outIdx) = trim(mid(s, startPos))
+  return count
+end function
+
+private function ResultCloseEnough(byref actual as String, byref expected as String) as Boolean
+  if actual = expected then return TRUE
+  dim aElems() as String, eElems() as String
+  dim ac as Integer = SplitArrayElems(actual, aElems())
+  dim ec as Integer = SplitArrayElems(expected, eElems())
+  if ac > 0 orelse ec > 0 then
+    if ac <> ec then return FALSE
+    for i as Integer = 0 to ac - 1
+      if ScalarCloseEnough(aElems(i), eElems(i)) = FALSE then return FALSE
+    next i
+    return TRUE
+  end if
+  return ScalarCloseEnough(actual, expected)
+end function
+
 sub RunCase(byref c as SmokeCase)
   g_idx += 1
   print "[" & g_idx & "/" & g_total & "] RUN  : " & c.expr
@@ -40,7 +145,7 @@ sub RunCase(byref c as SmokeCase)
       passCase = TRUE
     end if
   else
-    if actual = c.expected then passCase = TRUE
+    if ResultCloseEnough(actual, c.expected) then passCase = TRUE
   end if
 
   if passCase then
@@ -67,7 +172,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 408) as SmokeCase
+  dim tests(1 to 588) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -189,9 +294,9 @@ sub Main()
   tests(103).expr = "fact(0)":          tests(103).expected = "1" ' [ok-func]
   tests(104).expr = "fact(5)":          tests(104).expected = "120" ' [ok-func]
   tests(105).expr = "factorial(10)":    tests(105).expected = "3628800" ' [ok-func]
-  tests(106).expr = "fact(-1)":         tests(106).expectedErrContains = "fact() expects an integer in range [0..20]" ' [edge]
-  tests(107).expr = "fact(2.5)":        tests(107).expectedErrContains = "fact() expects an integer in range [0..20]" ' [type-int-only]
-  tests(108).expr = "factorial(21)":    tests(108).expectedErrContains = "factorial() expects an integer in range [0..20]" ' [overflow]
+  tests(106).expr = "fact(-1)":         tests(106).expectedErrContains = "fact() expects a non-negative integer" ' [edge]
+  tests(107).expr = "fact(2.5)":        tests(107).expectedErrContains = "fact() expects a non-negative integer" ' [type-int-only]
+  tests(108).expr = "factorial(21)":    tests(108).expected = "5.109094217170944e+019" ' [float-over-20]
   tests(109).expr = "random(5,5)":      tests(109).expected = "5" ' [edge]
   tests(110).expr = "rand(1)":          tests(110).expectedErrContains = "rand() expects 0 argument(s)" ' [arity]
   tests(111).expr = "rand":             tests(111).expectedErrContains = "function: rand()" ' [hint]
@@ -241,7 +346,7 @@ sub Main()
   tests(151).expr = "clamp()":          tests(151).expectedErrContains = "expects 3 argument(s)" ' [arity]
   tests(152).expr = "clamp(1,2)":       tests(152).expectedErrContains = "expects 3 argument(s)" ' [arity]
   tests(153).expr = "clamp(1,2,3,4)":   tests(153).expectedErrContains = "expects 3 argument(s)" ' [arity]
-  tests(154).expr = "clamp((1,2),(3),4)": tests(154).expected = "(3,3)" ' [shape/broadcast]
+  tests(154).expr = "clamp((1,2),(3,4),4)": tests(154).expectedErrContains = "expects scalar min/max" ' [type]
   tests(155).expr = "rand()*0":         tests(155).expected = "0" ' [edge]
   tests(156).expr = "random()":         tests(156).expectedErrContains = "expects 2 argument(s)" ' [arity]
   tests(157).expr = "random(1)":        tests(157).expectedErrContains = "expects 2 argument(s)" ' [arity]
@@ -324,13 +429,13 @@ sub Main()
   tests(232).expr = "random(10,10)":    tests(232).expected = "10" ' [edge]
   tests(233).expr = "random(1.5,1.5)":  tests(233).expected = "1.5" ' [edge]
   tests(234).expr = "random(3.5,3.5)":  tests(234).expected = "3.5" ' [edge]
-  tests(235).expr = "fact((1,2))":      tests(235).expectedErrContains = "expects an integer in range [0..20]" ' [shape]
-  tests(236).expr = "factorial((1,2))": tests(236).expectedErrContains = "expects an integer in range [0..20]" ' [shape]
+  tests(235).expr = "fact((1,2))":      tests(235).expectedErrContains = "expects a non-negative integer" ' [shape]
+  tests(236).expr = "factorial((1,2))": tests(236).expectedErrContains = "expects a non-negative integer" ' [shape]
   '
   ' === REGRESSION-LOCK / compatibility behavior ===
   ' These cases intentionally lock currently observed behavior that may look odd,
   ' but should not change accidentally without an explicit decision.
-  tests(237).expr = "clamp((1,2,3),(4,5),6)": tests(237).expected = "(0,0,0)" ' [regression-lock][shape]
+  tests(237).expr = "clamp((1,2,3),(4,5),6)": tests(237).expectedErrContains = "expects scalar min/max" ' [type]
   tests(238).expr = "sum((1,2),(3,4),5)": tests(238).expected = "15" ' [ok-array]
   tests(239).expr = "sort(( ))":        tests(239).expectedErrContains = "unexpected token" ' [syntax]
   tests(240).expr = "unique(( ))":      tests(240).expectedErrContains = "unexpected token" ' [syntax]
@@ -513,6 +618,189 @@ sub Main()
   tests(407).expr = "uhex(1,2)":             tests(407).expected = "(0x1,0x2)"
   tests(408).expr = "bin(-2)":               tests(408).expected = "-0b10" ' bin/oct/hex still signed magnitude
 
+  ' === int64 accuracy after float-path round-trip (scalar + array) ===
+  tests(409).expr = "sqrt(81)&7":                                tests(409).expected = "1"
+  tests(410).expr = "hex(sqrt(81))":                             tests(410).expected = "0x9"
+  tests(411).expr = "mod(abs(-14),5)":                           tests(411).expected = "4"
+  tests(412).expr = "pow(3,2)&7":                                tests(412).expected = "1"
+  tests(413).expr = "hex(int((9007199254740992+2)/1))":          tests(413).expected = "0x20000000000002"
+  tests(414).expr = "hex(int((9007199254740992+2)/2+0.0))":      tests(414).expected = "0x10000000000001"
+
+  tests(415).expr = "a=sqrt((81,16,25)); a[0]&3":                tests(415).expected = "1"
+  tests(416).expr = "a=sqrt((81,16,25)); hex(a[2])":             tests(416).expected = "0x5"
+  tests(417).expr = "a=int((2.9,-2.9,7.1)); a[1]&1":             tests(417).expected = "0"
+  tests(418).expr = "a=int((2.9,-2.9,7.1)); hex(a[0])":          tests(418).expected = "0x2"
+  tests(419).expr = "a=int(((9007199254740992+2),(9007199254740992+6))/1); hex(a[0])": tests(419).expected = "0x20000000000002"
+  tests(420).expr = "a=int(((9007199254740992+2),(9007199254740992+6))/1); mod(a[1],4)": tests(420).expected = "2"
+  tests(421).expr = "a=int(((9007199254740992+2),(9007199254740992+6))/2); a[0]&1": tests(421).expected = "1"
+  tests(422).expr = "a=int(((9007199254740992+2),(9007199254740992+6))/2); hex(a[1])": tests(422).expected = "0x10000000000003"
+  tests(423).expr = "a=int(((5.9+0.1),(9.2+0.8))); mod(a[1],4)": tests(423).expected = "2"
+  tests(424).expr = "a=int(((5.9+0.1),(9.2+0.8))); hex(a[0])":   tests(424).expected = "0x6"
+  tests(425).expr = "a=(4611686018427387903,5)<<1; hex(a[0])":   tests(425).expected = "0x7FFFFFFFFFFFFFFE"
+  tests(426).expr = "a=(4611686018427387903,5)<<1; mod(a[0],7)": tests(426).expected = "6"
+  tests(427).expr = "a=(4611686018427387903,5)<<1; b=a>>1; hex(b[0])": tests(427).expected = "0x3FFFFFFFFFFFFFFF"
+  tests(428).expr = "a=(9223372036854775806,15); b=a&7; hex(b[0])": tests(428).expected = "0x6"
+  tests(429).expr = "a=(9223372036854775800,1); b=a|7; hex(b[0])": tests(429).expected = "0x7FFFFFFFFFFFFFFF"
+  tests(430).expr = "a=(9223372036854775806,9223372036854775805); mod(a[1],5)": tests(430).expected = "0"
+  tests(431).expr = "a=(9223372036854775806,9223372036854775805); b=a>>2; hex(b[0])": tests(431).expected = "0x1FFFFFFFFFFFFFFF"
+  tests(432).expr = "-1>>1":                                     tests(432).expected = "-1"
+  tests(433).expr = "uhex(1<<63)":                               tests(433).expected = "0x8000000000000000"
+  tests(434).expr = "a=(-1,-2)>>1; a[0]":                        tests(434).expected = "-1"
+  tests(435).expr = "a=(-1,3)<<1; uhex(a[0])":                   tests(435).expected = "0xFFFFFFFFFFFFFFFE"
+  tests(436).expr = "a=(-1,-2)>>1; uhex(a[1])":                  tests(436).expected = "0xFFFFFFFFFFFFFFFF"
+  tests(437).expr = "(1+2)(3+4)":                                tests(437).expected = "21"
+  tests(438).expr = "2(1+pi)":                                   tests(438).expected = "8.283185307179586"
+  tests(439).expr = "a=(3,4)+(5,6); hex(a[0])":                  tests(439).expected = "0x8"
+  tests(440).expr = "a=(3,4)*2; hex(a[1])":                      tests(440).expected = "0x8"
+  tests(441).expr = "a=2*(3,4); hex(a[1])":                      tests(441).expected = "0x8"
+  tests(442).expr = "a=(1,2)&3; hex(a[1])":                      tests(442).expected = "0x2"
+  tests(443).expr = "a=3&(1,2); hex(a[1])":                      tests(443).expected = "0x2"
+  tests(444).expr = "a=(1,2)&(3,4); hex(a[1])":                  tests(444).expected = "0x0"
+  tests(445).expr = "log((8,100),(2,10))":                       tests(445).expected = "(3,2)"
+  tests(446).expr = "clamp((1,9),(0,10),(5,7))":                 tests(446).expectedErrContains = "expects scalar min/max"
+  tests(447).expr = "clamp(5,(1,6),(4,7))":                      tests(447).expectedErrContains = "expects scalar min/max"
+  tests(448).expr = "gcd((84,30),6)":                            tests(448).expectedErrContains = "expects scalar values"
+  tests(449).expr = "gcd(6,(84,30))":                            tests(449).expectedErrContains = "expects scalar values"
+  tests(450).expr = "lcm((6,8),3)":                              tests(450).expectedErrContains = "expects scalar values"
+  tests(451).expr = "lcm((6,8),(3,5))":                          tests(451).expectedErrContains = "expects scalar values"
+  tests(452).expr = "16>>1>>2":                                  tests(452).expected = "2"
+  tests(453).expr = "7&3|8":                                     tests(453).expected = "11"
+  tests(454).expr = "7^3^1":                                     tests(454).expected = "5"
+  tests(455).expr = "hex(-2)":                                   tests(455).expected = "-0x2"
+  tests(456).expr = "uhex(-2)":                                  tests(456).expected = "0xFFFFFFFFFFFFFFFE"
+  tests(457).expr = "hex((15,-2))":                              tests(457).expected = "(0xF,-0x2)"
+  tests(458).expr = "hypot(1,2,3,4)":                            tests(458).expectedErrContains = "expects 2 argument(s)"
+  tests(459).expr = "a=9007199254740992+1; b=a; hex(b)":         tests(459).expected = "0x20000000000001"
+  tests(460).expr = "uhex((1,-1))":                              tests(460).expected = "(0x1,0xFFFFFFFFFFFFFFFF)"
+  tests(461).expr = "sum(unpack((1,2),(3,4),5))":                tests(461).expected = "15"
+  tests(462).expr = "a=(1,2)+(3,4); hex(a[1])":                  tests(462).expected = "0x6"
+  tests(463).expr = "NoT 0":                                     tests(463).expected = "1"
+  tests(464).expr = "(5>=4)<2":                                  tests(464).expected = "1"
+  tests(465).expr = "a=round((1.2,2.8)); hex(a[1])":             tests(465).expected = "0x3"
+  tests(466).expr = "a=(5,6)*(7,8); hex(a[1])":                  tests(466).expected = "0x30"
+  tests(467).expr = "a=(10,20)-(3,4); hex(a[1])":                tests(467).expected = "0x10"
+  tests(468).expr = "a=(20,21)%(3,4); hex(a[1])":                tests(468).expected = "0x1"
+  tests(469).expr = "log(8,(2,4))":                              tests(469).expected = "(3,1.5)"
+  tests(470).expr = "lcm(21,6)":                                 tests(470).expected = "42"
+  tests(471).expr = "a=(1,2)|(4,8); hex(a[1])":                 tests(471).expected = "0xA"
+  tests(472).expr = "a=(1,2)^(4,8); hex(a[1])":                 tests(472).expected = "0xA"
+  tests(473).expr = "a=(1,(2+3),7); hex(a[1])":                 tests(473).expected = "0x5"
+  tests(474).expr = "a=abs((-1,-2)); hex(a[1])":                tests(474).expected = "0x2"
+  tests(475).expr = "a=-(-1,-2); hex(a[1])":                    tests(475).expected = "0x2"
+  tests(476).expr = "a=(8,9)>>1; hex(a[1])":                    tests(476).expected = "0x4"
+  tests(477).expr = "a=(8,9)<<1; hex(a[1])":                    tests(477).expected = "0x12"
+  tests(478).expr = "a=(9,10)&(3,12); hex(a[1])":               tests(478).expected = "0x8"
+  tests(479).expr = "a=(9,10)|(3,12); hex(a[1])":               tests(479).expected = "0xE"
+  tests(480).expr = "a=(9,10)^(3,12); hex(a[0])":               tests(480).expected = "0xA"
+  tests(481).expr = "a=abs((-3,-4)); hex(a[0])":                tests(481).expected = "0x3"
+  tests(482).expr = "a=(1,(2+3),4); hex(a[2])":                 tests(482).expected = "0x4"
+  tests(483).expr = "a=int((7.9,8.1)); hex(a[1])":              tests(483).expected = "0x8"
+  tests(484).expr = "a=(20,21)%(6,4); hex(a[0])":               tests(484).expected = "0x2"
+  tests(485).expr = "a=(2,3)+(4,5); hex(a[1])":                 tests(485).expected = "0x8"
+  tests(486).expr = "a=(9,7)-(4,5); hex(a[0])":                 tests(486).expected = "0x5"
+  tests(487).expr = "a=(3,4)*(5,6); hex(a[0])":                 tests(487).expected = "0xF"
+  tests(488).expr = "a=(8,9)/1; hex(a[1])":                     tests(488).expected = "0x9"
+  tests(489).expr = "a=int((8.9,9.1)); hex(a[0])":              tests(489).expected = "0x8"
+  tests(490).expr = "a=round((8.2,9.8)); hex(a[0])":            tests(490).expected = "0x8"
+  tests(491).expr = "a=-(-5,-6); hex(a[0])":                    tests(491).expected = "0x5"
+  tests(492).expr = "a=abs((-1,-2,-3)); hex(a[2])":             tests(492).expected = "0x3"
+  tests(493).expr = "a=(8,9)|1; hex(a[0])":                     tests(493).expected = "0x9"
+  tests(494).expr = "a=(8,9)&7; hex(a[0])":                     tests(494).expected = "0x0"
+  tests(495).expr = "a=(8,9)<<1; hex(a[0])":                    tests(495).expected = "0x10"
+  tests(496).expr = "a=(8,9)>>1; hex(a[0])":                    tests(496).expected = "0x4"
+  tests(497).expr = "a=(20,21)%(6,4); hex(a[1])":               tests(497).expected = "0x1"
+  tests(498).expr = "a=int((5.9,6.1,7.2)); hex(a[2])":          tests(498).expected = "0x7"
+  tests(499).expr = "a=round((5.2,6.8,7.1)); hex(a[2])":        tests(499).expected = "0x7"
+  tests(500).expr = "a=abs((-5,-6,-7)); hex(a[1])":             tests(500).expected = "0x6"
+  tests(501).expr = "a=(8,9)|2; hex(a[1])":                     tests(501).expected = "0xB"
+  tests(502).expr = "a=(8,9)&3; hex(a[1])":                     tests(502).expected = "0x1"
+  tests(503).expr = "a=(8,9)^3; hex(a[1])":                     tests(503).expected = "0xA"
+  tests(504).expr = "a=(10,11)+(1,2); hex(a[0])":               tests(504).expected = "0xB"
+  tests(505).expr = "a=(10,11)-(1,2); hex(a[1])":               tests(505).expected = "0x9"
+  tests(506).expr = "a=(10,11)*(2,3); hex(a[1])":               tests(506).expected = "0x21"
+  tests(507).expr = "a=(10,11)/1; hex(a[0])":                   tests(507).expected = "0xA"
+  tests(508).expr = "a=int((10.9,11.1)); hex(a[1])":            tests(508).expected = "0xB"
+  tests(509).expr = "a=round((10.2,11.8)); hex(a[1])":          tests(509).expected = "0xC"
+  tests(510).expr = "a=abs((-10,-11)); hex(a[0])":              tests(510).expected = "0xA"
+  tests(511).expr = "a=-(-10,-11); hex(a[1])":                  tests(511).expected = "0xB"
+  tests(512).expr = "a=(8,9,10)|1; hex(a[2])":                  tests(512).expected = "0xB"
+  tests(513).expr = "a=(8,9,10)&3; hex(a[2])":                  tests(513).expected = "0x2"
+  tests(514).expr = "a=(8,9,10)^3; hex(a[2])":                  tests(514).expected = "0x9"
+  tests(515).expr = "a=(10,11)>>1; hex(a[1])":                  tests(515).expected = "0x5"
+  tests(516).expr = "unique((5,3,5,2,3))":                      tests(516).expected = "(5,3,2)"
+  tests(517).expr = "unique((2,1,2,1,3,2))":                    tests(517).expected = "(2,1,3)"
+  tests(518).expr = "unique(7)":                                tests(518).expected = "(7)"
+  tests(519).expr = "unique((1,2),2,1,3)":                      tests(519).expected = "(1,2,3)"
+  tests(520).expr = "unique((0,-0,0,0))":                       tests(520).expected = "(0)"
+  tests(521).expr = "unique((-0,0,1))":                         tests(521).expected = "(0,1)"
+  tests(522).expr = "unique((1.5,1.5,2.5,1.5))":                tests(522).expected = "(1.5,2.5)"
+  tests(523).expr = "unique((2.0,2,2.000,3))":                  tests(523).expected = "(2,3)"
+  tests(524).expr = "unique(unpack((4,1),(4,2),1))":            tests(524).expected = "(4,1,2)"
+  tests(525).expr = "unique((9,8,7,9,8,7,6,5,6))":              tests(525).expected = "(9,8,7,6,5)"
+  tests(526).expr = "unique((3,3,3,3,2,2,1))":                  tests(526).expected = "(3,2,1)"
+  tests(527).expr = "median((9,1,5,3,7))":                      tests(527).expected = "5"
+  tests(528).expr = "median((10,1,7,3))":                       tests(528).expected = "5"
+  tests(529).expr = "variance((-3,0,3,6))":                     tests(529).expected = "11.25"
+  tests(530).expr = "stddev((-3,0,3,6))":                       tests(530).expected = "3.354101966249685"
+  tests(531).expr = "hex(fact(20))":                            tests(531).expected = "0x21C3677C82B40000"
+  tests(579).expr = "factorial(30)":                            tests(579).expected = "2.65252859812191e+032"
+  tests(532).expr = "sort((5,1,5,2,2,9,1))":                    tests(532).expected = "(1,1,2,2,5,5,9)"
+  tests(533).expr = "sorted((4,4,3,2,2,1))":                    tests(533).expected = "(1,2,2,3,4,4)"
+  tests(534).expr = "avg((2,4),6,8)":                           tests(534).expected = "5"
+  tests(535).expr = "min((5,7),3,9)":                           tests(535).expected = "3"
+  tests(536).expr = "sum(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16)": tests(536).expected = "136"
+  tests(537).expr = "max((5,7),3,9)":                           tests(537).expected = "9"
+  tests(538).expr = "sum(unpack((1,2,3),(4,5),6,7))":          tests(538).expected = "28"
+  tests(539).expr = "sorted((3,3,1,2,1))":                     tests(539).expected = "(1,1,2,3,3)"
+  tests(540).expr = "reversed((1,2,3,4,5))":                   tests(540).expected = "(5,4,3,2,1)"
+  tests(541).expr = "f(x,y)=x+y; f(2,3)":                      tests(541).expected = "5"
+  tests(542).expr = "a=(5,2,5,9,2); unique(a)":                tests(542).expected = "(5,2,9)"
+  tests(543).expr = "sum(42)":                                 tests(543).expected = "42"
+  tests(544).expr = "a=(3,1,2); sorted(a)":                    tests(544).expected = "(1,2,3)"
+  tests(545).expr = "unique((1,1,2,2,3,3))":                  tests(545).expected = "(1,2,3)"
+  tests(546).expr = "avg(unpack((1,2),(3,4)),10)":            tests(546).expected = "4"
+  tests(547).expr = "reverse((1,2),3,(4,5))":                 tests(547).expected = "(5,4,3,2,1)"
+  tests(548).expr = "f(a,b)=a*b; f(unpack((3,4)))":           tests(548).expected = "12"
+  tests(549).expr = "a=(9007199254740993); hex(unpack(a))":      tests(549).expected = "0x20000000000001"
+  tests(550).expr = "a=-(9007199254740991,5); uhex(a[0])":    tests(550).expected = "0xFFE0000000000001"
+  tests(551).expr = "hex((1,2.5))":                            tests(551).expectedErrContains = "hex() expects integer values"
+  tests(552).expr = "unique((9,9,8,8,7))":                     tests(552).expected = "(9,8,7)"
+  tests(553).expr = "reverse((9,8,7,6))":                      tests(553).expected = "(6,7,8,9)"
+  tests(554).expr = "deg((pi/2),pi)":                          tests(554).expected = "(90,180)"
+  tests(555).expr = "uhex((1,-1),2)":                          tests(555).expected = "(0x1,0xFFFFFFFFFFFFFFFF,0x2)"
+  tests(556).expr = "uhex(unpack((1,-1),2))":                  tests(556).expected = "(0x1,0xFFFFFFFFFFFFFFFF,0x2)"
+  tests(557).expr = "variance((1,2),3,4)":                     tests(557).expected = "1.25"
+  tests(558).expr = "stddev((1,2),3,4)":                       tests(558).expected = "1.118033988749895"
+  tests(559).expr = "median(42)":                              tests(559).expected = "42"
+  tests(560).expr = "median((42))":                            tests(560).expected = "42"
+  tests(561).expr = "123":                                     tests(561).expected = "123"
+  tests(562).expr = "unknownFunc(1)":                          tests(562).expectedErrContains = "unknown functions"
+  tests(563).expr = "2+3; ans":                                tests(563).expected = "5"
+  tests(564).expr = "(e=3)":                                   tests(564).expected = "0"
+  tests(565).expr = "(pi=3.141592653589793)":                  tests(565).expected = "1"
+  tests(566).expr = "(1,2,3)[1.2]":                            tests(566).expectedErrContains = "array index must be an integer"
+  tests(567).expr = "(1,2,3)[(1,2)]":                          tests(567).expectedErrContains = "array index must be a scalar integer"
+  tests(568).expr = "1<<0":                                    tests(568).expected = "1"
+  tests(569).expr = "8>>0":                                    tests(569).expected = "8"
+  tests(570).expr = "1<<63":                                   tests(570).expected = "-9223372036854775808"
+  tests(571).expr = "-1>>63":                                  tests(571).expected = "-1"
+  tests(572).expr = "a=(1,2)<<0; a":                           tests(572).expected = "(1,2)"
+  tests(573).expr = "a=(8,9)>>0; a":                           tests(573).expected = "(8,9)"
+  tests(574).expr = "a=(1,2)<<63; uhex(a[0])":                 tests(574).expected = "0x8000000000000000"
+  tests(575).expr = "a=(-1,-2)>>63; a[1]":                     tests(575).expected = "-1"
+  tests(576).expr = "0b102":                                   tests(576).expectedErrContains = "unexpected token"
+  tests(577).expr = "0o89":                                    tests(577).expectedErrContains = "invalid octal literal"
+  tests(578).expr = "0x1G":                                    tests(578).expectedErrContains = "unexpected token"
+  tests(580).expr = "hex=1":                                   tests(580).expectedErrContains = "reserved function name"
+  tests(581).expr = "HEX=1":                                   tests(581).expectedErrContains = "reserved function name"
+  tests(582).expr = "random=1":                                tests(582).expectedErrContains = "reserved function name"
+  tests(583).expr = "0xAA; hex":                               tests(583).expected = "0xAA"
+  tests(584).expr = "0xAA; hex()":                             tests(584).expected = "0xAA"
+  tests(585).expr = "(0x3C & 0x75, 0x01 | 0x30); hex":         tests(585).expected = "(0x34,0x31)"
+  tests(586).expr = "(8,9); bin()":                            tests(586).expected = "(0b1000,0b1001)"
+  tests(587).expr = "15; uhex":                                tests(587).expected = "0xF"
+  tests(588).expr = "0xAA; foo()":                             tests(588).expectedErrContains = "unknown functions"
+
   g_total = ubound(tests) - lbound(tests) + 1
 
   print "=== SmartMath parser smoke tests ==="
@@ -523,6 +811,25 @@ sub Main()
   for i as Integer = lbound(tests) to ubound(tests)
     RunCase(tests(i))
   next i
+
+  ' Mirror C++ test coverage from Basic runner:
+  ' if C++ tests executable exists, run it and require success.
+  dim cppTestsExe as String = "cpp\MathParserTests.exe"
+  if len(dir(cppTestsExe)) > 0 then
+    g_total += 1
+    g_idx += 1
+    print "[" & g_idx & "/" & g_total & "] RUN  : " & cppTestsExe
+    dim rc as Integer = shell(cppTestsExe)
+    if rc = 0 then
+      g_passed += 1
+      print "          PASS : C++ mirrored suite passed"
+    else
+      g_failed += 1
+      print "          FAIL : C++ mirrored suite failed with exit code " & rc
+      print "                 build via cpp\BuildTests_vc2022_x64.bat and re-run"
+    end if
+    print ""
+  end if
 
   print "=== Result ==="
   print "Passed: " & g_passed

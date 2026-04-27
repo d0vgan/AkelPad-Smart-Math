@@ -13,13 +13,21 @@ private function Pow10(byval n as Integer) as Double
   return p
 end function
 
+'' Format() / Str() use ASCII "."; ini may set g_sDecimalSeparator to ",". Detect either.
+private function PositionOfNumericDecimal(byref s as String) as Integer
+  dim p as Integer = InStr(s, g_sDecimalSeparator)
+  if p > 0 then return p
+  return InStr(s, ".")
+end function
+
 private function TrimTrailingFractionZeros(byref s as String) as String
   dim outText as String = s
-  if InStr(outText, g_sDecimalSeparator) > 0 orelse InStr(outText, ",") > 0 then
+  if PositionOfNumericDecimal(outText) > 0 orelse InStr(outText, ",") > 0 then
     while Right(outText, 1) = "0"
       outText = Left(outText, Len(outText) - 1)
     wend
-    if Right(outText, 1) = g_sDecimalSeparator orelse Right(outText, 1) = "," then
+    dim lastCh as String = Right(outText, 1)
+    if lastCh = g_sDecimalSeparator orelse lastCh = "," orelse lastCh = "." then
       outText = Left(outText, Len(outText) - 1)
     end if
   end if
@@ -38,6 +46,43 @@ private function AddArrayCommaSpacing(byref s as String) as String
     end if
   next i
   return outText
+end function
+
+'' Split inner text of "( ... )" on commas that are not inside nested parentheses.
+'' MathParser array text always uses ASCII comma between elements; decimals use "." from Str().
+private function SplitTopLevelArrayCsvInner(byref inner as String, elems() as String) as Integer
+  erase elems
+  dim s as String = Trim(inner)
+  dim n as Integer = Len(s)
+  if n = 0 then return 0
+  dim depth as Integer = 0
+  dim start as Integer = 1
+  dim partCount as Integer = 0
+  dim i as Integer
+  for i = 1 to n
+    dim ch as String = Mid(s, i, 1)
+    if ch = "(" then
+      depth += 1
+    elseif ch = ")" then
+      if depth > 0 then depth -= 1
+    elseif ch = "," andalso depth = 0 then
+      if partCount = 0 then
+        redim elems(0 to 0)
+      else
+        redim preserve elems(0 to partCount)
+      end if
+      elems(partCount) = Trim(Mid(s, start, i - start))
+      partCount += 1
+      start = i + 1
+    end if
+  next i
+  if partCount = 0 then
+    redim elems(0 to 0)
+  else
+    redim preserve elems(0 to partCount)
+  end if
+  elems(partCount) = Trim(Mid(s, start, n - start + 1))
+  return partCount + 1
 end function
 
 private function FormatNumericValue(byval d as Double) as String
@@ -141,7 +186,7 @@ private function FormatNumericValue(byval d as Double) as String
       sRes = Left(sRes, oldEPos - 1)
     end if
 
-    dim decPos as Integer = InStr(sRes, g_sDecimalSeparator)
+    dim decPos as Integer = PositionOfNumericDecimal(sRes)
     dim localThouSep as String = g_sThousandsSeparator
 
     dim intPart as String
@@ -150,6 +195,9 @@ private function FormatNumericValue(byval d as Double) as String
     if decPos > 0 then
       intPart = Left(sRes, decPos - 1)
       decPart = Mid(sRes, decPos)
+      if Left(decPart, 1) = "." andalso g_sDecimalSeparator <> "." then
+        decPart = g_sDecimalSeparator & Mid(decPart, 2)
+      end if
     else
       intPart = sRes
       decPart = ""
@@ -193,37 +241,23 @@ function FormatArrayResultText(byref sArrayText as String) as String
     return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
   end if
 
-  dim outText as String = ""
-  dim i as Integer = 1
-  while i <= Len(sArrayText)
-    dim ch as String = Mid(sArrayText, i, 1)
-    dim isNumStart as Boolean = FALSE
-    if (ch >= "0" andalso ch <= "9") orelse ch = g_sDecimalSeparator then
-      isNumStart = TRUE
-    elseif (ch = "-" orelse ch = "+") andalso i < Len(sArrayText) then
-      dim nextCh as String = Mid(sArrayText, i + 1, 1)
-      if (nextCh >= "0" andalso nextCh <= "9") orelse nextCh = g_sDecimalSeparator then isNumStart = TRUE
-    end if
+  '' Parser uses comma only between elements; do not treat g_sDecimalSeparator as part of scan
+  '' (European "," would merge "(40,50)" into one token). Join with ArrayOutputSeparator so
+  '' formatted numbers may contain "," decimals without breaking.
+  dim trimmed as String = Trim(sArrayText)
+  if Len(trimmed) >= 2 andalso Left(trimmed, 1) = "(" andalso Right(trimmed, 1) = ")" then
+    dim inner as String = Mid(trimmed, 2, Len(trimmed) - 2)
+    dim elems() as String
+    dim cnt as Integer = SplitTopLevelArrayCsvInner(inner, elems())
+    dim outText as String = "("
+    dim ei as Integer
+    for ei = 0 to cnt - 1
+      if ei > 0 then outText &= g_sArrayOutputSeparator & " "
+      outText &= FormatNumericValue(Val(elems(ei)))
+    next ei
+    outText &= ")"
+    return SMARTMATH_RESULT_PREFIX & outText
+  end if
 
-    if isNumStart then
-      dim j as Integer = i
-      while j <= Len(sArrayText)
-        dim c as String = Mid(sArrayText, j, 1)
-        if (c >= "0" andalso c <= "9") orelse c = g_sDecimalSeparator orelse c = "e" orelse c = "E" orelse c = "+" orelse c = "-" then
-          j += 1
-        else
-          exit while
-        end if
-      wend
-      dim token as String = Mid(sArrayText, i, j - i)
-      dim v as Double = Val(token)
-      outText &= FormatNumericValue(v)
-      i = j
-    else
-      outText &= ch
-      i += 1
-    end if
-  wend
-
-  return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(outText)
+  return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
 end function

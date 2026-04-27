@@ -46,6 +46,39 @@ If requirements are ambiguous, ask concise clarifying questions before coding.
 
 For **builtin constants**, also keep the standalone C++ reference parser in sync when the repo maintains it: `cpp/MathParser.cpp` (constant registration and any reserved-name logic there).
 
+### C++ Location Rule
+
+- All C++-related activities and artifacts must stay under the `cpp` folder.
+- When adding C++ scripts/tools (for example build/test batch files), place them under `cpp` (not next to `.bas` files).
+
+### Basic/C++ Parity Rule
+
+- Keep Basic and C++ parser/test behavior consistent.
+- Whenever parser or test logic changes in either language, reflect/port equivalent behavior to the other language implementation.
+- This applies to **all** change types, not only new features:
+  - bug fixes,
+  - refactoring,
+  - cleanup / redundancy removal,
+  - safety hardening,
+  - behavior-preserving internal rewrites that might still affect edge behavior.
+- Porting must preserve the original intent/meaning (not only syntax translation).
+- **Strong no to undefined behavior:** never introduce UB in either C++ or Basic code. Treat any potential UB pattern as a blocker and rewrite it to a defined, portable form before finishing.
+- C++ porting is required only when both are true:
+  - `cpp` folder exists, and
+  - `cpp/MathParser.cpp` exists.
+- If `cpp/MathParser.cpp` is missing, skip Basic->C++ reflection and note that assumption in the final report.
+
+### Global Helper Reuse And Optimization Rule
+
+Apply this rule for **any source-code change** (feature/fix/refactor/cleanup/optimization):
+
+- Always avoid code duplication; prefer shared helpers.
+- Before introducing a new helper, search for existing helpers that already cover or nearly cover the needed behavior.
+- If an existing helper is close but not exact, tune/extend that helper and reuse it in both old and new call sites.
+- While tuning existing helpers, keep them maximally optimized for their hot-path usage.
+- If no existing helper can be tuned without harming clarity/behavior/performance, introduce a new helper instead.
+- When adding a new helper, keep scope minimal and avoid overlapping responsibilities with existing helpers.
+
 ## Required Workflow
 
 Follow all steps in order.
@@ -61,6 +94,7 @@ Follow all steps in order.
   - return shape semantics.
 - If variadic, validate minimum argument count and process extra args deterministically.
 - Reuse existing helpers when possible; avoid introducing redundant utility code.
+- Follow the **Global Helper Reuse And Optimization Rule** above for all helper-level decisions.
 - Maintain exactly one canonical `FunctionNames` array and one canonical `OperatorNames` array in parser code.
 - Add the new built-in/operator name only in these canonical arrays with a named index (e.g. `FUNC_*`, `OP_*`).
 - Wherever parser logic needs built-in/operator names (dispatch, hints, keyword matching, reserved-name checks), reference `FunctionNames[FUNC_*]` / `OperatorNames[OP_*]` (or helper wrappers over them), never hardcoded string literals.
@@ -80,7 +114,17 @@ Follow all steps in order.
 
 ### 3) Build Sources (`Compile.bat`)
 
-- After implementation and signature-hint updates, run `Compile.bat`.
+- Run `Compile.bat` only when **Basic parser source files** were changed.
+  - Treat this Basic source set as build-triggering:
+    - `MathParser.bas`
+    - `SmartMath.bas`
+    - `SmartMath_About.bas`
+    - `SmartMath_Config.bas`
+    - `SmartMath_Format.bas`
+    - `SmartMath_Globals.bi`
+    - `SmartMath_Menu.bas`
+  - Also include any additional Basic implementation/source modules if present.
+  - If Basic parser source was **not** changed, skip `Compile.bat`.
 - If compilation fails, treat it as a blocker:
   - analyze build errors,
   - fix sources,
@@ -109,14 +153,97 @@ Minimum recommended coverage:
 
 ### 5) Build And Run Smoke Tests
 
-- After updating `SmokeTest_MathParser.bas`, build the updated smoke-test executable.
-- Run smoke tests via `RunSmokeTests.bat`.
+- Run Basic smoke-test build/run only when **Basic test source files** were changed.
+  - Treat test source as files like `SmokeTest_MathParser.bas` (and any other Basic test files if present).
+- Also run Basic smoke-test build/run when `MathParser.bas` changed (primary parser-change trigger).
+  - Also run Basic smoke-test build/run as a precautionary regression gate when either of these files changed:
+    - `SmartMath.bas`
+    - `SmartMath_Format.bas`
+  - If none of these changed (Basic test source, `MathParser.bas`, `SmartMath.bas`, `SmartMath_Format.bas`), skip compiling tests and skip `RunSmokeTests.bat`.
+- After updating Basic tests, build the updated smoke-test executable.
+- Then run smoke tests via `RunSmokeTests.bat`.
 - Treat smoke-test failures as blockers: investigate, fix, rebuild, and rerun until passing.
 - If the batch script is unavailable or fails due to environment/toolchain issues, report the exact blocker and include the last relevant output.
+
+### 5.1) C++ Build/Test Gate (for any C++ code changes)
+
+Apply this step only when **C++ parser or C++ test source files** are changed (for example `cpp/MathParser.cpp`, `cpp/MathParser.hpp`, `cpp/MathParserTests.cpp`):
+
+- If neither C++ parser source nor C++ test source changed, skip this entire C++ build/test gate (do not run `cpp/BuildTests_vc2022_x64.bat`, do not run `cpp/MathParserTests.exe`).
+
+- Run `cpp/BuildTests_vc2022_x64.bat`.
+- If build fails:
+  - treat as blocker,
+  - analyze compiler/linker errors,
+  - fix C++ code,
+  - rerun `cpp/BuildTests_vc2022_x64.bat`,
+  - repeat until build succeeds.
+- Once build succeeds, run produced test binary: `cpp/MathParserTests.exe`.
+- If tests fail:
+  - analyze failing test output,
+  - identify root cause,
+  - fix C++ code/tests as appropriate,
+  - rebuild via `cpp/BuildTests_vc2022_x64.bat`,
+  - rerun `cpp/MathParserTests.exe`,
+  - repeat until tests pass.
+- If build/test cannot complete due to environment/toolchain issues, report the exact blocker and include the last relevant output.
+
+### 5.2) Cross-Language Reflection Gate (Basic <-> C++)
+
+Use this gate whenever parser/tests are changed in either language:
+
+- If Basic parser/tests were changed, reflect equivalent behavior in C++ parser/tests when `cpp/MathParser.cpp` exists.
+- If C++ parser/tests were changed, reflect equivalent behavior in Basic parser/tests.
+- For each parser/test change, produce one of two outcomes:
+  - **Mirrored change**: equivalent implementation/test update was applied on the other side, or
+  - **No-op with justification**: no code change needed on the other side because behavior is already equivalent there.
+- If claiming **No-op with justification**, add/adjust regression tests to prove behavior parity where practical.
+- After reflection, run only the checks relevant to changed source categories:
+  - If Basic parser source changed: run `Compile.bat` until passing.
+  - If Basic test source changed: run Basic smoke-test build/run (`RunSmokeTests.bat`) until passing.
+  - If C++ parser or C++ test source changed: run `cpp/BuildTests_vc2022_x64.bat`, then `cpp/MathParserTests.exe`, until passing.
+- Treat any parity mismatch, build failure, or test failure as blocker; analyze root cause, fix, rebuild, rerun, and repeat until all required sides pass.
+
+### 5.3) Change Detection Examples (What Counts As Source Changes)
+
+Use these examples when deciding whether a gate must run:
+
+- **Basic parser source changed** (run `Compile.bat`):
+  - `MathParser.bas`
+  - `SmartMath.bas`
+  - `SmartMath_About.bas`
+  - `SmartMath_Config.bas`
+  - `SmartMath_Format.bas`
+  - `SmartMath_Globals.bi`
+  - `SmartMath_Menu.bas`
+  - any additional Basic implementation/source modules if present.
+
+- **Basic test source changed** (run Basic smoke-test build/run via `RunSmokeTests.bat`):
+  - `SmokeTest_MathParser.bas`
+  - any additional Basic test source modules if present.
+  - additionally, run when `MathParser.bas` changed (primary parser-change trigger).
+  - additionally, run as precaution when `SmartMath.bas` or `SmartMath_Format.bas` changed.
+
+- **C++ parser or C++ test source changed** (run `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe`):
+  - `cpp/MathParser.cpp`
+  - `cpp/MathParser.hpp`
+  - `cpp/MathParserTests.cpp`
+  - any additional C++ parser/test source or headers under `cpp`.
+
+- **Non-source-only edits** (do not trigger source gates by themselves):
+  - docs-only changes like `USAGE_AND_SYNTAX.md`,
+  - skill/rule/process docs changes under `.cursor/`,
+  - unrelated notes/readme updates.
+
+When in doubt, classify conservatively: if a file plausibly affects parser/test runtime behavior, treat it as source and run the corresponding gate.
 
 ### 6) Update `USAGE_AND_SYNTAX.md`
 
 - Add or update the function in the appropriate section.
+- Update the **"Quick index (alphabetical)"** table at the beginning of **"Built-in Functions"**:
+  - keep function names sorted alphabetically,
+  - keep aliases on the same row as the canonical function (for example `asin/arcsin(value)`),
+  - keep category labels consistent with nearby rows.
 - First scan nearby sections in `USAGE_AND_SYNTAX.md` and mirror their structure.
 - Document:
   - purpose/description,
@@ -129,6 +256,7 @@ Minimum recommended coverage:
   - array example when supported.
 - Keep terminology, tone, wording density, and explanation logic consistent with existing document sections.
 - Do not introduce a new writing style for one function; this file should read as if written by one author.
+- Run a quick typo pass on changed doc lines before finishing (especially split words from accidental edits, e.g. `implemen ted`).
 
 ## Adding a Builtin Constant (Reserved Names)
 
@@ -185,14 +313,26 @@ Same as for functions: `Compile.bat`, then `RunSmokeTests.bat`, until clean.
 
 Before finishing, verify:
 - Implementation, hint, tests, and docs are all updated.
-- Sources were successfully built via `Compile.bat`.
-- Updated smoke tests were built and executed via `RunSmokeTests.bat`.
+- If Basic parser source was changed, sources were successfully built via `Compile.bat`; otherwise `Compile.bat` was intentionally skipped.
+- If Basic test source was changed, updated smoke tests were built/executed via `RunSmokeTests.bat`.
+- If `MathParser.bas` changed, Basic smoke tests were built/executed via `RunSmokeTests.bat` (primary parser-change trigger).
+- If `SmartMath.bas` or `SmartMath_Format.bas` changed, Basic smoke tests were also built/executed as a precautionary regression gate.
+- Otherwise Basic test build/run was intentionally skipped.
+- If C++ parser or C++ test source was changed, `cpp/BuildTests_vc2022_x64.bat` completed successfully and `cpp/MathParserTests.exe` passed (or exact environment blocker with last output was reported); otherwise C++ build/test was intentionally skipped.
+- Cross-language reflection/parity is complete: relevant parser/test changes were ported between Basic and C++ (when `cpp/MathParser.cpp` exists), and both sides' required builds/tests pass.
+- Reflection covered **all** parser/test change types in this task (feature/fix/refactor/cleanup/redundancy/safety), with each item either mirrored or explicitly justified as no-op.
+- Global helper rule was followed: existing helpers were searched first, duplication was avoided, and any helper tuning/new helper introduction was justified and optimized.
+- C++ and Basic changes avoid undefined behavior; potentially UB-prone code paths were either proven safe or rewritten to fully defined behavior.
 - Signature hint and docs match real behavior exactly.
+- The "Quick index (alphabetical)" built-in function table is updated, alphabetically sorted, and keeps aliases on the same row as the canonical function.
+- No obvious typos/split words were introduced in edited documentation lines.
 - Tests cover success + failure paths relevant to the function contract.
 - User-defined function names are explicitly blocked from colliding with built-in function names and operator keywords (including the newly added names).
 - For **new builtin constants**: `BuiltinConstId`, `EnsureConstNames`, and `TryGetConstant` are extended together; smoke tests cover assignment, UDF name, and parameter rejection; `USAGE_AND_SYNTAX.md` lists and explains the constant everywhere `pi`/`e` are described; C++ `addConst` (and any C++ reserved-name logic) matches if present in the repo.
 - There is still one and only one canonical `FunctionNames` array and one and only one canonical `OperatorNames` array; new names were integrated by named index and reused everywhere relevant.
 - `USAGE_AND_SYNTAX.md` changes match neighboring sections in style and reasoning flow.
+- All C++-related files/scripts touched by the change are under `cpp` (no new C++ artifacts outside `cpp`).
+- If C++ reflection was skipped, the reason is valid (`cpp/MathParser.cpp` missing) and explicitly reported.
 - No unrelated behavior was changed.
 
 ## Response Format For Completion

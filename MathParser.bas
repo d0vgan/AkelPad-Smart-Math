@@ -6,18 +6,190 @@ enum ValueKind
   VK_ARRAY = 1
 end enum
 
+enum ScalarStorageKind
+  SSK_FLOATINGPOINT = 0
+  SSK_INT64 = 1
+  SSK_UINT64 = 2
+end enum
+
+enum ScalarFlags
+  SVF_EXACT_INT64_VALID = &h01
+  SVF_EXACT_UINT64_VALID = &h02
+  SVF_DEC_SCI_POW63_HIGH = &h10
+end enum
+
+enum EvalFlags
+  EVF_EXPAND_ARGS = &h01
+  EVF_RENDER_UNSIGNED = &h02
+  EVF_RENDER_BASE_SHIFT = 8
+  EVF_RENDER_BASE_MASK = &h0000FF00
+end enum
+
+type ScalarValue
+  scalarStorageKind as ScalarStorageKind
+  flags as UInteger
+  scalar as Double
+  exactInt64 as LongInt
+  exactUInt64 as ULongInt
+  declare property exactInt64Valid() as Boolean
+  declare property exactInt64Valid(byval v as Boolean)
+  declare property exactUInt64Valid() as Boolean
+  declare property exactUInt64Valid(byval v as Boolean)
+  declare property decScientificPow63High() as Boolean
+  declare property decScientificPow63High(byval v as Boolean)
+end type
+
 type EvalValue
   kind as ValueKind
-  scalar as Double
-  arr(any) as Double
-  expandArgs as Boolean
-  renderBase as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
-  renderUnsigned as Boolean ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
-  exactInt64Valid as Boolean
-  exactInt64 as LongInt
-  exactUInt64Valid as Boolean
-  exactUInt64 as ULongInt
+  flags as UInteger
+  scalarValue as ScalarValue
+  arr(any) as ScalarValue
+  declare property renderBase() as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
+  declare property renderBase(byval v as Integer)
+  ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
+  declare property scalarStorageKind() as Integer
+  declare property scalarStorageKind(byval v as Integer)
+  declare property scalar() byref as Double
+  declare property scalar(byval v as Double)
+  declare property exactInt64Valid() as Boolean
+  declare property exactInt64Valid(byval v as Boolean)
+  declare property exactInt64() byref as LongInt
+  declare property exactInt64(byval v as LongInt)
+  declare property exactUInt64Valid() as Boolean
+  declare property exactUInt64Valid(byval v as Boolean)
+  declare property exactUInt64() byref as ULongInt
+  declare property exactUInt64(byval v as ULongInt)
+  declare property expandArgs() as Boolean
+  declare property expandArgs(byval v as Boolean)
+  declare property renderUnsigned() as Boolean
+  declare property renderUnsigned(byval v as Boolean)
 end type
+
+type DoubleBits
+  union
+    d as Double
+    u as ULongInt
+  end union
+end type
+
+property ScalarValue.exactInt64Valid() as Boolean
+  return (this.flags and SVF_EXACT_INT64_VALID) <> 0
+end property
+
+property ScalarValue.exactInt64Valid(byval v as Boolean)
+  if v then
+    this.flags or= SVF_EXACT_INT64_VALID
+  else
+    this.flags and= not CUInt(SVF_EXACT_INT64_VALID)
+  end if
+end property
+
+property ScalarValue.exactUInt64Valid() as Boolean
+  return (this.flags and SVF_EXACT_UINT64_VALID) <> 0
+end property
+
+property ScalarValue.exactUInt64Valid(byval v as Boolean)
+  if v then
+    this.flags or= SVF_EXACT_UINT64_VALID
+  else
+    this.flags and= not CUInt(SVF_EXACT_UINT64_VALID)
+  end if
+end property
+
+property ScalarValue.decScientificPow63High() as Boolean
+  return (this.flags and SVF_DEC_SCI_POW63_HIGH) <> 0
+end property
+
+property ScalarValue.decScientificPow63High(byval v as Boolean)
+  if v then
+    this.flags or= SVF_DEC_SCI_POW63_HIGH
+  else
+    this.flags and= not CUInt(SVF_DEC_SCI_POW63_HIGH)
+  end if
+end property
+
+property EvalValue.scalarStorageKind() as Integer
+  return CInt(this.scalarValue.scalarStorageKind)
+end property
+
+property EvalValue.scalarStorageKind(byval v as Integer)
+  this.scalarValue.scalarStorageKind = v
+end property
+
+property EvalValue.scalar() byref as Double
+  return this.scalarValue.scalar
+end property
+
+property EvalValue.scalar(byval v as Double)
+  this.scalarValue.scalar = v
+end property
+
+property EvalValue.exactInt64Valid() as Boolean
+  return this.scalarValue.exactInt64Valid
+end property
+
+property EvalValue.exactInt64Valid(byval v as Boolean)
+  this.scalarValue.exactInt64Valid = v
+end property
+
+property EvalValue.exactInt64() byref as LongInt
+  return this.scalarValue.exactInt64
+end property
+
+property EvalValue.exactInt64(byval v as LongInt)
+  this.scalarValue.exactInt64 = v
+end property
+
+property EvalValue.exactUInt64Valid() as Boolean
+  return this.scalarValue.exactUInt64Valid
+end property
+
+property EvalValue.exactUInt64Valid(byval v as Boolean)
+  this.scalarValue.exactUInt64Valid = v
+end property
+
+property EvalValue.exactUInt64() byref as ULongInt
+  return this.scalarValue.exactUInt64
+end property
+
+property EvalValue.exactUInt64(byval v as ULongInt)
+  this.scalarValue.exactUInt64 = v
+end property
+
+property EvalValue.renderBase() as Integer
+  dim raw as UInteger = (this.flags and EVF_RENDER_BASE_MASK) shr EVF_RENDER_BASE_SHIFT
+  if raw = 0 then return 10
+  return CInt(raw)
+end property
+
+property EvalValue.renderBase(byval v as Integer)
+  this.flags and= not CUInt(EVF_RENDER_BASE_MASK)
+  this.flags or= (CUInt(v and &hFF) shl EVF_RENDER_BASE_SHIFT)
+end property
+
+property EvalValue.expandArgs() as Boolean
+  return (this.flags and EVF_EXPAND_ARGS) <> 0
+end property
+
+property EvalValue.expandArgs(byval v as Boolean)
+  if v then
+    this.flags or= EVF_EXPAND_ARGS
+  else
+    this.flags and= not CUInt(EVF_EXPAND_ARGS)
+  end if
+end property
+
+property EvalValue.renderUnsigned() as Boolean
+  return (this.flags and EVF_RENDER_UNSIGNED) <> 0
+end property
+
+property EvalValue.renderUnsigned(byval v as Boolean)
+  if v then
+    this.flags or= EVF_RENDER_UNSIGNED
+  else
+    this.flags and= not CUInt(EVF_RENDER_UNSIGNED)
+  end if
+end property
 
 type VarEntry
   name as String
@@ -378,8 +550,59 @@ private function IsReservedUserFunctionName(byref nameText as String) as Boolean
   return FALSE
 end function
 
+private function IsTrailingFormatterFunctionName(byref nameText as String) as Boolean
+  return IsFn(nameText, FUNC_HEX) orelse IsFn(nameText, FUNC_OCT) orelse IsFn(nameText, FUNC_BIN) orelse _
+         IsFn(nameText, FUNC_UHEX) orelse IsFn(nameText, FUNC_UOCT) orelse IsFn(nameText, FUNC_UBIN)
+end function
+
+private function TryRewriteTrailingFormatterStmt(byref stmt as String, byref rewritten as String) as Boolean
+  dim s as String = trim(stmt)
+  if len(s) = 0 then return FALSE
+  dim i as Integer = 1
+  dim ch as String = mid(s, i, 1)
+  if not ((ch >= "A" andalso ch <= "Z") orelse (ch >= "a" andalso ch <= "z") orelse ch = "_") then return FALSE
+  while i <= len(s)
+    ch = mid(s, i, 1)
+    if (ch >= "A" andalso ch <= "Z") orelse (ch >= "a" andalso ch <= "z") orelse (ch >= "0" andalso ch <= "9") orelse ch = "_" then
+      i += 1
+    else
+      exit while
+    end if
+  wend
+  dim fnName as String = left(s, i - 1)
+  if IsTrailingFormatterFunctionName(fnName) = FALSE then return FALSE
+  dim rest as String = ltrim(mid(s, i))
+  if len(rest) = 0 then
+    rewritten = lcase(fnName) & "(ans)"
+    return TRUE
+  end if
+  if left(rest, 1) <> "(" then return FALSE
+  dim p as Integer = 2
+  while p <= len(rest)
+    ch = mid(rest, p, 1)
+    if ch = " " orelse ch = chr(9) then
+      p += 1
+    else
+      exit while
+    end if
+  wend
+  if p > len(rest) orelse mid(rest, p, 1) <> ")" then return FALSE
+  p += 1
+  while p <= len(rest)
+    ch = mid(rest, p, 1)
+    if ch = " " orelse ch = chr(9) then
+      p += 1
+    else
+      return FALSE
+    end if
+  wend
+  rewritten = lcase(fnName) & "(ans)"
+  return TRUE
+end function
+
 private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   v.kind = VK_SCALAR
+  v.scalarStorageKind = SSK_FLOATINGPOINT
   v.scalar = n
   v.expandArgs = FALSE
   v.renderBase = 0
@@ -391,8 +614,29 @@ private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   erase v.arr
 end sub
 
+private function ScalarValueFromEvalScalar(byref v as EvalValue) as ScalarValue
+  dim outV as ScalarValue
+  outV.scalarStorageKind = v.scalarStorageKind
+  outV.scalar = v.scalar
+  outV.exactInt64Valid = v.exactInt64Valid
+  outV.exactInt64 = v.exactInt64
+  outV.exactUInt64Valid = v.exactUInt64Valid
+  outV.exactUInt64 = v.exactUInt64
+  return outV
+end function
+
+private sub EvalScalarFromScalarValue(byref s as ScalarValue, byref outV as EvalValue)
+  ValueSetScalar(outV, s.scalar)
+  outV.scalarStorageKind = s.scalarStorageKind
+  outV.exactInt64Valid = s.exactInt64Valid
+  outV.exactInt64 = s.exactInt64
+  outV.exactUInt64Valid = s.exactUInt64Valid
+  outV.exactUInt64 = s.exactUInt64
+end sub
+
 private sub ValueSetArray(byref v as EvalValue, a() as Double)
   v.kind = VK_ARRAY
+  v.scalarStorageKind = SSK_FLOATINGPOINT
   v.scalar = 0
   v.expandArgs = FALSE
   v.renderBase = 0
@@ -405,10 +649,53 @@ private sub ValueSetArray(byref v as EvalValue, a() as Double)
     redim v.arr(lbound(a) to ubound(a))
     dim i as Integer
     for i = lbound(a) to ubound(a)
-      v.arr(i) = a(i)
+      v.arr(i).scalarStorageKind = SSK_FLOATINGPOINT
+      v.arr(i).scalar = a(i)
+      dim t as LongInt = CLngInt(a(i))
+      if a(i) = CDbl(t) then
+        v.arr(i).scalarStorageKind = SSK_INT64
+        v.arr(i).exactInt64Valid = TRUE
+        v.arr(i).exactInt64 = t
+        if t >= 0 then
+          v.arr(i).exactUInt64Valid = TRUE
+          v.arr(i).exactUInt64 = CULngInt(t)
+        else
+          v.arr(i).exactUInt64Valid = FALSE
+          v.arr(i).exactUInt64 = 0
+        end if
+      else
+        v.arr(i).exactInt64Valid = FALSE
+        v.arr(i).exactInt64 = 0
+        v.arr(i).exactUInt64Valid = FALSE
+        v.arr(i).exactUInt64 = 0
+      end if
     next i
   else
     erase v.arr
+  end if
+end sub
+
+private sub ValueInitArrayLike(byref v as EvalValue, byval lb as Integer, byval ub as Integer)
+  ValueSetScalar(v, 0)
+  v.kind = VK_ARRAY
+  if ub >= lb then
+    redim v.arr(lb to ub)
+  end if
+end sub
+
+private sub ValueSetArrayElemFromScalar(byref arrV as EvalValue, byval idx as Integer, byref scalarV as EvalValue)
+  arrV.arr(idx) = ScalarValueFromEvalScalar(scalarV)
+end sub
+
+private sub ValueGetArrayElemAsScalar(byref arrV as EvalValue, byval idx as Integer, byref outV as EvalValue)
+  EvalScalarFromScalarValue(arrV.arr(idx), outV)
+end sub
+
+private sub ValueGetElemOrScalar(byref v as EvalValue, byval idx as Integer, byref outV as EvalValue)
+  if v.kind = VK_ARRAY then
+    ValueGetArrayElemAsScalar(v, idx, outV)
+  else
+    outV = v
   end if
 end sub
 
@@ -420,6 +707,7 @@ end function
 
 private sub ValueSetInt64(byref v as EvalValue, byval n as LongInt)
   ValueSetScalar(v, CDbl(n))
+  v.scalarStorageKind = SSK_INT64
   v.exactInt64Valid = TRUE
   v.exactInt64 = n
   if n >= 0 then
@@ -433,12 +721,25 @@ private sub ValueSetScalarPromoteExactInt64(byref v as EvalValue, byval n as Dou
   ValueSetScalar(v, n)
   dim t as LongInt = CLngInt(n)
   if n = CDbl(t) then
+    v.scalarStorageKind = SSK_INT64
     v.exactInt64Valid = TRUE
     v.exactInt64 = t
     if t >= 0 then
       v.exactUInt64Valid = TRUE
       v.exactUInt64 = CULngInt(t)
     end if
+  end if
+end sub
+
+private sub ValueSetUInt64(byref v as EvalValue, byval n as ULongInt)
+  const I64_MAX_U as ULongInt = CULngInt(9223372036854775807)
+  ValueSetScalar(v, CDbl(n))
+  v.scalarStorageKind = SSK_UINT64
+  v.exactUInt64Valid = TRUE
+  v.exactUInt64 = n
+  if n <= I64_MAX_U then
+    v.exactInt64Valid = TRUE
+    v.exactInt64 = CLngInt(n)
   end if
 end sub
 
@@ -460,6 +761,46 @@ private function TryGetExactInt64(byref v as EvalValue, byref outV as LongInt) a
   end if
   return FALSE
 end function
+
+private function TryGetExactInt64Scalar(byref s as ScalarValue, byref outV as LongInt) as Boolean
+  const I64_MAX as LongInt = 9223372036854775807
+  if s.exactInt64Valid then
+    outV = s.exactInt64
+    return TRUE
+  end if
+  if s.exactUInt64Valid andalso s.exactUInt64 <= CULngInt(I64_MAX) then
+    outV = CLngInt(s.exactUInt64)
+    return TRUE
+  end if
+  dim t as LongInt = CLngInt(s.scalar)
+  if s.scalar = CDbl(t) then
+    outV = t
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function UniqueHashKeyFromDouble(byval v as Double) as ULongInt
+  if v = 0 then return 0 ' Canonicalize +0/-0.
+  dim bits as DoubleBits
+  bits.d = v
+  return bits.u
+end function
+
+private function NextPow2AtLeast(byval n as Integer) as Integer
+  dim cap as Integer = 1
+  while cap < n
+    if cap > &h3FFFFFFF then return n
+    cap = cap shl 1
+  wend
+  return cap
+end function
+
+private sub SwapDouble(byref a as Double, byref b as Double)
+  dim t as Double = a
+  a = b
+  b = t
+end sub
 
 private function TryAddInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
   const I64_MAX as LongInt = 9223372036854775807
@@ -526,16 +867,41 @@ private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byre
   return TRUE
 end function
 
+private function FormatSignedMagnitudeBase(byval iv as LongInt, byval baseN as Integer, byval asUnsigned as Boolean) as String
+  dim prefix as String
+  select case baseN
+    case 16: prefix = "0x"
+    case 8: prefix = "0o"
+    case else: prefix = "0b"
+  end select
+
+  if asUnsigned then
+    select case baseN
+      case 16: return prefix & Hex(CULngInt(iv))
+      case 8: return prefix & Oct(CULngInt(iv))
+      case else: return prefix & Bin(CULngInt(iv))
+    end select
+  end if
+
+  if iv < 0 then
+    select case baseN
+      case 16: return "-" & prefix & Hex(CULngInt(-iv))
+      case 8: return "-" & prefix & Oct(CULngInt(-iv))
+      case else: return "-" & prefix & Bin(CULngInt(-iv))
+    end select
+  end if
+
+  select case baseN
+    case 16: return prefix & Hex(CULngInt(iv))
+    case 8: return prefix & Oct(CULngInt(iv))
+    case else: return prefix & Bin(CULngInt(iv))
+  end select
+end function
+
 private function FormatHexScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if asUnsigned then
-    outText = "0x" & Hex(CULngInt(iv))
-  elseif iv < 0 then
-    outText = "-0x" & Hex(CULngInt(-iv))
-  else
-    outText = "0x" & Hex(CULngInt(iv))
-  end if
+  outText = FormatSignedMagnitudeBase(iv, 16, asUnsigned)
   return TRUE
 end function
 
@@ -546,13 +912,7 @@ end function
 private function FormatBinScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if asUnsigned then
-    outText = "0b" & Bin(CULngInt(iv))
-  elseif iv < 0 then
-    outText = "-0b" & Bin(CULngInt(-iv))
-  else
-    outText = "0b" & Bin(CULngInt(iv))
-  end if
+  outText = FormatSignedMagnitudeBase(iv, 2, asUnsigned)
   return TRUE
 end function
 
@@ -563,13 +923,7 @@ end function
 private function FormatOctScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
   dim iv as LongInt = CLngInt(n)
   if n <> CDbl(iv) then return FALSE
-  if asUnsigned then
-    outText = "0o" & Oct(CULngInt(iv))
-  elseif iv < 0 then
-    outText = "-0o" & Oct(CULngInt(-iv))
-  else
-    outText = "0o" & Oct(CULngInt(iv))
-  end if
+  outText = FormatSignedMagnitudeBase(iv, 8, asUnsigned)
   return TRUE
 end function
 
@@ -600,29 +954,58 @@ private function ValueToString(byref v as EvalValue) as String
   dim i as Integer
   for i = lbound(v.arr) to ubound(v.arr)
     if i > lbound(v.arr) then s &= ","
+    dim sv as ScalarValue = v.arr(i)
     if v.renderBase = 16 then
-      dim fmtText as String
-      if FormatHexScalar(v.arr(i), fmtText, v.renderUnsigned) then
-        s &= fmtText
+      if sv.exactUInt64Valid then
+        s &= FormatHexUInt64(sv.exactUInt64)
       else
-        s &= ltrim(str(v.arr(i)))
+        dim fmtText as String
+        if FormatHexScalar(sv.scalar, fmtText, v.renderUnsigned) then
+          s &= fmtText
+        else
+          if sv.exactInt64Valid then
+            s &= ltrim(str(sv.exactInt64))
+          else
+            s &= ltrim(str(sv.scalar))
+          end if
+        end if
       end if
     elseif v.renderBase = 8 then
-      dim fmtText as String
-      if FormatOctScalar(v.arr(i), fmtText, v.renderUnsigned) then
-        s &= fmtText
+      if sv.exactUInt64Valid then
+        s &= FormatOctUInt64(sv.exactUInt64)
       else
-        s &= ltrim(str(v.arr(i)))
+        dim fmtText as String
+        if FormatOctScalar(sv.scalar, fmtText, v.renderUnsigned) then
+          s &= fmtText
+        else
+          if sv.exactInt64Valid then
+            s &= ltrim(str(sv.exactInt64))
+          else
+            s &= ltrim(str(sv.scalar))
+          end if
+        end if
       end if
     elseif v.renderBase = 2 then
-      dim fmtText as String
-      if FormatBinScalar(v.arr(i), fmtText, v.renderUnsigned) then
-        s &= fmtText
+      if sv.exactUInt64Valid then
+        s &= FormatBinUInt64(sv.exactUInt64)
       else
-        s &= ltrim(str(v.arr(i)))
+        dim fmtText as String
+        if FormatBinScalar(sv.scalar, fmtText, v.renderUnsigned) then
+          s &= fmtText
+        else
+          if sv.exactInt64Valid then
+            s &= ltrim(str(sv.exactInt64))
+          else
+            s &= ltrim(str(sv.scalar))
+          end if
+        end if
       end if
     else
-      s &= ltrim(str(v.arr(i)))
+      if sv.exactInt64Valid then
+        s &= ltrim(str(sv.exactInt64))
+      else
+        s &= ltrim(str(sv.scalar))
+      end if
     end if
   next i
   s &= ")"
@@ -642,10 +1025,11 @@ end function
 private function MatchKeywordOperator(byref kw as String) as Boolean
   dim kwLen as Integer = Len(kw)
   if kwLen <= 0 then return FALSE
+  dim kwPtr as UByte Ptr = cast(UByte Ptr, strptr(kw))
   dim i as Integer
   for i = 0 to kwLen - 1
     dim c1 as UByte = pStream[i]
-    dim c2 as UByte = Asc(mid(kw, i + 1, 1))
+    dim c2 as UByte = kwPtr[i]
     if c1 >= 65 andalso c1 <= 90 then c1 += 32
     if c2 >= 65 andalso c2 <= 90 then c2 += 32
     if c1 <> c2 then return FALSE
@@ -837,7 +1221,8 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
     return FALSE
   end if
 
-  ValueSetScalarPromoteExactInt64(outValue, baseValue.arr(lbound(baseValue.arr) + idxInt))
+  dim rawIdx as Integer = lbound(baseValue.arr) + idxInt
+  ValueGetArrayElemAsScalar(baseValue, rawIdx, outValue)
   return TRUE
 end function
 
@@ -924,52 +1309,51 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   return TRUE
 end function
 
+private function ApplyLogWithBaseScalars(byref valueS as ScalarValue, byref baseS as ScalarValue, byref outV as EvalValue) as Boolean
+  if valueS.scalar <= 0 orelse baseS.scalar <= 0 orelse baseS.scalar = 1 then return FALSE
+  ValueSetScalarPromoteExactInt64(outV, log(valueS.scalar) / log(baseS.scalar))
+  return TRUE
+end function
+
 private function ApplyLogWithBase(byref valueV as EvalValue, byref baseV as EvalValue, byref outV as EvalValue) as Boolean
   if valueV.kind = VK_SCALAR andalso baseV.kind = VK_SCALAR then
-    if valueV.scalar <= 0 orelse baseV.scalar <= 0 orelse baseV.scalar = 1 then return FALSE
-    ValueSetScalarPromoteExactInt64(outV, log(valueV.scalar) / log(baseV.scalar))
-    return TRUE
+    return ApplyLogWithBaseScalars(valueV.scalarValue, baseV.scalarValue, outV)
   end if
 
-  dim i as Integer
-  if valueV.kind = VK_ARRAY andalso baseV.kind = VK_ARRAY then
-    if ValueArrayLen(valueV) <> ValueArrayLen(baseV) then return FALSE
-    redim outV.arr(lbound(valueV.arr) to ubound(valueV.arr))
-    outV.kind = VK_ARRAY
-    for i = lbound(valueV.arr) to ubound(valueV.arr)
-      dim a as EvalValue, b as EvalValue, r as EvalValue
-      ValueSetScalar(a, valueV.arr(i))
-      ValueSetScalar(b, baseV.arr(i))
-      if ApplyLogWithBase(a, b, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
-    next i
-    return TRUE
-  end if
-
+  dim i as Integer, lb as Integer, ub as Integer
+  if valueV.kind = VK_ARRAY andalso baseV.kind = VK_ARRAY andalso ValueArrayLen(valueV) <> ValueArrayLen(baseV) then return FALSE
   if valueV.kind = VK_ARRAY then
-    redim outV.arr(lbound(valueV.arr) to ubound(valueV.arr))
-    outV.kind = VK_ARRAY
-    for i = lbound(valueV.arr) to ubound(valueV.arr)
-      dim a as EvalValue, r as EvalValue
-      ValueSetScalar(a, valueV.arr(i))
-      if ApplyLogWithBase(a, baseV, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
-    next i
-    return TRUE
+    lb = lbound(valueV.arr): ub = ubound(valueV.arr)
+  else
+    lb = lbound(baseV.arr): ub = ubound(baseV.arr)
   end if
-
-  redim outV.arr(lbound(baseV.arr) to ubound(baseV.arr))
-  outV.kind = VK_ARRAY
-  for i = lbound(baseV.arr) to ubound(baseV.arr)
-    dim b as EvalValue, r as EvalValue
-    ValueSetScalar(b, baseV.arr(i))
-    if ApplyLogWithBase(valueV, b, r) = FALSE then return FALSE
-    outV.arr(i) = r.scalar
+  ValueInitArrayLike(outV, lb, ub)
+  dim valueScalarPtr as ScalarValue ptr = 0
+  dim baseScalarPtr as ScalarValue ptr = 0
+  if valueV.kind = VK_SCALAR then valueScalarPtr = @valueV.scalarValue
+  if baseV.kind = VK_SCALAR then baseScalarPtr = @baseV.scalarValue
+  for i = lb to ub
+    dim r as EvalValue
+    dim a as ScalarValue ptr
+    dim b as ScalarValue ptr
+    if valueV.kind = VK_ARRAY then
+      a = @valueV.arr(i)
+    else
+      a = valueScalarPtr
+    end if
+    if baseV.kind = VK_ARRAY then
+      b = @baseV.arr(i)
+    else
+      b = baseScalarPtr
+    end if
+    if ApplyLogWithBaseScalars(*a, *b, r) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
 end function
 
 private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, byref maxV as EvalValue, byref outV as EvalValue) as Boolean
+  if minV.kind <> VK_SCALAR orelse maxV.kind <> VK_SCALAR then return FALSE
   if valueV.kind = VK_SCALAR andalso minV.kind = VK_SCALAR andalso maxV.kind = VK_SCALAR then
     dim v as Double = valueV.scalar
     if v < minV.scalar then v = minV.scalar
@@ -978,36 +1362,15 @@ private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, 
     return TRUE
   end if
 
-  dim i as Integer
-  if valueV.kind = VK_ARRAY then
-    redim outV.arr(lbound(valueV.arr) to ubound(valueV.arr))
-    outV.kind = VK_ARRAY
-    for i = lbound(valueV.arr) to ubound(valueV.arr)
-      dim a as EvalValue, r as EvalValue
-      ValueSetScalar(a, valueV.arr(i))
-      if ApplyClamp(a, minV, maxV, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
-    next i
-    return TRUE
-  end if
-  if minV.kind = VK_ARRAY then
-    redim outV.arr(lbound(minV.arr) to ubound(minV.arr))
-    outV.kind = VK_ARRAY
-    for i = lbound(minV.arr) to ubound(minV.arr)
-      dim b as EvalValue, r as EvalValue
-      ValueSetScalar(b, minV.arr(i))
-      if ApplyClamp(valueV, b, maxV, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
-    next i
-    return TRUE
-  end if
-  redim outV.arr(lbound(maxV.arr) to ubound(maxV.arr))
-  outV.kind = VK_ARRAY
-  for i = lbound(maxV.arr) to ubound(maxV.arr)
-    dim c as EvalValue, r as EvalValue
-    ValueSetScalar(c, maxV.arr(i))
-    if ApplyClamp(valueV, minV, c, r) = FALSE then return FALSE
-    outV.arr(i) = r.scalar
+  if valueV.kind <> VK_ARRAY then return FALSE
+  ValueInitArrayLike(outV, lbound(valueV.arr), ubound(valueV.arr))
+  for i as Integer = lbound(valueV.arr) to ubound(valueV.arr)
+    dim v as Double = valueV.arr(i).scalar
+    if v < minV.scalar then v = minV.scalar
+    if v > maxV.scalar then v = maxV.scalar
+    dim r as EvalValue
+    ValueSetScalarPromoteExactInt64(r, v)
+    ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
 end function
@@ -1049,23 +1412,21 @@ private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval
 
   dim i as Integer
   if aV.kind = VK_ARRAY then
-    redim outV.arr(lbound(aV.arr) to ubound(aV.arr))
-    outV.kind = VK_ARRAY
+    ValueInitArrayLike(outV, lbound(aV.arr), ubound(aV.arr))
     for i = lbound(aV.arr) to ubound(aV.arr)
       dim a as EvalValue, r as EvalValue
-      ValueSetScalar(a, aV.arr(i))
+      ValueGetArrayElemAsScalar(aV, i, a)
       if ApplyGcdLcm(a, bV, doLcm, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
+      ValueSetArrayElemFromScalar(outV, i, r)
     next i
     return TRUE
   end if
-  redim outV.arr(lbound(bV.arr) to ubound(bV.arr))
-  outV.kind = VK_ARRAY
+  ValueInitArrayLike(outV, lbound(bV.arr), ubound(bV.arr))
   for i = lbound(bV.arr) to ubound(bV.arr)
     dim b as EvalValue, r as EvalValue
-    ValueSetScalar(b, bV.arr(i))
+    ValueGetArrayElemAsScalar(bV, i, b)
     if ApplyGcdLcm(aV, b, doLcm, r) = FALSE then return FALSE
-    outV.arr(i) = r.scalar
+    ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
 end function
@@ -1085,240 +1446,232 @@ private function Atan2Compat(byval y as Double, byval x as Double) as Double
   return 0
 end function
 
+private function ApplyUnaryScalarFunction(byref fn as String, byval scalarV as Double, byref outV as EvalValue) as Boolean
+  if IsFn(fn, FUNC_SIN) then
+    ValueSetScalarPromoteExactInt64(outV, sin(scalarV))
+  elseif IsFn(fn, FUNC_COS) then
+    ValueSetScalarPromoteExactInt64(outV, cos(scalarV))
+  elseif IsFn(fn, FUNC_TAN) then
+    ValueSetScalarPromoteExactInt64(outV, tan(scalarV))
+  elseif IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) then
+    ValueSetScalarPromoteExactInt64(outV, asin(scalarV))
+  elseif IsFn(fn, FUNC_ACOS) orelse IsFn(fn, FUNC_ARCCOS) then
+    ValueSetScalarPromoteExactInt64(outV, acos(scalarV))
+  elseif IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) then
+    ValueSetScalarPromoteExactInt64(outV, atn(scalarV))
+  elseif IsFn(fn, FUNC_SINH) then
+    ValueSetScalarPromoteExactInt64(outV, sinh(scalarV))
+  elseif IsFn(fn, FUNC_COSH) then
+    ValueSetScalarPromoteExactInt64(outV, cosh(scalarV))
+  elseif IsFn(fn, FUNC_TANH) then
+    ValueSetScalarPromoteExactInt64(outV, tanh(scalarV))
+  elseif IsFn(fn, FUNC_EXP) then
+    ValueSetScalarPromoteExactInt64(outV, exp(scalarV))
+  elseif IsFn(fn, FUNC_LN) then
+    ValueSetScalarPromoteExactInt64(outV, log(scalarV))
+  elseif IsFn(fn, FUNC_LOG10) then
+    ValueSetScalarPromoteExactInt64(outV, log(scalarV) / log(10.0))
+  elseif IsFn(fn, FUNC_SQRT) then
+    ValueSetScalarPromoteExactInt64(outV, sqr(scalarV))
+  elseif IsFn(fn, FUNC_SQR) then
+    ValueSetScalarPromoteExactInt64(outV, scalarV * scalarV)
+  elseif IsFn(fn, FUNC_INT) then
+    ValueSetInt64(outV, CLngInt(Fix(scalarV)))
+  elseif IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) then
+    ValueSetScalarPromoteExactInt64(outV, scalarV - Fix(scalarV))
+  elseif IsFn(fn, FUNC_ABS) then
+    ValueSetScalarPromoteExactInt64(outV, abs(scalarV))
+  elseif IsFn(fn, FUNC_FLOOR) then
+    ValueSetInt64(outV, CLngInt(Int(scalarV)))
+  elseif IsFn(fn, FUNC_CEIL) then
+    ValueSetInt64(outV, CLngInt(-Int(-scalarV)))
+  elseif IsFn(fn, FUNC_TRUNC) then
+    ValueSetInt64(outV, CLngInt(Fix(scalarV)))
+  elseif IsFn(fn, FUNC_ROUND) then
+    if scalarV >= 0 then
+      ValueSetInt64(outV, CLngInt(Int(scalarV + 0.5)))
+    else
+      ValueSetInt64(outV, CLngInt(-Int(-scalarV + 0.5)))
+    end if
+  elseif IsFn(fn, FUNC_SIGN) then
+    if scalarV > 0 then
+      ValueSetInt64(outV, 1)
+    elseif scalarV < 0 then
+      ValueSetInt64(outV, -1)
+    else
+      ValueSetInt64(outV, 0)
+    end if
+  elseif IsFn(fn, FUNC_DEG) then
+    ValueSetScalarPromoteExactInt64(outV, scalarV * 180.0 / (4.0 * atn(1.0)))
+  elseif IsFn(fn, FUNC_RAD) then
+    ValueSetScalarPromoteExactInt64(outV, scalarV * (4.0 * atn(1.0)) / 180.0)
+  else
+    return FALSE
+  end if
+  return TRUE
+end function
+
 private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, byref outV as EvalValue) as Boolean
   dim i as Integer
   if v.kind = VK_SCALAR then
-    if IsFn(fn, FUNC_SIN) then
-      ValueSetScalarPromoteExactInt64(outV, sin(v.scalar))
-    elseif IsFn(fn, FUNC_COS) then
-      ValueSetScalarPromoteExactInt64(outV, cos(v.scalar))
-    elseif IsFn(fn, FUNC_TAN) then
-      ValueSetScalarPromoteExactInt64(outV, tan(v.scalar))
-    elseif IsFn(fn, FUNC_ASIN) orelse IsFn(fn, FUNC_ARCSIN) then
-      ValueSetScalarPromoteExactInt64(outV, asin(v.scalar))
-    elseif IsFn(fn, FUNC_ACOS) orelse IsFn(fn, FUNC_ARCCOS) then
-      ValueSetScalarPromoteExactInt64(outV, acos(v.scalar))
-    elseif IsFn(fn, FUNC_ATAN) orelse IsFn(fn, FUNC_ARCTAN) then
-      ValueSetScalarPromoteExactInt64(outV, atn(v.scalar))
-    elseif IsFn(fn, FUNC_SINH) then
-      ValueSetScalarPromoteExactInt64(outV, sinh(v.scalar))
-    elseif IsFn(fn, FUNC_COSH) then
-      ValueSetScalarPromoteExactInt64(outV, cosh(v.scalar))
-    elseif IsFn(fn, FUNC_TANH) then
-      ValueSetScalarPromoteExactInt64(outV, tanh(v.scalar))
-    elseif IsFn(fn, FUNC_EXP) then
-      ValueSetScalarPromoteExactInt64(outV, exp(v.scalar))
-    elseif IsFn(fn, FUNC_LN) then
-      ValueSetScalarPromoteExactInt64(outV, log(v.scalar))
-    elseif IsFn(fn, FUNC_LOG10) then
-      ValueSetScalarPromoteExactInt64(outV, log(v.scalar) / log(10.0))
-    elseif IsFn(fn, FUNC_SQRT) then
-      ValueSetScalarPromoteExactInt64(outV, sqr(v.scalar))
-    elseif IsFn(fn, FUNC_SQR) then
-      ValueSetScalarPromoteExactInt64(outV, v.scalar * v.scalar)
-    elseif IsFn(fn, FUNC_INT) then
-      ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
-    elseif IsFn(fn, FUNC_FRAC) orelse IsFn(fn, FUNC_FRACT) then
-      ValueSetScalarPromoteExactInt64(outV, v.scalar - Fix(v.scalar))
-    elseif IsFn(fn, FUNC_ABS) then
-      ValueSetScalarPromoteExactInt64(outV, abs(v.scalar))
-    elseif IsFn(fn, FUNC_FLOOR) then
-      ValueSetInt64(outV, CLngInt(Int(v.scalar)))
-    elseif IsFn(fn, FUNC_CEIL) then
-      ValueSetInt64(outV, CLngInt(-Int(-v.scalar)))
-    elseif IsFn(fn, FUNC_TRUNC) then
-      ValueSetInt64(outV, CLngInt(Fix(v.scalar)))
-    elseif IsFn(fn, FUNC_ROUND) then
-      if v.scalar >= 0 then
-        ValueSetInt64(outV, CLngInt(Int(v.scalar + 0.5)))
-      else
-        ValueSetInt64(outV, CLngInt(-Int(-v.scalar + 0.5)))
-      end if
-    elseif IsFn(fn, FUNC_SIGN) then
-      if v.scalar > 0 then
-        ValueSetInt64(outV, 1)
-      elseif v.scalar < 0 then
-        ValueSetInt64(outV, -1)
-      else
-        ValueSetInt64(outV, 0)
-      end if
-    elseif IsFn(fn, FUNC_DEG) then
-      ValueSetScalarPromoteExactInt64(outV, v.scalar * 180.0 / (4.0 * atn(1.0)))
-    elseif IsFn(fn, FUNC_RAD) then
-      ValueSetScalarPromoteExactInt64(outV, v.scalar * (4.0 * atn(1.0)) / 180.0)
-    else
-      return FALSE
-    end if
-    return TRUE
+    return ApplyUnaryScalarFunction(fn, v.scalar, outV)
   end if
 
   if ubound(v.arr) < lbound(v.arr) then
     parseError = 1
     return FALSE
   end if
-  redim outV.arr(lbound(v.arr) to ubound(v.arr))
-  outV.kind = VK_ARRAY
+  ValueInitArrayLike(outV, lbound(v.arr), ubound(v.arr))
   for i = lbound(v.arr) to ubound(v.arr)
-    dim tmpIn as EvalValue, tmpOut as EvalValue
-    ValueSetScalar(tmpIn, v.arr(i))
-    if ApplyUnaryFunction(fn, tmpIn, tmpOut) = FALSE then return FALSE
-    outV.arr(i) = tmpOut.scalar
+    dim tmpOut as EvalValue
+    if ApplyUnaryScalarFunction(fn, v.arr(i).scalar, tmpOut) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, tmpOut)
   next i
+  return TRUE
+end function
+
+private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  dim li as LongInt, ri as LongInt, ro as LongInt
+  dim hasIntL as Boolean = TryGetExactInt64Scalar(leftS, li)
+  dim hasIntR as Boolean = TryGetExactInt64Scalar(rightS, ri)
+  if hasIntL andalso hasIntR then
+    select case op
+      case 42
+        if TryMulInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+      case 43
+        if TryAddInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+      case 45
+        if TrySubInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+      case 94
+        if TryPowInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+    end select
+  end if
+
+  select case op
+    case 42: ValueSetScalarPromoteExactInt64(outV, leftS.scalar * rightS.scalar)
+    case 47
+      ValueSetScalarPromoteExactInt64(outV, leftS.scalar / rightS.scalar)
+    case 43: ValueSetScalarPromoteExactInt64(outV, leftS.scalar + rightS.scalar)
+    case 45: ValueSetScalarPromoteExactInt64(outV, leftS.scalar - rightS.scalar)
+    case 94: ValueSetScalarPromoteExactInt64(outV, leftS.scalar ^ rightS.scalar)
+    case else: return FALSE
+  end select
   return TRUE
 end function
 
 private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
   dim i as Integer
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
-    dim li as LongInt, ri as LongInt, ro as LongInt
-    dim hasIntL as Boolean = TryGetExactInt64(leftV, li)
-    dim hasIntR as Boolean = TryGetExactInt64(rightV, ri)
-    if hasIntL andalso hasIntR then
-      select case op
-        case 42
-          if TryMulInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-        case 43
-          if TryAddInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-        case 45
-          if TrySubInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-        case 94
-          if TryPowInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-      end select
-    end if
-
-    select case op
-      case 42: ValueSetScalarPromoteExactInt64(outV, leftV.scalar * rightV.scalar)
-      case 47
-        ValueSetScalarPromoteExactInt64(outV, leftV.scalar / rightV.scalar)
-      case 43: ValueSetScalarPromoteExactInt64(outV, leftV.scalar + rightV.scalar)
-      case 45: ValueSetScalarPromoteExactInt64(outV, leftV.scalar - rightV.scalar)
-      case 94: ValueSetScalarPromoteExactInt64(outV, leftV.scalar ^ rightV.scalar)
-      case else: return FALSE
-    end select
-    return TRUE
+    return ValueApplyBinaryScalars(leftV.scalarValue, rightV.scalarValue, op, outV)
   end if
 
   dim lb as Integer, ub as Integer
   if leftV.kind = VK_ARRAY andalso rightV.kind = VK_ARRAY then
     if ValueArrayLen(leftV) <> ValueArrayLen(rightV) then return FALSE
     lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    redim outV.arr(lb to ub)
-    outV.kind = VK_ARRAY
+    ValueInitArrayLike(outV, lb, ub)
     for i = lb to ub
-      dim a as EvalValue, b as EvalValue, r as EvalValue
-      ValueSetScalar(a, leftV.arr(i))
-      ValueSetScalar(b, rightV.arr(i))
-      if ValueApplyBinary(a, b, op, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
+      dim r as EvalValue
+      if ValueApplyBinaryScalars(leftV.arr(i), rightV.arr(i), op, r) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, r)
     next i
     return TRUE
   end if
 
   if leftV.kind = VK_ARRAY then
     lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    redim outV.arr(lb to ub)
-    outV.kind = VK_ARRAY
+    ValueInitArrayLike(outV, lb, ub)
     for i = lb to ub
-      dim a as EvalValue, b as EvalValue, r as EvalValue
-      ValueSetScalar(a, leftV.arr(i))
-      b = rightV
-      if ValueApplyBinary(a, b, op, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
+      dim r as EvalValue
+      if ValueApplyBinaryScalars(leftV.arr(i), rightV.scalarValue, op, r) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, r)
     next i
     return TRUE
   end if
 
   lb = lbound(rightV.arr): ub = ubound(rightV.arr)
-  redim outV.arr(lb to ub)
-  outV.kind = VK_ARRAY
+  ValueInitArrayLike(outV, lb, ub)
   for i = lb to ub
-    dim a as EvalValue, b as EvalValue, r as EvalValue
-    a = leftV
-    ValueSetScalar(b, rightV.arr(i))
-    if ValueApplyBinary(a, b, op, r) = FALSE then return FALSE
-    outV.arr(i) = r.scalar
+    dim r as EvalValue
+    if ValueApplyBinaryScalars(leftV.scalarValue, rightV.arr(i), op, r) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
   next i
+  return TRUE
+end function
+
+private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref op as String, byref outV as EvalValue) as Boolean
+  dim requiresIntegers as Boolean = (op = "<<" orelse op = ">>" orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
+  dim l as LongInt, r as LongInt
+
+  if requiresIntegers then
+    if (TryGetExactInt64Scalar(leftS, l) = FALSE) orelse (TryGetExactInt64Scalar(rightS, r) = FALSE) then
+      if op = OpName(OP_MOD) then
+        SetParseError("modulo operands must be integer values")
+      else
+        SetParseError("bitwise operands must be integer values")
+      end if
+      return FALSE
+    end if
+  end if
+
+  select case op
+    case "<<"
+      if r < 0 orelse r > 63 then return FALSE
+      ValueSetInt64(outV, l shl r)
+    case ">>"
+      if r < 0 orelse r > 63 then return FALSE
+      ValueSetInt64(outV, l shr r)
+    case "&"
+      ValueSetInt64(outV, l and r)
+    case "^"
+      ValueSetInt64(outV, l xor r)
+    case "|"
+      ValueSetInt64(outV, l or r)
+    case OpName(OP_MOD)
+      if r = 0 then return FALSE
+      ValueSetInt64(outV, l mod r)
+    case else
+      return FALSE
+  end select
   return TRUE
 end function
 
 private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
   dim i as Integer
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
-    dim requiresIntegers as Boolean = (op = "<<" orelse op = ">>" orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
-    dim l as LongInt, r as LongInt
-
-    if requiresIntegers then
-      if (TryGetExactInt64(leftV, l) = FALSE) orelse (TryGetExactInt64(rightV, r) = FALSE) then
-        if op = OpName(OP_MOD) then
-          SetParseError("modulo operands must be integer values")
-        else
-          SetParseError("bitwise operands must be integer values")
-        end if
-        return FALSE
-      end if
-    end if
-
-    select case op
-      case "<<"
-        if r < 0 orelse r > 63 then return FALSE
-        ValueSetInt64(outV, l shl r)
-      case ">>"
-        if r < 0 orelse r > 63 then return FALSE
-        ValueSetInt64(outV, l shr r)
-      case "&"
-        ValueSetInt64(outV, l and r)
-      case "^"
-        ValueSetInt64(outV, l xor r)
-      case "|"
-        ValueSetInt64(outV, l or r)
-      case OpName(OP_MOD)
-        if r = 0 then return FALSE
-        ValueSetInt64(outV, l mod r)
-      case else
-        return FALSE
-    end select
-    return TRUE
+    return ValueApplyBinaryInt64Scalars(leftV.scalarValue, rightV.scalarValue, op, outV)
   end if
 
   dim lb as Integer, ub as Integer
   if leftV.kind = VK_ARRAY andalso rightV.kind = VK_ARRAY then
     if ValueArrayLen(leftV) <> ValueArrayLen(rightV) then return FALSE
     lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    redim outV.arr(lb to ub)
-    outV.kind = VK_ARRAY
+    ValueInitArrayLike(outV, lb, ub)
     for i = lb to ub
-      dim a as EvalValue, b as EvalValue, r as EvalValue
-      ValueSetScalar(a, leftV.arr(i))
-      ValueSetScalar(b, rightV.arr(i))
-      if ValueApplyBinaryInt64(a, b, op, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
+      dim r as EvalValue
+      if ValueApplyBinaryInt64Scalars(leftV.arr(i), rightV.arr(i), op, r) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, r)
     next i
     return TRUE
   end if
 
   if leftV.kind = VK_ARRAY then
     lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    redim outV.arr(lb to ub)
-    outV.kind = VK_ARRAY
+    ValueInitArrayLike(outV, lb, ub)
     for i = lb to ub
-      dim a as EvalValue, b as EvalValue, r as EvalValue
-      ValueSetScalar(a, leftV.arr(i))
-      b = rightV
-      if ValueApplyBinaryInt64(a, b, op, r) = FALSE then return FALSE
-      outV.arr(i) = r.scalar
+      dim r as EvalValue
+      if ValueApplyBinaryInt64Scalars(leftV.arr(i), rightV.scalarValue, op, r) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, r)
     next i
     return TRUE
   end if
 
   lb = lbound(rightV.arr): ub = ubound(rightV.arr)
-  redim outV.arr(lb to ub)
-  outV.kind = VK_ARRAY
+  ValueInitArrayLike(outV, lb, ub)
   for i = lb to ub
-    dim a as EvalValue, b as EvalValue, r as EvalValue
-    a = leftV
-    ValueSetScalar(b, rightV.arr(i))
-    if ValueApplyBinaryInt64(a, b, op, r) = FALSE then return FALSE
-    outV.arr(i) = r.scalar
+    dim r as EvalValue
+    if ValueApplyBinaryInt64Scalars(leftV.scalarValue, rightV.arr(i), op, r) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
 end function
@@ -1326,7 +1679,7 @@ end function
 private function CompareScalarArrayLex(byval scalarV as Double, byref arrV as EvalValue) as Integer
   dim arrLen as Integer = ValueArrayLen(arrV)
   if arrLen <= 0 then return 1
-  dim firstVal as Double = arrV.arr(lbound(arrV.arr))
+  dim firstVal as Double = arrV.arr(lbound(arrV.arr)).scalar
   if scalarV < firstVal then return -1
   if scalarV > firstVal then return 1
   if arrLen = 1 then return 0
@@ -1357,10 +1710,12 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
   dim leftLen as Integer = ValueArrayLen(leftV)
   dim rightLen as Integer = ValueArrayLen(rightV)
   dim minLen as Integer = IIf(leftLen < rightLen, leftLen, rightLen)
+  dim leftLb as Integer = lbound(leftV.arr)
+  dim rightLb as Integer = lbound(rightV.arr)
   dim i as Integer
   for i = 0 to minLen - 1
-    dim lv as Double = leftV.arr(lbound(leftV.arr) + i)
-    dim rv as Double = rightV.arr(lbound(rightV.arr) + i)
+    dim lv as Double = leftV.arr(leftLb + i).scalar
+    dim rv as Double = rightV.arr(rightLb + i).scalar
     if lv < rv then
       cmp = -1
       return TRUE
@@ -1422,6 +1777,23 @@ private sub ValueSetBoolResult(byval b as Boolean, byref outV as EvalValue)
   end if
 end sub
 
+private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+  if ValueApplyBinaryInt64(leftV, rightV, op, outV) = FALSE then
+    SetParseError("incompatible operands")
+    return FALSE
+  end if
+  return TRUE
+end function
+
+private function EnsureExactArgCount(args() as EvalValue, byval expectedCount as Integer, byref fnName as String) as Boolean
+  dim argc as Integer = ubound(args) + 1
+  if argc <> expectedCount then
+    SetParseError(fnName & "() expects " & ltrim(str(expectedCount)) & " argument(s), " & ltrim(str(argc)) & " given")
+    return FALSE
+  end if
+  return TRUE
+end function
+
 private function IsPercentageTail() as Boolean
   dim p as ZString ptr = pStream
   while (p[0] = 32) orelse (p[0] = 9) orelse (p[0] = 10) orelse (p[0] = 13)
@@ -1442,17 +1814,18 @@ private function IsImplicitMulStart() as Boolean
   return FALSE
 end function
 
+declare function ArgScalarWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as Double) as Boolean
+declare function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outS as ScalarValue) as Boolean
+
 private function CollectArgsAsFlat(args() as EvalValue, flat() as Double) as Integer
   dim count as Integer = 0
-  dim i as Integer, j as Integer
+  dim i as Integer
 
   for i = lbound(args) to ubound(args)
     if args(i).kind = VK_SCALAR then
       count = count + 1
     else
-      for j = lbound(args(i).arr) to ubound(args(i).arr)
-        count = count + 1
-      next j
+      count += ValueArrayLen(args(i))
     end if
   next i
 
@@ -1460,86 +1833,249 @@ private function CollectArgsAsFlat(args() as EvalValue, flat() as Double) as Int
   redim flat(0 to count - 1)
 
   dim flatPos as Integer = 0
-  for i = lbound(args) to ubound(args)
-    if args(i).kind = VK_SCALAR then
-      flat(flatPos) = args(i).scalar
-      flatPos = flatPos + 1
-    else
-      for j = lbound(args(i).arr) to ubound(args(i).arr)
-        flat(flatPos) = args(i).arr(j)
-        flatPos = flatPos + 1
-      next j
-    end if
-  next i
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim item as Double
+  while ArgScalarWalkNext(args(), argIdx, elemIdx, item)
+    flat(flatPos) = item
+    flatPos += 1
+  wend
   return count
+end function
+
+private function CollectRequiredArgsAsFlat(args() as EvalValue, flat() as Double, byref fnName as String) as Integer
+  dim count as Integer = CollectArgsAsFlat(args(), flat())
+  if count <= 0 then
+    SetParseError(fnName & "() expects at least 1 argument")
+    return 0
+  end if
+  return count
+end function
+
+private function CopySingleArgToFlat(byref a as EvalValue, flat() as Double, byval reverseOrder as Boolean) as Integer
+  if a.kind = VK_SCALAR then
+    redim flat(0 to 0)
+    flat(0) = a.scalar
+    return 1
+  end if
+  dim c as Integer = ValueArrayLen(a)
+  if c <= 0 then return 0
+  redim flat(0 to c - 1)
+  dim i as Integer
+  if reverseOrder then
+    for i = 0 to c - 1
+      flat(i) = a.arr(ubound(a.arr) - i).scalar
+    next i
+  else
+    for i = 0 to c - 1
+      flat(i) = a.arr(lbound(a.arr) + i).scalar
+    next i
+  end if
+  return c
+end function
+
+private function ArgScalarWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as Double) as Boolean
+  if ubound(args) = -1 then return FALSE
+  do while argIdx <= ubound(args)
+    if args(argIdx).kind = VK_SCALAR then
+      outV = args(argIdx).scalar
+      argIdx += 1
+      elemIdx = -1
+      return TRUE
+    else
+      if elemIdx = -1 then elemIdx = lbound(args(argIdx).arr)
+      if elemIdx <= ubound(args(argIdx).arr) then
+        outV = args(argIdx).arr(elemIdx).scalar
+        elemIdx += 1
+        return TRUE
+      end if
+      argIdx += 1
+      elemIdx = -1
+    end if
+  loop
+  return FALSE
+end function
+
+private function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outS as ScalarValue) as Boolean
+  if ubound(args) = -1 then return FALSE
+  do while argIdx <= ubound(args)
+    if args(argIdx).kind = VK_SCALAR then
+      outS = args(argIdx).scalarValue
+      argIdx += 1
+      elemIdx = -1
+      return TRUE
+    else
+      if elemIdx = -1 then elemIdx = lbound(args(argIdx).arr)
+      if elemIdx <= ubound(args(argIdx).arr) then
+        outS = args(argIdx).arr(elemIdx)
+        elemIdx += 1
+        return TRUE
+      end if
+      argIdx += 1
+      elemIdx = -1
+    end if
+  loop
+  return FALSE
 end function
 
 private function ExpandUnpackedArgs(argsIn() as EvalValue, argsOut() as EvalValue) as Integer
   dim outCount as Integer = 0
   dim i as Integer, j as Integer
+  dim hasExpandMarkers as Boolean = FALSE
   erase argsOut
   if ubound(argsIn) = -1 then return 0
 
+  ' Pre-count once and allocate once to avoid repeated redim preserve.
+  for i = lbound(argsIn) to ubound(argsIn)
+    if argsIn(i).expandArgs then hasExpandMarkers = TRUE
+    if argsIn(i).expandArgs andalso argsIn(i).kind = VK_ARRAY then
+      outCount += ValueArrayLen(argsIn(i))
+    else
+      outCount += 1
+    end if
+  next i
+  if hasExpandMarkers = FALSE then return 0
+  if outCount <= 0 then return 0
+  redim argsOut(0 to outCount - 1)
+
+  dim outPos as Integer = 0
   for i = lbound(argsIn) to ubound(argsIn)
     if argsIn(i).expandArgs then
       if argsIn(i).kind = VK_ARRAY then
         for j = lbound(argsIn(i).arr) to ubound(argsIn(i).arr)
-          if outCount = 0 then
-            redim argsOut(0)
-          else
-            redim preserve argsOut(outCount)
-          end if
-          ValueSetScalarPromoteExactInt64(argsOut(outCount), argsIn(i).arr(j))
-          outCount += 1
+          EvalScalarFromScalarValue(argsIn(i).arr(j), argsOut(outPos))
+          outPos += 1
         next j
       else
-        if outCount = 0 then
-          redim argsOut(0)
-        else
-          redim preserve argsOut(outCount)
-        end if
-        argsOut(outCount) = argsIn(i)
-        argsOut(outCount).expandArgs = FALSE
-        outCount += 1
+        argsOut(outPos) = argsIn(i)
+        argsOut(outPos).expandArgs = FALSE
+        outPos += 1
       end if
     else
-      if outCount = 0 then
-        redim argsOut(0)
-      else
-        redim preserve argsOut(outCount)
-      end if
-      argsOut(outCount) = argsIn(i)
-      outCount += 1
+      argsOut(outPos) = argsIn(i)
+      outPos += 1
     end if
   next i
 
-  return outCount
+  return outPos
 end function
 
-private sub SortDoubleArray(a() as Double)
-  dim i as Integer, j as Integer
-  for i = lbound(a) to ubound(a) - 1
-    for j = i + 1 to ubound(a)
-      if a(j) < a(i) then
-        dim t as Double = a(i)
-        a(i) = a(j)
-        a(j) = t
-      end if
-    next j
+private sub NormalizeCallArgs(args() as EvalValue)
+  dim expandedArgs() as EvalValue
+  dim expandedCount as Integer = ExpandUnpackedArgs(args(), expandedArgs())
+  if expandedCount <= 0 then exit sub
+  erase args
+  redim args(0 to expandedCount - 1)
+  for i as Integer = 0 to expandedCount - 1
+    args(i) = expandedArgs(i)
   next i
+end sub
+
+private sub SortDoubleArray(a() as Double)
+  dim lo as Integer = lbound(a)
+  dim hi as Integer = ubound(a)
+  if hi <= lo then exit sub
+
+  ' Iterative quicksort with insertion-sort fallback for short ranges.
+  dim leftStack(0 to 63) as Integer
+  dim rightStack(0 to 63) as Integer
+  dim sp as Integer = 0
+  leftStack(0) = lo
+  rightStack(0) = hi
+
+  do while sp >= 0
+    lo = leftStack(sp)
+    hi = rightStack(sp)
+    sp -= 1
+
+    do while (hi - lo) > 16
+      dim midIdx as Integer = lo + ((hi - lo) \ 2)
+      dim pivot as Double = a(midIdx)
+      dim i as Integer = lo
+      dim j as Integer = hi
+      do
+        while a(i) < pivot
+          i += 1
+        wend
+        while a(j) > pivot
+          j -= 1
+        wend
+        if i <= j then
+          dim t as Double = a(i)
+          a(i) = a(j)
+          a(j) = t
+          i += 1
+          j -= 1
+        end if
+      loop while i <= j
+
+      ' Process smaller partition first (tail-recursive elimination).
+      if (j - lo) < (hi - i) then
+        if i < hi then
+          sp += 1
+          leftStack(sp) = i
+          rightStack(sp) = hi
+        end if
+        hi = j
+      else
+        if lo < j then
+          sp += 1
+          leftStack(sp) = lo
+          rightStack(sp) = j
+        end if
+        lo = i
+      end if
+    loop
+
+    ' Insertion sort on small range.
+    dim x as Integer
+    for x = lo + 1 to hi
+      dim v as Double = a(x)
+      dim y as Integer = x - 1
+      while y >= lo andalso a(y) > v
+        a(y + 1) = a(y)
+        y -= 1
+      wend
+      a(y + 1) = v
+    next x
+  loop
+end sub
+
+private sub ReverseDoubleArrayInPlace(a() as Double, byval count as Integer)
+  dim i as Integer
+  for i = 0 to (count \ 2) - 1
+    dim t as Double = a(i)
+    a(i) = a(count - 1 - i)
+    a(count - 1 - i) = t
+  next i
+end sub
+
+private sub ValueSetSingleScalarArray(byref outV as EvalValue, byval x as Double)
+  dim tmp(0 to 0) as Double
+  tmp(0) = x
+  ValueSetArray(outV, tmp())
 end sub
 
 private function TryApplyFactorial(byref v as EvalValue, byref outV as EvalValue) as Boolean
   if v.kind = VK_ARRAY then return FALSE
   dim n as LongInt
   if TryGetExactInt64(v, n) = FALSE then return FALSE
-  if n < 0 orelse n > 20 then return FALSE
+  if n < 0 then return FALSE
 
-  dim r as LongInt = 1
-  for i as LongInt = 2 to n
-    if TryMulInt64(r, i, r) = FALSE then return FALSE
+  static factTable(0 to 20) as LongInt = { _
+    1ll, 1ll, 2ll, 6ll, 24ll, 120ll, 720ll, 5040ll, 40320ll, 362880ll, _
+    3628800ll, 39916800ll, 479001600ll, 6227020800ll, 87178291200ll, 1307674368000ll, _
+    20922789888000ll, 355687428096000ll, 6402373705728000ll, 121645100408832000ll, 2432902008176640000ll }
+  if n <= 20 then
+    ValueSetInt64(outV, factTable(n))
+    return TRUE
+  end if
+
+  dim d as Double = CDbl(factTable(20))
+  for i as LongInt = 21 to n
+    d *= CDbl(i)
   next i
-  ValueSetInt64(outV, r)
+  ValueSetScalar(outV, d)
   return TRUE
 end function
 
@@ -1550,6 +2086,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   SkipSpaces()
 
   dim args() as EvalValue
+  dim argsCount as Integer = 0
+  dim argsCap as Integer = 0
   if pStream[0] = 44 then
     SetParseError("unexpected comma")
     return outV
@@ -1562,12 +2100,20 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       end if
       dim a as EvalValue = ParseExpression()
       if parseError then return outV
-      if ubound(args) = -1 then
-        redim args(0)
-      else
-        redim preserve args(ubound(args) + 1)
+      if argsCount >= argsCap then
+        if argsCap = 0 then
+          argsCap = 4
+        else
+          argsCap = argsCap * 2
+        end if
+        if argsCount = 0 then
+          redim args(0 to argsCap - 1)
+        else
+          redim preserve args(0 to argsCap - 1)
+        end if
       end if
-      args(ubound(args)) = a
+      args(argsCount) = a
+      argsCount += 1
       SkipSpaces()
       if pStream[0] = 44 then
         pStream += 1
@@ -1593,61 +2139,141 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
   if parseError then return outV
 
+  if argsCount = 0 then
+    erase args
+  elseif argsCap <> argsCount then
+    redim preserve args(0 to argsCount - 1)
+  end if
+
   dim fn as String = lcase(fnName)
   dim flat() as Double
   dim c as Integer = 0
-  dim expandedArgs() as EvalValue
-  dim expandedCount as Integer = ExpandUnpackedArgs(args(), expandedArgs())
-  if expandedCount > 0 then
-    erase args
-    redim args(0 to expandedCount - 1)
-    for i as Integer = 0 to expandedCount - 1
-      args(i) = expandedArgs(i)
-    next i
-  elseif ubound(args) <> -1 then
-    erase args
-  end if
+  NormalizeCallArgs(args())
 
   if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) _
      orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    c = CollectArgsAsFlat(args(), flat())
-    if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    dim acc as Double = flat(0)
+    if ubound(args) = 0 andalso args(0).kind = VK_SCALAR then
+      if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) _
+         orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then
+        ValueSetScalarPromoteExactInt64(outV, args(0).scalar)
+        return outV
+      end if
+    end if
+    dim acc as Double = 0
     dim i as Integer
-    if IsFn(fn, FUNC_SUM) then
-      acc = 0
-      for i = 0 to c - 1: acc += flat(i): next i
-    elseif IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) then
-      acc = 1
-      for i = 0 to c - 1: acc *= flat(i): next i
-    elseif IsFn(fn, FUNC_MIN) then
-      for i = 1 to c - 1
-        if flat(i) < acc then acc = flat(i)
-      next i
-    elseif IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then
-      acc = 0
-      for i = 0 to c - 1: acc += flat(i): next i
-      acc /= c
-    elseif IsFn(fn, FUNC_MEDIAN) then
-      SortDoubleArray(flat())
-      if (c and 1) = 1 then
-        acc = flat(c \ 2)
+    if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) _
+       orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then
+      dim itemCount as Integer = 0
+      dim hasValue as Boolean = FALSE
+      dim aggMode as Integer = 0 '1=sum/avg/mean, 2=product, 3=min, 4=max
+      if IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) then
+        aggMode = 2
+        acc = 1
+      elseif IsFn(fn, FUNC_MIN) then
+        aggMode = 3
+      elseif IsFn(fn, FUNC_MAX) then
+        aggMode = 4
       else
-        acc = (flat((c \ 2) - 1) + flat(c \ 2)) / 2
+        aggMode = 1
+      end if
+      dim argIdx as Integer = lbound(args)
+      dim elemIdx as Integer = -1
+      dim v as Double
+      while ArgScalarWalkNext(args(), argIdx, elemIdx, v)
+        if aggMode = 1 then
+          acc += v
+        elseif aggMode = 2 then
+          acc *= v
+        elseif aggMode = 3 then
+          if (hasValue = FALSE) orelse (v < acc) then acc = v
+          hasValue = TRUE
+        else
+          if (hasValue = FALSE) orelse (v > acc) then acc = v
+          hasValue = TRUE
+        end if
+        itemCount += 1
+      wend
+      if itemCount <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then acc /= itemCount
+    elseif IsFn(fn, FUNC_MEDIAN) then
+      if ubound(args) = lbound(args) then
+        dim onlyIdx as Integer = lbound(args)
+        if args(onlyIdx).kind = VK_SCALAR then
+          acc = args(onlyIdx).scalar
+          ValueSetScalarPromoteExactInt64(outV, acc)
+          return outV
+        end if
+        c = ValueArrayLen(args(onlyIdx))
+        if c = 1 then
+          acc = args(onlyIdx).arr(lbound(args(onlyIdx).arr)).scalar
+          ValueSetScalarPromoteExactInt64(outV, acc)
+          return outV
+        end if
+      end if
+      c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+      if c <= 0 then return outV
+      dim midIdx as Integer = c \ 2
+      dim leftIdx as Integer = 0
+      dim rightIdx as Integer = c - 1
+      dim kIdx as Integer = midIdx
+      do while leftIdx < rightIdx
+        dim pivot as Double = flat((leftIdx + rightIdx) \ 2)
+        i = leftIdx
+        dim j as Integer = rightIdx
+        do
+          while flat(i) < pivot
+            i += 1
+          wend
+          while flat(j) > pivot
+            j -= 1
+          wend
+          if i <= j then
+            SwapDouble(flat(i), flat(j))
+            i += 1
+            j -= 1
+          end if
+        loop while i <= j
+        if kIdx <= j then
+          rightIdx = j
+        elseif kIdx >= i then
+          leftIdx = i
+        else
+          exit do
+        end if
+      loop
+      dim upper as Double = flat(kIdx)
+      if (c and 1) = 1 then
+        acc = upper
+      else
+        dim lower as Double = flat(0)
+        for i = 1 to midIdx - 1
+          if flat(i) > lower then lower = flat(i)
+        next i
+        acc = (lower + upper) / 2
       end if
     elseif IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
+      ' Welford single-pass accumulation for better stability and fewer passes.
       dim meanVal as Double = 0
-      for i = 0 to c - 1: meanVal += flat(i): next i
-      meanVal /= c
-      acc = 0
-      for i = 0 to c - 1
-        dim d as Double = flat(i) - meanVal
-        acc += d * d
-      next i
-      acc /= c
+      dim m2 as Double = 0
+      dim n as Integer = 0
+      dim argIdxVar as Integer = lbound(args)
+      dim elemIdxVar as Integer = -1
+      dim vVar as Double
+      while ArgScalarWalkNext(args(), argIdxVar, elemIdxVar, vVar)
+        n += 1
+        dim delta as Double = vVar - meanVal
+        meanVal += delta / n
+        dim delta2 as Double = vVar - meanVal
+        m2 += delta * delta2
+      wend
+      if n <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      acc = m2 / n
       if IsFn(fn, FUNC_STDDEV) then acc = sqr(acc)
     else
+      c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+      if c <= 0 then return outV
+      acc = flat(0)
       for i = 1 to c - 1
         if flat(i) > acc then acc = flat(i)
       next i
@@ -1658,8 +2284,19 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_SORT) orelse IsFn(fn, FUNC_SORTED) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    c = CollectArgsAsFlat(args(), flat())
-    if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    if ubound(args) = 0 then
+      if args(0).kind = VK_SCALAR then
+        ValueSetSingleScalarArray(outV, args(0).scalar)
+        return outV
+      end if
+      c = CopySingleArgToFlat(args(0), flat(), FALSE)
+      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      SortDoubleArray(flat())
+      ValueSetArray(outV, flat())
+      return outV
+    end if
+    c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+    if c <= 0 then return outV
     SortDoubleArray(flat())
     ValueSetArray(outV, flat())
     return outV
@@ -1667,14 +2304,19 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_REVERSE) orelse IsFn(fn, FUNC_REVERSED) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    c = CollectArgsAsFlat(args(), flat())
-    if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    dim i as Integer
-    for i = 0 to (c \ 2) - 1
-      dim t as Double = flat(i)
-      flat(i) = flat(c - 1 - i)
-      flat(c - 1 - i) = t
-    next i
+    if ubound(args) = 0 then
+      if args(0).kind = VK_SCALAR then
+        ValueSetSingleScalarArray(outV, args(0).scalar)
+        return outV
+      end if
+      c = CopySingleArgToFlat(args(0), flat(), TRUE)
+      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      ValueSetArray(outV, flat())
+      return outV
+    end if
+    c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+    if c <= 0 then return outV
+    ReverseDoubleArrayInPlace(flat(), c)
     ValueSetArray(outV, flat())
     return outV
   end if
@@ -1687,11 +2329,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if ubound(args) = 0 then
       outV = args(0)
     else
-      c = CollectArgsAsFlat(args(), flat())
-      if c <= 0 then
-        SetParseError(fnName & "() expects at least 1 argument")
-        return outV
-      end if
+      c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+      if c <= 0 then return outV
       ValueSetArray(outV, flat())
     end if
     outV.expandArgs = TRUE
@@ -1700,23 +2339,46 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_UNIQUE) then
     if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-    c = CollectArgsAsFlat(args(), flat())
-    if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
-
-    dim tmp() as Double
+    if ubound(args) = 0 then
+      if args(0).kind = VK_SCALAR then
+        ValueSetSingleScalarArray(outV, args(0).scalar)
+        return outV
+      end if
+      c = CopySingleArgToFlat(args(0), flat(), FALSE)
+      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    else
+      c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
+      if c <= 0 then return outV
+    end if
+    dim tmp() as Double, keys() as ULongInt, used() as UByte
     redim tmp(0 to c - 1)
+    dim cap as Integer = NextPow2AtLeast(c * 2)
+    if cap < 4 then cap = 4
+    redim keys(0 to cap - 1)
+    redim used(0 to cap - 1)
     dim outCount as Integer = 0
-    dim i as Integer, j as Integer
+    dim i as Integer
     for i = 0 to c - 1
       dim v as Double = flat(i)
       dim seen as Boolean = FALSE
-      for j = 0 to outCount - 1
-        if tmp(j) = v then
+      if v <> v then
+        tmp(outCount) = v
+        outCount += 1
+        continue for
+      end if
+      dim key as ULongInt = UniqueHashKeyFromDouble(v)
+      dim idx as Integer = CInt(key and CULngInt(cap - 1))
+      do
+        if used(idx) = 0 then exit do
+        if keys(idx) = key then
           seen = TRUE
-          exit for
+          exit do
         end if
-      next j
+        idx = (idx + 1) and (cap - 1)
+      loop
       if seen = FALSE then
+        used(idx) = 1
+        keys(idx) = key
         tmp(outCount) = v
         outCount += 1
       end if
@@ -1728,21 +2390,13 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_LOG) then
-    if ubound(args) <> 1 then
-      dim argc as Integer = ubound(args) + 1
-      SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
-      return outV
-    end if
+    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if ApplyLogWithBase(args(0), args(1), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
     return outV
   end if
 
   if IsFn(fn, FUNC_ATAN2) then
-    if ubound(args) <> 1 then
-      dim argc as Integer = ubound(args) + 1
-      SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
-      return outV
-    end if
+    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if args(0).kind = VK_SCALAR andalso args(1).kind = VK_SCALAR then
       ValueSetScalarPromoteExactInt64(outV, Atan2Compat(args(0).scalar, args(1).scalar))
     else
@@ -1752,11 +2406,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_HYPOT) then
-    if ubound(args) <> 1 then
-      dim argc as Integer = ubound(args) + 1
-      SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
-      return outV
-    end if
+    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     dim a2 as EvalValue, b2 as EvalValue, s2 as EvalValue
     if ValueApplyBinary(args(0), args(0), 42, a2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
     if ValueApplyBinary(args(1), args(1), 42, b2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
@@ -1766,11 +2416,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_MOD) then
-    if ubound(args) <> 1 then
-      dim argc as Integer = ubound(args) + 1
-      SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
-      return outV
-    end if
+    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     dim opMod as String = OpName(OP_MOD)
     if ValueApplyBinaryInt64(args(0), args(1), opMod, outV) = FALSE andalso parseError = 0 then SetParseError("numeric error in " & fnName & "()")
     return outV
@@ -1783,7 +2429,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       return outV
     end if
     if TryApplyFactorial(args(0), outV) = FALSE then
-      SetParseError(fnName & "() expects an integer in range [0..20]")
+      SetParseError(fnName & "() expects a non-negative integer")
     end if
     return outV
   end if
@@ -1818,6 +2464,10 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       SetParseError(fnName & "() expects 3 argument(s), " & ltrim(str(argc)) & " given")
       return outV
     end if
+    if args(1).kind <> VK_SCALAR orelse args(2).kind <> VK_SCALAR then
+      SetParseError(fnName & "() expects scalar min/max")
+      return outV
+    end if
     if ApplyClamp(args(0), args(1), args(2), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
     return outV
   end if
@@ -1826,6 +2476,10 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if ubound(args) <> 1 then
       dim argc as Integer = ubound(args) + 1
       SetParseError(fnName & "() expects 2 argument(s), " & ltrim(str(argc)) & " given")
+      return outV
+    end if
+    if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
+      SetParseError(fnName & "() expects scalar values")
       return outV
     end if
     if ApplyGcdLcm(args(0), args(1), IsFn(fn, FUNC_LCM), outV) = FALSE then
@@ -1843,11 +2497,27 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if ubound(args) = 0 then
       outV = args(0)
     else
-      c = CollectArgsAsFlat(args(), flat())
+      c = 0
+      for i as Integer = lbound(args) to ubound(args)
+        if args(i).kind = VK_SCALAR then
+          c += 1
+        else
+          c += ValueArrayLen(args(i))
+        end if
+      next i
       if c <= 0 then
         SetParseError(fnName & "() expects at least 1 argument")
         return outV
       end if
+      redim flat(0 to c - 1)
+      dim argIdxFmt as Integer = lbound(args)
+      dim elemIdxFmt as Integer = -1
+      dim vFmt as Double
+      dim outPosFmt as Integer = 0
+      while ArgScalarWalkNext(args(), argIdxFmt, elemIdxFmt, vFmt)
+        flat(outPosFmt) = vFmt
+        outPosFmt += 1
+      wend
       ValueSetArray(outV, flat())
     end if
     dim fmtBase as Integer = IIf(IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_UHEX), 16, _
@@ -1871,16 +2541,22 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       end if
     else
       for i as Integer = lbound(outV.arr) to ubound(outV.arr)
-        dim fmtText as String
-        dim okFmt as Boolean
-        if fmtBase = 16 then
-          okFmt = FormatHexScalar(outV.arr(i), fmtText, asUnsigned)
-        elseif fmtBase = 8 then
-          okFmt = FormatOctScalar(outV.arr(i), fmtText, asUnsigned)
+        dim elemOk as Boolean = FALSE
+        if outV.arr(i).exactInt64Valid then
+          elemOk = TRUE
+        elseif outV.arr(i).exactUInt64Valid then
+          elemOk = TRUE
         else
-          okFmt = FormatBinScalar(outV.arr(i), fmtText, asUnsigned)
+          dim fmtText as String
+          if fmtBase = 16 then
+            elemOk = FormatHexScalar(outV.arr(i).scalar, fmtText, asUnsigned)
+          elseif fmtBase = 8 then
+            elemOk = FormatOctScalar(outV.arr(i).scalar, fmtText, asUnsigned)
+          else
+            elemOk = FormatBinScalar(outV.arr(i).scalar, fmtText, asUnsigned)
+          end if
         end if
-        if okFmt = FALSE then
+        if elemOk = FALSE then
           SetParseError(fnName & "() expects integer values")
           return outV
         end if
@@ -1911,23 +2587,33 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       return outV
     end if
 
-    c = CollectArgsAsFlat(args(), flat())
+    c = 0
+    for i as Integer = lbound(args) to ubound(args)
+      if args(i).kind = VK_SCALAR then
+        c += 1
+      else
+        c += ValueArrayLen(args(i))
+      end if
+    next i
     if c <= 0 then
       SetParseError(fnName & "() expects at least 1 argument")
       return outV
     end if
 
-    redim outV.arr(0 to c - 1)
-    outV.kind = VK_ARRAY
-    for i as Integer = 0 to c - 1
-      dim tmpIn as EvalValue, tmpOut as EvalValue
-      ValueSetScalar(tmpIn, flat(i))
-      if ApplyUnaryFunction(fn, tmpIn, tmpOut) = FALSE then
+    ValueInitArrayLike(outV, 0, c - 1)
+    dim argIdxDeg as Integer = lbound(args)
+    dim elemIdxDeg as Integer = -1
+    dim vDeg as Double
+    dim outPosDeg as Integer = 0
+    while ArgScalarWalkNext(args(), argIdxDeg, elemIdxDeg, vDeg)
+      dim tmpOut as EvalValue
+      if ApplyUnaryScalarFunction(fn, vDeg, tmpOut) = FALSE then
         SetParseError("numeric error in " & fnName & "()")
         return outV
       end if
-      outV.arr(i) = tmpOut.scalar
-    next i
+      ValueSetArrayElemFromScalar(outV, outPosDeg, tmpOut)
+      outPosDeg += 1
+    wend
     return outV
   end if
 
@@ -2158,10 +2844,10 @@ private function ParseFactor() as EvalValue
     if parseError then return n
     SkipSpaces()
     if pStream[0] = 44 then
-      dim vals() as Double
+      dim vals() as EvalValue
       redim vals(0)
       if firstVal.kind <> VK_SCALAR then SetParseError("array element must be scalar"): return n
-      vals(0) = firstVal.scalar
+      vals(0) = firstVal
       do
         pStream += 1
         SkipSpaces()
@@ -2173,7 +2859,7 @@ private function ParseFactor() as EvalValue
         if parseError then return n
         if nextVal.kind <> VK_SCALAR then SetParseError("array element must be scalar"): return n
         redim preserve vals(0 to ubound(vals) + 1)
-        vals(ubound(vals)) = nextVal.scalar
+        vals(ubound(vals)) = nextVal
         SkipSpaces()
         if pStream[0] <> 44 andalso pStream[0] <> 41 then
           if pStream[0] = 93 then
@@ -2195,7 +2881,11 @@ private function ParseFactor() as EvalValue
       else
         SetParseError("missing closing parenthesis")
       end if
-      ValueSetArray(n, vals())
+      ValueInitArrayLike(n, 0, ubound(vals))
+      dim arrI as Integer
+      for arrI = 0 to ubound(vals)
+        ValueSetArrayElemFromScalar(n, arrI, vals(arrI))
+      next arrI
     else
       if pStream[0] = 41 then
         pStream += 1
@@ -2253,7 +2943,7 @@ private function ParseUnary() as EvalValue
     dim op as String = "^"
     dim minusOne as EvalValue
     ValueSetInt64(minusOne, -1)
-    if ValueApplyBinaryInt64(v, minusOne, op, outV) = FALSE then SetParseError("incompatible operands")
+    if ApplyInt64ParserOp(v, minusOne, op, outV) = FALSE then return outV
     return outV
   elseif pStream[0] = 33 andalso pStream[1] <> 61 then
     pStream += 1
@@ -2328,7 +3018,7 @@ private function ParseMultiplicative() as EvalValue
     dim n2 as EvalValue = ParseUnary()
     dim outV as EvalValue
     if useInt64 then
-      if ValueApplyBinaryInt64(n, n2, intOp, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+      if ApplyInt64ParserOp(n, n2, intOp, outV) then n = outV
     else
       if ValueApplyBinary(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
     end if
@@ -2375,7 +3065,7 @@ private function ParseShift() as EvalValue
     pStream += 2
     dim n2 as EvalValue = ParseAdditive()
     dim outV as EvalValue
-    if ValueApplyBinaryInt64(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+    if ApplyInt64ParserOp(n, n2, op, outV) then n = outV
     SkipSpaces()
   wend
   return n
@@ -2390,7 +3080,7 @@ private function ParseBitwiseAnd() as EvalValue
     dim n2 as EvalValue = ParseShift()
     dim outV as EvalValue
     dim op as String = "&"
-    if ValueApplyBinaryInt64(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+    if ApplyInt64ParserOp(n, n2, op, outV) then n = outV
     SkipSpaces()
   wend
   return n
@@ -2405,7 +3095,7 @@ private function ParseBitwiseXor() as EvalValue
     dim n2 as EvalValue = ParseBitwiseAnd()
     dim outV as EvalValue
     dim op as String = "^"
-    if ValueApplyBinaryInt64(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+    if ApplyInt64ParserOp(n, n2, op, outV) then n = outV
     SkipSpaces()
   wend
   return n
@@ -2420,7 +3110,7 @@ private function ParseBitwiseOr() as EvalValue
     dim n2 as EvalValue = ParseBitwiseXor()
     dim outV as EvalValue
     dim op as String = "|"
-    if ValueApplyBinaryInt64(n, n2, op, outV) = FALSE then SetParseError("incompatible operands") else n = outV
+    if ApplyInt64ParserOp(n, n2, op, outV) then n = outV
     SkipSpaces()
   wend
   return n
@@ -2605,6 +3295,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       dim depthParen as Integer = 0
       dim depthBracket as Integer = 0
       dim depthBrace as Integer = 0
+      dim hasPrevStmtResult as Boolean = FALSE
       dim iStmt as Integer
       for iStmt = 1 to len(exprInput) + 1
         dim ch as String
@@ -2640,11 +3331,17 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           wend
           dim savedBaseCol as Integer = errorBaseCol
           errorBaseCol = stmtStart + leadWs
-          if Parser_TryEvaluateEx(stmt, result, resultText, isArray) = FALSE then
+          dim stmtToEval as String = stmt
+          if hasPrevStmtResult then
+            dim rewrittenStmt as String
+            if TryRewriteTrailingFormatterStmt(stmt, rewrittenStmt) then stmtToEval = rewrittenStmt
+          end if
+          if Parser_TryEvaluateEx(stmtToEval, result, resultText, isArray) = FALSE then
             errorBaseCol = savedBaseCol
             evalDepth -= 1
             return FALSE
           end if
+          hasPrevStmtResult = TRUE
           errorBaseCol = savedBaseCol
           stmtStart = iStmt + 1
         else
@@ -2805,6 +3502,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         end if
       end if
       if pStream[0] = 0 andalso parseError = 0 then
+        if IsReservedUserFunctionName(varName) then
+          SetParseError("reserved function name: " & varName)
+          evalDepth -= 1
+          return FALSE
+        end if
         if IsBuiltinConstantName(varName) then
           SetParseError("reserved constant name: " & varName)
           evalDepth -= 1
