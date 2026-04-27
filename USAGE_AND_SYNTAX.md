@@ -1,456 +1,482 @@
 # SmartMath Usage and Syntax
 
-This document describes practical usage and the expression language implemented in `MathParser.bas`.
-It focuses on parser/evaluator behavior (functions, operators, precedence, arrays, variables, user-defined functions, numeric formats, and important edge cases).
+## What Is SmartMath?
 
-## 0) Quick Usage
+SmartMath evaluates math expressions inside AkelPad.
 
-- Results are shown in the right margin and are not part of file text.
-- To copy a result, double-click the result area on that line.
-- Copied text is the clean value/error text (without UI prefixes like `=` or `!`).
+- You type an expression in a line.
+- SmartMath shows the result in the right margin.
+- The result is not inserted into the file text.
+- Double-click the result to copy a clean value/error string.
 
-## 1) Built-in Functions
+### Mini Glossary
 
-### 1.1 Trigonometric and Hyperbolic
-- `sin(angle)`
-- `cos(angle)`
-- `tan(angle)`
-- `asin(value)`, `arcsin(value)`
-- `acos(value)`, `arccos(value)`
-- `atan(value)`, `arctan(value)`
-- `atan2(y, x)` - angle of vector `(x,y)` in radians
-- `deg(...)` - radians -> degrees (supports scalar, array, or multiple values)
-- `rad(...)` - degrees -> radians (supports scalar, array, or multiple values)
-- `sinh(value)`
-- `cosh(value)`
-- `tanh(value)`
+- `scalar`: a single number, for example `42` or `3.5`.
+- `array`: a list of numbers in parentheses, for example `(1,2,3)`.
+- `expression`: any calculable input, for example `2+3` or `sin(pi/2)`.
+- `statement`: one top-level unit. Multiple statements can be separated with `;`.
 
-### 1.2 Logarithmic and Exponential
-- `exp(value)`
-- `ln(value)` - natural logarithm
-- `log(value, base)` - logarithm in arbitrary base
-- `log10(value)`
+## Quick Start
 
-### 1.3 Powers and Roots
-- `sqrt(value)` - square root
-- `sqr(value)` - value * value
-- `pow(value, power)` - equivalent to `value ** power`
-- `hypot(x, y)` - sqrt(x*x + y*y)
+Copy/paste examples:
 
-Note:
-- You can compute an y-th root using `pow(x, 1/y)` or `x**(1/y)`.
-  - Example: `pow(27, 1/3)` -> `3`, `25**(1/2)` -> `5`
-
-### 1.4 Numeric Utilities
-- `floor(value)` - largest integer <= value
-- `ceil(value)` - smallest integer >= value
-- `trunc(value)` - truncate fractional part toward zero
-- `int(value)` - integer part toward zero (same behavior as `trunc(value)`)
-- `frac(value)` - fractional part after truncation (`value - int(value)`)
-- `fract(value)` - alias of `frac(value)`
-- `round(value)` - nearest integer
-- `abs(value)`
-- `sign(value)` - returns -1, 0, or 1
-- `clamp(value, min, max)` - limit value to [min, max]
-- `gcd(a, b)` - greatest common divisor (integer)
-- `lcm(a, b)` - least common multiple (integer)
-- `mod(value, divisor)` - function form of `%` (integer modulo)
-- `fact(n)`, `factorial(n)` - factorial for integer `n` in range `[0..20]`
-- `rand()` - random floating-point value in `[0, 1)`
-- `random(min, max)` - random floating-point value in `[min, max)`
-
-### 1.5 Arrays and Aggregation
-- `sum(...)`
-- `product(...)`
-- `prod(...)` - alias of `product(...)`
-- `avg(...)` - average of all arguments
-- `mean(...)` - alias of `avg(...)`
-- `median(...)` - median of all flattened values
-- `variance(...)` - population variance of all flattened values
-- `stddev(...)` - population standard deviation of all flattened values
-- `min(...)`
-- `max(...)`
-- `sort(...)` - sorts all provided values (scalars/arrays) and returns an array
-- `sorted(...)` - alias of `sort(...)`
-- `reverse(...)` - reverses all provided values (scalars/arrays) and returns an array
-- `reversed(...)` - alias of `reverse(...)`
-- `unique(...)` - keeps unique values from provided values (scalars/arrays), preserving first-occurrence order
-- `unpack(...)` - unpacks scalar/array arguments into separate arguments
-
-Aggregation functions accept scalar and array arguments. Array arguments are flattened into one sequence of scalar values.
-
-Notes:
-- `variance(...)` and `stddev(...)` use population formulas (divide by `N`).
-- Sample formulas (divide by `N-1`) are not currently implemented.
-- Example on `a=(1,2,3)`: `variance(a)` = `2/3` and `stddev(a)` = `sqrt(2/3)` (~`0.81649658`), while sample values would be `1` and `1`.
-
-### 1.6 Output-Formatting Helpers
-- `hex(...)` - renders final value in hexadecimal form
-- `oct(...)` - renders final value in octal form
-- `bin(...)` - renders final value in binary form
-- `uhex(...)`, `uoct(...)`, `ubin(...)` - same inputs as `hex`, `oct`, and `bin`.
-  - **`uhex` / `uoct` / `ubin` and negatives:** no minus sign; the value is shown as an **unsigned 64-bit integer** (typical “hex dump” / CPU register style).
-  - **`uhex` / `uoct` / `ubin` and non-negative values:** same style as `hex` / `oct` / `bin`.
-
-Notes:
-- `hex()`, `oct()`, `bin()`, `uhex()`, `uoct()`, and `ubin()` require integer values.
-- In C `printf`, `%x` and `%o` are unsigned. There is no standard “signed hex” flag.
-- `hex` / `oct` / `bin` use a minus sign and the magnitude for negatives.
-  - `hex(-1)` -> `-0x1`
-  - `oct(-1)` -> `-0o1`
-- `uhex` / `uoct` / `ubin` use that “all bits, no minus sign” style for negatives.
-  - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF` (every hex digit is `F`)
-  - `uhex(~0x0D)` -> `0xFFFFFFFFFFFFFFF2` (same idea after bitwise `~`)
-- For a **32-bit**-wide display, mask first.
-  - `uhex(0xFFFFFFFF & (~0x0D))` -> `0xFFFFFFF2`
-- `hex(...)`, `oct(...)`, `bin(...)`, `uhex(...)`, `uoct(...)`, and `ubin(...)` accept:
-  - a single scalar value (`hex(12)`)
-  - a list of scalar values (`hex(1,2,3)`)
-  - an array value (`hex((1,2,3))`)
-- When `hex()` / `oct()` / `bin()` appear inside larger arithmetic expressions, normal arithmetic continues and final result is decimal unless the final top-level value is still formatted by `hex()` / `oct()` / `bin()`.
-
-Examples:
-- `atan2(1,1)` -> `0.7853981633974483`
-- `floor(2.9)` -> `2`, `ceil(2.1)` -> `3`, `trunc(-2.9)` -> `-2`
-- `int(2.9)` -> `2`, `int(-2.9)` -> `-2`
-- `frac(2.5)` -> `0.5`, `frac(-2.5)` -> `-0.5`
-- `round(2.5)` -> `3`, `sign(-123)` -> `-1`
-- `deg(pi)` -> `180`, `rad(180)` -> `pi`
-- `deg(pi/2, pi/4)` -> `(90, 45)`, `rad(180, 90)` -> `(pi, pi/2)`
-- `hypot(3,4)` -> `5`
-- `mod(17,5)` -> `2`
-- `avg(1,2,3,4)` -> `2.5`, `mean((1,2,3),9)` -> `3.75`
-- `median((1,9),3,7)` -> `5`
-- `variance(1,2,3)` -> `0.6666666666666666`, `stddev(1,2,3)` -> `0.816496580927726`
-- `clamp(15,0,10)` -> `10`
-- `gcd(84,30)` -> `6`, `lcm(6,8)` -> `24`
-- `fact(5)` -> `120`, `factorial(10)` -> `3628800`
-- `rand()` -> random value in `[0,1)`, `random(10,20)` -> random value in `[10,20)`
-- `sort((3,1,2))` -> `(1,2,3)`, `sort(2,5,1)` -> `(1,2,5)`
-- `sorted((3,1,2))` -> `(1,2,3)`
-- `reverse((3,1,2))` -> `(2,1,3)`, `reverse(2,5,1)` -> `(1,5,2)`
-- `reversed((1,2,3),(4,5))` -> `(5,4,3,2,1)`
-- `unique((3,1,3,2,1,2))` -> `(3,1,2)`, `unique(1,2,1,2,3)` -> `(1,2,3)`
-- `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
-- `f(x,y,z)=x+y+z; f(unpack(1,2,3))` -> `6`
-- `hex(12)` -> `0xC`
-- `hex(1,2,3)` -> `(0x1,0x2,0x3)`
-- `hex((1,2,3))` -> `(0x1,0x2,0x3)`
-- `hex(-1)` -> `-0x1`
+- `2+3*4` -> `14`
+- `a=10; a*3` -> `30`
+- `(1,2,3)+10` -> `(11,12,13)`
+- `sum((1,2,3),10)` -> `16`
+- `sort((3,1,2))` -> `(1,2,3)`
+- `hex(255)` -> `0xFF`
 - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
-- `oct(12)` -> `0o14`
-- `oct(1,2,3)` -> `(0o1,0o2,0o3)`
-- `oct((1,2,3))` -> `(0o1,0o2,0o3)`
-- `bin(5)` -> `0b101`
-- `bin(1,2,3)` -> `(0b1,0b10,0b11)`
-- `bin((1,2,3))` -> `(0b1,0b10,0b11)`
-- `0o64` -> `52`, `0b110011 & 0x37 | 0o64` -> `55`
+- `2+3; ans/10` -> `0.5`
+- `f(x)=x*x+1; f(5)` -> `26`
+- `clamp((1,9),0,7)` -> `(1,7)`
 
-## 2) Operators and Precedence
+## Common Tasks
 
-Supported operators:
-- Exponentiation: `x ** y`
-- Unary operators: `+x`, `-x`, `~x`, `!x`
-- Multiplicative: `x * y`, `x / y`, `x % y`
-- Additive: `x + y`, `x - y`
-- Shifts: `x << y`, `x >> y`
-- Bitwise: `x & y`, `x ^ y`, `x | y`
-- Comparison: `x = y`, `x == y`, `x <> y`, `x != y`, `x > y`, `x >= y`, `x < y`, `x <= y`
-- Logical NOT: `!x`, `not x`
-- Logical AND: `x && y`, `x and y`
-- Logical OR: `x || y`, `x or y`
-- Postfix percentage: `x%` (percentage form, see section 3.6)
+### Numeric Values
 
-Implicit multiplication:
-- Supported only before opening parenthesis:
-  - `x(y + z)` means `x * (y + z)`
-- Not supported before variable names:
-  - `2x` is invalid (does not become `2*x`)
+Decimal/scientific forms:
 
-Operator precedence (highest -> lowest):
-1. `**`
-2. unary `+`, `-`, `~`, `!` (C/C++-style logical NOT)
-3. postfix `%` (percentage form, `x%`)
-4. `*`, `/`, `%` (binary modulo)
-5. `+`, `-`
-6. `<<`, `>>`
-7. `&`
-8. `^`
-9. `|`
-10. `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
-11. logical NOT (Python-style): `not`
-12. logical AND: `&&`, `and`
-13. logical OR: `||`, `or`
+- `42`
+- `3.1415`
+- `1e6` -> `1000000`
+- `2.5e-3` -> `0.0025`
 
-Parentheses can override precedence.
+Base-prefixed integer forms:
 
-Note on logical NOT precedence:
-- `!` is a high-precedence unary logical NOT, grouped with unary `+`, `-`, `~` (C/C++-style precedence).
-- `not` is a low-precedence logical NOT placed below comparisons (Python-style precedence).
-- Because they have different precedence, `!` and `not` are not interchangeable in mixed expressions.
+- `0x7FF` - hexadecimal
+- `0b01110110011` - binary
+- `0o64` - octal
 
-Note on chained comparisons:
-- Chained comparisons are evaluated left-to-right.
-- Example: `2 < 3 < 4` is interpreted as `(2 < 3) < 4`.
-- This differs from Python semantics:
-  - Python interprets `a < b < c` as `(a < b) and (b < c)`.
-  - Smart Math interprets it as `(a < b) < c`, where `(a < b)` becomes `1` or `0`.
+### Percent Calculation
 
-Logical operators return scalar integer results:
-- `1` for true
-- `0` for false
-
-For arrays (Python-compatible truthiness):
-- empty array is false;
-- non-empty array is true (regardless of element values).
-
-## 3) Numbers, Literals, and Numeric Behavior
-
-### 3.1 Decimal Literals
-- Integers and floating-point are supported:
-  - `42`
-  - `3.1415`
-  - `1e6`
-  - `2.5e-3`
-
-### 3.2 Hex Literals
-- Prefix: `0x` / `0X`
-  - Example: `0x7FF`
-- Invalid form:
-  - `0x` -> `invalid hex literal`
-
-### 3.3 Binary Literals
-- Prefix: `0b` / `0B`
-  - Example: `0b01110110011`
-- Invalid form:
-  - `0b` -> `invalid binary literal`
-
-### 3.4 Octal Literals
-- Prefix: `0o` / `0O`
-  - Example: `0o64`
-- Invalid form:
-  - `0o` -> `invalid octal literal`
-
-### 3.5 Integer-Accuracy Policy
-- Parser preserves exact signed 64-bit integer calculations whenever possible.
-- It automatically falls back to floating-point when:
-  - an operand is floating-point, or
-  - an operation inherently yields floating-point (for example division), or
-  - exact int64 result cannot be represented (overflow path).
-- When a computation goes through floating-point but the result is exactly representable as a signed 64-bit integer (for example `sqrt(9)`, `abs(-4)`, or `sum(3,5)`), that exact integer form is retained for integer-only operators (shifts, bitwise, modulo) and for decimal display when applicable. Array elements are still stored as doubles; indexing a single element can recover exact-integer metadata when the stored value is an exact integer.
-
-### 3.6 `%` Has Two Meanings
-- Binary modulo operator:
-  - `x % y`
-  - Requires integer operands.
-- Postfix percentage form:
+- Use postfix percent for percentage math:
   - `200 + 15%` -> `230`
   - `200 - 15%` -> `170`
 
-## 4) Bitwise and Integer-Only Rules
+### Arrays
 
-Bitwise operators:
-- `~`, `<<`, `>>`, `&`, `^`, `|`
-
-Requirements:
-- Bitwise and modulo operations require integer operands.
-- Non-integer operands produce parser errors:
-  - `bitwise operands must be integer values`
-  - `modulo operands must be integer values`
-
-Important range note:
-- Bitwise/modulo are signed 64-bit integer operations.
-- Values outside signed int64 range are not accepted by bitwise/modulo logic.
-
-## 5) Arrays and Indexing
-
-### 5.1 Array Literals
-- Comma-separated values inside parentheses:
+- Make arrays with commas in parentheses:
   - `(1,2,3)`
-
-### 5.2 Element-Wise Operations
-- Scalar-array and array-scalar operations are broadcast element-wise.
-- Array-array operations require equal length.
-
-Examples:
-- `(1,2,3) + 10` -> `(11,12,13)`
-- `(1,2,3) * 10` -> `(10,20,30)`
-- `(1,2,3) ** 3` -> `(1, 8, 27)`
-- `(1,2,3) + (10,20,30)` -> `(11,22,33)`
-- `(1,2,3) + (10,20)` -> error (incompatible operands; array lengths must match)
-- `(1,2,3) * (4,5,6)` -> `(4,10,18)`
-
-### 5.3 Array Comparison Rules
-- Comparison operators return scalar integer results:
-  - `1` for true
-  - `0` for false
-- Arrays are compared lexicographically (Python-like behavior):
-  - Compare values from left to right.
-  - First mismatch determines the result.
-  - If one array is a full prefix of the other, the shorter array is less than the longer one.
-- Scalar-array comparisons are treated as comparison of one-element array against the other side.
-
-Examples:
-- `(1,2,3) = (1,2,3)` -> `1`
-- `(1,2,3) < (1,2,4)` -> `1`
-- `(1,2) < (1,2,0)` -> `1`
-- `(1,3) > (1,2,3)` -> `1`
-
-### 5.4 Indexing
-- Array index syntax:
-  - `arr[0]`
-- Index must be an integer scalar.
-- Negative indexes are supported:
-  - `arr[-1]` = last item
-  - `arr[-2]` = second item from the end
-- Out-of-range access raises an error.
-
-Examples:
-- `(10,20,30)[0]` -> `10`
-- `(10,20,30)[-1]` -> `30`
-- `(10,20,30)[-2]` -> `20`
-- `sort((3,1,4,2))[-1]` -> `4`
-- `reverse((1,2,3,4))[0]` -> `4`
-- `reverse((1,2,3,4))[-1]` -> `1`
-
-### 5.5 Functions with Arrays
-- Unary math functions apply element-wise.
-- `sum`, `product`/`prod`, `min`, `max` flatten array arguments.
-- `median`, `variance`, `stddev` also flatten array arguments.
-- `sort(...)` flattens scalar/array arguments, then returns sorted values.
-- `sorted(...)` is an alias of `sort(...)`.
-- `reverse(...)` flattens scalar/array arguments, then returns values in reverse order.
-- `reversed(...)` is an alias of `reverse(...)`.
-- `unique(...)` flattens scalar/array arguments, then keeps first occurrences.
-- `unpack(...)` unpacks scalar/array arguments into separate arguments:
-  - scalar inputs are passed as-is: `unpack(1,2,3)` -> `1,2,3`;
-  - array inputs are expanded element-by-element: `unpack((1,2),3)` -> `1,2,3`.
-- Examples of standard functions with array values:
-  - `sin((0,pi/4,pi/2))` -> `(0,0.70710678,1)` (element-wise unary function)
-  - `sum((1,2,3),10)` -> `16` (flattened aggregation)
-  - `sort((5,2,9))` -> `(2,5,9)`
+- Use element-wise math:
+  - `(1,2,3)*10` -> `(10,20,30)`
+  - `(1,2,3)+(10,20,30)` -> `(11, 22, 33)`
+- Index arrays with `[index]`:
+  - `(10,20,30)[0]` -> `10` (first element)
+  - `(10,20,30)[-1]` -> `30` (last element)
+- Pass array to functions:
+  - `sqrt((9,25,36))` -> `(3, 5, 6)`
+  - `sin((pi/4,pi/2))` -> `(0.707107, 1)`
+- Use array utilities:
   - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
-  - `unique((5,2,5,9,2))` -> `(5,2,9)`
-  - `pow(unpack((5,2)))` -> `25`
-  - `sum(unpack((1,2,3)))` -> `6`
-  - `sum(unpack((1,2),3,(4,5)))` -> `15`
-- `hex` / `oct` / `bin` (and `uhex` / `uoct` / `ubin`) can render array outputs:
-  - `hex((12,255))` -> `(0xC,0xFF)`
-  - `hex(12,255)` -> `(0xC,0xFF)`
-  - `oct((12,255))` -> `(0o14,0o377)`
-  - `oct(12,255)` -> `(0o14,0o377)`
-  - `bin((1,2,5))` -> `(0b1,0b10,0b101)`
-  - `bin(1,2,5)` -> `(0b1,0b10,0b101)`
-  - `uhex(1,2)` -> `(0x1,0x2)`
 
-## 6) Variables and User-Defined Functions
+### Variables and `ans`
 
-### 6.1 Variables
-- Built-in variable:
-  - `ans` = last successful result (scalar or array)
-  - `ans` updates after each successful evaluated expression/statement.
-- Assignment:
+- Assign with `=`:
   - `a = 10`
-- Usage:
-  - `a * 3`
-- Names **`pi`** and **`e`** are reserved built-in constants (case-insensitive): you cannot assign to them (`e = 1` is an error), and they cannot be used as user-defined function names or parameter names. In expressions they always refer to π and Euler’s number.
-- Equality comparison uses two equals signs: `a == 10`. At the start of a statement, a single `=` after a name means assignment; `==` is never split into assign-then-equals, so expressions like `a==b` compare rather than assign.
-- **When a single `=` means comparison:** the input must **not** be parsed as that special “identifier at the very beginning” form. Then `=` is handled inside the expression parser as equality (same meaning as `==`). Examples:
-  - `5 = 5` → comparison (expression starts with a digit).
-  - `(x) = (x)` → comparison (expression starts with `(`).
-  - `1|2=3` → comparison (expression starts with a digit after optional leading ops / the left side is not “bare name at column 1”).
-- **`x = x` at the start of a line/statement is assignment:** the right-hand `x` is evaluated, then stored back into `x` (same as any `x = expr`). For boolean equality on variables, use `x == x` or parenthesize, e.g. `(x) = (x)`.
-- If anything other than spaces follows the first identifier before `=`, the line is an expression and `=` is comparison: e.g. `x + y = x` means `(x + y) = x`; `x * y = x * y` means `(x * y) = (x * y)` (equality test, `0` or `1`).
-- Array assignment:
-  - `v = (1,2,3)`
-- Passing array variables to functions:
+- Reserved names cannot be assignment targets:
+  - function names (for example `hex`, `random`, `sin`)
+  - built-in constants (`pi`, `e`)
+- Reuse values:
+  - `a*3`
+- `ans` is the last successful result:
+  - `2+3; ans*10` -> `50`
+- Assign and use arrays:
+  - `v = (2,1,3)`
+  - `v/3` -> `(0.666667, 0.333333, 1)`
   - `sum(v)` -> `6`
-  - `hex(v)` -> `(0x1,0x2,0x3)`
-  - `a=(1,2,1,3,5,7,6,5); sort(a)` -> `(1,1,2,3,5,5,6,7)`
-  - `a=(1,2,3,4); reverse(a)` -> `(4,3,2,1)`
-- Examples with `ans`:
-  - `2+3; ans/10` -> `0.5`
-  - `(1,2,3); ans*10` -> `(10,20,30)`
+  - `sort(v)` -> `(1, 2, 3)`
+  - `(v[-1],v[-2])` -> `(3, 1)`
+  - `v=(1,2,3); exp(v)` -> `(2.718282, 7.389056, 20.085537)`
 
-### 6.2 User-Defined Functions
-- Definition:
-  - `f(x) = x * x + 1`
-- Definition with two arguments:
-  - `mix(a,b) = a*2 + b*3`
+### Formatting Output
+
+- Decimal is default.
+- Use helper functions for base formatting:
+  - `hex(12)` -> `0xC`
+  - `oct(12)` -> `0o14`
+  - `bin(5,7)` -> `(0b101, 0b111)`
+  - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
+- Trailing formatter sugar after `;` is supported:
+  - `0xAA; hex` -> `0xAA` (same as `0xAA; hex(ans)`)
+  - `(8,9); bin()` -> `(0b1000,0b1001)` (same as `(8,9); bin(ans)`)
+
+### User-Defined Functions
+
+- Define:
+  - `f(x)=x*x+1`
+- Reserved names cannot be used for function names:
+  - `hex(x)=x` -> error (`reserved function name`)
+  - `e(x)=x` -> error (`reserved constant name`)
 - Call:
-  - `f(5)`
-  - `mix(2,4)` -> `16`
-  - `f(x,y)=x*y; a=(2,3); f(unpack(a))` -> `6`
-  - `f(x,y,z)=x+y+z; f(unpack((1,2,3)))` -> `6`
-  - `f(a,b,c,d,t)=a+b+c+d+t; f(unpack((1,2),3,(4,5)))` -> `15`
-  - `f(a,b,c)=a*b*c; v=(2,3,4); f(unpack(v))` -> `24`
+  - `f(5)` -> `26`
+  - `f((10,20))` -> `(101, 401)`
+- Multiple args:
+  - `mix(a,b)=a*2+b*3; mix(2,4)` -> `16`
+  - `f(a,b,c)=a+b*c; v=(2,3,4); f(unpack(v))` -> `14`
 
-User-defined functions also accept array arguments when the expression supports
-array math:
-- `scale(v,k) = v*k  # definition`
-- `scale((1,2,3),10)  # usage` -> `(10,20,30)`
+### Comments
 
-Rules:
-- Duplicate parameter names are not allowed in definitions.
-- Function definitions are stored and reused in subsequent expressions.
-- User-defined function names cannot match built-in function names.
-- User-defined function names cannot match built-in operator keywords (`not`, `and`, `or`).
-- User-defined function names and parameter names cannot match built-in constants (`pi`, `e`).
-
-### 6.3 Statement Separator
-- Top-level semicolon separates statements:
-  - `a=2; a+3` -> `5`
-  - `v=(1,2,3); exp(v)` -> `(2.718282,7.389056,20.085537)`
-
-## 7) Comments
-
-Single-line comments are supported with:
-- `#`
-- `//`
+- Line comments are supported with `#` or `//`.
+- Everything after the comment marker is ignored.
+- Useful for keeping notes next to expressions.
 
 Examples:
-- `1 + 2 # calculates 1 + 2`
-- `// whole line comment`
-- `# another whole line comment`
-- `sin(pi/2) // inline comment`
+- `2+3 # simple check` -> `5`
+- `hex(255) // display as hex` -> `0xFF`
 
-## 8) Constants
+## Core Language Rules
 
-Built-in constants:
-- `pi`
-- `e`
+### Operators
 
-In expressions, these names are always resolved as constants **before** variables. For example `(e=3)` compares Euler’s number to `3` (false), not a user variable `e`. Use another name (e.g. `t`) if you need a variable.
+- Exponent: `**`
+- Unary: `+x`, `-x`, `~x`, `!x`, `not x`
+- Multiplicative: `*`, `/`, `%` (modulo)
+- Additive: `+`, `-`
+- Shifts: `<<`, `>>`
+- Bitwise: `&`, `^`, `|`
+- Comparisons: `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
+- Logical: `&&`/`and`, `||`/`or`
+- Postfix percent: `x%`
 
-You cannot create a variable or function parameter named `pi` or `e`; the parser reports `reserved constant name: …`.
+### Precedence (High -> Low)
 
-## 9) Function Hints and Diagnostics
+1. `**`          (power)
+2. unary `+`, `-`, `~`, `!`
+3. postfix `%`   (percentage form `x%`)
+4. `*`, `/`, `%` (modulo `x % y`)
+5. `+`, `-`
+6. `<<`, `>>`    (bitwise shift)
+7. `&`           (bitwise and)
+8. `^`           (bitwise xor)
+9. `|`           (bitwise or)
+10. `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
+11. `not`        (logical not)
+12. `&&`, `and`  (logical and)
+13. `||`, `or`   (logical or)
 
-When a built-in function name is typed without call parentheses, parser provides a hint in the form:
-- `function: name(signature)`
+Use parentheses to make intent explicit.
+
+### Mini Guide: `=` vs `==`
+
+- `x = ...` at statement start is assignment.
+- `==` is always comparison.
+- Single `=` can still be comparison when not in assignment form.
 
 Examples:
-- `function: pow(value, power)`
-- `function: sin(angle)`
-- `function: sum(...)`
-- `function: median(...)`
-- `function: hex(...)`
-- `function: uhex(...)`
-- `function: bin(...)`
 
-Parser errors are one line, in this form:
+- `a=10` -> assignment
+- `a==10` -> comparison
+- `5=5` -> comparison (`1`)
+- `(x)=(x)` -> comparison
+- `x+y=x` -> comparison
 
-- `{message} at col {C}:  {excerpt-with-|}`
+Recommendation: use `==` for equality checks to avoid confusion.
 
-The short excerpt includes `|` inserted at the exact reported column position so the location is visible even when the excerpt is taken from the middle of the input.
+### Mini Guide: `%` Means Two Different Things
 
-When `Parser_SetShowErrorLine(TRUE)` is used, the middle part becomes `at line 1, col {C}:  ` (still one physical line in the editor). Default is `FALSE`.
+- Binary modulo:
+  - `17%5` -> `2`
+- Postfix percent:
+  - `200+15%` -> `230`
 
-Example: `unexpected token at col 5:  5*5 |: 25`
+### Mini Guide: `!` vs `not`
 
-## 10) Manual Formatting Options (`SmartMath.ini`)
+- `!` has high precedence.
+- `not` has lower precedence.
+- They are not interchangeable in mixed expressions.
 
-In `[Settings]`, you can manually override one-character separators used by SmartMath rendering to e.g.:
+Recommendation: parenthesize when using `not` in complex expressions.
+
+### Chained Comparisons Warning
+
+- Chained comparisons are evaluated left-to-right.
+- `2<3<4` is interpreted as `(2<3)<4`.
+- That means `2<3` becomes `1`, then `1<4` is evaluated.
+
+This differs from Python-style chained comparison logic.
+
+## Function Reference
+
+Quick index (alphabetical):
+
+| Function(s) | Category |
+|---|---|
+| `abs(value)` | numeric utility |
+| `acos/arccos(value)` | trigonometric |
+| `asin/arcsin(value)` | trigonometric |
+| `atan/arctan(value)` | trigonometric |
+| `atan2(y, x)` | trigonometric |
+| `avg/mean(...)` | aggregation |
+| `bin(...)` | output formatting |
+| `ceil(value)` | numeric utility |
+| `clamp(value, min, max)` | numeric utility |
+| `cos(angle)` | trigonometric |
+| `cosh(value)` | trigonometric/hyperbolic |
+| `deg(...)` | trigonometric conversion |
+| `exp(value)` | logarithmic/exponential |
+| `fact/factorial(n)` | numeric utility |
+| `floor(value)` | numeric utility |
+| `frac/fract(value)` | numeric utility |
+| `gcd(a, b)` | numeric utility |
+| `hex(...)` | output formatting |
+| `hypot(x, y)` | power/root |
+| `int(value)` | numeric utility |
+| `lcm(a, b)` | numeric utility |
+| `ln(value)` | logarithmic/exponential |
+| `log(value, base)` | logarithmic/exponential |
+| `log10(value)` | logarithmic/exponential |
+| `max(...)` | aggregation |
+| `median(...)` | aggregation |
+| `min(...)` | aggregation |
+| `mod(value, divisor)` | numeric utility |
+| `oct(...)` | output formatting |
+| `pow(value, power)` | power/root |
+| `product/prod(...)` | aggregation |
+| `rad(...)` | trigonometric conversion |
+| `rand()` | random |
+| `random(min, max)` | random |
+| `reverse/reversed(...)` | array utility |
+| `round(value)` | numeric utility |
+| `sign(value)` | numeric utility |
+| `sin(angle)` | trigonometric |
+| `sinh(value)` | trigonometric/hyperbolic |
+| `sort/sorted(...)` | array utility |
+| `sqrt(value)` | power/root |
+| `sqr(value)` | power/root |
+| `stddev(...)` | aggregation |
+| `sum(...)` | aggregation |
+| `tan(angle)` | trigonometric |
+| `tanh(value)` | trigonometric/hyperbolic |
+| `trunc(value)` | numeric utility |
+| `ubin(...)` | output formatting |
+| `uhex(...)` | output formatting |
+| `unique(...)` | array utility |
+| `unpack(...)` | array utility |
+| `uoct(...)` | output formatting |
+| `variance(...)` | aggregation |
+
+### Trigonometric and Hyperbolic
+
+Purpose: angle and trig math.
+
+- Key functions:
+- `sin(angle)` - sine of an angle (radians)
+- `cos(angle)` - cosine of an angle (radians)
+- `tan(angle)` - tangent of an angle (radians)
+- `asin(value)`, `arcsin(value)` - inverse sine
+- `acos(value)`, `arccos(value)` - inverse cosine
+- `atan(value)`, `arctan(value)` - inverse tangent
+- `atan2(y, x)` - angle of vector `(x,y)` in radians
+- `sinh(value)` - hyperbolic sine
+- `cosh(value)` - hyperbolic cosine
+- `tanh(value)` - hyperbolic tangent
+- `deg(...)` - convert radians to degrees
+- `rad(...)` - convert degrees to radians
+- Examples:
+  - `sin(pi/2)` -> `1`
+  - `atan2(1,1)` -> `0.7853981633974483`
+  - `deg(pi)` -> `180`
+  - `rad(180)` -> `pi`
+
+### Logarithmic and Exponential
+
+Purpose: growth/scale and logarithm operations.
+
+- Key functions:
+- `exp(value)` - Euler exponential (`e**x`)
+- `ln(value)` - natural logarithm
+- `log(value, base)` - logarithm in a chosen base
+- `log10(value)` - base-10 logarithm
+- Examples:
+  - `ln(exp(3))` -> `3`
+  - `log(8,2)` -> `3`
+  - `log10(1000)` -> `3`
+
+### Power and Root
+
+Purpose: power (`**`) and root operations.
+
+- Key functions:
+- `pow(value, power)` - raise value to a power (same as `value ** power`)
+- `sqrt(value)` - square root
+- `sqr(value)` - square (value * value)
+- `hypot(x, y)` - hypotenuse (`sqrt(x*x + y*y)`)
+- Examples:
+  - `pow(27,1/3)` -> `3`
+  - `sqrt(25)` -> `5`
+  - `hypot(3,4)` -> `5`
+
+### Numeric Utilities
+
+Purpose: rounding, bounds, integer helpers, factorial.
+
+- Key functions:
+- `floor(value)` - largest integer less than or equal to value
+- `ceil(value)` - smallest integer greater than or equal to value
+- `trunc(value)` - drop fractional part toward zero
+- `int(value)` - integer part toward zero (same as `trunc`)
+- `frac(value)`, `fract(value)` - fractional part (`value - int(value)`)
+- `round(value)` - nearest integer
+- `abs(value)` - absolute value
+- `sign(value)` - sign as `-1`, `0`, or `1`
+- `clamp(value, min, max)` - limit value to `[min, max]`
+- `gcd(a, b)` - greatest common divisor
+- `lcm(a, b)` - least common multiple
+- `mod(value, divisor)` - modulo as a function form of `%`
+- `fact(n)`, `factorial(n)` - factorial for non-negative integers
+- Examples:
+  - `round(2.5)` -> `3`
+  - `clamp(15,0,10)` -> `10`
+  - `gcd(84,30)` -> `6`
+  - `fact(21)` -> `5.109094217170944e+019`
+
+### Arrays and Aggregation
+
+Purpose: aggregate and transform values/lists.
+
+- Key functions:
+- `sum(...)` - sum all inputs
+- `product(...)`, `prod(...)` - multiply all inputs
+- `avg(...)`, `mean(...)` - average of all inputs
+- `median(...)` - median of flattened inputs
+- `variance(...)` - population variance
+- `stddev(...)` - population standard deviation
+- `min(...)` - smallest value
+- `max(...)` - largest value
+- `sort(...)`, `sorted(...)` - sorted flattened values
+- `reverse(...)`, `reversed(...)` - reversed flattened values
+- `unique(...)` - first-occurrence unique values
+- `unpack(...)` - expand arrays into positional arguments
+- Examples:
+  - `sum((1,2,3),10)` -> `16`
+  - `avg(1,2,3,4)` -> `2.5`
+  - `sort((3,1,2))` -> `(1,2,3)`
+  - `unique((3,1,3,2,1,2))` -> `(3,1,2)`
+  - `a=(5,2); pow(unpack(a))` -> `25`
+
+Notes:
+
+- Aggregation functions flatten array inputs.
+- `variance` and `stddev` use population formulas (`N`, not `N-1`).
+
+### Output Formatting
+
+Purpose: render values in hex/oct/bin.
+
+- Key functions:
+- `hex(...)` - format output in hexadecimal
+- `oct(...)` - format output in octal
+- `bin(...)` - format output in binary
+- `uhex(...)` - unsigned-style hexadecimal formatting
+- `uoct(...)` - unsigned-style octal formatting
+- `ubin(...)` - unsigned-style binary formatting
+- Examples:
+  - `hex(12)` -> `0xC`
+  - `bin((5,11))` -> `(0b101, 0b1011)`
+  - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
+  - `170; hex` -> `0xAA`
+  - `(0x5,0x10); oct` -> `(0o5, 0o20)`
+
+Notes:
+
+- Formatting functions require integer values.
+- `uhex/uoct/ubin` show unsigned 64-bit style for negatives.
+
+### Random
+
+Purpose: random values.
+
+- Key functions:
+- `rand()` - random scalar in `[0,1)`
+- `random(min, max)` - random scalar in `[min,max)` (or exact bound if equal)
+- Examples:
+  - `rand()` -> random value in `[0,1)`
+  - `random(10,20)` -> random value in `[10,20)`
+  - `random(5,5)` -> `5`
+
+## Advanced Numeric Behavior
+
+### Advanced Behavior: Integer Accuracy (Int64/UInt64)
+
+- SmartMath tries to keep exact signed 64-bit integer semantics when possible.
+- It falls back to floating-point when required (for example division or overflow path).
+- Integer-only operators are checked in a defined signed 64-bit domain.
+- Shift count must be in `0..63`.
+
+Advanced examples:
+
+- `hex(int((9007199254740992+2)/1))` -> `0x20000000000002`
+- `a=(4611686018427387903,5)<<1; hex(a[0])` -> `0x7FFFFFFFFFFFFFFE`
+- `a=(9223372036854775806,9223372036854775805); b=a>>2; hex(b[0])` -> `0x1FFFFFFFFFFFFFFF`
+
+### Advanced Behavior: NaN / Inf
+
+- Rendering:
+  - `nan`, `inf`, `-inf`
+- Truthiness:
+  - finite nonzero and infinities are truthy (`1`)
+  - `0` and `nan` are falsy (`0`)
+- Integer-only operations reject `nan`/`inf`.
+
+### Compatibility Behavior (Current)
+
+- `nan == nan` currently evaluates to `1`.
+- On evaluation failure, `ans` resets to `0`.
+
+These behaviors may differ from other tools/languages.
+
+### Literals
+
+- Decimal: `42`, `3.1415`, `1e6`
+- Hex: `0x7FF`
+- Binary: `0b1011`
+- Octal: `0o64`
+- Invalid prefixes alone are errors (for example `0x`, `0b`, `0o`).
+
+## Errors and Troubleshooting
+
+### Common Errors and Fixes
+
+- `unexpected token`
+  - Usually caused by malformed syntax.
+  - Example: `1 + * 2`
+  - Fix: check operators, commas, and parentheses.
+
+- `bitwise operands must be integer values`
+  - Example: `1.5 & 1`
+  - Fix: use integer inputs.
+
+- `modulo operands must be integer values`
+  - Example: `5.2 % 2`
+  - Fix: use integer inputs.
+
+- `... expects N argument(s)`
+  - Example: `pow(2)`
+  - Fix: match the function signature.
+
+- `incompatible operands`
+  - Often array length mismatch.
+  - Example: `(1,2,3) + (10,20)`
+  - Fix: use same-length arrays or scalar broadcasting where supported.
+
+- `array index is out of range`
+  - Example: `(10,20)[5]`
+  - Fix: use a valid index (`0..len-1` or negative within bounds).
+
+### Diagnostics Format
+
+- Errors are one line and include location context (`col`, optional `line`).
+- Current builds usually include an excerpt with `|` near the position.
+- With `Parser_SetShowErrorLine(TRUE)`, location text includes line info.
+
+Example:
+
+- `unexpected token at col 5:  5*5 |: 25`
+
+## SmartMath.ini Options
+
+Manual formatting options in `[Settings]`:
 
 ```ini
 DecimalSeparatorChar=,
@@ -459,29 +485,24 @@ ArrayOutputSeparatorChar=;
 ```
 
 Rules:
-- Each value is treated as a single character.
-- If more than one character is provided, only the first character is used.
-- If a key is missing or empty, SmartMath falls back to defaults:
-  - `DecimalSeparatorChar=.`  
-  - `ThousandsSeparatorChar='`  
+
+- Each key uses one character (extra characters are ignored).
+- Missing/empty key falls back to defaults:
+  - `DecimalSeparatorChar=.`
+  - `ThousandsSeparatorChar='`
   - `ArrayOutputSeparatorChar=,`
-- Input expression argument separator remains comma (`,`).
-- If `ArrayOutputSeparatorChar` is not comma, double-click copy normalizes array output back to comma so copied text is valid parser input.
+- Input expression argument separator stays comma (`,`).
+- If array output separator is changed, double-click copy normalizes array output back to comma for valid parser input.
 
-## 11) Troubleshooting
-
-If you need to diagnose a crash or a problematic input line, you can enable per-line parser logging in `SmartMath.ini`.
-
-`SmartMath.ini` (`[Settings]` section):
+Troubleshooting logging option:
 
 ```ini
 LogParsedLines=1
 ```
 
-Notes:
-- `LogParsedLines=0` disables this logging (default).
-- After editing `SmartMath.ini`, toggle SmartMath off/on (or restart AkelPad) to reload settings.
-- Logs are emitted via Windows `OutputDebugString`.
-- You can view these logs in [DbgView (Sysinternals)](https://learn.microsoft.com/sysinternals/downloads/debugview).
-- Log entries include `parse-line begin [...]` / `parse-line end [...]`, which helps identify the last processed line before a failure.
+- `0` disables logging (default).
+- `1` enables logging.
+- Toggle SmartMath off/on (or restart AkelPad) after editing `SmartMath.ini`.
+- Logs are sent through Windows `OutputDebugString`.
+- You can inspect logs with [DbgView (Sysinternals)](https://learn.microsoft.com/sysinternals/downloads/debugview).
 
