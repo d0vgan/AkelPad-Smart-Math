@@ -116,6 +116,7 @@ Base-prefixed integer forms:
 - Multiple args:
   - `mix(a,b)=a*2+b*3; mix(2,4)` -> `16`
   - `f(a,b,c)=a+b*c; v=(2,3,4); f(unpack(v))` -> `14`
+- Recursive functions are not supported.
 
 ### Comments
 

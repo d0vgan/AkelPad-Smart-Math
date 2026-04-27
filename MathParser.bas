@@ -211,6 +211,9 @@ dim shared lastErrorText as String
 dim shared unknownVarsText as String
 dim shared unknownFuncsText as String
 dim shared evalDepth as Integer
+const UDF_CALL_STACK_MAX as Integer = 128
+dim shared udfCallStack(0 to UDF_CALL_STACK_MAX - 1) as String
+dim shared udfCallStackSp as Integer
 dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
@@ -1131,6 +1134,45 @@ private function FindFunctionIndex(byref n as String) as Integer
   return -1
 end function
 
+'' True if body text contains a call to the same identifier as fnName (case-insensitive), e.g. y(a)=g(a)+y(a)+4.
+private function UdfBodyCallsDefinedFunction(byref bodyText as String, byref fnName as String) as Boolean
+  dim lowFn as String = lcase(trim(fnName))
+  if len(lowFn) = 0 then return FALSE
+
+  dim b as String = bodyText
+  dim bn as Integer = len(b)
+  dim ip as Integer = 1
+  while ip <= bn
+    dim ca as Integer = asc(mid(b, ip, 1))
+    if (ca >= asc("a") andalso ca <= asc("z")) orelse (ca >= asc("A") andalso ca <= asc("Z")) orelse mid(b, ip, 1) = "_" then
+      dim i0 as Integer = ip
+      while ip <= bn
+        ca = asc(mid(b, ip, 1))
+        if (ca >= asc("a") andalso ca <= asc("z")) orelse (ca >= asc("A") andalso ca <= asc("Z")) orelse (ca >= asc("0") andalso ca <= asc("9")) orelse mid(b, ip, 1) = "_" then
+          ip += 1
+        else
+          exit while
+        end if
+      wend
+      if lcase(mid(b, i0, ip - i0)) = lowFn then
+        dim jp as Integer = ip
+        while jp <= bn
+          ca = asc(mid(b, jp, 1))
+          if ca = 32 orelse ca = 9 then
+            jp += 1
+          else
+            exit while
+          end if
+        wend
+        if jp <= bn andalso mid(b, jp, 1) = "(" then return TRUE
+      end if
+    else
+      ip += 1
+    end if
+  wend
+  return FALSE
+end function
+
 private sub SetUserFunction(byref n as String, params() as String, byref expr as String)
   dim idx as Integer = FindFunctionIndex(n)
   if idx < 0 then
@@ -1243,6 +1285,21 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
     return TRUE
   end if
 
+  dim lowNm as String = lcase(fnName)
+  dim si as Integer
+  for si = 0 to udfCallStackSp - 1
+    if udfCallStack(si) = lowNm then
+      SetParseError("recursive user function call: " & fnName)
+      return TRUE
+    end if
+  next si
+  if udfCallStackSp >= UDF_CALL_STACK_MAX then
+    SetParseError("user function call stack overflow")
+    return TRUE
+  end if
+  udfCallStack(udfCallStackSp) = lowNm
+  udfCallStackSp += 1
+
   dim oldExists() as Integer
   dim oldValues() as EvalValue
   if pCount > 0 then
@@ -1304,6 +1361,8 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
       end if
     end if
   next i
+
+  udfCallStackSp -= 1
 
   if evalError <> 0 then parseError = 1
   return TRUE
@@ -3233,6 +3292,7 @@ end function
 sub Parser_ClearVariables()
   erase variables
   erase userFunctions
+  udfCallStackSp = 0
   lastErrorText = ""
   unknownVarsText = ""
   unknownFuncsText = ""
@@ -3251,6 +3311,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     lastErrorText = ""
     unknownVarsText = ""
     unknownFuncsText = ""
+    udfCallStackSp = 0
     errorBaseCol = 1
     rootInputExpr = exprInput
   end if
@@ -3463,6 +3524,11 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           dim body as String = *pStream
           if len(trim(body)) = 0 then
             SetParseError("function body is empty")
+            evalDepth -= 1
+            return FALSE
+          end if
+          if UdfBodyCallsDefinedFunction(body, varName) then
+            SetParseError("user function body cannot call '" & varName & "'")
             evalDepth -= 1
             return FALSE
           end if

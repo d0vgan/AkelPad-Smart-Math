@@ -172,7 +172,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 588) as SmokeCase
+  dim tests(1 to 592) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -800,6 +800,11 @@ sub Main()
   tests(586).expr = "(8,9); bin()":                            tests(586).expected = "(0b1000,0b1001)"
   tests(587).expr = "15; uhex":                                tests(587).expected = "0xF"
   tests(588).expr = "0xAA; foo()":                             tests(588).expectedErrContains = "unknown functions"
+
+  tests(589).expr = "x(a)=x(a); x(1)":                        tests(589).expectedErrContains = "body cannot call 'x'" ' [regression] direct self-call in UDF body
+  tests(590).expr = "y(a)=g(a)+y(a)+4":                      tests(590).expectedErrContains = "body cannot call 'y'" ' [regression] self-call among other terms
+  tests(591).expr = "g(a)=y(a)+1; y(a)=g(a)+2; y(5)":        tests(591).expectedErrContains = "recursive user function call" ' [regression] mutual recursion y<->g
+  tests(592).expr = "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)": tests(592).expectedErrContains = "recursive user function call" ' [regression] longer cycle back to b
 
   g_total = ubound(tests) - lbound(tests) + 1
 
