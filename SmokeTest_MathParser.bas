@@ -172,7 +172,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 592) as SmokeCase
+  dim tests(1 to 600) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -805,6 +805,14 @@ sub Main()
   tests(590).expr = "y(a)=g(a)+y(a)+4":                      tests(590).expectedErrContains = "body cannot call 'y'" ' [regression] self-call among other terms
   tests(591).expr = "g(a)=y(a)+1; y(a)=g(a)+2; y(5)":        tests(591).expectedErrContains = "recursive user function call" ' [regression] mutual recursion y<->g
   tests(592).expr = "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)": tests(592).expectedErrContains = "recursive user function call" ' [regression] longer cycle back to b
+  tests(593).expr = "2^3":                                   tests(593).expected = "1" ' [regression] caret is bitwise XOR
+  tests(594).expr = "2**3":                                  tests(594).expected = "8" ' [regression] double-star is power
+  tests(595).expr = "3^2":                                   tests(595).expected = "1" ' [regression] caret is not power
+  tests(596).expr = "3**2":                                  tests(596).expected = "9" ' [regression] double-star power
+  tests(597).expr = "f(x)=x*p(x); f(2)":                     tests(597).expectedErrContains = "unknown functions" ' [regression] late binding unresolved referenced UDF
+  tests(598).expr = "f(x)=x*p(x); p(x)=x+5; f(10)":          tests(598).expected = "150" ' [regression] late binding resolved after referenced UDF definition
+  tests(599).expr = "f(x)=x*p(x); p(x)=x**(1/3); f(8)":      tests(599).expected = "16" ' [regression] late binding with nonlinear referenced UDF
+  tests(600).expr = "f(x)=x*p(x); p(x)=x+5; p(x)=x**(1/3); f(8)": tests(600).expected = "16" ' [regression] late binding uses latest referenced UDF definition
 
   g_total = ubound(tests) - lbound(tests) + 1
 
