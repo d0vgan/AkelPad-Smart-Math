@@ -118,6 +118,17 @@ Base-prefixed integer forms:
   - `f(a,b,c)=a+b*c; v=(2,3,4); f(unpack(v))` -> `14`
 - Recursive functions are not supported.
 
+#### Late Binding of Referenced Functions
+
+- User-defined functions use late binding (runtime name resolution) for referenced function names.
+- If a dependency is missing at call time, evaluation fails with an unknown-function error.
+- If that dependency is defined later, the original function starts working without redefinition.
+- Example:
+  - `f(x)=x*g(x)`
+  - `f(2)` -> `unknown functions: g`
+  - `g(x)=x+5; f(10)` -> `150`
+  - `g(x)=x**(1/3); f(8)` -> `16`
+
 ### Comments
 
 - Line comments are supported with `#` or `//`.
@@ -380,6 +391,7 @@ Purpose: render values in hex/oct/bin.
   - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
   - `170; hex` -> `0xAA`
   - `(0x5,0x10); oct` -> `(0o5, 0o20)`
+  - `0xFFFFFFFF & ~0x123; uhex` -> `0xFFFFFEDC`
 
 Notes:
 
