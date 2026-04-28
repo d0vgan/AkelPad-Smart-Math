@@ -1,6 +1,146 @@
 #include once "crt.bi"
 #include once "Inc\MathParser.bi"
 
+const FB_STR_AT as string = " at "
+const FB_STR_LINE_1_PREFIX as string = "line 1, "
+const FB_STR_COL as string = "col "
+const FB_STR_COLON as string = ":  "
+const FB_STR_COMMA as string = ", "
+const FB_STR_RAND as string = "rand"
+const FB_STR_RANDOM as string = "random"
+const FB_STR_BIN as string = "bin"
+const FB_STR_HEX as string = "hex"
+const FB_STR_OCT as string = "oct"
+const FB_STR_POW as string = "pow"
+const FB_STR_ATAN2 as string = "atan2"
+const FB_STR_SIN as string = "sin"
+const FB_STR_COS as string = "cos"
+const FB_STR_TAN as string = "tan"
+const FB_STR_ASIN as string = "asin"
+const FB_STR_ARCSIN as string = "arcsin"
+const FB_STR_ACOS as string = "acos"
+const FB_STR_ARCCOS as string = "arccos"
+const FB_STR_ATAN as string = "atan"
+const FB_STR_ARCTAN as string = "arctan"
+const FB_STR_SINH as string = "sinh"
+const FB_STR_COSH as string = "cosh"
+const FB_STR_TANH as string = "tanh"
+const FB_STR_EXP as string = "exp"
+const FB_STR_LOG as string = "log"
+const FB_STR_LN as string = "ln"
+const FB_STR_LOG10 as string = "log10"
+const FB_STR_SQRT as string = "sqrt"
+const FB_STR_SQR as string = "sqr"
+const FB_STR_INT as string = "int"
+const FB_STR_FRAC as string = "frac"
+const FB_STR_FRACT as string = "fract"
+const FB_STR_ABS as string = "abs"
+const FB_STR_FLOOR as string = "floor"
+const FB_STR_CEIL as string = "ceil"
+const FB_STR_TRUNC as string = "trunc"
+const FB_STR_ROUND as string = "round"
+const FB_STR_SIGN as string = "sign"
+const FB_STR_DEG as string = "deg"
+const FB_STR_RAD as string = "rad"
+const FB_STR_SUM as string = "sum"
+const FB_STR_MEDIAN as string = "median"
+const FB_STR_VARIANCE as string = "variance"
+const FB_STR_STDDEV as string = "stddev"
+const FB_STR_SORT as string = "sort"
+const FB_STR_SORTED as string = "sorted"
+const FB_STR_REVERSE as string = "reverse"
+const FB_STR_REVERSED as string = "reversed"
+const FB_STR_UNIQUE as string = "unique"
+const FB_STR_UNPACK as string = "unpack"
+const FB_STR_FACT as string = "fact"
+const FB_STR_FACTORIAL as string = "factorial"
+const FB_STR_AVG as string = "avg"
+const FB_STR_MEAN as string = "mean"
+const FB_STR_MOD as string = "mod"
+const FB_STR_CLAMP as string = "clamp"
+const FB_STR_HYPOT as string = "hypot"
+const FB_STR_GCD as string = "gcd"
+const FB_STR_LCM as string = "lcm"
+const FB_STR_PRODUCT as string = "product"
+const FB_STR_PROD as string = "prod"
+const FB_STR_MIN as string = "min"
+const FB_STR_MAX as string = "max"
+const FB_STR_UHEX as string = "uhex"
+const FB_STR_UOCT as string = "uoct"
+const FB_STR_UBIN as string = "ubin"
+const FB_STR_NOT as string = "not"
+const FB_STR_AND as string = "and"
+const FB_STR_OR as string = "or"
+const FB_STR_PI as string = "pi"
+const FB_STR_E as string = "e"
+const FB_STR_PAR as string = "()"
+const FB_STR_PAR_MIN_COMMA_MAX as string = "(min, max)"
+const FB_STR_PAR_DOTDOTDOT as string = "(...)"
+const FB_STR_PAR_VALUE_COMMA_POWER as string = "(value, power)"
+const FB_STR_PAR_Y_COMMA_X as string = "(y, x)"
+const FB_STR_PAR_ANGLE as string = "(angle)"
+const FB_STR_PAR_VALUE as string = "(value)"
+const FB_STR_PAR_VALUE_COMMA_BASE as string = "(value, base)"
+const FB_STR_PAR_N as string = "(n)"
+const FB_STR_PAR_VALUE_COMMA_DIVISOR as string = "(value, divisor)"
+const FB_STR_PAR_VALUE_COMMA_MIN_COMMA_MAX as string = "(value, min, max)"
+const FB_STR_PAR_X_COMMA_Y as string = "(x, y)"
+const FB_STR_PAR_A_COMMA_B as string = "(a, b)"
+const FB_STR_PAR_ANS as string = "(ans)"
+const FB_STR_PREFIX_HEX as string = "0x"
+const FB_STR_PREFIX_OCT as string = "0o"
+const FB_STR_PREFIX_BIN as string = "0b"
+const FB_STR_ANS as string = "ans"
+const FB_STR_INDEXING_REQUIRES_AN_ARRAY_VALUE as string = "indexing requires an array value"
+const FB_STR_MISSING_INDEX as string = "missing index"
+const FB_STR_ARRAY_INDEX_MUST_BE_A_SCALAR as string = "array index must be a scalar integer"
+const FB_STR_ARRAY_INDEX_MUST_BE_AN_INTEGER as string = "array index must be an integer"
+const FB_STR_MISMATCHED_CLOSING_PARENTHESIS as string = "mismatched closing parenthesis"
+const FB_STR_MISMATCHED_CLOSING_BRACE as string = "mismatched closing brace"
+const FB_STR_MISSING_CLOSING_BRACKET as string = "missing closing bracket"
+const FB_STR_ARRAY_INDEX_IS_OUT_OF_RANGE as string = "array index is out of range"
+const FB_STR_PAR_EXPECTS as string = "() expects "
+const FB_STR_ARGUMENT_PAR_S_COMMA as string = " argument(s), "
+const FB_STR_GIVEN as string = " given"
+const FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON as string = "recursive user function call: "
+const FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW as string = "user function call stack overflow"
+const FB_STR_LT_LT as string = "<<"
+const FB_STR_GT_GT as string = ">>"
+const FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES as string = "modulo operands must be integer values"
+const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operands must be integer values"
+const FB_STR_EQ_EQ as string = "=="
+const FB_STR_LT_GT as string = "<>"
+const FB_STR_NOT_EQ as string = "!="
+const FB_STR_LT_EQ as string = "<="
+const FB_STR_GT_EQ as string = ">="
+const FB_STR_INCOMPATIBLE_OPERANDS as string = "incompatible operands"
+const FB_STR_PAR_EXPECTS_AT_LEAST_1 as string = "() expects at least 1 argument"
+const FB_STR_MISSING_OPENING_BRACKET as string = "missing opening bracket"
+const FB_STR_UNEXPECTED_COMMA as string = "unexpected comma"
+const FB_STR_MISMATCHED_CLOSING_BRACKET as string = "mismatched closing bracket"
+const FB_STR_MISSING_CLOSING_PARENTHESIS as string = "missing closing parenthesis"
+const FB_STR_NUMERIC_ERROR_IN as string = "numeric error in "
+const FB_STR_PAR_EXPECTS_A_NON_DASH as string = "() expects a non-negative integer"
+const FB_STR_PAR_EXPECTS_SCALAR_VALUES as string = "() expects scalar values"
+const FB_STR_PAR_EXPECTS_SCALAR_MIN_SLASH as string = "() expects scalar min/max"
+const FB_STR_PAR_EXPECTS_INTEGER_VALUES as string = "() expects integer values"
+const FB_STR_INVALID_HEX_LITERAL as string = "invalid hex literal"
+const FB_STR_INVALID_BINARY_LITERAL as string = "invalid binary literal"
+const FB_STR_INVALID_OCTAL_LITERAL as string = "invalid octal literal"
+const FB_STR_UNEXPECTED_TOKEN as string = "unexpected token"
+const FB_STR_HINT_PREFIX as string = "function: "
+const FB_STR_ARRAY_ELEMENT_MUST_BE_SCALAR as string = "array element must be scalar"
+const FB_STR_EXPRESSION_IS_TOO_LONG as string = "expression is too long"
+const FB_STR_EMPTY_STATEMENT as string = "empty statement"
+const FB_STR_RESERVED_FUNCTION_NAME_COLON as string = "reserved function name: "
+const FB_STR_RESERVED_CONSTANT_NAME_COLON as string = "reserved constant name: "
+const FB_STR_DUPLICATE_PARAMETER_NAME_COLON as string = "duplicate parameter name: "
+const FB_STR_FUNCTION_BODY_IS_EMPTY as string = "function body is empty"
+const FB_STR_DEFINED as string = "defined "
+const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
+const FB_STR_UNKNOWN_FUNCTION_COLON as string = "unknown function: "
+const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
+
 enum ValueKind
   VK_SCALAR = 0
   VK_ARRAY = 1
@@ -246,9 +386,9 @@ private sub SetParseError(byref msg as String)
   if lastErrorText = "" then
     if (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart) then
       dim col as Integer = errorBaseCol + (pStream - exprStart)
-      dim locationPart as String = " at "
-      if Parser_ShowErrorLine then locationPart = locationPart & "line 1, "
-      locationPart = locationPart & "col " & ltrim(str(col)) & ":  "
+      dim locationPart as String = FB_STR_AT
+      if Parser_ShowErrorLine then locationPart = locationPart & FB_STR_LINE_1_PREFIX
+      locationPart = locationPart & FB_STR_COL & ltrim(str(col)) & FB_STR_COLON
       lastErrorText = msg & locationPart & BuildErrorSnippet(col)
     else
       lastErrorText = msg
@@ -262,7 +402,7 @@ private sub AppendUniqueName(byref listText as String, byref n as String)
   if listText = "" then
     listText = n
   else
-    listText &= ", " & n
+    listText &= FB_STR_COMMA & n
   end if
 end sub
 
@@ -355,85 +495,85 @@ dim shared ConstNamesInitialized as Boolean = FALSE
 
 private sub EnsureFunctionNames()
   if FunctionNamesInitialized then exit sub
-  FunctionNames(FUNC_RAND) = "rand"
-  FunctionNames(FUNC_RANDOM) = "random"
-  FunctionNames(FUNC_BIN) = "bin"
-  FunctionNames(FUNC_HEX) = "hex"
-  FunctionNames(FUNC_OCT) = "oct"
-  FunctionNames(FUNC_POW) = "pow"
-  FunctionNames(FUNC_ATAN2) = "atan2"
-  FunctionNames(FUNC_SIN) = "sin"
-  FunctionNames(FUNC_COS) = "cos"
-  FunctionNames(FUNC_TAN) = "tan"
-  FunctionNames(FUNC_ASIN) = "asin"
-  FunctionNames(FUNC_ARCSIN) = "arcsin"
-  FunctionNames(FUNC_ACOS) = "acos"
-  FunctionNames(FUNC_ARCCOS) = "arccos"
-  FunctionNames(FUNC_ATAN) = "atan"
-  FunctionNames(FUNC_ARCTAN) = "arctan"
-  FunctionNames(FUNC_SINH) = "sinh"
-  FunctionNames(FUNC_COSH) = "cosh"
-  FunctionNames(FUNC_TANH) = "tanh"
-  FunctionNames(FUNC_EXP) = "exp"
-  FunctionNames(FUNC_LOG) = "log"
-  FunctionNames(FUNC_LN) = "ln"
-  FunctionNames(FUNC_LOG10) = "log10"
-  FunctionNames(FUNC_SQRT) = "sqrt"
-  FunctionNames(FUNC_SQR) = "sqr"
-  FunctionNames(FUNC_INT) = "int"
-  FunctionNames(FUNC_FRAC) = "frac"
-  FunctionNames(FUNC_FRACT) = "fract"
-  FunctionNames(FUNC_ABS) = "abs"
-  FunctionNames(FUNC_FLOOR) = "floor"
-  FunctionNames(FUNC_CEIL) = "ceil"
-  FunctionNames(FUNC_TRUNC) = "trunc"
-  FunctionNames(FUNC_ROUND) = "round"
-  FunctionNames(FUNC_SIGN) = "sign"
-  FunctionNames(FUNC_DEG) = "deg"
-  FunctionNames(FUNC_RAD) = "rad"
-  FunctionNames(FUNC_SUM) = "sum"
-  FunctionNames(FUNC_MEDIAN) = "median"
-  FunctionNames(FUNC_VARIANCE) = "variance"
-  FunctionNames(FUNC_STDDEV) = "stddev"
-  FunctionNames(FUNC_SORT) = "sort"
-  FunctionNames(FUNC_SORTED) = "sorted"
-  FunctionNames(FUNC_REVERSE) = "reverse"
-  FunctionNames(FUNC_REVERSED) = "reversed"
-  FunctionNames(FUNC_UNIQUE) = "unique"
-  FunctionNames(FUNC_UNPACK) = "unpack"
-  FunctionNames(FUNC_FACT) = "fact"
-  FunctionNames(FUNC_FACTORIAL) = "factorial"
-  FunctionNames(FUNC_AVG) = "avg"
-  FunctionNames(FUNC_MEAN) = "mean"
-  FunctionNames(FUNC_MOD) = "mod"
-  FunctionNames(FUNC_CLAMP) = "clamp"
-  FunctionNames(FUNC_HYPOT) = "hypot"
-  FunctionNames(FUNC_GCD) = "gcd"
-  FunctionNames(FUNC_LCM) = "lcm"
-  FunctionNames(FUNC_PRODUCT) = "product"
-  FunctionNames(FUNC_PROD) = "prod"
-  FunctionNames(FUNC_MIN) = "min"
-  FunctionNames(FUNC_MAX) = "max"
-  FunctionNames(FUNC_UHEX) = "uhex"
-  FunctionNames(FUNC_UOCT) = "uoct"
-  FunctionNames(FUNC_UBIN) = "ubin"
+  FunctionNames(FUNC_RAND) = FB_STR_RAND
+  FunctionNames(FUNC_RANDOM) = FB_STR_RANDOM
+  FunctionNames(FUNC_BIN) = FB_STR_BIN
+  FunctionNames(FUNC_HEX) = FB_STR_HEX
+  FunctionNames(FUNC_OCT) = FB_STR_OCT
+  FunctionNames(FUNC_POW) = FB_STR_POW
+  FunctionNames(FUNC_ATAN2) = FB_STR_ATAN2
+  FunctionNames(FUNC_SIN) = FB_STR_SIN
+  FunctionNames(FUNC_COS) = FB_STR_COS
+  FunctionNames(FUNC_TAN) = FB_STR_TAN
+  FunctionNames(FUNC_ASIN) = FB_STR_ASIN
+  FunctionNames(FUNC_ARCSIN) = FB_STR_ARCSIN
+  FunctionNames(FUNC_ACOS) = FB_STR_ACOS
+  FunctionNames(FUNC_ARCCOS) = FB_STR_ARCCOS
+  FunctionNames(FUNC_ATAN) = FB_STR_ATAN
+  FunctionNames(FUNC_ARCTAN) = FB_STR_ARCTAN
+  FunctionNames(FUNC_SINH) = FB_STR_SINH
+  FunctionNames(FUNC_COSH) = FB_STR_COSH
+  FunctionNames(FUNC_TANH) = FB_STR_TANH
+  FunctionNames(FUNC_EXP) = FB_STR_EXP
+  FunctionNames(FUNC_LOG) = FB_STR_LOG
+  FunctionNames(FUNC_LN) = FB_STR_LN
+  FunctionNames(FUNC_LOG10) = FB_STR_LOG10
+  FunctionNames(FUNC_SQRT) = FB_STR_SQRT
+  FunctionNames(FUNC_SQR) = FB_STR_SQR
+  FunctionNames(FUNC_INT) = FB_STR_INT
+  FunctionNames(FUNC_FRAC) = FB_STR_FRAC
+  FunctionNames(FUNC_FRACT) = FB_STR_FRACT
+  FunctionNames(FUNC_ABS) = FB_STR_ABS
+  FunctionNames(FUNC_FLOOR) = FB_STR_FLOOR
+  FunctionNames(FUNC_CEIL) = FB_STR_CEIL
+  FunctionNames(FUNC_TRUNC) = FB_STR_TRUNC
+  FunctionNames(FUNC_ROUND) = FB_STR_ROUND
+  FunctionNames(FUNC_SIGN) = FB_STR_SIGN
+  FunctionNames(FUNC_DEG) = FB_STR_DEG
+  FunctionNames(FUNC_RAD) = FB_STR_RAD
+  FunctionNames(FUNC_SUM) = FB_STR_SUM
+  FunctionNames(FUNC_MEDIAN) = FB_STR_MEDIAN
+  FunctionNames(FUNC_VARIANCE) = FB_STR_VARIANCE
+  FunctionNames(FUNC_STDDEV) = FB_STR_STDDEV
+  FunctionNames(FUNC_SORT) = FB_STR_SORT
+  FunctionNames(FUNC_SORTED) = FB_STR_SORTED
+  FunctionNames(FUNC_REVERSE) = FB_STR_REVERSE
+  FunctionNames(FUNC_REVERSED) = FB_STR_REVERSED
+  FunctionNames(FUNC_UNIQUE) = FB_STR_UNIQUE
+  FunctionNames(FUNC_UNPACK) = FB_STR_UNPACK
+  FunctionNames(FUNC_FACT) = FB_STR_FACT
+  FunctionNames(FUNC_FACTORIAL) = FB_STR_FACTORIAL
+  FunctionNames(FUNC_AVG) = FB_STR_AVG
+  FunctionNames(FUNC_MEAN) = FB_STR_MEAN
+  FunctionNames(FUNC_MOD) = FB_STR_MOD
+  FunctionNames(FUNC_CLAMP) = FB_STR_CLAMP
+  FunctionNames(FUNC_HYPOT) = FB_STR_HYPOT
+  FunctionNames(FUNC_GCD) = FB_STR_GCD
+  FunctionNames(FUNC_LCM) = FB_STR_LCM
+  FunctionNames(FUNC_PRODUCT) = FB_STR_PRODUCT
+  FunctionNames(FUNC_PROD) = FB_STR_PROD
+  FunctionNames(FUNC_MIN) = FB_STR_MIN
+  FunctionNames(FUNC_MAX) = FB_STR_MAX
+  FunctionNames(FUNC_UHEX) = FB_STR_UHEX
+  FunctionNames(FUNC_UOCT) = FB_STR_UOCT
+  FunctionNames(FUNC_UBIN) = FB_STR_UBIN
   FunctionNamesInitialized = TRUE
 end sub
 
 private sub EnsureOperatorNames()
   if OperatorNamesInitialized then exit sub
-  OperatorNames(OP_NOT) = "not"
-  OperatorNames(OP_AND) = "and"
-  OperatorNames(OP_OR) = "or"
-  OperatorNames(OP_MOD) = "mod"
+  OperatorNames(OP_NOT) = FB_STR_NOT
+  OperatorNames(OP_AND) = FB_STR_AND
+  OperatorNames(OP_OR) = FB_STR_OR
+  OperatorNames(OP_MOD) = FB_STR_MOD
   OperatorNamesInitialized = TRUE
 end sub
 
 '' Spelling for each BuiltinConstId; keep TryGetConstant in sync when adding constants.
 private sub EnsureConstNames()
   if ConstNamesInitialized then exit sub
-  ConstNames(CONST_PI) = "pi"
-  ConstNames(CONST_E) = "e"
+  ConstNames(CONST_PI) = FB_STR_PI
+  ConstNames(CONST_E) = FB_STR_E
   ConstNamesInitialized = TRUE
 end sub
 
@@ -492,45 +632,45 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
 
   select case id
     case FUNC_RAND
-      hint = GetFunctionName(FUNC_RAND) & "()"
+      hint = GetFunctionName(FUNC_RAND) & FB_STR_PAR
     case FUNC_RANDOM
-      hint = GetFunctionName(FUNC_RANDOM) & "(min, max)"
+      hint = GetFunctionName(FUNC_RANDOM) & FB_STR_PAR_MIN_COMMA_MAX
     case FUNC_BIN, FUNC_HEX, FUNC_OCT, FUNC_UBIN, FUNC_UHEX, FUNC_UOCT
-      hint = lowFn & "(...)"
+      hint = lowFn & FB_STR_PAR_DOTDOTDOT
     case FUNC_POW
-      hint = GetFunctionName(FUNC_POW) & "(value, power)"
+      hint = GetFunctionName(FUNC_POW) & FB_STR_PAR_VALUE_COMMA_POWER
     case FUNC_ATAN2
-      hint = GetFunctionName(FUNC_ATAN2) & "(y, x)"
+      hint = GetFunctionName(FUNC_ATAN2) & FB_STR_PAR_Y_COMMA_X
     case FUNC_SIN, FUNC_COS, FUNC_TAN
-      hint = lowFn & "(angle)"
+      hint = lowFn & FB_STR_PAR_ANGLE
     case FUNC_ASIN, FUNC_ARCSIN
-      hint = GetFunctionName(FUNC_ASIN) & "(value)"
+      hint = GetFunctionName(FUNC_ASIN) & FB_STR_PAR_VALUE
     case FUNC_ACOS, FUNC_ARCCOS
-      hint = GetFunctionName(FUNC_ACOS) & "(value)"
+      hint = GetFunctionName(FUNC_ACOS) & FB_STR_PAR_VALUE
     case FUNC_ATAN, FUNC_ARCTAN
-      hint = GetFunctionName(FUNC_ATAN) & "(value)"
+      hint = GetFunctionName(FUNC_ATAN) & FB_STR_PAR_VALUE
     case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
-      hint = lowFn & "(value)"
+      hint = lowFn & FB_STR_PAR_VALUE
     case FUNC_FRAC, FUNC_FRACT
-      hint = GetFunctionName(FUNC_FRAC) & "(value)"
+      hint = GetFunctionName(FUNC_FRAC) & FB_STR_PAR_VALUE
     case FUNC_LOG
-      hint = GetFunctionName(FUNC_LOG) & "(value, base)"
+      hint = GetFunctionName(FUNC_LOG) & FB_STR_PAR_VALUE_COMMA_BASE
     case FUNC_DEG, FUNC_RAD, FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_UNIQUE, FUNC_UNPACK, FUNC_AVG, FUNC_MEAN, FUNC_PRODUCT, FUNC_PROD, FUNC_MIN, FUNC_MAX
-      hint = lowFn & "(...)"
+      hint = lowFn & FB_STR_PAR_DOTDOTDOT
     case FUNC_SORT, FUNC_SORTED
-      hint = GetFunctionName(FUNC_SORT) & "(...)"
+      hint = GetFunctionName(FUNC_SORT) & FB_STR_PAR_DOTDOTDOT
     case FUNC_REVERSE, FUNC_REVERSED
-      hint = GetFunctionName(FUNC_REVERSE) & "(...)"
+      hint = GetFunctionName(FUNC_REVERSE) & FB_STR_PAR_DOTDOTDOT
     case FUNC_FACT, FUNC_FACTORIAL
-      hint = GetFunctionName(FUNC_FACT) & "(n)"
+      hint = GetFunctionName(FUNC_FACT) & FB_STR_PAR_N
     case FUNC_MOD
-      hint = GetFunctionName(FUNC_MOD) & "(value, divisor)"
+      hint = GetFunctionName(FUNC_MOD) & FB_STR_PAR_VALUE_COMMA_DIVISOR
     case FUNC_CLAMP
-      hint = GetFunctionName(FUNC_CLAMP) & "(value, min, max)"
+      hint = GetFunctionName(FUNC_CLAMP) & FB_STR_PAR_VALUE_COMMA_MIN_COMMA_MAX
     case FUNC_HYPOT
-      hint = GetFunctionName(FUNC_HYPOT) & "(x, y)"
+      hint = GetFunctionName(FUNC_HYPOT) & FB_STR_PAR_X_COMMA_Y
     case FUNC_GCD, FUNC_LCM
-      hint = lowFn & "(a, b)"
+      hint = lowFn & FB_STR_PAR_A_COMMA_B
     case else
       return FALSE
   end select
@@ -585,7 +725,7 @@ private function TryRewriteTrailingFormatterStmt(byref stmt as String, byref rew
   if IsTrailingFormatterFunctionName(fnName) = FALSE then return FALSE
   dim rest as String = ltrim(mid(s, i))
   if len(rest) = 0 then
-    rewritten = lcase(fnName) & "(ans)"
+    rewritten = lcase(fnName) & FB_STR_PAR_ANS
     return TRUE
   end if
   if left(rest, 1) <> "(" then return FALSE
@@ -608,7 +748,7 @@ private function TryRewriteTrailingFormatterStmt(byref stmt as String, byref rew
       return FALSE
     end if
   wend
-  rewritten = lcase(fnName) & "(ans)"
+  rewritten = lcase(fnName) & FB_STR_PAR_ANS
   return TRUE
 end function
 
@@ -862,9 +1002,9 @@ end function
 private function FormatSignedMagnitudeBase(byval iv as LongInt, byval baseN as Integer, byval asUnsigned as Boolean) as String
   dim prefix as String
   select case baseN
-    case 16: prefix = "0x"
-    case 8: prefix = "0o"
-    case else: prefix = "0b"
+    case 16: prefix = FB_STR_PREFIX_HEX
+    case 8: prefix = FB_STR_PREFIX_OCT
+    case else: prefix = FB_STR_PREFIX_BIN
   end select
 
   if asUnsigned then
@@ -898,7 +1038,7 @@ private function FormatHexScalar(byval n as Double, byref outText as String, byv
 end function
 
 private function FormatHexUInt64(byval u as ULongInt) as String
-  return "0x" & Hex(u)
+  return FB_STR_PREFIX_HEX & Hex(u)
 end function
 
 private function FormatBinScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
@@ -909,7 +1049,7 @@ private function FormatBinScalar(byval n as Double, byref outText as String, byv
 end function
 
 private function FormatBinUInt64(byval u as ULongInt) as String
-  return "0b" & Bin(u)
+  return FB_STR_PREFIX_BIN & Bin(u)
 end function
 
 private function FormatOctScalar(byval n as Double, byref outText as String, byval asUnsigned as Boolean = FALSE) as Boolean
@@ -920,7 +1060,7 @@ private function FormatOctScalar(byval n as Double, byref outText as String, byv
 end function
 
 private function FormatOctUInt64(byval u as ULongInt) as String
-  return "0o" & Oct(u)
+  return FB_STR_PREFIX_OCT & Oct(u)
 end function
 
 private function ValueToString(byref v as EvalValue) as String
@@ -1066,10 +1206,10 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
 end function
 
 private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
-  if lcase(n) = "ans" then
+  if lcase(n) = FB_STR_ANS then
     dim j as Integer
     for j = lbound(variables) to ubound(variables)
-      if variables(j).name = "ans" then
+      if variables(j).name = FB_STR_ANS then
         v = variables(j).value
         return TRUE
       end if
@@ -1112,7 +1252,7 @@ private sub SetVariable(byref n as String, byref v as EvalValue)
 end sub
 
 private sub SetAnsValue(byref v as EvalValue)
-  SetVariable("ans", v)
+  SetVariable(FB_STR_ANS, v)
 end sub
 
 private function FindFunctionIndex(byref n as String) as Integer
@@ -1208,38 +1348,38 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
   if pStream[0] <> 91 then return TRUE ' [
 
   if baseValue.kind <> VK_ARRAY then
-    SetParseError("indexing requires an array value")
+    SetParseError(FB_STR_INDEXING_REQUIRES_AN_ARRAY_VALUE)
     return FALSE
   end if
 
   pStream += 1
   SkipSpaces()
   if pStream[0] = 93 then
-    SetParseError("missing index")
+    SetParseError(FB_STR_MISSING_INDEX)
     return FALSE
   end if
 
   dim idxValue as EvalValue = ParseExpression()
   if parseError then return FALSE
   if idxValue.kind <> VK_SCALAR then
-    SetParseError("array index must be a scalar integer")
+    SetParseError(FB_STR_ARRAY_INDEX_MUST_BE_A_SCALAR)
     return FALSE
   end if
 
   dim idxRaw as Double = idxValue.scalar
   dim idxInt as Integer = cint(idxRaw)
   if idxRaw <> idxInt then
-    SetParseError("array index must be an integer")
+    SetParseError(FB_STR_ARRAY_INDEX_MUST_BE_AN_INTEGER)
     return FALSE
   end if
   SkipSpaces()
   if pStream[0] <> 93 then
     if pStream[0] = 41 then
-      SetParseError("mismatched closing parenthesis")
+      SetParseError(FB_STR_MISMATCHED_CLOSING_PARENTHESIS)
     elseif pStream[0] = 125 then
-      SetParseError("mismatched closing brace")
+      SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
     else
-      SetParseError("missing closing bracket")
+      SetParseError(FB_STR_MISSING_CLOSING_BRACKET)
     end if
     return FALSE
   end if
@@ -1248,7 +1388,7 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
   dim arrLen as Integer = ValueArrayLen(baseValue)
   if idxInt < 0 then idxInt = arrLen + idxInt
   if idxInt < 0 orelse idxInt >= arrLen then
-    SetParseError("array index is out of range")
+    SetParseError(FB_STR_ARRAY_INDEX_IS_OUT_OF_RANGE)
     return FALSE
   end if
 
@@ -1270,7 +1410,7 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
     aCount = ubound(args) - lbound(args) + 1
   end if
   if pCount <> aCount then
-    SetParseError(fnName & "() expects " & ltrim(str(pCount)) & " argument(s), " & ltrim(str(aCount)) & " given")
+    SetParseError(fnName & FB_STR_PAR_EXPECTS & ltrim(str(pCount)) & FB_STR_ARGUMENT_PAR_S_COMMA & ltrim(str(aCount)) & FB_STR_GIVEN)
     return TRUE
   end if
 
@@ -1278,12 +1418,12 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   dim si as Integer
   for si = 0 to udfCallStackSp - 1
     if udfCallStack(si) = lowNm then
-      SetParseError("recursive user function call: " & fnName)
+      SetParseError(FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & fnName)
       return TRUE
     end if
   next si
   if udfCallStackSp >= UDF_CALL_STACK_MAX then
-    SetParseError("user function call stack overflow")
+    SetParseError(FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW)
     return TRUE
   end if
   udfCallStack(udfCallStackSp) = lowNm
@@ -1648,25 +1788,25 @@ private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as Eval
 end function
 
 private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref op as String, byref outV as EvalValue) as Boolean
-  dim requiresIntegers as Boolean = (op = "<<" orelse op = ">>" orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
+  dim requiresIntegers as Boolean = (op = FB_STR_LT_LT orelse op = FB_STR_GT_GT orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
   dim l as LongInt, r as LongInt
 
   if requiresIntegers then
     if (TryGetExactInt64Scalar(leftS, l) = FALSE) orelse (TryGetExactInt64Scalar(rightS, r) = FALSE) then
       if op = OpName(OP_MOD) then
-        SetParseError("modulo operands must be integer values")
+        SetParseError(FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES)
       else
-        SetParseError("bitwise operands must be integer values")
+        SetParseError(FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES)
       end if
       return FALSE
     end if
   end if
 
   select case op
-    case "<<"
+    case FB_STR_LT_LT
       if r < 0 orelse r > 63 then return FALSE
       ValueSetInt64(outV, l shl r)
-    case ">>"
+    case FB_STR_GT_GT
       if r < 0 orelse r > 63 then return FALSE
       ValueSetInt64(outV, l shr r)
     case "&"
@@ -1787,17 +1927,17 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
   if CompareEvalValues(leftV, rightV, cmp) = FALSE then return FALSE
   dim isTrue as Boolean = FALSE
   select case op
-    case "=", "=="
+    case "=", FB_STR_EQ_EQ
       isTrue = (cmp = 0)
-    case "<>", "!="
+    case FB_STR_LT_GT, FB_STR_NOT_EQ
       isTrue = (cmp <> 0)
     case "<"
       isTrue = (cmp < 0)
-    case "<="
+    case FB_STR_LT_EQ
       isTrue = (cmp <= 0)
     case ">"
       isTrue = (cmp > 0)
-    case ">="
+    case FB_STR_GT_EQ
       isTrue = (cmp >= 0)
     case else
       return FALSE
@@ -1827,7 +1967,7 @@ end sub
 
 private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
   if ValueApplyBinaryInt64(leftV, rightV, op, outV) = FALSE then
-    SetParseError("incompatible operands")
+    SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
     return FALSE
   end if
   return TRUE
@@ -1835,7 +1975,7 @@ end function
 
 private function ApplyBinaryParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
   if ValueApplyBinary(leftV, rightV, op, outV) = FALSE then
-    SetParseError("incompatible operands")
+    SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
     return FALSE
   end if
   return TRUE
@@ -1854,7 +1994,7 @@ end sub
 private sub ApplyComparisonParserOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String)
   dim outV as EvalValue
   if ApplyComparison(leftV, rightV, op, outV) = FALSE then
-    SetParseError("incompatible operands")
+    SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
   else
     leftV = outV
   end if
@@ -1863,7 +2003,7 @@ end sub
 private function EnsureExactArgCount(args() as EvalValue, byval expectedCount as Integer, byref fnName as String) as Boolean
   dim argc as Integer = ubound(args) + 1
   if argc <> expectedCount then
-    SetParseError(fnName & "() expects " & ltrim(str(expectedCount)) & " argument(s), " & ltrim(str(argc)) & " given")
+    SetParseError(fnName & FB_STR_PAR_EXPECTS & ltrim(str(expectedCount)) & FB_STR_ARGUMENT_PAR_S_COMMA & ltrim(str(argc)) & FB_STR_GIVEN)
     return FALSE
   end if
   return TRUE
@@ -1920,7 +2060,7 @@ end function
 private function CollectRequiredArgsAsFlat(args() as EvalValue, flat() as Double, byref fnName as String) as Integer
   dim count as Integer = CollectArgsAsFlat(args(), flat())
   if count <= 0 then
-    SetParseError(fnName & "() expects at least 1 argument")
+    SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1)
     return 0
   end if
   return count
@@ -2133,7 +2273,7 @@ end function
 
 private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim outV as EvalValue
-  if pStream[0] <> 40 then SetParseError("missing opening bracket"): return outV
+  if pStream[0] <> 40 then SetParseError(FB_STR_MISSING_OPENING_BRACKET): return outV
   pStream += 1
   SkipSpaces()
 
@@ -2141,13 +2281,13 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim argsCount as Integer = 0
   dim argsCap as Integer = 0
   if pStream[0] = 44 then
-    SetParseError("unexpected comma")
+    SetParseError(FB_STR_UNEXPECTED_COMMA)
     return outV
   end if
   if pStream[0] <> 41 then
     do
       if pStream[0] = 44 then
-        SetParseError("unexpected comma")
+        SetParseError(FB_STR_UNEXPECTED_COMMA)
         return outV
       end if
       dim a as EvalValue = ParseExpression()
@@ -2171,7 +2311,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         pStream += 1
         SkipSpaces()
         if pStream[0] = 41 orelse pStream[0] = 44 then
-          SetParseError("unexpected comma")
+          SetParseError(FB_STR_UNEXPECTED_COMMA)
           return outV
         end if
       else
@@ -2183,11 +2323,11 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if pStream[0] = 41 then
     pStream += 1
   elseif pStream[0] = 93 then
-    SetParseError("mismatched closing bracket")
+    SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
   elseif pStream[0] = 125 then
-    SetParseError("mismatched closing brace")
+    SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
   else
-    SetParseError("missing closing parenthesis")
+    SetParseError(FB_STR_MISSING_CLOSING_PARENTHESIS)
   end if
   if parseError then return outV
 
@@ -2204,7 +2344,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) _
      orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) orelse IsFn(fn, FUNC_MEDIAN) orelse IsFn(fn, FUNC_VARIANCE) orelse IsFn(fn, FUNC_STDDEV) then
-    if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    if ubound(args) = -1 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
     if ubound(args) = 0 andalso args(0).kind = VK_SCALAR then
       if IsFn(fn, FUNC_SUM) orelse IsFn(fn, FUNC_PRODUCT) orelse IsFn(fn, FUNC_PROD) _
          orelse IsFn(fn, FUNC_MIN) orelse IsFn(fn, FUNC_MAX) orelse IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then
@@ -2246,7 +2386,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         end if
         itemCount += 1
       wend
-      if itemCount <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if itemCount <= 0 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
       if IsFn(fn, FUNC_AVG) orelse IsFn(fn, FUNC_MEAN) then acc /= itemCount
     elseif IsFn(fn, FUNC_MEDIAN) then
       if ubound(args) = lbound(args) then
@@ -2319,7 +2459,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         dim delta2 as Double = vVar - meanVal
         m2 += delta * delta2
       wend
-      if n <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if n <= 0 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
       acc = m2 / n
       if IsFn(fn, FUNC_STDDEV) then acc = sqr(acc)
     else
@@ -2335,14 +2475,14 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_SORT) orelse IsFn(fn, FUNC_SORTED) then
-    if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    if ubound(args) = -1 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
     if ubound(args) = 0 then
       if args(0).kind = VK_SCALAR then
         ValueSetSingleScalarArray(outV, args(0).scalar)
         return outV
       end if
       c = CopySingleArgToFlat(args(0), flat(), FALSE)
-      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if c <= 0 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
       SortDoubleArray(flat())
       ValueSetArray(outV, flat())
       return outV
@@ -2355,14 +2495,14 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_REVERSE) orelse IsFn(fn, FUNC_REVERSED) then
-    if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    if ubound(args) = -1 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
     if ubound(args) = 0 then
       if args(0).kind = VK_SCALAR then
         ValueSetSingleScalarArray(outV, args(0).scalar)
         return outV
       end if
       c = CopySingleArgToFlat(args(0), flat(), TRUE)
-      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if c <= 0 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
       ValueSetArray(outV, flat())
       return outV
     end if
@@ -2375,7 +2515,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_UNPACK) then
     if ubound(args) = -1 then
-      SetParseError(fnName & "() expects at least 1 argument")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1)
       return outV
     end if
     if ubound(args) = 0 then
@@ -2390,14 +2530,14 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsFn(fn, FUNC_UNIQUE) then
-    if ubound(args) = -1 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+    if ubound(args) = -1 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
     if ubound(args) = 0 then
       if args(0).kind = VK_SCALAR then
         ValueSetSingleScalarArray(outV, args(0).scalar)
         return outV
       end if
       c = CopySingleArgToFlat(args(0), flat(), FALSE)
-      if c <= 0 then SetParseError(fnName & "() expects at least 1 argument"): return outV
+      if c <= 0 then SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1): return outV
     else
       c = CollectRequiredArgsAsFlat(args(), flat(), fnName)
       if c <= 0 then return outV
@@ -2443,7 +2583,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_LOG) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if ApplyLogWithBase(args(0), args(1), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ApplyLogWithBase(args(0), args(1), outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
@@ -2452,7 +2592,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     if args(0).kind = VK_SCALAR andalso args(1).kind = VK_SCALAR then
       ValueSetScalarPromoteExactInt64(outV, Atan2Compat(args(0).scalar, args(1).scalar))
     else
-      SetParseError("numeric error in " & fnName & "()")
+      SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     end if
     return outV
   end if
@@ -2460,24 +2600,24 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if IsFn(fn, FUNC_HYPOT) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     dim a2 as EvalValue, b2 as EvalValue, s2 as EvalValue
-    if ValueApplyBinary(args(0), args(0), 42, a2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
-    if ValueApplyBinary(args(1), args(1), 42, b2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
-    if ValueApplyBinary(a2, b2, 43, s2) = FALSE then SetParseError("numeric error in " & fnName & "()"): return outV
-    if ApplyUnaryFunction(GetFunctionName(FUNC_SQRT), s2, outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ValueApplyBinary(args(0), args(0), 42, a2) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR): return outV
+    if ValueApplyBinary(args(1), args(1), 42, b2) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR): return outV
+    if ValueApplyBinary(a2, b2, 43, s2) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR): return outV
+    if ApplyUnaryFunction(GetFunctionName(FUNC_SQRT), s2, outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
   if IsFn(fn, FUNC_MOD) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     dim opMod as String = OpName(OP_MOD)
-    if ValueApplyBinaryInt64(args(0), args(1), opMod, outV) = FALSE andalso parseError = 0 then SetParseError("numeric error in " & fnName & "()")
+    if ValueApplyBinaryInt64(args(0), args(1), opMod, outV) = FALSE andalso parseError = 0 then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
   if IsFn(fn, FUNC_FACT) orelse IsFn(fn, FUNC_FACTORIAL) then
     if EnsureExactArgCount(args(), 1, fnName) = FALSE then return outV
     if TryApplyFactorial(args(0), outV) = FALSE then
-      SetParseError(fnName & "() expects a non-negative integer")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_A_NON_DASH)
     end if
     return outV
   end if
@@ -2491,7 +2631,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if IsFn(fn, FUNC_RANDOM) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
-      SetParseError(fnName & "() expects scalar values")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_SCALAR_VALUES)
       return outV
     end if
     ValueSetScalarPromoteExactInt64(outV, args(0).scalar + (args(1).scalar - args(0).scalar) * rnd)
@@ -2501,21 +2641,21 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if IsFn(fn, FUNC_CLAMP) then
     if EnsureExactArgCount(args(), 3, fnName) = FALSE then return outV
     if args(1).kind <> VK_SCALAR orelse args(2).kind <> VK_SCALAR then
-      SetParseError(fnName & "() expects scalar min/max")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_SCALAR_MIN_SLASH)
       return outV
     end if
-    if ApplyClamp(args(0), args(1), args(2), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ApplyClamp(args(0), args(1), args(2), outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
   if IsFn(fn, FUNC_GCD) orelse IsFn(fn, FUNC_LCM) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
-      SetParseError(fnName & "() expects scalar values")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_SCALAR_VALUES)
       return outV
     end if
     if ApplyGcdLcm(args(0), args(1), IsFn(fn, FUNC_LCM), outV) = FALSE then
-      SetParseError(fnName & "() expects integer values")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_INTEGER_VALUES)
     end if
     return outV
   end if
@@ -2523,7 +2663,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if IsFn(fn, FUNC_HEX) orelse IsFn(fn, FUNC_OCT) orelse IsFn(fn, FUNC_BIN) orelse _
      IsFn(fn, FUNC_UHEX) orelse IsFn(fn, FUNC_UOCT) orelse IsFn(fn, FUNC_UBIN) then
     if ubound(args) = -1 then
-      SetParseError(fnName & "() expects at least 1 argument")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1)
       return outV
     end if
     if ubound(args) = 0 then
@@ -2548,7 +2688,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
           okFmt = FormatBinScalar(outV.scalar, fmtText, asUnsigned)
         end if
         if okFmt = FALSE then
-          SetParseError(fnName & "() expects integer values")
+          SetParseError(fnName & FB_STR_PAR_EXPECTS_INTEGER_VALUES)
           return outV
         end if
       end if
@@ -2570,7 +2710,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
           end if
         end if
         if elemOk = FALSE then
-          SetParseError(fnName & "() expects integer values")
+          SetParseError(fnName & FB_STR_PAR_EXPECTS_INTEGER_VALUES)
           return outV
         end if
       next i
@@ -2582,17 +2722,17 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_POW) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if ValueApplyBinary(args(0), args(1), 94, outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ValueApplyBinary(args(0), args(1), 94, outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
   if IsFn(fn, FUNC_DEG) orelse IsFn(fn, FUNC_RAD) then
     if ubound(args) = -1 then
-      SetParseError(fnName & "() expects at least 1 argument")
+      SetParseError(fnName & FB_STR_PAR_EXPECTS_AT_LEAST_1)
       return outV
     end if
     if ubound(args) = 0 then
-      if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+      if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
       return outV
     end if
 
@@ -2603,7 +2743,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     for i as Integer = 0 to c - 1
       dim tmpOut as EvalValue
       if ApplyUnaryScalarFunction(fn, flat(i), tmpOut) = FALSE then
-        SetParseError("numeric error in " & fnName & "()")
+        SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
         return outV
       end if
       ValueSetArrayElemFromScalar(outV, i, tmpOut)
@@ -2613,7 +2753,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsUnaryBuiltin(fnName) then
     if EnsureExactArgCount(args(), 1, fnName) = FALSE then return outV
-    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError("numeric error in " & fnName & "()")
+    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetParseError(FB_STR_NUMERIC_ERROR_IN & fnName & FB_STR_PAR)
     return outV
   end if
 
@@ -2659,7 +2799,7 @@ private function ParseFactor() as EvalValue
         pStream += 1
       wend
       if hexDigits = 0 then
-        SetParseError("invalid hex literal")
+        SetParseError(FB_STR_INVALID_HEX_LITERAL)
         return n
       end if
       if hexVal <= CULngInt(9223372036854775807) then
@@ -2686,7 +2826,7 @@ private function ParseFactor() as EvalValue
         end if
       wend
       if binDigits = 0 then
-        SetParseError("invalid binary literal")
+        SetParseError(FB_STR_INVALID_BINARY_LITERAL)
         return n
       end if
       if binVal <= CULngInt(9223372036854775807) then
@@ -2712,7 +2852,7 @@ private function ParseFactor() as EvalValue
         end if
       wend
       if octDigits = 0 then
-        SetParseError("invalid octal literal")
+        SetParseError(FB_STR_INVALID_OCTAL_LITERAL)
         return n
       end if
       if octVal <= CULngInt(9223372036854775807) then
@@ -2804,12 +2944,12 @@ private function ParseFactor() as EvalValue
         if GetVariable(nam, n) = FALSE then
           dim lowNam as String = lcase(nam)
           if IsOpKeyword(lowNam, OP_AND) orelse IsOpKeyword(lowNam, OP_OR) then
-            SetParseError("unexpected token")
+            SetParseError(FB_STR_UNEXPECTED_TOKEN)
             return n
           end if
           dim fnHint as String
           if TryGetBuiltinSignatureHint(nam, fnHint) then
-            SetParseError("function: " & fnHint)
+            SetParseError(FB_STR_HINT_PREFIX & fnHint)
             return n
           else
             AppendUniqueName(unknownVarsText, nam)
@@ -2827,7 +2967,7 @@ private function ParseFactor() as EvalValue
   elseif pStream[0] = 40 then ' (
     pStream += 1
     if pStream[0] = 44 then
-      SetParseError("unexpected comma")
+      SetParseError(FB_STR_UNEXPECTED_COMMA)
       return n
     end if
     dim firstVal as EvalValue = ParseExpression()
@@ -2836,28 +2976,28 @@ private function ParseFactor() as EvalValue
     if pStream[0] = 44 then
       dim vals() as EvalValue
       redim vals(0)
-      if firstVal.kind <> VK_SCALAR then SetParseError("array element must be scalar"): return n
+      if firstVal.kind <> VK_SCALAR then SetParseError(FB_STR_ARRAY_ELEMENT_MUST_BE_SCALAR): return n
       vals(0) = firstVal
       do
         pStream += 1
         SkipSpaces()
         if pStream[0] = 41 orelse pStream[0] = 44 then
-          SetParseError("unexpected comma")
+          SetParseError(FB_STR_UNEXPECTED_COMMA)
           return n
         end if
         dim nextVal as EvalValue = ParseExpression()
         if parseError then return n
-        if nextVal.kind <> VK_SCALAR then SetParseError("array element must be scalar"): return n
+        if nextVal.kind <> VK_SCALAR then SetParseError(FB_STR_ARRAY_ELEMENT_MUST_BE_SCALAR): return n
         redim preserve vals(0 to ubound(vals) + 1)
         vals(ubound(vals)) = nextVal
         SkipSpaces()
         if pStream[0] <> 44 andalso pStream[0] <> 41 then
           if pStream[0] = 93 then
-            SetParseError("mismatched closing bracket")
+            SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
           elseif pStream[0] = 125 then
-            SetParseError("mismatched closing brace")
+            SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
           else
-            SetParseError("unexpected token")
+            SetParseError(FB_STR_UNEXPECTED_TOKEN)
           end if
           return n
         end if
@@ -2865,11 +3005,11 @@ private function ParseFactor() as EvalValue
       if pStream[0] = 41 then
         pStream += 1
       elseif pStream[0] = 93 then
-        SetParseError("mismatched closing bracket")
+        SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
       elseif pStream[0] = 125 then
-        SetParseError("mismatched closing brace")
+        SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
       else
-        SetParseError("missing closing parenthesis")
+        SetParseError(FB_STR_MISSING_CLOSING_PARENTHESIS)
       end if
       ValueInitArrayLike(n, 0, ubound(vals))
       dim arrI as Integer
@@ -2880,16 +3020,16 @@ private function ParseFactor() as EvalValue
       if pStream[0] = 41 then
         pStream += 1
       elseif pStream[0] = 93 then
-        SetParseError("mismatched closing bracket")
+        SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
       elseif pStream[0] = 125 then
-        SetParseError("mismatched closing brace")
+        SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
       else
-        SetParseError("missing closing parenthesis")
+        SetParseError(FB_STR_MISSING_CLOSING_PARENTHESIS)
       end if
       n = firstVal
     end if
   else
-    SetParseError("unexpected token")
+    SetParseError(FB_STR_UNEXPECTED_TOKEN)
   end if
 
   return n
@@ -2961,7 +3101,7 @@ private function ParseUnary() as EvalValue
       dim divV as EvalValue, outV as EvalValue
       ValueSetScalar(divV, 100.0)
       if ValueApplyBinary(n, divV, 47, outV) = FALSE then
-        SetParseError("incompatible operands")
+        SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
       else
         n = outV
         wasPercentage = TRUE
@@ -3044,7 +3184,7 @@ private function ParseShift() as EvalValue
   while (pStream[0] = 60 andalso pStream[1] = 60) orelse (pStream[0] = 62 andalso pStream[1] = 62)
     if parseError then exit while
     dim op as String
-    if pStream[0] = 60 then op = "<<" else op = ">>"
+    if pStream[0] = 60 then op = FB_STR_LT_LT else op = FB_STR_GT_GT
     pStream += 2
     dim n2 as EvalValue = ParseAdditive()
     ApplyInt64ParserOpInPlace(n, n2, op)
@@ -3100,7 +3240,7 @@ private function ParseComparison() as EvalValue
     dim op as String = ""
     if pStream[0] = 61 then
       if pStream[1] = 61 then
-        op = "=="
+        op = FB_STR_EQ_EQ
         pStream += 2
       else
         op = "="
@@ -3108,10 +3248,10 @@ private function ParseComparison() as EvalValue
       end if
     elseif pStream[0] = 60 then
       if pStream[1] = 62 then
-        op = "<>"
+        op = FB_STR_LT_GT
         pStream += 2
       elseif pStream[1] = 61 then
-        op = "<="
+        op = FB_STR_LT_EQ
         pStream += 2
       elseif pStream[1] = 60 then
         exit while
@@ -3121,7 +3261,7 @@ private function ParseComparison() as EvalValue
       end if
     elseif pStream[0] = 62 then
       if pStream[1] = 61 then
-        op = ">="
+        op = FB_STR_GT_EQ
         pStream += 2
       elseif pStream[1] = 62 then
         exit while
@@ -3131,7 +3271,7 @@ private function ParseComparison() as EvalValue
       end if
     elseif pStream[0] = 33 then
       if pStream[1] = 61 then
-        op = "!="
+        op = FB_STR_NOT_EQ
         pStream += 2
       else
         exit while
@@ -3236,7 +3376,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     return FALSE
   end if
   if Len(exprInput) > PARSER_MAX_EXPR_LEN then
-    SetParseError("expression is too long")
+    SetParseError(FB_STR_EXPRESSION_IS_TOO_LONG)
     evalDepth -= 1
     return FALSE
   end if
@@ -3293,7 +3433,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           dim stmt as String = trim(rawStmt)
           part = ""
           if stmt = "" then
-            SetParseError("empty statement")
+            SetParseError(FB_STR_EMPTY_STATEMENT)
             evalDepth -= 1
             return FALSE
           end if
@@ -3412,20 +3552,20 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           pStream += 1
           SkipSpaces()
           if IsReservedUserFunctionName(varName) then
-            SetParseError("reserved function name: " & varName)
+            SetParseError(FB_STR_RESERVED_FUNCTION_NAME_COLON & varName)
             evalDepth -= 1
             return FALSE
           end if
           if ubound(fnParams) >= lbound(fnParams) then
             for iParam as Integer = lbound(fnParams) to ubound(fnParams)
               if IsBuiltinConstantName(fnParams(iParam)) then
-                SetParseError("reserved constant name: " & fnParams(iParam))
+                SetParseError(FB_STR_RESERVED_CONSTANT_NAME_COLON & fnParams(iParam))
                 evalDepth -= 1
                 return FALSE
               end if
               for jParam as Integer = iParam + 1 to ubound(fnParams)
                 if fnParams(iParam) = fnParams(jParam) then
-                  SetParseError("duplicate parameter name: " & fnParams(iParam))
+                  SetParseError(FB_STR_DUPLICATE_PARAMETER_NAME_COLON & fnParams(iParam))
                   evalDepth -= 1
                   return FALSE
                 end if
@@ -3433,18 +3573,18 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
             next iParam
           end if
           if IsBuiltinConstantName(varName) then
-            SetParseError("reserved constant name: " & varName)
+            SetParseError(FB_STR_RESERVED_CONSTANT_NAME_COLON & varName)
             evalDepth -= 1
             return FALSE
           end if
           dim body as String = *pStream
           if len(trim(body)) = 0 then
-            SetParseError("function body is empty")
+            SetParseError(FB_STR_FUNCTION_BODY_IS_EMPTY)
             evalDepth -= 1
             return FALSE
           end if
           if UdfBodyCallsDefinedFunction(body, varName) then
-            SetParseError("user function body cannot call '" & varName & "'")
+            SetParseError(FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & varName)
             evalDepth -= 1
             return FALSE
           end if
@@ -3453,12 +3593,12 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           if ubound(fnParams) >= lbound(fnParams) then
             dim k as Integer
             for k = lbound(fnParams) to ubound(fnParams)
-              if k > lbound(fnParams) then sig &= ", "
+              if k > lbound(fnParams) then sig &= FB_STR_COMMA
               sig &= fnParams(k)
             next k
           end if
           sig &= ")"
-          resultText = "defined " & sig
+          resultText = FB_STR_DEFINED & sig
           isArray = FALSE
           result = 0
           evalDepth -= 1
@@ -3474,23 +3614,23 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       dim exprV as EvalValue = ParseExpression()
       SkipSpaces()
       if unknownVarsText <> "" then
-        SetParseError("unknown variables: " & unknownVarsText)
+        SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & unknownVarsText)
       end if
       if unknownFuncsText <> "" then
         if lastErrorText = "" then
-          SetParseError("unknown functions: " & unknownFuncsText)
+          SetParseError(FB_STR_UNKNOWN_FUNCTION_COLON & unknownFuncsText)
         else
-          lastErrorText &= "; unknown functions: " & unknownFuncsText
+          lastErrorText &= FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON & unknownFuncsText
         end if
       end if
       if pStream[0] = 0 andalso parseError = 0 then
         if IsReservedUserFunctionName(varName) then
-          SetParseError("reserved function name: " & varName)
+          SetParseError(FB_STR_RESERVED_FUNCTION_NAME_COLON & varName)
           evalDepth -= 1
           return FALSE
         end if
         if IsBuiltinConstantName(varName) then
-          SetParseError("reserved constant name: " & varName)
+          SetParseError(FB_STR_RESERVED_CONSTANT_NAME_COLON & varName)
           evalDepth -= 1
           return FALSE
         end if
@@ -3502,7 +3642,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         evalDepth -= 1
         return TRUE
       end if
-      if parseError = 0 then SetParseError("unexpected token")
+      if parseError = 0 then SetParseError(FB_STR_UNEXPECTED_TOKEN)
       evalDepth -= 1
       return FALSE
     end if
@@ -3515,27 +3655,27 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   SkipSpaces()
 
   if unknownVarsText <> "" then
-    SetParseError("unknown variables: " & unknownVarsText)
+    SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & unknownVarsText)
   end if
   if unknownFuncsText <> "" then
     if lastErrorText = "" then
-      SetParseError("unknown functions: " & unknownFuncsText)
+      SetParseError(FB_STR_UNKNOWN_FUNCTION_COLON & unknownFuncsText)
     else
-      lastErrorText &= "; unknown functions: " & unknownFuncsText
+      lastErrorText &= FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON & unknownFuncsText
     end if
   end if
 
   if pStream[0] <> 0 andalso parseError = 0 then
     if pStream[0] = 44 then
-      SetParseError("unexpected comma")
+      SetParseError(FB_STR_UNEXPECTED_COMMA)
     elseif pStream[0] = 41 then
-      SetParseError("mismatched closing parenthesis")
+      SetParseError(FB_STR_MISMATCHED_CLOSING_PARENTHESIS)
     elseif pStream[0] = 93 then
-      SetParseError("mismatched closing bracket")
+      SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
     elseif pStream[0] = 125 then
-      SetParseError("mismatched closing brace")
+      SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
     else
-      SetParseError("unexpected token")
+      SetParseError(FB_STR_UNEXPECTED_TOKEN)
     end if
   end if
   if parseError = 1 then

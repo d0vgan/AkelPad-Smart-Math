@@ -439,7 +439,7 @@ sub Main()
   tests(238).expr = "sum((1,2),(3,4),5)": tests(238).expected = "15" ' [ok-array]
   tests(239).expr = "sort(( ))":        tests(239).expectedErrContains = "unexpected token" ' [syntax]
   tests(240).expr = "unique(( ))":      tests(240).expectedErrContains = "unexpected token" ' [syntax]
-  tests(241).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(241).expectedErrContains = "unknown functions" ' [regression-lock]
+  tests(241).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(241).expectedErrContains = "unknown function" ' [regression-lock]
   tests(242).expr = "deg(pi/2,pi/4)":   tests(242).expected = "(90,45)" ' [ok-array]
   tests(243).expr = "rad(180,90)":      tests(243).expected = "(3.141592653589793,1.570796326794897)" ' [ok-array]
   tests(244).expr = "mean":             tests(244).expectedErrContains = "function: mean(...)" ' [hint]
@@ -774,7 +774,7 @@ sub Main()
   tests(559).expr = "median(42)":                              tests(559).expected = "42"
   tests(560).expr = "median((42))":                            tests(560).expected = "42"
   tests(561).expr = "123":                                     tests(561).expected = "123"
-  tests(562).expr = "unknownFunc(1)":                          tests(562).expectedErrContains = "unknown functions"
+  tests(562).expr = "unknownFunc(1)":                          tests(562).expectedErrContains = "unknown function"
   tests(563).expr = "2+3; ans":                                tests(563).expected = "5"
   tests(564).expr = "(e=3)":                                   tests(564).expected = "0"
   tests(565).expr = "(pi=3.141592653589793)":                  tests(565).expected = "1"
@@ -799,17 +799,17 @@ sub Main()
   tests(585).expr = "(0x3C & 0x75, 0x01 | 0x30); hex":         tests(585).expected = "(0x34,0x31)"
   tests(586).expr = "(8,9); bin()":                            tests(586).expected = "(0b1000,0b1001)"
   tests(587).expr = "15; uhex":                                tests(587).expected = "0xF"
-  tests(588).expr = "0xAA; foo()":                             tests(588).expectedErrContains = "unknown functions"
+  tests(588).expr = "0xAA; foo()":                             tests(588).expectedErrContains = "unknown function"
 
-  tests(589).expr = "x(a)=x(a); x(1)":                        tests(589).expectedErrContains = "body cannot call 'x'" ' [regression] direct self-call in UDF body
-  tests(590).expr = "y(a)=g(a)+y(a)+4":                      tests(590).expectedErrContains = "body cannot call 'y'" ' [regression] self-call among other terms
+  tests(589).expr = "x(a)=x(a); x(1)":                        tests(589).expectedErrContains = "recursive user function call: x" ' [regression] direct self-call in UDF body
+  tests(590).expr = "y(a)=g(a)+y(a)+4":                      tests(590).expectedErrContains = "recursive user function call: y" ' [regression] self-call among other terms
   tests(591).expr = "g(a)=y(a)+1; y(a)=g(a)+2; y(5)":        tests(591).expectedErrContains = "recursive user function call" ' [regression] mutual recursion y<->g
   tests(592).expr = "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)": tests(592).expectedErrContains = "recursive user function call" ' [regression] longer cycle back to b
   tests(593).expr = "2^3":                                   tests(593).expected = "1" ' [regression] caret is bitwise XOR
   tests(594).expr = "2**3":                                  tests(594).expected = "8" ' [regression] double-star is power
   tests(595).expr = "3^2":                                   tests(595).expected = "1" ' [regression] caret is not power
   tests(596).expr = "3**2":                                  tests(596).expected = "9" ' [regression] double-star power
-  tests(597).expr = "f(x)=x*p(x); f(2)":                     tests(597).expectedErrContains = "unknown functions" ' [regression] late binding unresolved referenced UDF
+  tests(597).expr = "f(x)=x*p(x); f(2)":                     tests(597).expectedErrContains = "unknown function" ' [regression] late binding unresolved referenced UDF
   tests(598).expr = "f(x)=x*p(x); p(x)=x+5; f(10)":          tests(598).expected = "150" ' [regression] late binding resolved after referenced UDF definition
   tests(599).expr = "f(x)=x*p(x); p(x)=x**(1/3); f(8)":      tests(599).expected = "16" ' [regression] late binding with nonlinear referenced UDF
   tests(600).expr = "f(x)=x*p(x); p(x)=x+5; p(x)=x**(1/3); f(8)": tests(600).expected = "16" ' [regression] late binding uses latest referenced UDF definition

@@ -125,7 +125,7 @@ Base-prefixed integer forms:
 - If that dependency is defined later, the original function starts working without redefinition.
 - Example:
   - `f(x)=x*g(x)`
-  - `f(2)` -> `unknown functions: g`
+  - `f(2)` -> `unknown function: g`
   - `g(x)=x+5; f(10)` -> `150`
   - `g(x)=x**(1/3); f(8)` -> `16`
 

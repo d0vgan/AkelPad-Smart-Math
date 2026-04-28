@@ -79,6 +79,16 @@ Apply this rule for **any source-code change** (feature/fix/refactor/cleanup/opt
 - If no existing helper can be tuned without harming clarity/behavior/performance, introduce a new helper instead.
 - When adding a new helper, keep scope minimal and avoid overlapping responsibilities with existing helpers.
 
+### String Constants Naming Rule
+
+Apply this rule for parser/runtime code in both Basic and C++:
+
+- Any string literal longer than 1 character must be represented by a named string constant.
+- One-character string literals may remain inline.
+- Reuse existing named string constants when the same literal value is already present.
+- If a new constant is needed, give it a human-readable semantic name (avoid numeric/opaque names like `STR_0001`).
+- Keep naming style consistent with existing constants in each language (`STR_*` in C++, `FB_STR_*` in Basic).
+
 ## Required Workflow
 
 Follow all steps in order.

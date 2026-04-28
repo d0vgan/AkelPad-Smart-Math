@@ -375,13 +375,14 @@ std::vector<TestCase> buildSmokeCases() {
              }
              return true;
            }
-           if (!c.expectedErrContains.empty()) {
+          if (!c.expectedErrContains.empty()) {
+            const std::string expectedErrContains = c.expectedErrContains;
              if (err.empty()) {
-               why = "expected error containing \"" + c.expectedErrContains + "\", got success with \"" + result + "\"";
+              why = "expected error containing \"" + expectedErrContains + "\", got success with \"" + result + "\"";
                return false;
              }
-             if (err.find(c.expectedErrContains) == std::string::npos) {
-               why = "expected error containing \"" + c.expectedErrContains + "\", got \"" + err + "\"";
+            if (err.find(expectedErrContains) == std::string::npos) {
+              why = "expected error containing \"" + expectedErrContains + "\", got \"" + err + "\"";
                return false;
              }
              return true;
@@ -1962,7 +1963,7 @@ std::vector<TestCase> buildRegressionCases() {
               }});
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
                 MathParser p;
-                return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown functions", why);
+                return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown function", why);
               }});
   t.push_back({"regression/late binding resolves after referenced UDF definition", [](std::string& why) {
                 MathParser p;
@@ -1976,9 +1977,9 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "f(x)=x*p(x); p(x)=x+5; p(x)=x**(1/3); f(8)", "16", why);
               }});
-  t.push_back({"regression/UDF body cannot call defined name (self-reference)", [](std::string& why) {
+  t.push_back({"regression/UDF self-reference rejected at runtime", [](std::string& why) {
                 MathParser p;
-                return expectEvalErrorContains(p, "x(a)=x(a); x(1)", "body cannot call 'x'", why);
+                return expectEvalErrorContains(p, "x(a)=x(a); x(1)", "recursive user function call: x", why);
               }});
   t.push_back({"regression/mutual recursion y<->g rejected at runtime", [](std::string& why) {
                 MathParser p;

@@ -15,6 +15,180 @@ namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr int kMaxEvalDepth = 128;
 
+constexpr const char* STR_NAN = "nan";
+constexpr const char* STR_NEG_INF = "-inf";
+constexpr const char* STR_INF = "inf";
+constexpr const char* STR_NEG_ZERO = "-0";
+constexpr const char* STR_HEX_DIGITS_LOWER = "0123456789abcdef";
+constexpr const char* STR_HEX_DIGITS_UPPER = "0123456789ABCDEF";
+constexpr const char* STR_COMMA = ", ";
+constexpr const char* STR_PI = "pi";
+constexpr const char* STR_E = "e";
+constexpr const char* STR_ANS = "ans";
+constexpr const char* STR_RAND = "rand";
+constexpr const char* STR_RANDOM = "random";
+constexpr const char* STR_BIN = "bin";
+constexpr const char* STR_HEX = "hex";
+constexpr const char* STR_OCT = "oct";
+constexpr const char* STR_POW = "pow";
+constexpr const char* STR_ATAN2 = "atan2";
+constexpr const char* STR_SIN = "sin";
+constexpr const char* STR_COS = "cos";
+constexpr const char* STR_TAN = "tan";
+constexpr const char* STR_ASIN = "asin";
+constexpr const char* STR_ARCSIN = "arcsin";
+constexpr const char* STR_ACOS = "acos";
+constexpr const char* STR_ARCCOS = "arccos";
+constexpr const char* STR_ATAN = "atan";
+constexpr const char* STR_ARCTAN = "arctan";
+constexpr const char* STR_SINH = "sinh";
+constexpr const char* STR_COSH = "cosh";
+constexpr const char* STR_TANH = "tanh";
+constexpr const char* STR_EXP = "exp";
+constexpr const char* STR_LOG = "log";
+constexpr const char* STR_LN = "ln";
+constexpr const char* STR_LOG10 = "log10";
+constexpr const char* STR_SQRT = "sqrt";
+constexpr const char* STR_SQR = "sqr";
+constexpr const char* STR_INT = "int";
+constexpr const char* STR_FRAC = "frac";
+constexpr const char* STR_FRACT = "fract";
+constexpr const char* STR_ABS = "abs";
+constexpr const char* STR_FLOOR = "floor";
+constexpr const char* STR_CEIL = "ceil";
+constexpr const char* STR_TRUNC = "trunc";
+constexpr const char* STR_ROUND = "round";
+constexpr const char* STR_SIGN = "sign";
+constexpr const char* STR_DEG = "deg";
+constexpr const char* STR_RAD = "rad";
+constexpr const char* STR_SUM = "sum";
+constexpr const char* STR_MEDIAN = "median";
+constexpr const char* STR_VARIANCE = "variance";
+constexpr const char* STR_STDDEV = "stddev";
+constexpr const char* STR_SORT = "sort";
+constexpr const char* STR_SORTED = "sorted";
+constexpr const char* STR_REVERSE = "reverse";
+constexpr const char* STR_REVERSED = "reversed";
+constexpr const char* STR_UNIQUE = "unique";
+constexpr const char* STR_UNPACK = "unpack";
+constexpr const char* STR_FACT = "fact";
+constexpr const char* STR_FACTORIAL = "factorial";
+constexpr const char* STR_AVG = "avg";
+constexpr const char* STR_MEAN = "mean";
+constexpr const char* STR_MOD = "mod";
+constexpr const char* STR_CLAMP = "clamp";
+constexpr const char* STR_HYPOT = "hypot";
+constexpr const char* STR_GCD = "gcd";
+constexpr const char* STR_LCM = "lcm";
+constexpr const char* STR_PRODUCT = "product";
+constexpr const char* STR_PROD = "prod";
+constexpr const char* STR_MIN = "min";
+constexpr const char* STR_MAX = "max";
+constexpr const char* STR_UHEX = "uhex";
+constexpr const char* STR_UOCT = "uoct";
+constexpr const char* STR_UBIN = "ubin";
+constexpr const char* STR_NOT = "not";
+constexpr const char* STR_AND = "and";
+constexpr const char* STR_OR = "or";
+constexpr const char* STR_HINT_SIN = "function: sin(angle)";
+constexpr const char* STR_HINT_POW = "function: pow(base, exp)";
+constexpr const char* STR_HINT_SQR = "function: sqr(value)";
+constexpr const char* STR_HINT_LN = "function: ln(value)";
+constexpr const char* STR_HINT_HEX = "function: hex(...)";
+constexpr const char* STR_HINT_BIN = "function: bin(...)";
+constexpr const char* STR_HINT_OCT = "function: oct(...)";
+constexpr const char* STR_HINT_UHEX = "function: uhex(...)";
+constexpr const char* STR_HINT_UBIN = "function: ubin(...)";
+constexpr const char* STR_HINT_UOCT = "function: uoct(...)";
+constexpr const char* STR_HINT_SUM = "function: sum(...)";
+constexpr const char* STR_HINT_SORT = "function: sort(...)";
+constexpr const char* STR_HINT_REVERSE = "function: reverse(...)";
+constexpr const char* STR_HINT_UNIQUE = "function: unique(...)";
+constexpr const char* STR_HINT_UNPACK = "function: unpack(...)";
+constexpr const char* STR_HINT_RAND = "function: rand()";
+constexpr const char* STR_HINT_RANDOM = "function: random(min, max)";
+constexpr const char* STR_HINT_MEAN = "function: mean(...)";
+constexpr const char* STR_HINT_MEDIAN = "function: median(...)";
+constexpr const char* STR_HINT_FLOOR = "function: floor(value)";
+constexpr const char* STR_HINT_CEIL = "function: ceil(value)";
+constexpr const char* STR_HINT_TRUNC = "function: trunc(value)";
+constexpr const char* STR_HINT_ROUND = "function: round(value)";
+constexpr const char* STR_HINT_SIGN = "function: sign(value)";
+constexpr const char* STR_HINT_DEG = "function: deg(...)";
+constexpr const char* STR_HINT_RAD = "function: rad(...)";
+constexpr const char* STR_HINT_INT = "function: int(value)";
+constexpr const char* STR_HINT_FRAC = "function: frac(value)";
+constexpr const char* STR_HINT_PREFIX = "function: ";
+constexpr const char* STR_PAR_DOTDOTDOT = "(...)";
+constexpr const char* STR_UNEXPECTED_TOKEN = "unexpected token";
+constexpr const char* STR_INCOMPATIBLE_OPERANDS = "incompatible operands";
+constexpr const char* STR_POS_POW63_DEC_TEXT = "9.223372036854778e+018";
+constexpr const char* STR_NEG_POW63_DEC_TEXT = "-9.223372036854778e+018";
+constexpr const char* STR_PREFIX_HEX = "0x";
+constexpr const char* STR_PREFIX_OCT = "0o";
+constexpr const char* STR_PREFIX_BIN = "0b";
+constexpr const char* STR_UNEXPECTED_COMMA = "unexpected comma";
+constexpr const char* STR_MISSING_CLOSING_PARENTHESIS = "missing closing parenthesis";
+constexpr const char* STR_INVALID_HEX_LITERAL = "invalid hex literal";
+constexpr const char* STR_INVALID_BINARY_LITERAL = "invalid binary literal";
+constexpr const char* STR_INVALID_OCTAL_LITERAL = "invalid octal literal";
+constexpr const char* STR_INVALID_NUMERIC_LITERAL = "invalid numeric literal";
+constexpr const char* STR_MISSING_INDEX = "missing index";
+constexpr const char* STR_MISSING_CLOSING_BRACKET = "missing closing bracket";
+constexpr const char* STR_LT_EQ = "<=";
+constexpr const char* STR_GT_EQ = ">=";
+constexpr const char* STR_EQ_EQ = "==";
+constexpr const char* STR_NOT_EQ = "!=";
+constexpr const char* STR_LT_GT = "<>";
+constexpr const char* STR_DUPLICATE_PARAMETER_NAME = "duplicate parameter name";
+constexpr const char* STR_RESERVED_CONSTANT_NAME = "reserved constant name";
+constexpr const char* STR_RESERVED_FUNCTION_NAME = "reserved function name";
+constexpr const char* STR_RECURSIVE_USER_FUNCTION_CALL_COLON = "recursive user function call: ";
+constexpr const char* STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION = "unexpected token after expression";
+constexpr const char* STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON = "scalar-only expression encountered non-scalar value";
+constexpr const char* STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES = "bitwise operands must be integer values";
+constexpr const char* STR_INTERNAL_UNARY_OP = "internal unary op";
+constexpr const char* STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES = "modulo operands must be integer values";
+constexpr const char* STR_NUMERIC_ERROR_IN_POWER_OPERATION = "numeric error in power operation";
+constexpr const char* STR_NUMERIC_ERROR_IN_EXPRESSION = "numeric error in expression";
+constexpr const char* STR_INTERNAL_BINARY_OP = "internal binary op";
+constexpr const char* STR_INTERNAL_EVAL_ERROR = "internal eval error";
+constexpr const char* STR_PERCENTAGE_REQUIRES_SCALAR_VALUE = "percentage requires scalar value";
+constexpr const char* STR_FAILED_TO_BUILD_ARRAY_LITERAL = "failed to build array literal";
+constexpr const char* STR_INDEXING_REQUIRES_AN_ARRAY_VALUE = "indexing requires an array value";
+constexpr const char* STR_ARRAY_INDEX_MUST_BE_A_SCALAR = "array index must be a scalar integer";
+constexpr const char* STR_ARRAY_INDEX_MUST_BE_AN_INTEGER = "array index must be an integer";
+constexpr const char* STR_ARRAY_INDEX_IS_OUT_OF_RANGE = "array index is out of range";
+constexpr const char* STR_PAR_EXPECTS_AT_LEAST_1 = "() expects at least 1 argument";
+constexpr const char* STR_INTERNAL_ERROR_IN_AGGREGATE_BUILTIN = "internal error in aggregate builtin";
+constexpr const char* STR_UNEXPECTED_DOUBLE_SIZE = "unexpected double size";
+constexpr const char* STR_PAR_EXPECTS_INTEGER_VALUES = "() expects integer values";
+constexpr const char* STR_PAR_EXPECTS_2_ARGUMENT_PAR = "() expects 2 argument(s)";
+constexpr const char* STR_NUMERIC_ERROR_IN = "numeric error in ";
+constexpr const char* STR_PAR = "()";
+constexpr const char* STR_PAR_EXPECTS_3_ARGUMENT_PAR = "() expects 3 argument(s)";
+constexpr const char* STR_PAR_EXPECTS_SCALAR_MIN_SLASH = "() expects scalar min/max";
+constexpr const char* STR_PAR_EXPECTS_SCALAR_VALUES = "() expects scalar values";
+constexpr const char* STR_INTERNAL_ERROR_IN_SCALAR_BINARY_BUILTIN = "internal error in scalar binary builtin";
+constexpr const char* STR_PAR_EXPECTS_0_ARGUMENT_PAR = "() expects 0 argument(s)";
+constexpr const char* STR_PAR_EXPECTS_1_ARGUMENT_PAR = "() expects 1 argument(s)";
+constexpr const char* STR_PAR_EXPECTS_A_NON_DASH = "() expects a non-negative integer";
+constexpr const char* STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN = "internal error in unary math builtin";
+constexpr const char* STR_NUMERIC_ERROR_IN_CLAMP_PAR = "numeric error in clamp()";
+constexpr const char* STR_PAR_EXPECTS = "() expects ";
+constexpr const char* STR_ARGUMENT_PAR_S = " argument(s)";
+constexpr const char* STR_MAX_EVALUATION_DEPTH_REACHED = "max evaluation depth reached";
+constexpr const char* STR_USER_FUNCTION_CALL_STACK_OVERFLOW = "user function call stack overflow";
+constexpr const char* STR_FAILED_TO_PARSE_USER_FUNCTION_BODY = "failed to parse user function body";
+constexpr const char* STR_UNEXPECTED_TRAILING_INPUT = "unexpected trailing input";
+constexpr const char* STR_PARSE_FAILED = "parse failed";
+constexpr const char* STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR = "nothing compiled; call compile() first";
+constexpr const char* STR_UNKNOWN_VARIABLE_COLON = "unknown variable: ";
+constexpr const char* STR_SEMICOLON_UNKNOWN_FUNCTION_COLON = "; unknown function: ";
+constexpr const char* STR_UNKNOWN_FUNCTION_COLON = "unknown function: ";
+constexpr const char* STR_INVALID_USER_FUNCTION_EXPRESSION = "invalid user function expression";
+constexpr const char* STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION = "unexpected content after function definition";
+
 bool identAsciiEqualsLower(const std::string& body, std::size_t i0, std::size_t len, const std::string& bLower) {
   if (len != bLower.size()) {
     return false;
@@ -93,8 +267,8 @@ long long gcdInt64(long long a, long long b) {
 std::string formatDoubleFast(double v) {
   // Custom "general" formatter: 16 significant digits in fixed mode, 16 in scientific (smoke parity).
   // Uses only direct character-buffer operations.
-  if (std::isnan(v)) return "nan";
-  if (std::isinf(v)) return (v < 0.0) ? "-inf" : "inf";
+  if (std::isnan(v)) return STR_NAN;
+  if (std::isinf(v)) return (v < 0.0) ? STR_NEG_INF : STR_INF;
   if (v == 0.0) return "0";
 
   constexpr int kGenDigits = 17;
@@ -107,7 +281,7 @@ std::string formatDoubleFast(double v) {
   int exp10 = static_cast<int>(std::floor(std::log10(x)));
   long double p10 = std::pow(10.0L, exp10);
   if (p10 == 0.0L) {
-    return neg ? "-0" : "0";
+    return neg ? STR_NEG_ZERO : "0";
   }
 
   long double norm = x / p10;
@@ -267,8 +441,8 @@ std::string formatDoubleFast(double v) {
 }
 
 std::string formatUnsignedBase(std::uint64_t u, unsigned base, const char* prefix, bool uppercase) {
-  static constexpr char kDigitsLo[] = "0123456789abcdef";
-  static constexpr char kDigitsHi[] = "0123456789ABCDEF";
+  static constexpr const char* kDigitsLo = STR_HEX_DIGITS_LOWER;
+  static constexpr const char* kDigitsHi = STR_HEX_DIGITS_UPPER;
   const char* digits = uppercase ? kDigitsHi : kDigitsLo;
 
   char tmp[65];
@@ -403,7 +577,7 @@ void appendUniqueName(std::string& listText, const std::string& n) {
   if (listText.empty()) {
     listText = n;
   } else {
-    listText += ", ";
+    listText += STR_COMMA;
     listText += n;
   }
 }
@@ -442,9 +616,9 @@ void mergeUnknownNameList(std::string& dest, const std::string& src) {
 MathParser::MathParser() {
   assert(functionNames().size() == static_cast<std::size_t>(BuiltinFunctionId::Count));
   assert(operatorNames().size() == static_cast<std::size_t>(OperatorNameId::Count));
-  addConst("pi", kPi);
-  addConst("e", std::exp(1.0));
-  setVariable("ans", makeScalarInt(0));
+  addConst(STR_PI, kPi);
+  addConst(STR_E, std::exp(1.0));
+  setVariable(STR_ANS, makeScalarInt(0));
 }
 
 std::string MathParser::toLower(std::string s) {
@@ -454,13 +628,13 @@ std::string MathParser::toLower(std::string s) {
 
 const std::vector<std::string>& MathParser::functionNames() {
   static const std::vector<std::string> kNames = {
-      "rand",   "random", "bin",   "hex",    "oct",      "pow",  "atan2", "sin",      "cos",  "tan",
-      "asin",   "arcsin", "acos",  "arccos", "atan",     "arctan", "sinh", "cosh",     "tanh", "exp",
-      "log",    "ln",     "log10", "sqrt",   "sqr",      "int",  "frac",  "fract",    "abs",  "floor",
-      "ceil",   "trunc",  "round", "sign",   "deg",      "rad",  "sum",   "median",   "variance", "stddev",
-      "sort",   "sorted", "reverse", "reversed", "unique", "unpack", "fact", "factorial", "avg", "mean",
-      "mod",    "clamp",  "hypot", "gcd",    "lcm",      "product", "prod", "min", "max",
-      "uhex",   "uoct",   "ubin"};
+      STR_RAND,   STR_RANDOM, STR_BIN,   STR_HEX,    STR_OCT,      STR_POW,  STR_ATAN2, STR_SIN,      STR_COS,  STR_TAN,
+      STR_ASIN,   STR_ARCSIN, STR_ACOS,  STR_ARCCOS, STR_ATAN,     STR_ARCTAN, STR_SINH, STR_COSH,     STR_TANH, STR_EXP,
+      STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,  STR_FRACT,    STR_ABS,  STR_FLOOR,
+      STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
+      STR_SORT,   STR_SORTED, STR_REVERSE, STR_REVERSED, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_FACTORIAL, STR_AVG, STR_MEAN,
+      STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_PRODUCT, STR_PROD, STR_MIN, STR_MAX,
+      STR_UHEX,   STR_UOCT,   STR_UBIN};
   return kNames;
 }
 
@@ -477,7 +651,7 @@ const std::unordered_map<std::string, MathParser::BuiltinFunctionId>& MathParser
 }
 
 const std::vector<std::string>& MathParser::operatorNames() {
-  static const std::vector<std::string> kNames = {"not", "and", "or"};
+  static const std::vector<std::string> kNames = {STR_NOT, STR_AND, STR_OR};
   return kNames;
 }
 
@@ -501,37 +675,37 @@ bool MathParser::tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFun
 
 const char* MathParser::tryGetBuiltinFunctionMissingCallHint(const std::string& nameText) {
   static const std::unordered_map<std::string, const char*> kHints = {
-      {"sin", "function: sin(angle)"},
-      {"pow", "function: pow(base, exp)"},
-      {"sqr", "function: sqr(value)"},
-      {"ln", "function: ln(value)"},
-      {"hex", "function: hex(...)"},
-      {"bin", "function: bin(...)"},
-      {"oct", "function: oct(...)"},
-      {"uhex", "function: uhex(...)"},
-      {"ubin", "function: ubin(...)"},
-      {"uoct", "function: uoct(...)"},
-      {"sum", "function: sum(...)"},
-      {"sort", "function: sort(...)"},
-      {"sorted", "function: sort(...)"},
-      {"reverse", "function: reverse(...)"},
-      {"reversed", "function: reverse(...)"},
-      {"unique", "function: unique(...)"},
-      {"unpack", "function: unpack(...)"},
-      {"rand", "function: rand()"},
-      {"random", "function: random(min, max)"},
-      {"mean", "function: mean(...)"},
-      {"median", "function: median(...)"},
-      {"floor", "function: floor(value)"},
-      {"ceil", "function: ceil(value)"},
-      {"trunc", "function: trunc(value)"},
-      {"round", "function: round(value)"},
-      {"sign", "function: sign(value)"},
-      {"deg", "function: deg(...)"},
-      {"rad", "function: rad(...)"},
-      {"int", "function: int(value)"},
-      {"frac", "function: frac(value)"},
-      {"fract", "function: frac(value)"},
+      {STR_SIN, STR_HINT_SIN},
+      {STR_POW, STR_HINT_POW},
+      {STR_SQR, STR_HINT_SQR},
+      {STR_LN, STR_HINT_LN},
+      {STR_HEX, STR_HINT_HEX},
+      {STR_BIN, STR_HINT_BIN},
+      {STR_OCT, STR_HINT_OCT},
+      {STR_UHEX, STR_HINT_UHEX},
+      {STR_UBIN, STR_HINT_UBIN},
+      {STR_UOCT, STR_HINT_UOCT},
+      {STR_SUM, STR_HINT_SUM},
+      {STR_SORT, STR_HINT_SORT},
+      {STR_SORTED, STR_HINT_SORT},
+      {STR_REVERSE, STR_HINT_REVERSE},
+      {STR_REVERSED, STR_HINT_REVERSE},
+      {STR_UNIQUE, STR_HINT_UNIQUE},
+      {STR_UNPACK, STR_HINT_UNPACK},
+      {STR_RAND, STR_HINT_RAND},
+      {STR_RANDOM, STR_HINT_RANDOM},
+      {STR_MEAN, STR_HINT_MEAN},
+      {STR_MEDIAN, STR_HINT_MEDIAN},
+      {STR_FLOOR, STR_HINT_FLOOR},
+      {STR_CEIL, STR_HINT_CEIL},
+      {STR_TRUNC, STR_HINT_TRUNC},
+      {STR_ROUND, STR_HINT_ROUND},
+      {STR_SIGN, STR_HINT_SIGN},
+      {STR_DEG, STR_HINT_DEG},
+      {STR_RAD, STR_HINT_RAD},
+      {STR_INT, STR_HINT_INT},
+      {STR_FRAC, STR_HINT_FRAC},
+      {STR_FRACT, STR_HINT_FRAC},
   };
   auto it = kHints.find(nameText);
   return (it != kHints.end()) ? it->second : nullptr;
@@ -565,13 +739,13 @@ bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::str
   }
   const char* hint = tryGetBuiltinFunctionMissingCallHint(ident);
   if (hint != nullptr) setError(ctx, hint);
-  else setError(ctx, "function: " + ident + "(...)");
+  else setError(ctx, STR_HINT_PREFIX + ident + STR_PAR_DOTDOTDOT);
   return true;
 }
 
 bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const {
   if (isOpKeyword(ident, OperatorNameId::And) || isOpKeyword(ident, OperatorNameId::Or)) {
-    setError(ctx, "unexpected token");
+    setError(ctx, STR_UNEXPECTED_TOKEN);
     return true;
   }
   if (trySetMissingFunctionCallError(ctx, ident)) {
@@ -605,7 +779,7 @@ bool MathParser::tryResolveVariableValue(
 }
 
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
-  return nameText == "pi" || nameText == "e";
+  return nameText == STR_PI || nameText == STR_E;
 }
 
 bool MathParser::isIdentStart(char c) {
@@ -722,7 +896,7 @@ MathParser::EvalValue MathParser::makeBinaryNumericError(
     const EvalValue& right,
     const char* numericErrorText) {
   if (left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size()) {
-    setError(ctx, "incompatible operands");
+    setError(ctx, STR_INCOMPATIBLE_OPERANDS);
   } else {
     setError(ctx, numericErrorText);
   }
@@ -753,14 +927,14 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
     const double p63 = std::ldexp(1.0, 63);
     if (v.scalarValue.hasDecScientificPow63High()) {
       if (dval == p63) {
-        return "9.223372036854778e+018";
+        return STR_POS_POW63_DEC_TEXT;
       }
       if (dval == -p63) {
-        return "-9.223372036854778e+018";
+        return STR_NEG_POW63_DEC_TEXT;
       }
     }
     if (v.scalarValue.hasExactUInt64() && v.scalarValue.exactUInt64 == (1ull << 63)) {
-      return "9.223372036854778e+018";
+      return STR_POS_POW63_DEC_TEXT;
     }
     long long iv = 0;
     if (nearlyInt(dval, iv)) {
@@ -778,12 +952,12 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
     const long long iv = v.scalarValue.exactInt;
     if (v.hasRenderUnsigned()) {
       if (base == RenderBase::Hex) {
-        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 16, "0x", true);
+        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 16, STR_PREFIX_HEX, true);
       }
       if (base == RenderBase::Oct) {
-        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 8, "0o", false);
+        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 8, STR_PREFIX_OCT, false);
       }
-      return formatUnsignedBase(static_cast<std::uint64_t>(iv), 2, "0b", false);
+      return formatUnsignedBase(static_cast<std::uint64_t>(iv), 2, STR_PREFIX_BIN, false);
     }
     std::uint64_t mag = 0;
     if (iv == (std::numeric_limits<long long>::min)()) {
@@ -792,23 +966,23 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
       mag = static_cast<std::uint64_t>(-iv);
     }
     if (base == RenderBase::Hex) {
-      return "-" + formatUnsignedBase(mag, 16, "0x", true);
+      return "-" + formatUnsignedBase(mag, 16, STR_PREFIX_HEX, true);
     }
     if (base == RenderBase::Oct) {
-      return "-" + formatUnsignedBase(mag, 8, "0o", false);
+      return "-" + formatUnsignedBase(mag, 8, STR_PREFIX_OCT, false);
     }
-    return "-" + formatUnsignedBase(mag, 2, "0b", false);
+    return "-" + formatUnsignedBase(mag, 2, STR_PREFIX_BIN, false);
   } else if (!parseUInt64FromDouble(dval, u)) {
     return formatScalar(v, RenderBase::Dec);
   }
 
   if (base == RenderBase::Hex) {
-    return formatUnsignedBase(u, 16, "0x", true);
+    return formatUnsignedBase(u, 16, STR_PREFIX_HEX, true);
   }
   if (base == RenderBase::Oct) {
-    return formatUnsignedBase(u, 8, "0o", false);
+    return formatUnsignedBase(u, 8, STR_PREFIX_OCT, false);
   }
-  return formatUnsignedBase(u, 2, "0b", false);
+  return formatUnsignedBase(u, 2, STR_PREFIX_BIN, false);
 }
 
 std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) {
@@ -1379,7 +1553,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
     ++ctx.p;
     skipSpaces(ctx);
     if (*ctx.p == ')') {
-      setError(ctx, "unexpected token");
+      setError(ctx, STR_UNEXPECTED_TOKEN);
       return nullptr;
     }
     std::vector<std::unique_ptr<Expr>> values;
@@ -1392,7 +1566,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
       ++ctx.p;
       skipSpaces(ctx);
       if (*ctx.p == ')') {
-        setError(ctx, "unexpected comma");
+        setError(ctx, STR_UNEXPECTED_COMMA);
         return nullptr;
       }
       values.emplace_back(parseExpression(ctx));
@@ -1403,9 +1577,9 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
     }
     if (*ctx.p != ')') {
       if (isIdentStart(*ctx.p) || std::isdigit(static_cast<unsigned char>(*ctx.p)) || *ctx.p == '.') {
-        setError(ctx, "unexpected token");
+        setError(ctx, STR_UNEXPECTED_TOKEN);
       } else {
-        setError(ctx, "missing closing parenthesis");
+        setError(ctx, STR_MISSING_CLOSING_PARENTHESIS);
       }
       return nullptr;
     }
@@ -1435,7 +1609,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
         ++digits;
       }
       if (digits == 0) {
-        setError(ctx, "invalid hex literal");
+        setError(ctx, STR_INVALID_HEX_LITERAL);
         return nullptr;
       }
       ctx.p = p;
@@ -1454,7 +1628,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
         ++digits;
       }
       if (digits == 0) {
-        setError(ctx, "invalid binary literal");
+        setError(ctx, STR_INVALID_BINARY_LITERAL);
         return nullptr;
       }
       ctx.p = p;
@@ -1473,7 +1647,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
         ++digits;
       }
       if (digits == 0) {
-        setError(ctx, "invalid octal literal");
+        setError(ctx, STR_INVALID_OCTAL_LITERAL);
         return nullptr;
       }
       ctx.p = p;
@@ -1486,7 +1660,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
     char* end = nullptr;
     double d = std::strtod(ctx.p, &end);
     if (end == ctx.p) {
-      setError(ctx, "invalid numeric literal");
+      setError(ctx, STR_INVALID_NUMERIC_LITERAL);
       return nullptr;
     }
     ctx.p = end;
@@ -1534,7 +1708,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
             ++ctx.p;
             skipSpaces(ctx);
             if (*ctx.p == ')') {
-              setError(ctx, "unexpected comma");
+              setError(ctx, STR_UNEXPECTED_COMMA);
               return nullptr;
             }
             continue;
@@ -1544,9 +1718,9 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
       }
       if (*ctx.p != ')') {
         if (isIdentStart(*ctx.p) || std::isdigit(static_cast<unsigned char>(*ctx.p)) || *ctx.p == '.') {
-          setError(ctx, "unexpected token");
+          setError(ctx, STR_UNEXPECTED_TOKEN);
         } else {
-          setError(ctx, "missing closing parenthesis");
+          setError(ctx, STR_MISSING_CLOSING_PARENTHESIS);
         }
         return nullptr;
       }
@@ -1566,7 +1740,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
     v->name = std::move(ident);
     return v;
   }
-  setError(ctx, "unexpected token");
+  setError(ctx, STR_UNEXPECTED_TOKEN);
   return nullptr;
 }
 
@@ -1633,14 +1807,14 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
       ++ctx.p;
       skipSpaces(ctx);
       if (*ctx.p == ']') {
-        setError(ctx, "missing index");
+        setError(ctx, STR_MISSING_INDEX);
         return nullptr;
       }
       auto idx = parseExpression(ctx);
       if (ctx.parseError || !idx) return nullptr;
       skipSpaces(ctx);
       if (*ctx.p != ']') {
-        setError(ctx, "missing closing bracket");
+        setError(ctx, STR_MISSING_CLOSING_BRACKET);
         return nullptr;
       }
       ++ctx.p;
@@ -1838,9 +2012,9 @@ std::unique_ptr<MathParser::Expr> MathParser::parseCompare(EvalContext& ctx) {
   while (true) {
     skipSpaces(ctx);
     Expr::BinaryOp op = Expr::BinaryOp::None;
-    if (std::strncmp(ctx.p, "<=", 2) == 0 || std::strncmp(ctx.p, ">=", 2) == 0 ||
-        std::strncmp(ctx.p, "==", 2) == 0 || std::strncmp(ctx.p, "!=", 2) == 0 ||
-        std::strncmp(ctx.p, "<>", 2) == 0) {
+    if (std::strncmp(ctx.p, STR_LT_EQ, 2) == 0 || std::strncmp(ctx.p, STR_GT_EQ, 2) == 0 ||
+        std::strncmp(ctx.p, STR_EQ_EQ, 2) == 0 || std::strncmp(ctx.p, STR_NOT_EQ, 2) == 0 ||
+        std::strncmp(ctx.p, STR_LT_GT, 2) == 0) {
       if (ctx.p[0] == '<' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpLe;
       else if (ctx.p[0] == '>' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpGe;
       else if (ctx.p[0] == '=' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpEq;
@@ -1961,11 +2135,11 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
         std::unordered_map<std::string, bool> seen;
         for (const auto& p : fnParams) {
           if (seen.find(p) != seen.end()) {
-            setError(ctx, "duplicate parameter name");
+            setError(ctx, STR_DUPLICATE_PARAMETER_NAME);
             return false;
           }
           if (isReservedBuiltinConstantName(p)) {
-            setError(ctx, "reserved constant name");
+            setError(ctx, STR_RESERVED_CONSTANT_NAME);
             return false;
           }
           seen[p] = true;
@@ -1973,16 +2147,16 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
       }
       {
         if (isReservedBuiltinConstantName(fnName)) {
-          setError(ctx, "reserved constant name");
+          setError(ctx, STR_RESERVED_CONSTANT_NAME);
           return false;
         }
         if (isReservedFunctionName(fnName)) {
-          setError(ctx, "reserved function name");
+          setError(ctx, STR_RESERVED_FUNCTION_NAME);
           return false;
         }
       }
       if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
-        setError(ctx, "user function body cannot call '" + fnName + "'");
+        setError(ctx, STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
         return false;
       }
       AstStatement st;
@@ -2033,7 +2207,7 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
             }
             auto ansExpr = std::make_unique<Expr>();
             ansExpr->tag = Expr::Tag::Variable;
-            ansExpr->name = "ans";
+            ansExpr->name = STR_ANS;
             callExpr->elements.emplace_back(std::move(ansExpr));
             AstStatement st;
             st.kind = AstStatement::Kind::Expr;
@@ -2055,11 +2229,11 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
         // Single '=' is assignment; '==' is equality (do not steal first '=').
         if (*ctx.p == '=' && ctx.p[1] != '=') {
           if (isReservedFunctionName(ident)) {
-            setError(ctx, "reserved function name");
+            setError(ctx, STR_RESERVED_FUNCTION_NAME);
             return false;
           }
           if (isReservedBuiltinConstantName(ident)) {
-            setError(ctx, "reserved constant name");
+            setError(ctx, STR_RESERVED_CONSTANT_NAME);
             return false;
           }
           ++ctx.p;
@@ -2103,7 +2277,7 @@ parse_program_statement_done:
     if (*ctx.p == '\0') {
       break;
     }
-    setError(ctx, "unexpected token after expression");
+    setError(ctx, STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION);
     return false;
   }
   return true;
@@ -2220,7 +2394,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
         return makeScalar(0);
       }
       if (out.kind != ValueKind::Scalar) {
-        setError(ctx, "scalar-only expression encountered non-scalar value");
+        setError(ctx, STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON);
         return makeScalar(0);
       }
       return out;
@@ -2234,12 +2408,12 @@ MathParser::EvalValue MathParser::evalExprScalar(
       if (e.unaryOp == '~') {
         long long iv = 0;
         if (!tryGetSignedInt64FromScalar(v.scalarValue, iv)) {
-          setError(ctx, "bitwise operands must be integer values");
+          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
           return makeScalar(0);
         }
         return makeScalarInt(~iv);
       }
-      setError(ctx, "internal unary op");
+      setError(ctx, STR_INTERNAL_UNARY_OP);
       return makeScalar(0);
     }
     case Expr::Tag::PostfixPercent: {
@@ -2269,10 +2443,10 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::Modulo: {
           long long a = 0, b = 0;
           if (!tryGetSignedInt64FromScalar(l.scalarValue, a) || !tryGetSignedInt64FromScalar(r.scalarValue, b)) {
-            return returnIntegerOperandError("modulo operands must be integer values");
+            return returnIntegerOperandError(STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
           }
           if (b == 0) {
-            return returnIntegerOperandError("incompatible operands");
+            return returnIntegerOperandError(STR_INCOMPATIBLE_OPERANDS);
           }
           return makeScalarInt(a % b);
         }
@@ -2283,11 +2457,11 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::ShiftRight: {
           long long a = 0, b = 0;
           if (!tryGetSignedInt64FromScalar(l.scalarValue, a) || !tryGetSignedInt64FromScalar(r.scalarValue, b)) {
-            return returnIntegerOperandError("bitwise operands must be integer values");
+            return returnIntegerOperandError(STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
           }
           if ((e.binaryOp == Expr::BinaryOp::ShiftLeft || e.binaryOp == Expr::BinaryOp::ShiftRight) &&
               (b < 0 || b > 63)) {
-            return returnIntegerOperandError("incompatible operands");
+            return returnIntegerOperandError(STR_INCOMPATIBLE_OPERANDS);
           }
           if (e.binaryOp == Expr::BinaryOp::BitAnd) return makeScalarInt(a & b);
           if (e.binaryOp == Expr::BinaryOp::BitOr) return makeScalarInt(a | b);
@@ -2311,7 +2485,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
           bool ok = false;
           EvalValue out = mapBinary(l, r, '^', ok);
           if (!ok) {
-            setError(ctx, "numeric error in power operation");
+            setError(ctx, STR_NUMERIC_ERROR_IN_POWER_OPERATION);
             return makeScalar(0);
           }
           return out;
@@ -2347,18 +2521,18 @@ MathParser::EvalValue MathParser::evalExprScalar(
           bool ok = false;
           EvalValue out = mapBinary(l, r, opChar, ok);
           if (!ok) {
-            setError(ctx, "numeric error in expression");
+            setError(ctx, STR_NUMERIC_ERROR_IN_EXPRESSION);
             return makeScalar(0);
           }
           return out;
         }
         default:
-          setError(ctx, "internal binary op");
+          setError(ctx, STR_INTERNAL_BINARY_OP);
           return makeScalar(0);
       }
     }
     default:
-      setError(ctx, "internal eval error");
+      setError(ctx, STR_INTERNAL_EVAL_ERROR);
       return makeScalar(0);
   }
 }
@@ -2402,17 +2576,17 @@ MathParser::EvalValue MathParser::evalExpr(
         EvalValue v = evalExpr(*e.child, ctx, scopedVars);
         if (ctx.parseError) return v;
         if (v.kind != ValueKind::Scalar) {
-          setError(ctx, "bitwise operands must be integer values");
+          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
           return makeScalar(0);
         }
         long long iv = 0;
         if (!tryGetSignedInt64FromScalar(v.scalarValue, iv)) {
-          setError(ctx, "bitwise operands must be integer values");
+          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
           return makeScalar(0);
         }
         return makeScalarInt(~iv);
       }
-      setError(ctx, "internal unary op");
+      setError(ctx, STR_INTERNAL_UNARY_OP);
       return makeScalar(0);
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExpr(*e.child, ctx, scopedVars);
@@ -2420,7 +2594,7 @@ MathParser::EvalValue MathParser::evalExpr(
         return v;
       }
       if (v.kind != ValueKind::Scalar) {
-        setError(ctx, "percentage requires scalar value");
+        setError(ctx, STR_PERCENTAGE_REQUIRES_SCALAR_VALUE);
         return makeScalar(0);
       }
       v.scalarValue.scalar /= 100.0;
@@ -2454,7 +2628,7 @@ MathParser::EvalValue MathParser::evalExpr(
         }
       }
       if (flatVals.empty()) {
-        setError(ctx, "failed to build array literal");
+        setError(ctx, STR_FAILED_TO_BUILD_ARRAY_LITERAL);
         return makeScalar(0);
       }
       return makeArrayFromScalars(flatVals);
@@ -2474,24 +2648,24 @@ MathParser::EvalValue MathParser::evalExpr(
       EvalValue base = evalExpr(*e.left, ctx, scopedVars);
       if (ctx.parseError) return base;
       if (base.kind != ValueKind::Array) {
-        setError(ctx, "indexing requires an array value");
+        setError(ctx, STR_INDEXING_REQUIRES_AN_ARRAY_VALUE);
         return makeScalar(0);
       }
       EvalValue idxv = evalExpr(*e.right, ctx, scopedVars);
       if (ctx.parseError) return idxv;
       if (idxv.kind != ValueKind::Scalar) {
-        setError(ctx, "array index must be a scalar integer");
+        setError(ctx, STR_ARRAY_INDEX_MUST_BE_A_SCALAR);
         return makeScalar(0);
       }
       long long idx = 0;
       if (!nearlyInt(idxv.scalarValue.scalar, idx)) {
-        setError(ctx, "array index must be an integer");
+        setError(ctx, STR_ARRAY_INDEX_MUST_BE_AN_INTEGER);
         return makeScalar(0);
       }
       const long long n = static_cast<long long>(base.arr.size());
       long long realIdx = (idx >= 0) ? idx : (n + idx);
       if (realIdx < 0 || realIdx >= n) {
-        setError(ctx, "array index is out of range");
+        setError(ctx, STR_ARRAY_INDEX_IS_OUT_OF_RANGE);
         return makeScalar(0);
       }
       return scalarFromArrayAt(base, static_cast<std::size_t>(realIdx));
@@ -2561,7 +2735,7 @@ MathParser::EvalValue MathParser::evalExpr(
           long long a = 0, b = 0;
           if (!tryGetSignedInt64FromScalar(lv, a) || !tryGetSignedInt64FromScalar(rv, b)) return false;
           if (b == 0) {
-            setError(ctx, "incompatible operands");
+            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
             return false;
           }
           outS = makeScalarInt(a % b);
@@ -2569,7 +2743,7 @@ MathParser::EvalValue MathParser::evalExpr(
         };
         auto applyModuloOverOperands = [&](const EvalValue& lv, const EvalValue& rv) -> EvalValue {
           const auto returnModuloOperandError = [&]() -> EvalValue {
-            setError(ctx, "modulo operands must be integer values");
+            setError(ctx, STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
             scratchBinaryOut_.clear();
             return makeScalar(0);
           };
@@ -2577,12 +2751,12 @@ MathParser::EvalValue MathParser::evalExpr(
             EvalValue outS;
             if (!applyModuloScalars(lv.scalarValue, rv.scalarValue, outS)) {
               if (ctx.parseError) return makeScalar(0);
-              return returnIntegerOperandError("modulo operands must be integer values");
+              return returnIntegerOperandError(STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
             }
             return outS;
           }
           if (lv.kind == ValueKind::Array && rv.kind == ValueKind::Array && lv.arr.size() != rv.arr.size()) {
-            setError(ctx, "incompatible operands");
+            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
             return makeScalar(0);
           }
           const std::size_t outCount = (lv.kind == ValueKind::Array) ? lv.arr.size() : rv.arr.size();
@@ -2619,7 +2793,7 @@ MathParser::EvalValue MathParser::evalExpr(
           if (!tryGetSignedInt64FromScalar(lv, a) || !tryGetSignedInt64FromScalar(rv, b)) return false;
           if ((e.binaryOp == Expr::BinaryOp::ShiftLeft || e.binaryOp == Expr::BinaryOp::ShiftRight) &&
               (b < 0 || b > 63)) {
-            setError(ctx, "incompatible operands");
+            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
             return false;
           }
           long long out = 0;
@@ -2633,7 +2807,7 @@ MathParser::EvalValue MathParser::evalExpr(
         };
         auto applyBitwiseOverOperands = [&](const EvalValue& lv, const EvalValue& rv) -> EvalValue {
           const auto returnBitwiseOperandError = [&]() -> EvalValue {
-            setError(ctx, "bitwise operands must be integer values");
+            setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
             scratchBinaryOut_.clear();
             return makeScalar(0);
           };
@@ -2641,12 +2815,12 @@ MathParser::EvalValue MathParser::evalExpr(
             EvalValue outS;
             if (!applyBitwiseScalars(lv.scalarValue, rv.scalarValue, outS)) {
               if (ctx.parseError) return makeScalar(0);
-              return returnIntegerOperandError("bitwise operands must be integer values");
+              return returnIntegerOperandError(STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
             }
             return outS;
           }
           if (lv.kind == ValueKind::Array && rv.kind == ValueKind::Array && lv.arr.size() != rv.arr.size()) {
-            setError(ctx, "incompatible operands");
+            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
             return makeScalar(0);
           }
           const std::size_t outCount = (lv.kind == ValueKind::Array) ? lv.arr.size() : rv.arr.size();
@@ -2718,7 +2892,7 @@ MathParser::EvalValue MathParser::evalExpr(
         bool ok = false;
         EvalValue out = mapBinary(l, r, '^', ok);
         if (!ok) {
-          setError(ctx, "numeric error in power operation");
+          setError(ctx, STR_NUMERIC_ERROR_IN_POWER_OPERATION);
           return makeScalar(0);
         }
         return out;
@@ -2732,21 +2906,21 @@ MathParser::EvalValue MathParser::evalExpr(
         EvalValue out = mapBinary(l, r, opChar, ok);
         if (!ok) {
           if (l.kind == ValueKind::Array && r.kind == ValueKind::Array && l.arr.size() != r.arr.size()) {
-            setError(ctx, "incompatible operands");
+            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
           } else {
-            setError(ctx, "numeric error in expression");
+            setError(ctx, STR_NUMERIC_ERROR_IN_EXPRESSION);
           }
           return makeScalar(0);
         }
         return out;
       }
-      setError(ctx, "internal binary op");
+      setError(ctx, STR_INTERNAL_BINARY_OP);
       return makeScalar(0);
     }
     default:
       break;
   }
-  setError(ctx, "internal eval error");
+  setError(ctx, STR_INTERNAL_EVAL_ERROR);
   return makeScalar(0);
 }
 
@@ -2763,20 +2937,20 @@ MathParser::EvalValue MathParser::runCompiledProgram(
     if (st.kind == AstStatement::Kind::FunDef) {
       upsertUserFunction(UserFunction{st.fun.name, st.fun.params, st.fun.expr});
       out = makeScalarInt(0);
-      setVariable("ans", out);
+      setVariable(STR_ANS, out);
     } else if (st.kind == AstStatement::Kind::Assign) {
       evalIntoOut(*st.expr);
       if (ctx.parseError) {
         return out;
       }
       setVariable(st.assignName, out);
-      setVariable("ans", out);
+      setVariable(STR_ANS, out);
     } else {
       evalIntoOut(*st.expr);
       if (ctx.parseError) {
         return out;
       }
-      setVariable("ans", out);
+      setVariable(STR_ANS, out);
     }
   }
   return out;
@@ -2788,7 +2962,7 @@ bool MathParser::flattenRequired(
     const std::vector<EvalValue>& args,
     std::vector<double>& flat) const {
   if (args.empty() || !flattenArgs(args, flat)) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return false;
   }
   return true;
@@ -2797,7 +2971,7 @@ bool MathParser::flattenRequired(
 MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Unpack);
   if (args.empty()) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
   const auto markExpanded = [](EvalValue v) {
@@ -2809,7 +2983,7 @@ MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vec
   }
   const std::size_t totalCount = countFlattenedScalars(args);
   if (totalCount == 0) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
   std::vector<EvalValue> elems;
@@ -2850,7 +3024,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg ||
       id == BuiltinFunctionId::Mean) {
     if (args.empty()) {
-      setError(ctx, fnName + "() expects at least 1 argument");
+      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
       return makeScalar(0);
     }
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
@@ -2878,7 +3052,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
 
     if (n == 0) {
-      setError(ctx, fnName + "() expects at least 1 argument");
+      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
       return makeScalar(0);
     }
     if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
@@ -2900,7 +3074,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       }
       std::vector<double> flat;
       if (!flattenArgs(args, flat)) {
-        setError(ctx, fnName + "() expects at least 1 argument");
+        setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
         return makeScalar(0);
       }
       const std::size_t n = flat.size();
@@ -2927,7 +3101,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         m2 += delta * delta2;
       });
       if (n == 0) {
-        setError(ctx, fnName + "() expects at least 1 argument");
+        setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
         return makeScalar(0);
       }
       double var = m2 / static_cast<double>(n);
@@ -2939,7 +3113,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     default:
       break;
   }
-  setError(ctx, "internal error in aggregate builtin");
+  setError(ctx, STR_INTERNAL_ERROR_IN_AGGREGATE_BUILTIN);
   return makeScalar(0);
 }
 
@@ -2950,7 +3124,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     const std::vector<EvalValue>& args) const {
   auto keyForUnique = [](double v) -> std::uint64_t {
     std::uint64_t bits = 0;
-    static_assert(sizeof(bits) == sizeof(v), "unexpected double size");
+    static_assert(sizeof(bits) == sizeof(v));
     std::memcpy(&bits, &v, sizeof(bits));
     // Canonicalize signed zero to preserve equality semantics of (0 == -0).
     if ((bits << 1) == 0) bits = 0;
@@ -2974,7 +3148,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
   };
 
   if (args.empty()) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
   const auto copyArrayScalars = [&](const EvalValue& a, std::vector<double>& out) {
@@ -3000,7 +3174,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     std::vector<double> out;
     copySingleArgToFlat(a, out);
     if (out.empty()) {
-      setError(ctx, fnName + "() expects at least 1 argument");
+      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
       return makeScalar(0);
     }
     if (id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted) {
@@ -3037,7 +3211,7 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.empty()) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
   auto ensureIntegerScalarValue = [&](const EvalValue::ScalarValue& s) {
@@ -3059,7 +3233,7 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
   };
   for (const auto& a : args) {
     if (!validateIntegerArg(a)) {
-      setError(ctx, fnName + "() expects integer values");
+      setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
       return makeScalar(0);
     }
   }
@@ -3070,7 +3244,7 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
   } else {
     const std::size_t totalCount = countFlattenedScalars(args);
     if (totalCount == 0) {
-      setError(ctx, fnName + "() expects at least 1 argument");
+      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
       return makeScalar(0);
     }
     std::vector<EvalValue> elems;
@@ -3107,7 +3281,7 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
 MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Pow);
   if (args.size() != 2) {
-    setError(ctx, fnName + "() expects 2 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
     return makeScalar(0);
   }
   if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
@@ -3116,7 +3290,7 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
     if (isPureFloatingScalarPair(a, b)) {
       double out = 0.0;
       if (!applyBinary(a.scalar, b.scalar, '^', out)) {
-        setError(ctx, "numeric error in " + fnName + "()");
+        setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
         return makeScalar(0);
       }
       return makeScalarMaybeExact(out);
@@ -3125,7 +3299,7 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
   bool ok = false;
   EvalValue out = mapBinary(args[0], args[1], '^', ok);
   if (!ok) {
-    setError(ctx, "numeric error in " + fnName + "()");
+    setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
     return makeScalar(0);
   }
   return out;
@@ -3138,18 +3312,18 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     const std::vector<EvalValue>& args) const {
   if (id == BuiltinFunctionId::Clamp) {
     if (args.size() != 3) {
-      setError(ctx, fnName + "() expects 3 argument(s)");
+      setError(ctx, fnName + STR_PAR_EXPECTS_3_ARGUMENT_PAR);
       return makeScalar(0);
     }
     if (args[1].kind != ValueKind::Scalar || args[2].kind != ValueKind::Scalar) {
-      setError(ctx, fnName + "() expects scalar min/max");
+      setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_MIN_SLASH);
       return makeScalar(0);
     }
     return builtinApplyClamp(ctx, args[0], args[1], args[2]);
   }
 
   if (args.size() != 2) {
-    setError(ctx, fnName + "() expects 2 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
     return makeScalar(0);
   }
   const bool hasNonScalarArg = std::any_of(args.begin(), args.end(), [](const EvalValue& v) {
@@ -3160,7 +3334,7 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
         (id == BuiltinFunctionId::Atan2 || id == BuiltinFunctionId::Hypot);
     setError(
         ctx,
-        numericErrorForNonScalar ? ("numeric error in " + fnName + "()") : (fnName + "() expects scalar values"));
+        numericErrorForNonScalar ? (STR_NUMERIC_ERROR_IN + fnName + STR_PAR) : (fnName + STR_PAR_EXPECTS_SCALAR_VALUES));
     return makeScalar(0);
   }
   switch (id) {
@@ -3177,7 +3351,7 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       long long a = 0, b = 0;
       if (!tryGetSignedInt64FromScalar(args[0].scalarValue, a) ||
           !tryGetSignedInt64FromScalar(args[1].scalarValue, b)) {
-        setError(ctx, fnName + "() expects integer values");
+        setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
         return makeScalar(0);
       }
       if (id == BuiltinFunctionId::Gcd) {
@@ -3192,14 +3366,14 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     default:
       break;
   }
-  setError(ctx, "internal error in scalar binary builtin");
+  setError(ctx, STR_INTERNAL_ERROR_IN_SCALAR_BINARY_BUILTIN);
   return makeScalar(0);
 }
 
 MathParser::EvalValue MathParser::builtinRand(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Rand);
   if (!args.empty()) {
-    setError(ctx, fnName + "() expects 0 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_0_ARGUMENT_PAR);
     return makeScalar(0);
   }
   return makeScalar(randomUnitScalar());
@@ -3208,21 +3382,21 @@ MathParser::EvalValue MathParser::builtinRand(EvalContext& ctx, const std::vecto
 MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Mod);
   if (args.size() != 2) {
-    setError(ctx, fnName + "() expects 2 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
     return makeScalar(0);
   }
   if (args[0].kind != ValueKind::Scalar || args[1].kind != ValueKind::Scalar) {
-    setError(ctx, fnName + "() expects scalar values");
+    setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_VALUES);
     return makeScalar(0);
   }
   long long a = 0, b = 0;
   if (!tryGetSignedInt64FromScalar(args[0].scalarValue, a) ||
       !tryGetSignedInt64FromScalar(args[1].scalarValue, b)) {
-    setError(ctx, fnName + "() expects integer values");
+    setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
     return makeScalar(0);
   }
   if (b == 0) {
-    setError(ctx, "numeric error in " + fnName + "()");
+    setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
     return makeScalar(0);
   }
   return makeScalarInt(a % b);
@@ -3255,12 +3429,12 @@ MathParser::EvalValue MathParser::builtinFactorial(
       121645100408832000LL,
       2432902008176640000LL};
   if (args.size() != 1) {
-    setError(ctx, fnName + "() expects 1 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_1_ARGUMENT_PAR);
     return makeScalar(0);
   }
   long long n = 0;
   if (args[0].kind != ValueKind::Scalar || !nearlyInt(args[0].scalarValue.scalar, n) || n < 0) {
-    setError(ctx, fnName + "() expects a non-negative integer");
+    setError(ctx, fnName + STR_PAR_EXPECTS_A_NON_DASH);
     return makeScalar(0);
   }
   if (n <= 20) {
@@ -3279,7 +3453,7 @@ MathParser::EvalValue MathParser::builtinDegRad(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.empty()) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
   const bool toDeg = (id == BuiltinFunctionId::Deg);
@@ -3298,7 +3472,7 @@ MathParser::EvalValue MathParser::builtinDegRad(
   }
   const std::size_t totalCount = countFlattenedScalars(args);
   if (totalCount == 0) {
-    setError(ctx, fnName + "() expects at least 1 argument");
+    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
     return makeScalar(0);
   }
 
@@ -3324,7 +3498,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.size() != 1) {
-    setError(ctx, fnName + "() expects 1 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_1_ARGUMENT_PAR);
     return makeScalar(0);
   }
   if (args[0].kind == ValueKind::Scalar) {
@@ -3446,7 +3620,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     default:
       break;
   }
-  setError(ctx, "internal error in unary math builtin");
+  setError(ctx, STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN);
   return makeScalar(0);
 }
 
@@ -3456,7 +3630,7 @@ MathParser::EvalValue MathParser::builtinApplyLogWithBase(
     const EvalValue& baseV) const {
   const std::string errFn = getFunctionName(BuiltinFunctionId::Log);
   const auto failNumericError = [&]() -> EvalValue {
-    setError(ctx, "numeric error in " + errFn + "()");
+    setError(ctx, STR_NUMERIC_ERROR_IN + errFn + STR_PAR);
     return makeScalar(0);
   };
   const auto evalLogScalar = [&](double value, double base, EvalValue& out) -> bool {
@@ -3535,7 +3709,7 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     const EvalValue& minV,
     const EvalValue& maxV) const {
   if (minV.kind != ValueKind::Scalar || maxV.kind != ValueKind::Scalar) {
-    setError(ctx, getFunctionName(BuiltinFunctionId::Clamp) + "() expects scalar min/max");
+    setError(ctx, getFunctionName(BuiltinFunctionId::Clamp) + STR_PAR_EXPECTS_SCALAR_MIN_SLASH);
     return makeScalar(0);
   }
   if (valueV.kind == ValueKind::Scalar) {
@@ -3553,14 +3727,14 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     scratchClampOut_.clear();
     return ret;
   }
-  setError(ctx, "numeric error in clamp()");
+  setError(ctx, STR_NUMERIC_ERROR_IN_CLAMP_PAR);
   return makeScalar(0);
 }
 
 MathParser::EvalValue MathParser::builtinLog(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Log);
   if (args.size() != 2) {
-    setError(ctx, fnName + "() expects 2 argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
     return makeScalar(0);
   }
   return builtinApplyLogWithBase(ctx, args[0], args[1]);
@@ -3577,22 +3751,22 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     return makeScalar(0);
   }
   if (args.size() != uf->params.size()) {
-    setError(ctx, fnName + "() expects " + std::to_string(uf->params.size()) + " argument(s)");
+    setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(uf->params.size()) + STR_ARGUMENT_PAR_S);
     return makeScalar(0);
   }
   if (ctx.evalDepth >= kMaxEvalDepth) {
-    setError(ctx, "max evaluation depth reached");
+    setError(ctx, STR_MAX_EVALUATION_DEPTH_REACHED);
     return makeScalar(0);
   }
 
   for (const std::string& active : userFunctionCallStack_) {
     if (active == fnName) {
-      setError(ctx, "recursive user function call: " + fnName);
+      setError(ctx, STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
       return makeScalar(0);
     }
   }
   if (userFunctionCallStack_.size() >= static_cast<std::size_t>(kMaxEvalDepth)) {
-    setError(ctx, "user function call stack overflow");
+    setError(ctx, STR_USER_FUNCTION_CALL_STACK_OVERFLOW);
     return makeScalar(0);
   }
   userFunctionCallStack_.push_back(fnName);
@@ -3615,12 +3789,12 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     parseCtx.sourceExpr = uf->expr;
     std::vector<AstStatement> compiledBody;
     if (!parseProgram(parseCtx, compiledBody)) {
-      setError(ctx, parseCtx.errorText.empty() ? "failed to parse user function body" : parseCtx.errorText);
+      setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
       return makeScalar(0);
     }
     skipSpaces(parseCtx);
     if (!parseCtx.parseError && *parseCtx.p != '\0') {
-      setError(ctx, "unexpected trailing input");
+      setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
       return makeScalar(0);
     }
     uf->compiledProgram = std::move(compiledBody);
@@ -3751,14 +3925,14 @@ bool MathParser::compile(const std::string& mathExpression) {
   std::vector<AstStatement> program;
   if (!parseProgram(ctx, program)) {
     if (!ctx.parseError) {
-      setError(ctx, "parse failed");
+      setError(ctx, STR_PARSE_FAILED);
     }
     lastError_ = ctx.errorText;
     return false;
   }
   skipSpaces(ctx);
   if (!ctx.parseError && *ctx.p != '\0') {
-    setError(ctx, "unexpected trailing input");
+    setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
   }
   if (ctx.parseError) {
     lastError_ = ctx.errorText;
@@ -3783,7 +3957,7 @@ void MathParser::evaluate() {
   userFunctionCallStack_.clear();
 
   if (!hasCompiledProgram_) {
-    lastError_ = "nothing compiled; call compile() first";
+    lastError_ = STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR;
     return;
   }
   if (boundVariablesVersion_ != variablesVersion_) {
@@ -3803,14 +3977,14 @@ void MathParser::evaluate() {
     return;
   }
   if (!ctx.unknownVarsText.empty()) {
-    lastError_ = "unknown variables: " + ctx.unknownVarsText;
+    lastError_ = STR_UNKNOWN_VARIABLE_COLON + ctx.unknownVarsText;
     if (!ctx.unknownFuncsText.empty()) {
-      lastError_ += "; unknown functions: " + ctx.unknownFuncsText;
+      lastError_ += STR_SEMICOLON_UNKNOWN_FUNCTION_COLON + ctx.unknownFuncsText;
     }
     return;
   }
   if (!ctx.unknownFuncsText.empty()) {
-    lastError_ = "unknown functions: " + ctx.unknownFuncsText;
+    lastError_ = STR_UNKNOWN_FUNCTION_COLON + ctx.unknownFuncsText;
     return;
   }
   lastResult_ = out;
@@ -3845,22 +4019,22 @@ std::string MathParser::addUserFunction(const std::string& mathExpression) {
   std::vector<std::string> fnParams;
   std::string fnExpr;
   if (!parseFunctionDefinition(ctx, fnName, fnParams, fnExpr)) {
-    return "invalid user function expression";
+    return STR_INVALID_USER_FUNCTION_EXPRESSION;
   }
 
   skipSpaces(ctx);
   if (*ctx.p != '\0') {
-    return "unexpected content after function definition";
+    return STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION;
   }
 
   {
     std::unordered_map<std::string, bool> seen;
     for (const auto& p : fnParams) {
       if (seen.find(p) != seen.end()) {
-        return "duplicate parameter name";
+        return STR_DUPLICATE_PARAMETER_NAME;
       }
       if (isReservedBuiltinConstantName(p)) {
-        return "reserved constant name";
+        return STR_RESERVED_CONSTANT_NAME;
       }
       seen[p] = true;
     }
@@ -3868,15 +4042,15 @@ std::string MathParser::addUserFunction(const std::string& mathExpression) {
 
   {
     if (isReservedBuiltinConstantName(fnName)) {
-      return "reserved constant name";
+      return STR_RESERVED_CONSTANT_NAME;
     }
     if (isReservedFunctionName(fnName)) {
-      return "reserved function name";
+      return STR_RESERVED_FUNCTION_NAME;
     }
   }
 
   if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
-    return "user function body cannot call '" + fnName + "'";
+    return STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName;
   }
 
   upsertUserFunction(UserFunction{fnName, fnParams, fnExpr});
