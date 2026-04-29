@@ -9,6 +9,8 @@ description: Add a new builtin math function or builtin constant to AkelPad Smar
 
 Implement a new builtin function or builtin constant consistently across parser code, signature hints (functions only), reserved-name rules (constants), tests, and docs.
 
+This skill enforces strict cross-language *porting* (mirroring) between the Basic implementation and the C++ reference implementation.
+
 ## When To Use
 
 Use this skill when a request includes phrases like:
@@ -53,15 +55,20 @@ For **builtin constants**, also keep the standalone C++ reference parser in sync
 
 ### Basic/C++ Parity Rule
 
-- Keep Basic and C++ parser/test behavior consistent.
-- Whenever parser or test logic changes in either language, reflect/port equivalent behavior to the other language implementation.
-- This applies to **all** change types, not only new features:
-  - bug fixes,
-  - refactoring,
-  - cleanup / redundancy removal,
-  - safety hardening,
-  - behavior-preserving internal rewrites that might still affect edge behavior.
+- Whenever **Basic parser code** is updated, the changes must be **ported to C++ parser code**.
+- Whenever **C++ parser code** is updated, the changes must be **ported to Basic parser code**.
+- Whenever **Basic tests** are updated, the equivalent behavior expectations must be **ported to C++ parser code** (and the test cases must also be mirrored into C++ tests for parity).
+- Whenever **C++ tests** are updated, the equivalent behavior expectations must be **ported to Basic parser code** (and the test cases must also be mirrored into Basic tests for parity).
+- Applies to all change types (bug fixes, refactors, cleanup, safety hardening, behavior-preserving rewrites that can still affect edge behavior).
 - Porting must preserve the original intent/meaning (not only syntax translation).
+- **No reference other project rule:** Basic and C++ are treated as separate projects. Porting means implementing the equivalent logic in the other language (mirroring), not delegating to or depending on the other language’s runtime, build artifacts, or test harness.
+- **Independence requirement (no shared test sources):**
+  - C++ test code must not require `SmokeTest_MathParser.bas` (or any Basic test source) to exist in order to build/run.
+  - Basic test code must not require C++ test executables/sources to exist in order to build/run.
+  - Any parity coverage needed on both sides must be added by **mirroring** tests into each language’s own test source, not by importing/execute-orchestrating the other side’s tests.
+- If the repo currently has convenience helpers that read the other side’s test file, treat them as optional only:
+  - missing test sources must never cause C++ to fail the whole suite.
+  - missing C++ binaries must never make Basic smoke tests fail.
 - **Strong no to undefined behavior:** never introduce UB in either C++ or Basic code. Treat any potential UB pattern as a blocker and rewrite it to a defined, portable form before finishing.
 - C++ porting is required only when both are true:
   - `cpp` folder exists, and
@@ -202,12 +209,14 @@ Apply this step only when **C++ parser or C++ test source files** are changed (f
 
 Use this gate whenever parser/tests are changed in either language:
 
-- If Basic parser/tests were changed, reflect equivalent behavior in C++ parser/tests when `cpp/MathParser.cpp` exists.
-- If C++ parser/tests were changed, reflect equivalent behavior in Basic parser/tests.
-- For each parser/test change, produce one of two outcomes:
-  - **Mirrored change**: equivalent implementation/test update was applied on the other side, or
-  - **No-op with justification**: no code change needed on the other side because behavior is already equivalent there.
-- If claiming **No-op with justification**, add/adjust regression tests to prove behavior parity where practical.
+Port according to the **Basic/C++ Parity Rule** above (including mirroring parser behavior and test cases in both directions).
+
+For each affected item, produce one of two outcomes:
+
+- **Mirrored change**: equivalent implementation/test update was applied on the other side, or
+- **No-op with justification**: the other side already has *provably equivalent behavior*, so porting is unnecessary. (Not acceptable when behavior would be missing/incorrect.)
+
+If claiming **No-op with justification**, add/adjust regression tests to prove behavior parity where practical.
 - After reflection, run only the checks relevant to changed source categories:
   - If Basic parser source changed: run `Compile.bat` until passing.
   - If Basic test source changed: run Basic smoke-test build/run (`RunSmokeTests.bat`) until passing.
@@ -322,28 +331,13 @@ Same as for functions: `Compile.bat`, then `RunSmokeTests.bat`, until clean.
 ## Validation Checklist
 
 Before finishing, verify:
-- Implementation, hint, tests, and docs are all updated.
-- If Basic parser source was changed, sources were successfully built via `Compile.bat`; otherwise `Compile.bat` was intentionally skipped.
-- If Basic test source was changed, updated smoke tests were built/executed via `RunSmokeTests.bat`.
-- If `MathParser.bas` changed, Basic smoke tests were built/executed via `RunSmokeTests.bat` (primary parser-change trigger).
-- If `SmartMath.bas` or `SmartMath_Format.bas` changed, Basic smoke tests were also built/executed as a precautionary regression gate.
-- Otherwise Basic test build/run was intentionally skipped.
-- If C++ parser or C++ test source was changed, `cpp/BuildTests_vc2022_x64.bat` completed successfully and `cpp/MathParserTests.exe` passed (or exact environment blocker with last output was reported); otherwise C++ build/test was intentionally skipped.
-- Cross-language reflection/parity is complete: relevant parser/test changes were ported between Basic and C++ (when `cpp/MathParser.cpp` exists), and both sides' required builds/tests pass.
-- Reflection covered **all** parser/test change types in this task (feature/fix/refactor/cleanup/redundancy/safety), with each item either mirrored or explicitly justified as no-op.
-- Global helper rule was followed: existing helpers were searched first, duplication was avoided, and any helper tuning/new helper introduction was justified and optimized.
-- C++ and Basic changes avoid undefined behavior; potentially UB-prone code paths were either proven safe or rewritten to fully defined behavior.
-- Signature hint and docs match real behavior exactly.
-- The "Quick index (alphabetical)" built-in function table is updated, alphabetically sorted, and keeps aliases on the same row as the canonical function.
-- No obvious typos/split words were introduced in edited documentation lines.
-- Tests cover success + failure paths relevant to the function contract.
-- User-defined function names are explicitly blocked from colliding with built-in function names and operator keywords (including the newly added names).
-- For **new builtin constants**: `BuiltinConstId`, `EnsureConstNames`, and `TryGetConstant` are extended together; smoke tests cover assignment, UDF name, and parameter rejection; `USAGE_AND_SYNTAX.md` lists and explains the constant everywhere `pi`/`e` are described; C++ `addConst` (and any C++ reserved-name logic) matches if present in the repo.
-- There is still one and only one canonical `FunctionNames` array and one and only one canonical `OperatorNames` array; new names were integrated by named index and reused everywhere relevant.
-- `USAGE_AND_SYNTAX.md` changes match neighboring sections in style and reasoning flow.
-- All C++-related files/scripts touched by the change are under `cpp` (no new C++ artifacts outside `cpp`).
-- If C++ reflection was skipped, the reason is valid (`cpp/MathParser.cpp` missing) and explicitly reported.
-- No unrelated behavior was changed.
+- Implementation, signature hints, tests, and `USAGE_AND_SYNTAX.md` are consistent with the final behavior.
+- Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
+- Cross-language porting/parity is complete for **all** relevant code/test change types: Basic <-> C++ implementations and tests are mirrored, with no mismatches (skip only allowed when `cpp/MathParser.cpp` is missing, and it must be explicitly noted).
+- Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.
+- Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, and style/structure match surrounding sections.
+- Tests cover both success and failure paths; if adding a new builtin constant, extend the Basic constant table + mirror reserved-name behavior into C++ (when present) and add/reflect constant-specific smoke tests + docs.
+- No unrelated behavior changes; any C++ artifacts touched live under `cpp` only.
 
 ## Response Format For Completion
 
