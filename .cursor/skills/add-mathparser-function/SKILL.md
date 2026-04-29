@@ -86,6 +86,20 @@ Apply this rule for **any source-code change** (feature/fix/refactor/cleanup/opt
 - If no existing helper can be tuned without harming clarity/behavior/performance, introduce a new helper instead.
 - When adding a new helper, keep scope minimal and avoid overlapping responsibilities with existing helpers.
 
+### Integer Metadata Preservation Rule (Required)
+
+Apply this rule for parser/runtime logic in both Basic and C++:
+
+- Treat exact signed/unsigned integer metadata as first-class state (`exactInt64` / `exactUInt64` or language-equivalent fields).
+- Whenever signed/unsigned int64 metadata is available in value context, operations must preserve and propagate it unless the operation is inherently non-integer by semantics.
+- For scalar/array flattening, reshaping, sorting, reversing, deduping, formatting, unpacking, and similar structure-only transforms, do not drop integer metadata by converting through raw `double`/`Double` buffers.
+- Prefer scalar-value containers/walkers that carry metadata (`ScalarValue`-like) over float-only containers in context-preserving paths.
+- For float-derived restoration paths, signed/unsigned int64 restoration must be strict and policy-based:
+  - restore only when exact representability is guaranteed by project policy,
+  - reject/rest on overflow, fractional values, NaN/Inf, and out-of-policy ranges,
+  - keep parity between Basic and C++ conversion boundaries and error behavior.
+- If a path intentionally does not preserve integer metadata (for example transcendental math, variance/stddev, or other inherently floating operations), document/justify that choice in code review notes and protect it with tests.
+
 ### String Constants Naming Rule
 
 Apply this rule for parser/runtime code in both Basic and C++:
@@ -112,6 +126,7 @@ Follow all steps in order.
 - If variadic, validate minimum argument count and process extra args deterministically.
 - Reuse existing helpers when possible; avoid introducing redundant utility code.
 - Follow the **Global Helper Reuse And Optimization Rule** above for all helper-level decisions.
+- Follow the **Integer Metadata Preservation Rule (Required)** above for all numeric-value flow decisions.
 - Maintain exactly one canonical `FunctionNames` array and one canonical `OperatorNames` array in parser code.
 - Add the new built-in/operator name only in these canonical arrays with a named index (e.g. `FUNC_*`, `OP_*`).
 - Wherever parser logic needs built-in/operator names (dispatch, hints, keyword matching, reserved-name checks), reference `FunctionNames[FUNC_*]` / `OperatorNames[OP_*]` (or helper wrappers over them), never hardcoded string literals.
@@ -337,6 +352,10 @@ Before finishing, verify:
 - Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.
 - Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, and style/structure match surrounding sections.
 - Tests cover both success and failure paths; if adding a new builtin constant, extend the Basic constant table + mirror reserved-name behavior into C++ (when present) and add/reflect constant-specific smoke tests + docs.
+- Integer metadata preservation/restoration was verified in both languages:
+  - context-preserving paths do not silently drop `exactInt64` / `exactUInt64`,
+  - float-derived restoration follows strict exactness policy with matching Basic/C++ boundaries,
+  - intentionally non-preserving math paths (if any) are justified and covered by tests.
 - No unrelated behavior changes; any C++ artifacts touched live under `cpp` only.
 
 ## Response Format For Completion
