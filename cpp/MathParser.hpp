@@ -325,6 +325,7 @@ private:
   static bool isFormatBuiltin(BuiltinFunctionId id);
   static bool isIntegerOnlyBuiltin(BuiltinFunctionId id);
   static bool isNonCalculatingBuiltin(BuiltinFunctionId id);
+  static bool isFiniteRequiredBuiltin(BuiltinFunctionId id);
   bool validateIntegerRepresentableArgs(
       EvalContext& ctx,
       const std::string& fnName,

@@ -73,6 +73,7 @@ const FB_STR_AND as string = "and"
 const FB_STR_OR as string = "or"
 const FB_STR_PI as string = "pi"
 const FB_STR_E as string = "e"
+const FB_STR_INF as string = "inf"
 const FB_STR_PAR as string = "()"
 const FB_STR_PAR_MIN_COMMA_MAX as string = "(min, max)"
 const FB_STR_PAR_DOTDOTDOT as string = "(...)"
@@ -484,6 +485,7 @@ end enum
 enum BuiltinConstId
   CONST_PI = 0
   CONST_E
+  CONST_INF
   CONST__COUNT
 end enum
 
@@ -575,6 +577,7 @@ private sub EnsureConstNames()
   if ConstNamesInitialized then exit sub
   ConstNames(CONST_PI) = FB_STR_PI
   ConstNames(CONST_E) = FB_STR_E
+  ConstNames(CONST_INF) = FB_STR_INF
   ConstNamesInitialized = TRUE
 end sub
 
@@ -1368,6 +1371,8 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
       ValueSetScalar(v, 4.0 * atn(1.0))
     case CONST_E
       ValueSetScalar(v, exp(1.0))
+    case CONST_INF
+      ValueSetScalar(v, 1.0 / 0.0)
     case else
       return FALSE
   end select
@@ -2073,7 +2078,6 @@ end function
 private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, byref outV as EvalValue) as Boolean
   dim i as Integer
   if v.kind = VK_SCALAR then
-    if IsNonFiniteValue(v.scalar) then return FALSE
     return ApplyUnaryScalarFunction(fn, v.scalarValue, outV)
   end if
 
@@ -2083,7 +2087,6 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
   end if
   ValueInitArrayLike(outV, lbound(v.arr), ubound(v.arr))
   for i = lbound(v.arr) to ubound(v.arr)
-    if IsNonFiniteValue(v.arr(i).scalar) then return FALSE
     dim tmpOut as EvalValue
     if ApplyUnaryScalarFunction(fn, v.arr(i), tmpOut) = FALSE then return FALSE
     ValueSetArrayElemFromScalar(outV, i, tmpOut)
@@ -2165,7 +2168,6 @@ private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as Eval
 end function
 
 private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
-  if IsNonFiniteValue(leftS.scalar) orelse IsNonFiniteValue(rightS.scalar) then return FALSE
   if fnId = FUNC_LOG then
     if leftS.scalar <= 0 orelse rightS.scalar <= 0 orelse rightS.scalar = 1 then return FALSE
     ValueSetScalarPromoteExactInt64(outV, log(leftS.scalar) / log(rightS.scalar))
@@ -2474,6 +2476,11 @@ private function IsNonCalculatingBuiltinLower(byref fn as String) as Boolean
          IsFn(fn, FUNC_RAND) orelse IsFormatBuiltinLower(fn)
 end function
 
+private function IsFiniteRequiredBuiltinLower(byref fn as String) as Boolean
+  return IsFn(fn, FUNC_INT) orelse IsFn(fn, FUNC_FLOOR) orelse IsFn(fn, FUNC_CEIL) orelse _
+         IsFn(fn, FUNC_TRUNC) orelse IsFn(fn, FUNC_ROUND) orelse IsFn(fn, FUNC_RANDOM)
+end function
+
 private function ValidateIntegerRepresentableArgs(args() as EvalValue, byref fnName as String, byval allowNonFiniteForFormat as Boolean) as Boolean
   if ubound(args) = -1 then return TRUE
   for i as Integer = lbound(args) to ubound(args)
@@ -2508,7 +2515,7 @@ private function ValidateBuiltinCallArgs(byref fn as String, byref fnName as Str
   if IsNonCalculatingBuiltinLower(fn) then
     return TRUE
   end if
-  if ArgsContainNonFinite(args()) then
+  if IsFiniteRequiredBuiltinLower(fn) andalso ArgsContainNonFinite(args()) then
     SetNumericErrorInFunction(fnName)
     return FALSE
   end if

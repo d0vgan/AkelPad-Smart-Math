@@ -84,6 +84,7 @@ extern g_wszIniPath as WString * 260
 declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
+declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
 declare function FormatArrayResultText(byref sArrayText as String) as String
 declare sub InitSmartMathMenu()
 declare sub UpdateMenuChecks()

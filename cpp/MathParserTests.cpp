@@ -1149,38 +1149,38 @@ std::vector<TestCase> buildNanInfCases() {
   t.push_back({"naninf/abs -inf", [kNegInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kNegInf);
-                 return expectEvalErrorContains(p, "abs(x)", "numeric error in abs()", why);
+                 return expectEval(p, "abs(x)", "inf", why);
                }});
   t.push_back({"naninf/abs nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "abs(x)", "numeric error in abs()", why);
+                 return expectEval(p, "abs(x)", "nan", why);
                }});
   t.push_back({"naninf/sign +inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "sign(x)", "numeric error in sign()", why);
+                 return expectEval(p, "sign(x)", "1", why);
                }});
   t.push_back({"naninf/sign -inf", [kNegInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kNegInf);
-                 return expectEvalErrorContains(p, "sign(x)", "numeric error in sign()", why);
+                 return expectEval(p, "sign(x)", "-1", why);
                }});
   t.push_back({"naninf/sign nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "sign(x)", "numeric error in sign()", why);
+                 return expectEval(p, "sign(x)", "0", why);
                }});
 
   t.push_back({"naninf/ln nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "ln(x)", "numeric error in ln()", why);
+                 return expectEval(p, "ln(x)", "nan", why);
                }});
   t.push_back({"naninf/ln +inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "ln(x)", "numeric error in ln()", why);
+                 return expectEval(p, "ln(x)", "inf", why);
                }});
   t.push_back({"naninf/ln zero to -inf", [](std::string& why) {
                  MathParser p;
@@ -1190,23 +1190,23 @@ std::vector<TestCase> buildNanInfCases() {
   t.push_back({"naninf/sqrt nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "sqrt(x)", "numeric error in sqrt()", why);
+                 return expectEval(p, "sqrt(x)", "nan", why);
                }});
   t.push_back({"naninf/sin +inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "sin(x)", "numeric error in sin()", why);
+                 return expectEval(p, "sin(x)", "nan", why);
                }});
 
   t.push_back({"naninf/frac +inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "frac(x)", "numeric error in frac()", why);
+                 return expectEval(p, "frac(x)", "nan", why);
                }});
   t.push_back({"naninf/frac nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "frac(x)", "numeric error in frac()", why);
+                 return expectEval(p, "frac(x)", "nan", why);
                }});
 
   t.push_back({"naninf/hex NaN preserved", [kQNaN](std::string& why) {
@@ -1257,7 +1257,7 @@ std::vector<TestCase> buildNanInfCases() {
   t.push_back({"naninf/sum with +inf rejects", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "sum(1,x)", "numeric error in sum()", why);
+                 return expectEval(p, "sum(1,x)", "inf", why);
                }});
 
   t.push_back({"naninf/not NaN is true (non-truthy)", [kQNaN](std::string& why) {
@@ -1291,6 +1291,201 @@ std::vector<TestCase> buildNanInfCases() {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
                  return expectEval(p, "x==x", "1", why);
+               }});
+  t.push_back({"naninf/array arg sum with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "sum((x,2,3))", "inf", why);
+               }});
+  t.push_back({"naninf/array arg mod rejects +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEvalErrorContains(p, "mod((x,2),3)", "mod() expects integer values", why);
+               }});
+  t.push_back({"naninf/2arg function hypot(+inf,3)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "hypot(x,3)", "inf", why);
+               }});
+  t.push_back({"naninf/3arg function clamp(+inf,0,7)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "clamp(x,0,7)", "7", why);
+               }});
+  t.push_back({"naninf/udf 1 arg with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "f(a)=a+1; f(x)", "inf", why);
+               }});
+  t.push_back({"naninf/udf 2 args with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "f(a,b)=a*b; f(x,2)", "inf", why);
+               }});
+  t.push_back({"naninf/operator arithmetic multiply", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "x*2", "inf", why);
+               }});
+  t.push_back({"naninf/operator bitwise or rejects +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEvalErrorContains(p, "x|1", "bitwise operands must be integer values", why);
+               }});
+  t.push_back({"naninf/operator logical and", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "x&&0", "0", why);
+               }});
+  t.push_back({"naninf/operator comparison greater", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "x>1", "1", why);
+               }});
+  t.push_back({"naninf/variadic sum with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "sum(1,2,x)", "inf", why);
+               }});
+  t.push_back({"naninf/variadic max with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "max(1,2,x)", "inf", why);
+               }});
+  t.push_back({"naninf/variadic avg with +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "avg(1,x,3)", "inf", why);
+               }});
+  t.push_back({"naninf/operator compare +inf == +inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 addConstTracked(p, "y", kPosInf);
+                 return expectEval(p, "x==y", "1", why);
+               }});
+
+  t.push_back({"naninf/array arg sum with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "sum((x,2,3))", "-inf", why);
+               }});
+  t.push_back({"naninf/array arg mod rejects -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEvalErrorContains(p, "mod((x,2),3)", "mod() expects integer values", why);
+               }});
+  t.push_back({"naninf/2arg function hypot(-inf,3)", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "hypot(x,3)", "inf", why);
+               }});
+  t.push_back({"naninf/3arg function clamp(-inf,0,7)", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "clamp(x,0,7)", "0", why);
+               }});
+  t.push_back({"naninf/udf 1 arg with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "f(a)=a+1; f(x)", "-inf", why);
+               }});
+  t.push_back({"naninf/udf 2 args with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "f(a,b)=a*b; f(x,2)", "-inf", why);
+               }});
+  t.push_back({"naninf/operator arithmetic multiply -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "x*2", "-inf", why);
+               }});
+  t.push_back({"naninf/operator bitwise or rejects -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEvalErrorContains(p, "x|1", "bitwise operands must be integer values", why);
+               }});
+  t.push_back({"naninf/operator logical and -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "x&&0", "0", why);
+               }});
+  t.push_back({"naninf/operator comparison -inf not greater than 1", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "x>1", "0", why);
+               }});
+  t.push_back({"naninf/variadic sum with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "sum(1,2,x)", "-inf", why);
+               }});
+  t.push_back({"naninf/variadic max with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "max(1,2,x)", "2", why);
+               }});
+  t.push_back({"naninf/variadic avg with -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "avg(1,x,3)", "-inf", why);
+               }});
+  t.push_back({"naninf/operator compare -inf == -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 addConstTracked(p, "y", kNegInf);
+                 return expectEval(p, "x==y", "1", why);
+               }});
+
+  t.push_back({"naninf/** inf**2", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "x**2", "inf", why);
+               }});
+  t.push_back({"naninf/** 2**inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "2**x", "inf", why);
+               }});
+  t.push_back({"naninf/** inf**inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "x**x", "inf", why);
+               }});
+  t.push_back({"naninf/pow(inf,2)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "pow(x,2)", "inf", why);
+               }});
+  t.push_back({"naninf/pow(2,inf)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "pow(2,x)", "inf", why);
+               }});
+  t.push_back({"naninf/pow(inf,inf)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "pow(x,x)", "inf", why);
+               }});
+
+  t.push_back({"naninf/atan2(+inf,1)", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "atan2(x,1)", "1.570796326794897", why);
+               }});
+  t.push_back({"naninf/atan2(-inf,1)", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "atan2(x,1)", "-1.570796326794897", why);
+               }});
+  t.push_back({"naninf/atan2(1,-inf)", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "atan2(1,x)", "3.141592653589793", why);
+               }});
+  t.push_back({"naninf/sin -inf (IEEE nan)", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "sin(x)", "nan", why);
                }});
 
   return t;
@@ -2527,6 +2722,28 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "PI=2", "reserved constant name"} ,
     {ParityBasicCase::Kind::ErrorContains, "f(e)=e+1", "reserved constant name"} ,
     {ParityBasicCase::Kind::ErrorContains, "pi(x)=x", "reserved constant name"} ,
+    {ParityBasicCase::Kind::Expected, "inf+1", "inf"} ,
+    {ParityBasicCase::Kind::Expected, "INF+1", "inf"} ,
+    {ParityBasicCase::Kind::ErrorContains, "inf=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "Inf=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "f(inf)=inf+1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "inf(x)=x", "reserved constant name"} ,
+    {ParityBasicCase::Kind::Expected, "-inf", "-inf"} ,
+    {ParityBasicCase::Kind::Expected, "-Inf+1", "-inf"} ,
+    {ParityBasicCase::Kind::Expected, "sum(-inf,2,3)", "-inf"} ,
+    {ParityBasicCase::Kind::Expected, "max(-inf,2,3)", "3"} ,
+    {ParityBasicCase::Kind::ErrorContains, "(-inf)&1", "bitwise operands must be integer values"} ,
+    {ParityBasicCase::Kind::Expected, "(-inf)==(-inf)", "1"} ,
+    {ParityBasicCase::Kind::Expected, "-inf + inf", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "inf/-inf", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "pow(inf,-inf)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "pow(-inf,3)", "-inf"} ,
+    {ParityBasicCase::Kind::Expected, "pow(-inf,2)", "inf"} ,
+    {ParityBasicCase::Kind::Expected, "inf-inf", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "(-inf)/(-inf)", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "inf*0", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "0*inf", "nan"} ,
+    {ParityBasicCase::Kind::Expected, "pow(inf,-2)", "0"} ,
     {ParityBasicCase::Kind::Expected, "hex(~0x0D)", "-0xE"} ,
     {ParityBasicCase::Kind::Expected, "hex(-1)", "-0x1"} ,
     {ParityBasicCase::Kind::Expected, "uhex(~0x0D)", "0xFFFFFFFFFFFFFFF2"} ,

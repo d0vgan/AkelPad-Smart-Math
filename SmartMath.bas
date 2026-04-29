@@ -159,7 +159,13 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
     elseif bPrefixedScalar then
       sRes = SMARTMATH_RESULT_PREFIX & sResult
     else
-      sRes = FormatResult(dResult)
+      '' Non-finite: use parser classification but formatter display (NaN/Inf/-Inf).
+      dim sNf as String = FormatNonFiniteDisplayFromParserScalar(sResult)
+      if Len(sNf) > 0 then
+        sRes = SMARTMATH_RESULT_PREFIX & sNf
+      else
+        sRes = FormatResult(dResult)
+      end if
     end if
   else
     dim sErr as String = Parser_GetLastError()

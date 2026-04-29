@@ -1,5 +1,10 @@
 #include once "SmartMath_Globals.bi"
 
+' UI spellings for non-finite values (parser ValueToString still uses nan/inf/-inf).
+const SM_FMT_NAN as String = "NaN"
+const SM_FMT_INF as String = "Inf"
+const SM_FMT_NEGINF as String = "-Inf"
+
 ' -----------------------------------------------------------------------------
 '  Result Formatting
 ' -----------------------------------------------------------------------------
@@ -85,17 +90,35 @@ private function SplitTopLevelArrayCsvInner(byref inner as String, elems() as St
   return partCount + 1
 end function
 
+'' Parser array text may contain nan/inf/-inf; Val() does not recover those reliably.
+private function TryFormatParserNonFiniteToken(byref token as String) as String
+  dim t as String = LCase(Trim(token))
+  if t = "nan" then return SM_FMT_NAN
+  if t = "inf" then return SM_FMT_INF
+  if t = "-inf" then return SM_FMT_NEGINF
+  return ""
+end function
+
+'' Map parser scalar token to formatter display; empty if not non-finite.
+function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
+  dim t as String = LCase(Trim(s))
+  if t = "nan" then return SM_FMT_NAN
+  if t = "inf" then return SM_FMT_INF
+  if t = "-inf" then return SM_FMT_NEGINF
+  return ""
+end function
+
 private function FormatNumericValue(byval d as Double) as String
   dim sRes as String
 
   ' Non-finite values must bypass all normal formatting logic.
   dim rawText as String = UCase(LTrim(Str(d)))
-  if InStr(rawText, "NAN") > 0 orelse InStr(rawText, "IND") > 0 then return "NaN"
+  if InStr(rawText, "NAN") > 0 orelse InStr(rawText, "IND") > 0 then return SM_FMT_NAN
   if InStr(rawText, "INF") > 0 then
     if Left(rawText, 1) = "-" then
-      return "-INF"
+      return SM_FMT_NEGINF
     else
-      return "INF"
+      return SM_FMT_INF
     end if
   end if
 
@@ -233,6 +256,25 @@ end function
 
 function FormatArrayResultText(byref sArrayText as String) as String
   if g_nDecimals < 0 andalso g_bUseThousandsSeparator = FALSE then
+    dim trimmedFast as String = Trim(sArrayText)
+    if Len(trimmedFast) >= 2 andalso Left(trimmedFast, 1) = "(" andalso Right(trimmedFast, 1) = ")" then
+      dim innerFast as String = Mid(trimmedFast, 2, Len(trimmedFast) - 2)
+      dim elemsFast() as String
+      dim cntFast as Integer = SplitTopLevelArrayCsvInner(innerFast, elemsFast())
+      dim outFast as String = "("
+      dim fj as Integer
+      for fj = 0 to cntFast - 1
+        if fj > 0 then outFast &= g_sArrayOutputSeparator & " "
+        dim nfFast as String = TryFormatParserNonFiniteToken(elemsFast(fj))
+        if Len(nfFast) > 0 then
+          outFast &= nfFast
+        else
+          outFast &= elemsFast(fj)
+        end if
+      next fj
+      outFast &= ")"
+      return SMARTMATH_RESULT_PREFIX & outFast
+    end if
     return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
   end if
 
@@ -253,7 +295,12 @@ function FormatArrayResultText(byref sArrayText as String) as String
     dim ei as Integer
     for ei = 0 to cnt - 1
       if ei > 0 then outText &= g_sArrayOutputSeparator & " "
-      outText &= FormatNumericValue(Val(elems(ei)))
+      dim nf as String = TryFormatParserNonFiniteToken(elems(ei))
+      if Len(nf) > 0 then
+        outText &= nf
+      else
+        outText &= FormatNumericValue(Val(elems(ei)))
+      end if
     next ei
     outText &= ")"
     return SMARTMATH_RESULT_PREFIX & outText

@@ -685,6 +685,7 @@ MathParser::MathParser() {
   assert(operatorNames().size() == static_cast<std::size_t>(OperatorNameId::Count));
   addConst(STR_PI, kPi);
   addConst(STR_E, std::exp(1.0));
+  addConst(STR_INF, std::numeric_limits<double>::infinity());
   setVariable(STR_ANS, makeScalarInt(0));
 }
 
@@ -797,7 +798,7 @@ const char* MathParser::getReservedIdentifierError(const std::string& ident) {
   if (isReservedFunctionName(ident)) {
     return STR_RESERVED_FUNCTION_NAME;
   }
-  if (ident == STR_PI || ident == STR_E) {
+  if (ident == STR_PI || ident == STR_E || ident == STR_INF) {
     return STR_RESERVED_CONSTANT_NAME;
   }
   return nullptr;
@@ -859,7 +860,7 @@ bool MathParser::tryResolveVariableValue(
 }
 
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
-  return nameText == STR_PI || nameText == STR_E;
+  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF;
 }
 
 const char* MathParser::validateUserFunctionDefinitionNames(
@@ -1914,7 +1915,7 @@ bool MathParser::applyBinary(double a, double b, char op, double& out) {
       }
       out = a / b;
       return true;
-    case '^': out = std::pow(a, b); return std::isfinite(out);
+    case '^': out = std::pow(a, b); return true;
     default: break;
   }
   return false;
@@ -3274,6 +3275,11 @@ bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
       id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
 }
 
+bool MathParser::isFiniteRequiredBuiltin(BuiltinFunctionId id) {
+  return id == BuiltinFunctionId::Int || id == BuiltinFunctionId::Floor || id == BuiltinFunctionId::Ceil ||
+      id == BuiltinFunctionId::Trunc || id == BuiltinFunctionId::Round || id == BuiltinFunctionId::Random;
+}
+
 bool MathParser::validateIntegerRepresentableArgs(
     EvalContext& ctx,
     const std::string& fnName,
@@ -3321,7 +3327,7 @@ bool MathParser::validateBuiltinArgs(
   if (isNonCalculatingBuiltin(id)) {
     return true;
   }
-  if (argsContainNonFinite(args)) {
+  if (isFiniteRequiredBuiltin(id) && argsContainNonFinite(args)) {
     setNumericErrorInFunction(ctx, fnName);
     return false;
   }
