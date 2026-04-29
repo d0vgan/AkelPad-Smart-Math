@@ -143,6 +143,105 @@ const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
 const FB_STR_UNKNOWN_FUNCTION_COLON as string = "unknown function: "
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
+' -----------------------------------------------------------------------------
+'  ASCII byte constants (single-byte stream; multi-byte UTF-8 not interpreted)
+' -----------------------------------------------------------------------------
+const CHAR_NUL as UByte = 0                ' string terminator / NUL
+const CHAR_TAB as UByte = 9                ' horizontal tab
+const CHAR_LF as UByte = 10                ' line feed
+const CHAR_CR as UByte = 13                ' carriage return
+const CHAR_SPACE as UByte = 32             ' space
+const CHAR_EXCLAMATION as UByte = 33       ' !
+const CHAR_HASH as UByte = 35              ' #
+const CHAR_PERCENT as UByte = 37           ' %
+const CHAR_AMPERSAND as UByte = 38         ' &
+const CHAR_LPAREN as UByte = 40            ' (
+const CHAR_RPAREN as UByte = 41            ' )
+const CHAR_ASTERISK as UByte = 42          ' *
+const CHAR_PLUS as UByte = 43              ' +
+const CHAR_COMMA as UByte = 44             ' ,
+const CHAR_MINUS as UByte = 45             ' -
+const CHAR_DOT as UByte = 46               ' .
+const CHAR_DIVIDE as UByte = 47            ' /
+const CHAR_DIGIT_0 as UByte = 48           ' digit 0
+const CHAR_DIGIT_1 as UByte = 49           ' digit 1
+const CHAR_DIGIT_2 as UByte = 50           ' digit 2
+const CHAR_DIGIT_3 as UByte = 51           ' digit 3
+const CHAR_DIGIT_4 as UByte = 52           ' digit 4
+const CHAR_DIGIT_5 as UByte = 53           ' digit 5
+const CHAR_DIGIT_6 as UByte = 54           ' digit 6
+const CHAR_DIGIT_7 as UByte = 55           ' digit 7
+const CHAR_DIGIT_8 as UByte = 56           ' digit 8
+const CHAR_DIGIT_9 as UByte = 57           ' digit 9
+const CHAR_COLON as UByte = 58             ' :
+const CHAR_SEMICOLON as UByte = 59         ' ;
+const CHAR_LESS_THAN as UByte = 60         ' <
+const CHAR_EQUALS as UByte = 61            ' =
+const CHAR_GREATER_THAN as UByte = 62      ' >
+const CHAR_QUESTION as UByte = 63          ' ?
+const CHAR_AT as UByte = 64                ' @
+const CHAR_A as UByte = 65                 ' A
+const CHAR_B as UByte = 66                 ' B
+const CHAR_C as UByte = 67                 ' C
+const CHAR_D as UByte = 68                 ' D
+const CHAR_E as UByte = 69                 ' E
+const CHAR_F as UByte = 70                 ' F
+const CHAR_G as UByte = 71                 ' G
+const CHAR_H as UByte = 72                 ' H
+const CHAR_I as UByte = 73                 ' I
+const CHAR_J as UByte = 74                 ' J
+const CHAR_K as UByte = 75                 ' K
+const CHAR_L as UByte = 76                 ' L
+const CHAR_M as UByte = 77                 ' M
+const CHAR_N as UByte = 78                 ' N
+const CHAR_O as UByte = 79                 ' O
+const CHAR_P as UByte = 80                 ' P
+const CHAR_Q as UByte = 81                 ' Q
+const CHAR_R as UByte = 82                 ' R
+const CHAR_S as UByte = 83                 ' S
+const CHAR_T as UByte = 84                 ' T
+const CHAR_U as UByte = 85                 ' U
+const CHAR_V as UByte = 86                 ' V
+const CHAR_W as UByte = 87                 ' W
+const CHAR_X as UByte = 88                 ' X
+const CHAR_Y as UByte = 89                 ' Y
+const CHAR_Z as UByte = 90                 ' Z
+const CHAR_LBRACKET as UByte = 91          ' [
+const CHAR_BACKSLASH as UByte = 92         ' backslash
+const CHAR_RBRACKET as UByte = 93          ' ]
+const CHAR_CARET as UByte = 94             ' ^
+const CHAR_UNDERSCORE as UByte = 95        ' _
+const CHAR_LC_A as UByte = 97              ' a
+const CHAR_LC_B as UByte = 98              ' b
+const CHAR_LC_C as UByte = 99              ' c
+const CHAR_LC_D as UByte = 100             ' d
+const CHAR_LC_E as UByte = 101             ' e
+const CHAR_LC_F as UByte = 102             ' f
+const CHAR_LC_G as UByte = 103             ' g
+const CHAR_LC_H as UByte = 104             ' h
+const CHAR_LC_I as UByte = 105             ' i
+const CHAR_LC_J as UByte = 106             ' j
+const CHAR_LC_K as UByte = 107             ' k
+const CHAR_LC_L as UByte = 108             ' l
+const CHAR_LC_M as UByte = 109             ' m
+const CHAR_LC_N as UByte = 110             ' n
+const CHAR_LC_O as UByte = 111             ' o
+const CHAR_LC_P as UByte = 112             ' p
+const CHAR_LC_Q as UByte = 113             ' q
+const CHAR_LC_R as UByte = 114             ' r
+const CHAR_LC_S as UByte = 115             ' s
+const CHAR_LC_T as UByte = 116             ' t
+const CHAR_LC_U as UByte = 117             ' u
+const CHAR_LC_V as UByte = 118             ' v
+const CHAR_LC_W as UByte = 119             ' w
+const CHAR_LC_X as UByte = 120             ' x
+const CHAR_LC_Y as UByte = 121             ' y
+const CHAR_LC_Z as UByte = 122             ' z
+const CHAR_LBRACE as UByte = 123           ' {
+const CHAR_PIPE as UByte = 124             ' |
+const CHAR_RBRACE as UByte = 125           ' }
+const CHAR_TILDE as UByte = 126            ' ~
+
 enum ValueKind
   VK_SCALAR = 0
   VK_ARRAY = 1
@@ -1200,21 +1299,26 @@ private function ValueToString(byref v as EvalValue) as String
 end function
 
 private sub SkipSpaces()
-  while (pStream[0] = 32) orelse (pStream[0] = 9) orelse (pStream[0] = 10) orelse (pStream[0] = 13)
+  while (pStream[0] = CHAR_SPACE) orelse (pStream[0] = CHAR_TAB) orelse (pStream[0] = CHAR_LF) orelse (pStream[0] = CHAR_CR)
     pStream += 1
   wend
 end sub
 
 private function IsIdentChar(byval ch as UByte) as Boolean
-  return ((ch >= 65 andalso ch <= 90) orelse (ch >= 97 andalso ch <= 122) orelse (ch >= 48 andalso ch <= 57) orelse (ch = 95))
+  return ((ch >= CHAR_A andalso ch <= CHAR_Z) orelse (ch >= CHAR_LC_A andalso ch <= CHAR_LC_Z) orelse (ch >= CHAR_DIGIT_0 andalso ch <= CHAR_DIGIT_9) orelse (ch = CHAR_UNDERSCORE))
 end function
 
 private function IsIdentStartChar(byval ch as Integer) as Boolean
-  return ((ch >= 65 andalso ch <= 90) orelse (ch >= 97 andalso ch <= 122) orelse (ch = 95))
+  return ((ch >= CHAR_A andalso ch <= CHAR_Z) orelse (ch >= CHAR_LC_A andalso ch <= CHAR_LC_Z) orelse (ch = CHAR_UNDERSCORE))
 end function
 
 private function IsNumericLiteralStartChar(byval ch as Integer) as Boolean
-  return ((ch >= 48 andalso ch <= 57) orelse (ch = 46))
+  return ((ch >= CHAR_DIGIT_0 andalso ch <= CHAR_DIGIT_9) orelse (ch = CHAR_DOT))
+end function
+
+private function ToLowerCaseChar(byval c as UByte) as UByte
+  if c >= CHAR_A andalso c <= CHAR_Z then return c + 32
+  return c
 end function
 
 private function ConsumeIdentTokenFromStream() as String
@@ -1241,11 +1345,11 @@ end sub
 
 private function TryConsumeCommaArgSeparator(byref hasComma as Boolean) as Boolean
   hasComma = FALSE
-  if pStream[0] <> 44 then return TRUE
+  if pStream[0] <> CHAR_COMMA then return TRUE
   hasComma = TRUE
   pStream += 1
   SkipSpaces()
-  if pStream[0] = 41 orelse pStream[0] = 44 then
+  if pStream[0] = CHAR_RPAREN orelse pStream[0] = CHAR_COMMA then
     SetUnexpectedCommaError()
     return FALSE
   end if
@@ -1256,15 +1360,14 @@ private function MatchKeywordOperator(byref kw as String) as Boolean
   dim kwLen as Integer = Len(kw)
   if kwLen <= 0 then return FALSE
   dim kwPtr as UByte Ptr = cast(UByte Ptr, strptr(kw))
+  dim p as UByte Ptr = cast(UByte Ptr, pStream)
   dim i as Integer
   for i = 0 to kwLen - 1
-    dim c1 as UByte = pStream[i]
-    dim c2 as UByte = kwPtr[i]
-    if c1 >= 65 andalso c1 <= 90 then c1 += 32
-    if c2 >= 65 andalso c2 <= 90 then c2 += 32
+    dim c1 as UByte = ToLowerCaseChar(p[i])
+    dim c2 as UByte = ToLowerCaseChar(kwPtr[i])
     if c1 <> c2 then return FALSE
   next i
-  if IsIdentChar(CUByte(pStream[kwLen])) then return FALSE
+  if IsIdentChar(p[kwLen]) then return FALSE
   pStream += kwLen
   return TRUE
 end function
@@ -1302,13 +1405,13 @@ private sub SetMismatchedClosingBraceError()
 end sub
 
 private function TryConsumeClosingParenOrSetError() as Boolean
-  if pStream[0] = 41 then
+  if pStream[0] = CHAR_RPAREN then
     pStream += 1
     return TRUE
   end if
-  if pStream[0] = 93 then
+  if pStream[0] = CHAR_RBRACKET then
     SetMismatchedClosingBracketError()
-  elseif pStream[0] = 125 then
+  elseif pStream[0] = CHAR_RBRACE then
     SetMismatchedClosingBraceError()
   else
     SetMissingClosingParenthesisError()
@@ -1321,9 +1424,9 @@ private sub SetUnexpectedTokenError()
 end sub
 
 private sub SetMismatchedBracketBraceOrUnexpectedToken(byval ch as Integer)
-  if ch = 93 then
+  if ch = CHAR_RBRACKET then
     SetMismatchedClosingBracketError()
-  elseif ch = 125 then
+  elseif ch = CHAR_RBRACE then
     SetMismatchedClosingBraceError()
   else
     SetUnexpectedTokenError()
@@ -1461,7 +1564,7 @@ private function UdfBodyCallsDefinedFunction(byref bodyText as String, byref fnN
         dim jp as Integer = ip
         while jp <= bn
           ca = asc(mid(b, jp, 1))
-          if ca = 32 orelse ca = 9 then
+          if ca = CHAR_SPACE orelse ca = CHAR_TAB then
             jp += 1
           else
             exit while
@@ -1673,11 +1776,11 @@ end sub
 
 private sub SetInvalidPrefixedLiteralError(byval prefixChar as UByte)
   select case prefixChar
-    case asc("x"), asc("X")
+    case CHAR_LC_X, CHAR_X
       SetInvalidHexLiteralError()
-    case asc("b"), asc("B")
+    case CHAR_LC_B, CHAR_B
       SetInvalidBinaryLiteralError()
-    case asc("o"), asc("O")
+    case CHAR_LC_O, CHAR_O
       SetInvalidOctalLiteralError()
   end select
 end sub
@@ -1717,7 +1820,7 @@ end function
 private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue as EvalValue) as Boolean
   outValue = baseValue
   SkipSpaces()
-  if pStream[0] <> 91 then return TRUE ' [
+  if pStream[0] <> CHAR_LBRACKET then return TRUE
 
   if baseValue.kind <> VK_ARRAY then
     SetIndexingRequiresArrayError()
@@ -1726,7 +1829,7 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
 
   pStream += 1
   SkipSpaces()
-  if pStream[0] = 93 then
+  if pStream[0] = CHAR_RBRACKET then
     SetMissingIndexError()
     return FALSE
   end if
@@ -1745,10 +1848,10 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
     return FALSE
   end if
   SkipSpaces()
-  if pStream[0] <> 93 then
-    if pStream[0] = 41 then
+  if pStream[0] <> CHAR_RBRACKET then
+    if pStream[0] = CHAR_RPAREN then
       SetMismatchedClosingParenthesisError()
-    elseif pStream[0] = 125 then
+    elseif pStream[0] = CHAR_RBRACE then
       SetMismatchedClosingBraceError()
     else
       SetMissingClosingBracketError()
@@ -1834,7 +1937,7 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   parseError = 0
   outV = ParseExpression()
   SkipSpaces()
-  if pStream[0] <> 0 then parseError = 1
+  if pStream[0] <> CHAR_NUL then parseError = 1
   dim evalError as Integer = parseError
 
   pStream = savedStream
@@ -2100,28 +2203,28 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   dim hasIntR as Boolean = TryGetExactInt64Scalar(rightS, ri)
   if hasIntL andalso hasIntR then
     select case op
-      case 42
+      case CHAR_ASTERISK
         if TryMulInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-      case 43
+      case CHAR_PLUS
         if TryAddInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-      case 45
+      case CHAR_MINUS
         if TrySubInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
-      case 94
+      case CHAR_CARET
         if TryPowInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
     end select
   end if
 
   select case op
-    case 42: ValueSetScalarPromoteExactInt64(outV, leftS.scalar * rightS.scalar)
-    case 47
+    case CHAR_ASTERISK: ValueSetScalarPromoteExactInt64(outV, leftS.scalar * rightS.scalar)
+    case CHAR_DIVIDE
       if rightS.scalar = 0 andalso leftS.scalar = 0 then
         ValueSetScalar(outV, MakeNaN())
       else
         ValueSetScalarPromoteExactInt64(outV, leftS.scalar / rightS.scalar)
       end if
-    case 43: ValueSetScalarPromoteExactInt64(outV, leftS.scalar + rightS.scalar)
-    case 45: ValueSetScalarPromoteExactInt64(outV, leftS.scalar - rightS.scalar)
-    case 94: ValueSetScalarPromoteExactInt64(outV, leftS.scalar ^ rightS.scalar)
+    case CHAR_PLUS: ValueSetScalarPromoteExactInt64(outV, leftS.scalar + rightS.scalar)
+    case CHAR_MINUS: ValueSetScalarPromoteExactInt64(outV, leftS.scalar - rightS.scalar)
+    case CHAR_CARET: ValueSetScalarPromoteExactInt64(outV, leftS.scalar ^ rightS.scalar)
     case else: return FALSE
   end select
   return TRUE
@@ -2524,13 +2627,13 @@ end function
 
 private function IsPercentageTail() as Boolean
   dim p as ZString ptr = pStream
-  while (p[0] = 32) orelse (p[0] = 9) orelse (p[0] = 10) orelse (p[0] = 13)
+  while (p[0] = CHAR_SPACE) orelse (p[0] = CHAR_TAB) orelse (p[0] = CHAR_LF) orelse (p[0] = CHAR_CR)
     p += 1
   wend
 
   dim ch as UByte = p[0]
-  if (ch = 0) orelse (ch = 41) orelse (ch = 43) orelse (ch = 45) _
-     orelse (ch = 44) orelse (ch = 59) orelse (ch = 93) orelse (ch = 125) then
+  if (ch = CHAR_NUL) orelse (ch = CHAR_RPAREN) orelse (ch = CHAR_PLUS) orelse (ch = CHAR_MINUS) _
+     orelse (ch = CHAR_COMMA) orelse (ch = CHAR_SEMICOLON) orelse (ch = CHAR_RBRACKET) orelse (ch = CHAR_RBRACE) then
     return TRUE
   end if
   return FALSE
@@ -2538,7 +2641,7 @@ end function
 
 private function IsImplicitMulStart() as Boolean
   ' Allow implicit multiplication only for parenthesized expressions: x(y+z) => x*(y+z)
-  if pStream[0] = 40 then return TRUE
+  if pStream[0] = CHAR_LPAREN then return TRUE
   return FALSE
 end function
 
@@ -2756,11 +2859,11 @@ private sub AppendEvalArg(args() as EvalValue, byref argsCount as Integer, byref
 end sub
 
 private function TryParseCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
-  if pStream[0] = 44 then
+  if pStream[0] = CHAR_COMMA then
     SetUnexpectedCommaError()
     return FALSE
   end if
-  if pStream[0] = 41 then
+  if pStream[0] = CHAR_RPAREN then
     return TRUE
   end if
   do
@@ -2881,7 +2984,7 @@ end function
 
 private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim outV as EvalValue
-  if pStream[0] <> 40 then SetMissingOpeningBracketError(): return outV
+  if pStream[0] <> CHAR_LPAREN then SetMissingOpeningBracketError(): return outV
   pStream += 1
   SkipSpaces()
 
@@ -3241,7 +3344,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if IsFn(fn, FUNC_POW) then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if ValueApplyBinary(args(0), args(1), 94, outV) = FALSE then SetNumericErrorInFunction(fnName)
+    if ValueApplyBinary(args(0), args(1), CHAR_CARET, outV) = FALSE then SetNumericErrorInFunction(fnName)
     return outV
   end if
 
@@ -3295,7 +3398,7 @@ private function ParseFactor() as EvalValue
     dim keepInt as LongInt = 0
     dim keepExactUInt as Boolean = FALSE
     dim keepUInt as ULongInt = 0
-    if pStream[0] = 48 andalso (pStream[1] = 120 orelse pStream[1] = 88) then
+    if pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_X orelse pStream[1] = CHAR_X) then
       ' hex number
       pStream += 2 ' Skip the "0x"
       dim hexDigits as Integer = 0
@@ -3303,12 +3406,12 @@ private function ParseFactor() as EvalValue
       while true
         dim c as ubyte = pStream[0]
         dim digitValue as integer = -1
-        if c >= 48 andalso c <= 57 then       ' 0-9
-          digitValue = c - 48
-        elseif c >= 65 andalso c <= 70 then   ' A-F
-          digitValue = c - 55
-        elseif c >= 97 andalso c <= 102 then  ' a-f
-          digitValue = c - 87
+        if c >= CHAR_DIGIT_0 andalso c <= CHAR_DIGIT_9 then
+          digitValue = c - CHAR_DIGIT_0
+        elseif c >= CHAR_A andalso c <= CHAR_F then
+          digitValue = (c - CHAR_A) + 10
+        elseif c >= CHAR_LC_A andalso c <= CHAR_LC_F then
+          digitValue = (c - CHAR_LC_A) + 10
         else
           exit while ' Not a hex digit
         end if
@@ -3318,7 +3421,7 @@ private function ParseFactor() as EvalValue
         pStream += 1
       wend
       if hexDigits = 0 then
-        SetInvalidPrefixedLiteralError(asc("x"))
+        SetInvalidPrefixedLiteralError(CHAR_LC_X)
         return n
       end if
       if hexVal <= CULngInt(9223372036854775807) then
@@ -3327,17 +3430,17 @@ private function ParseFactor() as EvalValue
       end if
       keepExactUInt = TRUE
       keepUInt = hexVal
-    elseif pStream[0] = 48 andalso (pStream[1] = 98 orelse pStream[1] = 66) then
+    elseif pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_B orelse pStream[1] = CHAR_B) then
       ' binary number
       pStream += 2 ' Skip the "0b"
       dim binDigits as Integer = 0
       dim binVal as ULongInt = 0
       while true
         dim c as ubyte = pStream[0]
-        if c = 48 orelse c = 49 then
+        if c = CHAR_DIGIT_0 orelse c = CHAR_DIGIT_1 then
           binVal = binVal shl 1
-          if c = 49 then binVal += 1
-          dVal = dVal * 2 + (c - 48)
+          if c = CHAR_DIGIT_1 then binVal += 1
+          dVal = dVal * 2 + (c - CHAR_DIGIT_0)
           binDigits += 1
           pStream += 1
         else
@@ -3345,7 +3448,7 @@ private function ParseFactor() as EvalValue
         end if
       wend
       if binDigits = 0 then
-        SetInvalidPrefixedLiteralError(asc("b"))
+        SetInvalidPrefixedLiteralError(CHAR_LC_B)
         return n
       end if
       if binVal <= CULngInt(9223372036854775807) then
@@ -3354,16 +3457,16 @@ private function ParseFactor() as EvalValue
       end if
       keepExactUInt = TRUE
       keepUInt = binVal
-    elseif pStream[0] = 48 andalso (pStream[1] = 111 orelse pStream[1] = 79) then
+    elseif pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_O orelse pStream[1] = CHAR_O) then
       ' octal number
       pStream += 2 ' Skip the "0o"
       dim octDigits as Integer = 0
       dim octVal as ULongInt = 0
       while true
         dim c as ubyte = pStream[0]
-        if c >= 48 andalso c <= 55 then
-          octVal = octVal * 8 + CULngInt(c - 48)
-          dVal = dVal * 8 + (c - 48)
+        if c >= CHAR_DIGIT_0 andalso c <= CHAR_DIGIT_7 then
+          octVal = octVal * 8 + CULngInt(c - CHAR_DIGIT_0)
+          dVal = dVal * 8 + (c - CHAR_DIGIT_0)
           octDigits += 1
           pStream += 1
         else
@@ -3371,7 +3474,7 @@ private function ParseFactor() as EvalValue
         end if
       wend
       if octDigits = 0 then
-        SetInvalidPrefixedLiteralError(asc("o"))
+        SetInvalidPrefixedLiteralError(CHAR_LC_O)
         return n
       end if
       if octVal <= CULngInt(9223372036854775807) then
@@ -3388,8 +3491,8 @@ private function ParseFactor() as EvalValue
       const U64_MAX as ULongInt = CULngInt(&hFFFFFFFFFFFFFFFFull)
       const U64_MAX_DIV10 as ULongInt = (U64_MAX \ 10ull)
       const U64_MAX_MOD10 as Integer = CInt(U64_MAX mod 10ull)
-      while pStream[0] >= 48 andalso pStream[0] <= 57
-        dim digit as Integer = (pStream[0] - 48)
+      while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
+        dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
         dVal = dVal * 10 + digit
         if decIntOverflow = FALSE then
           if decIntAcc > U64_MAX_DIV10 then
@@ -3403,32 +3506,32 @@ private function ParseFactor() as EvalValue
         pStream += 1
       wend
       dim hasFraction as Boolean = FALSE
-      if pStream[0] = 46 then ' "."
+      if pStream[0] = CHAR_DOT then
         hasFraction = TRUE
         pStream += 1
-        while pStream[0] >= 48 andalso pStream[0] <= 57
+        while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
           fract /= 10
-          dVal += (pStream[0] - 48) * fract
+          dVal += (pStream[0] - CHAR_DIGIT_0) * fract
           pStream += 1
         wend
       end if
       ' exponent
       dim hasExponent as Boolean = FALSE
-      if pStream[0] = 101 orelse pStream[0] = 69 then ' "e" or "E"
+      if pStream[0] = CHAR_LC_E orelse pStream[0] = CHAR_E then
         dim pExp as ZString ptr = pStream + 1
         dim expVal as integer = 0
         dim expSign as integer = 1
-        if pExp[0] = 45 then     ' "e-"
+        if pExp[0] = CHAR_MINUS then
           expSign = -1
           pExp += 1
-        elseif pExp[0] = 43 then ' "e+"
+        elseif pExp[0] = CHAR_PLUS then
           pExp += 1
         end if
-        if pExp[0] >= 48 andalso pExp[0] <= 57 then ' at least one numeric char
+        if pExp[0] >= CHAR_DIGIT_0 andalso pExp[0] <= CHAR_DIGIT_9 then
           hasExponent = TRUE
           pStream = pExp
-          while pStream[0] >= 48 andalso pStream[0] <= 57
-            expVal = expVal * 10 + (pStream[0] - 48)
+          while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
+            expVal = expVal * 10 + (pStream[0] - CHAR_DIGIT_0)
             pStream += 1
           wend
           dVal *= (10 ^ (expSign * expVal))
@@ -3452,7 +3555,7 @@ private function ParseFactor() as EvalValue
   elseif IsIdentStartChar(asc(pStream[0])) then
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
-    if pStream[0] = 40 then
+    if pStream[0] = CHAR_LPAREN then
       n = ParseFunctionCall(nam)
       if parseError then return n
       dim indexed as EvalValue
@@ -3471,16 +3574,16 @@ private function ParseFactor() as EvalValue
         n = indexed
       end if
     end if
-  elseif pStream[0] = 40 then ' (
+  elseif pStream[0] = CHAR_LPAREN then
     pStream += 1
-    if pStream[0] = 44 then
+    if pStream[0] = CHAR_COMMA then
       SetUnexpectedCommaError()
       return n
     end if
     dim firstVal as EvalValue = ParseExpression()
     if parseError then return n
     SkipSpaces()
-    if pStream[0] = 44 then
+    if pStream[0] = CHAR_COMMA then
       dim vals() as EvalValue
       redim vals(0)
       if firstVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
@@ -3495,7 +3598,7 @@ private function ParseFactor() as EvalValue
         redim preserve vals(0 to ubound(vals) + 1)
         vals(ubound(vals)) = nextVal
         SkipSpaces()
-        if pStream[0] <> 44 andalso pStream[0] <> 41 then
+        if pStream[0] <> CHAR_COMMA andalso pStream[0] <> CHAR_RPAREN then
           SetMismatchedBracketBraceOrUnexpectedToken(asc(pStream[0]))
           return n
         end if
@@ -3522,29 +3625,29 @@ private function ParsePower() as EvalValue
   if parseError then return n
   SkipSpaces()
 
-  if pStream[0] = 42 andalso pStream[1] = 42 then
+  if pStream[0] = CHAR_ASTERISK andalso pStream[1] = CHAR_ASTERISK then
     pStream += 2
     dim rhs as EvalValue
     if TryParseUnaryValue(rhs) = FALSE then return n
-    ApplyBinaryParserOpInPlace(n, rhs, 94)
+    ApplyBinaryParserOpInPlace(n, rhs, CHAR_CARET)
   end if
   return n
 end function
 
 private function ParseUnary() as EvalValue
   SkipSpaces()
-  if pStream[0] = 43 then
+  if pStream[0] = CHAR_PLUS then
     pStream += 1
     return ParseUnary()
-  elseif pStream[0] = 45 then
+  elseif pStream[0] = CHAR_MINUS then
     pStream += 1
     dim v as EvalValue
     if TryParseUnaryValue(v) = FALSE then return v
     dim minusOne as EvalValue, outV as EvalValue
     ValueSetInt64(minusOne, -1)
-    if ApplyBinaryParserOp(v, minusOne, 42, outV) = FALSE then return outV
+    if ApplyBinaryParserOp(v, minusOne, CHAR_ASTERISK, outV) = FALSE then return outV
     return outV
-  elseif pStream[0] = 126 then
+  elseif pStream[0] = CHAR_TILDE then
     pStream += 1
     dim v as EvalValue
     if TryParseUnaryValue(v) = FALSE then return v
@@ -3554,7 +3657,7 @@ private function ParseUnary() as EvalValue
     ValueSetInt64(minusOne, -1)
     if ApplyInt64ParserOp(v, minusOne, op, outV) = FALSE then return outV
     return outV
-  elseif pStream[0] = 33 andalso pStream[1] <> 61 then
+  elseif pStream[0] = CHAR_EXCLAMATION andalso pStream[1] <> CHAR_EQUALS then
     pStream += 1
     dim v as EvalValue
     if TryParseUnaryValue(v) = FALSE then return v
@@ -3571,7 +3674,7 @@ private function ParseUnary() as EvalValue
   if parseError then return n
 
   SkipSpaces()
-  while pStream[0] = 91 ' [
+  while pStream[0] = CHAR_LBRACKET
     dim indexed as EvalValue
     if TryParseArrayIndex(n, indexed) = FALSE then return n
     n = indexed
@@ -3579,12 +3682,12 @@ private function ParseUnary() as EvalValue
   wend
 
   SkipSpaces()
-  if pStream[0] = 37 then ' "%" as postfix percentage
+  if pStream[0] = CHAR_PERCENT then
     pStream += 1
     if IsPercentageTail() then
       dim divV as EvalValue, outV as EvalValue
       ValueSetScalar(divV, 100.0)
-      if ValueApplyBinary(n, divV, 47, outV) = FALSE then
+      if ValueApplyBinary(n, divV, CHAR_DIVIDE, outV) = FALSE then
         SetIncompatibleOperandsError()
       else
         n = outV
@@ -3608,18 +3711,18 @@ private function ParseMultiplicative() as EvalValue
     dim useInt64 as Integer = FALSE
     dim intOp as String = ""
 
-    if pStream[0] = 42 andalso pStream[1] <> 42 then
-      op = 42
+    if pStream[0] = CHAR_ASTERISK andalso pStream[1] <> CHAR_ASTERISK then
+      op = CHAR_ASTERISK
       pStream += 1
-    elseif pStream[0] = 47 then
-      op = 47
+    elseif pStream[0] = CHAR_DIVIDE then
+      op = CHAR_DIVIDE
       pStream += 1
-    elseif pStream[0] = 37 then
+    elseif pStream[0] = CHAR_PERCENT then
       useInt64 = TRUE
       intOp = OpName(OP_MOD)
       pStream += 1
     elseif IsImplicitMulStart() then
-      op = 42
+      op = CHAR_ASTERISK
     else
       exit while
     end if
@@ -3640,7 +3743,7 @@ end function
 private function ParseAdditive() as EvalValue
   dim n as EvalValue = ParseMultiplicative()
   SkipSpaces()
-  while (pStream[0] = 43) orelse (pStream[0] = 45)
+  while (pStream[0] = CHAR_PLUS) orelse (pStream[0] = CHAR_MINUS)
     if parseError then exit while
     dim op as UByte = pStream[0]
     pStream += 1
@@ -3648,11 +3751,11 @@ private function ParseAdditive() as EvalValue
 
     if wasPercentage then
       SkipSpaces()
-      if (pStream[0] = 0) orelse (pStream[0] = 41) orelse (pStream[0] = 43) orelse (pStream[0] = 45) orelse (pStream[0] = 44) orelse (pStream[0] = 59) _
-         orelse (pStream[0] = 60) orelse (pStream[0] = 62) orelse (pStream[0] = 38) orelse (pStream[0] = 94) orelse (pStream[0] = 124) _
-         orelse (pStream[0] = 93) orelse (pStream[0] = 125) then
+      if (pStream[0] = CHAR_NUL) orelse (pStream[0] = CHAR_RPAREN) orelse (pStream[0] = CHAR_PLUS) orelse (pStream[0] = CHAR_MINUS) orelse (pStream[0] = CHAR_COMMA) orelse (pStream[0] = CHAR_SEMICOLON) _
+         orelse (pStream[0] = CHAR_LESS_THAN) orelse (pStream[0] = CHAR_GREATER_THAN) orelse (pStream[0] = CHAR_AMPERSAND) orelse (pStream[0] = CHAR_CARET) orelse (pStream[0] = CHAR_PIPE) _
+         orelse (pStream[0] = CHAR_RBRACKET) orelse (pStream[0] = CHAR_RBRACE) then
         dim pctV as EvalValue
-        if ApplyBinaryParserOp(n, n2, 42, pctV) then n2 = pctV
+        if ApplyBinaryParserOp(n, n2, CHAR_ASTERISK, pctV) then n2 = pctV
       end if
     end if
 
@@ -3665,10 +3768,10 @@ end function
 private function ParseShift() as EvalValue
   dim n as EvalValue = ParseAdditive()
   SkipSpaces()
-  while (pStream[0] = 60 andalso pStream[1] = 60) orelse (pStream[0] = 62 andalso pStream[1] = 62)
+  while (pStream[0] = CHAR_LESS_THAN andalso pStream[1] = CHAR_LESS_THAN) orelse (pStream[0] = CHAR_GREATER_THAN andalso pStream[1] = CHAR_GREATER_THAN)
     if parseError then exit while
     dim op as String
-    if pStream[0] = 60 then op = FB_STR_LT_LT else op = FB_STR_GT_GT
+    if pStream[0] = CHAR_LESS_THAN then op = FB_STR_LT_LT else op = FB_STR_GT_GT
     pStream += 2
     dim n2 as EvalValue = ParseAdditive()
     ApplyInt64ParserOpInPlace(n, n2, op)
@@ -3680,7 +3783,7 @@ end function
 private function ParseBitwiseAnd() as EvalValue
   dim n as EvalValue = ParseShift()
   SkipSpaces()
-  while pStream[0] = 38 andalso pStream[1] <> 38
+  while pStream[0] = CHAR_AMPERSAND andalso pStream[1] <> CHAR_AMPERSAND
     if parseError then exit while
     pStream += 1
     dim n2 as EvalValue = ParseShift()
@@ -3693,7 +3796,7 @@ end function
 private function ParseBitwiseXor() as EvalValue
   dim n as EvalValue = ParseBitwiseAnd()
   SkipSpaces()
-  while pStream[0] = 94
+  while pStream[0] = CHAR_CARET
     if parseError then exit while
     pStream += 1
     dim n2 as EvalValue = ParseBitwiseAnd()
@@ -3706,7 +3809,7 @@ end function
 private function ParseBitwiseOr() as EvalValue
   dim n as EvalValue = ParseBitwiseXor()
   SkipSpaces()
-  while pStream[0] = 124 andalso pStream[1] <> 124
+  while pStream[0] = CHAR_PIPE andalso pStream[1] <> CHAR_PIPE
     if parseError then exit while
     pStream += 1
     dim n2 as EvalValue = ParseBitwiseXor()
@@ -3722,39 +3825,39 @@ private function ParseComparison() as EvalValue
   while TRUE
     if parseError then exit while
     dim op as String = ""
-    if pStream[0] = 61 then
-      if pStream[1] = 61 then
+    if pStream[0] = CHAR_EQUALS then
+      if pStream[1] = CHAR_EQUALS then
         op = FB_STR_EQ_EQ
         pStream += 2
       else
         op = "="
         pStream += 1
       end if
-    elseif pStream[0] = 60 then
-      if pStream[1] = 62 then
+    elseif pStream[0] = CHAR_LESS_THAN then
+      if pStream[1] = CHAR_GREATER_THAN then
         op = FB_STR_LT_GT
         pStream += 2
-      elseif pStream[1] = 61 then
+      elseif pStream[1] = CHAR_EQUALS then
         op = FB_STR_LT_EQ
         pStream += 2
-      elseif pStream[1] = 60 then
+      elseif pStream[1] = CHAR_LESS_THAN then
         exit while
       else
         op = "<"
         pStream += 1
       end if
-    elseif pStream[0] = 62 then
-      if pStream[1] = 61 then
+    elseif pStream[0] = CHAR_GREATER_THAN then
+      if pStream[1] = CHAR_EQUALS then
         op = FB_STR_GT_EQ
         pStream += 2
-      elseif pStream[1] = 62 then
+      elseif pStream[1] = CHAR_GREATER_THAN then
         exit while
       else
         op = ">"
         pStream += 1
       end if
-    elseif pStream[0] = 33 then
-      if pStream[1] = 61 then
+    elseif pStream[0] = CHAR_EXCLAMATION then
+      if pStream[1] = CHAR_EQUALS then
         op = FB_STR_NOT_EQ
         pStream += 2
       else
@@ -3798,7 +3901,7 @@ private function ParseLogicalAnd() as EvalValue
   SkipSpaces()
   while TRUE
     if parseError then exit while
-    if TryConsumeLogicalBinaryOperator(OP_AND, 38) = FALSE then exit while
+    if TryConsumeLogicalBinaryOperator(OP_AND, CHAR_AMPERSAND) = FALSE then exit while
 
     dim n2 as EvalValue = ParseLogicalNot()
     ValueSetBoolResult(EvalValueIsTruthy(n) andalso EvalValueIsTruthy(n2), n)
@@ -3812,7 +3915,7 @@ private function ParseLogicalOr() as EvalValue
   SkipSpaces()
   while TRUE
     if parseError then exit while
-    if TryConsumeLogicalBinaryOperator(OP_OR, 124) = FALSE then exit while
+    if TryConsumeLogicalBinaryOperator(OP_OR, CHAR_PIPE) = FALSE then exit while
 
     dim n2 as EvalValue = ParseLogicalAnd()
     ValueSetBoolResult(EvalValueIsTruthy(n) orelse EvalValueIsTruthy(n2), n)
@@ -3985,7 +4088,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   dim i as Integer, hasNonSpace as Integer = 0
   for i = 1 to Len(exprInput)
     dim c as Integer = Asc(Mid(exprInput, i, 1))
-    if not (c = 32 orelse c = 9 orelse c = 10 orelse c = 13) then
+    if not (c = CHAR_SPACE orelse c = CHAR_TAB orelse c = CHAR_LF orelse c = CHAR_CR) then
       hasNonSpace = 1
       exit for
     end if
@@ -4006,14 +4109,14 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   if IsIdentStartChar(asc(pStream[0])) then
     dim varName as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
-    if pStream[0] = 40 then
+    if pStream[0] = CHAR_LPAREN then
       dim savedPos as ZString ptr = pStream
       pStream += 1
       SkipSpaces()
       dim fnParams() as String
       dim parseParamsOk as Integer = 1
 
-      if pStream[0] <> 41 then
+      if pStream[0] <> CHAR_RPAREN then
         do
           if not IsIdentStartChar(asc(pStream[0])) then
             parseParamsOk = 0
@@ -4027,7 +4130,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           end if
           fnParams(ubound(fnParams)) = parName
           SkipSpaces()
-          if pStream[0] = 44 then
+          if pStream[0] = CHAR_COMMA then
             pStream += 1
             SkipSpaces()
           else
@@ -4036,10 +4139,10 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         loop
       end if
 
-      if parseParamsOk andalso pStream[0] = 41 then
+      if parseParamsOk andalso pStream[0] = CHAR_RPAREN then
         pStream += 1
         SkipSpaces()
-        if pStream[0] = 61 then
+        if pStream[0] = CHAR_EQUALS then
           pStream += 1
           SkipSpaces()
           dim udfValidationErr as String
@@ -4070,7 +4173,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     end if
 
     ' Single '=' is assignment; '==' is equality (do not consume the first '=' of '==').
-    if pStream[0] = 61 andalso pStream[1] <> 61 then
+    if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
       pStream += 1
       dim exprV as EvalValue
       if TryParseExpressionValue(exprV) = FALSE then
@@ -4079,7 +4182,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       end if
       SkipSpaces()
       ApplyUnknownNameErrors()
-      if pStream[0] = 0 andalso parseError = 0 then
+      if pStream[0] = CHAR_NUL andalso parseError = 0 then
         dim assignNameErr as String
         if TryValidateAssignmentTargetName(varName, assignNameErr) = FALSE then
           SetValidationError(assignNameErr)
@@ -4112,10 +4215,10 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
 
   ApplyUnknownNameErrors()
 
-  if pStream[0] <> 0 andalso parseError = 0 then
-    if pStream[0] = 44 then
+  if pStream[0] <> CHAR_NUL andalso parseError = 0 then
+    if pStream[0] = CHAR_COMMA then
       SetUnexpectedCommaError()
-    elseif pStream[0] = 41 then
+    elseif pStream[0] = CHAR_RPAREN then
       SetMismatchedClosingParenthesisError()
     else
       SetMismatchedBracketBraceOrUnexpectedToken(asc(pStream[0]))
