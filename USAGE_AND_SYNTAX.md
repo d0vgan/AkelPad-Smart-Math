@@ -58,6 +58,9 @@ Base-prefixed integer forms:
 
 - Make arrays with commas in parentheses:
   - `(1,2,3)`
+- A single value in parentheses without commas is not an array; it’s just grouping:
+  - `(5)` behaves like scalar `5`
+  - `((5))` also behaves like scalar `5` (still just grouping)
 - Use element-wise math:
   - `(1,2,3)*10` -> `(10,20,30)`
   - `(1,2,3)+(10,20,30)` -> `(11, 22, 33)`
@@ -200,7 +203,29 @@ Recommendation: use `==` for equality checks to avoid confusion.
 - `not` has lower precedence.
 - They are not interchangeable in mixed expressions.
 
+Logical note (scalar vs array):
+- `!x` / `not x` are logical NOT and always return a scalar (`1` or `0`).
+- Non-empty arrays are always treated as truthy in logical operators, so `!(0,0)` / `not (0,0)` evaluates to `0`.
+- Precedence contrast (only in mixed expressions):
+  - `!2==1` -> `0`
+  - `not 2==1` -> `1`
+- These happen because of precedence:
+  - `!2==1` parses like `(!2)==1` -> `0`
+  - `not 2==1` parses like `not (2==1)` -> `1`
+
 Recommendation: parenthesize when using `not` in complex expressions.
+
+### Arrays in Logical and Bitwise Operators (With Arrays)
+
+- `x && y` and `x || y` are logical and return a scalar (`1` or `0`). If an operand is a non-empty array, that operand is considered truthy.
+  - `(0,0) && 1` -> `1`
+  - `0 || (0,0)` -> `1`
+- `x & y`, `x ^ y`, and `x | y` are bitwise and work element-wise:
+  - If an operand is an array, the result is an array.
+  - If both operands are arrays and their shapes/lengths are incompatible, you may get `incompatible operands`.
+  - Bitwise operators require integer inputs (use `int(...)` to convert floats).
+  - Example: `(1,2,3) & 1` -> `(1,0,1)`
+  - Example: `(1,2,3) | 1` -> `(1,3,3)`
 
 ### Chained Comparisons Warning
 
