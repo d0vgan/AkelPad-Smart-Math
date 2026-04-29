@@ -124,6 +124,7 @@ constexpr const char* STR_UNEXPECTED_TOKEN = "unexpected token";
 constexpr const char* STR_INCOMPATIBLE_OPERANDS = "incompatible operands";
 constexpr const char* STR_POS_POW63_DEC_TEXT = "9.223372036854778e+018";
 constexpr const char* STR_NEG_POW63_DEC_TEXT = "-9.223372036854778e+018";
+constexpr double K_MAX_EXACT_INT_FROM_DOUBLE = 9007199254740992.0;  // 2^53
 constexpr const char* STR_PREFIX_HEX = "0x";
 constexpr const char* STR_PREFIX_OCT = "0o";
 constexpr const char* STR_PREFIX_BIN = "0b";
@@ -163,18 +164,13 @@ constexpr const char* STR_PAR_EXPECTS_AT_LEAST_1 = "() expects at least 1 argume
 constexpr const char* STR_INTERNAL_ERROR_IN_AGGREGATE_BUILTIN = "internal error in aggregate builtin";
 constexpr const char* STR_UNEXPECTED_DOUBLE_SIZE = "unexpected double size";
 constexpr const char* STR_PAR_EXPECTS_INTEGER_VALUES = "() expects integer values";
-constexpr const char* STR_PAR_EXPECTS_2_ARGUMENT_PAR = "() expects 2 argument(s)";
 constexpr const char* STR_NUMERIC_ERROR_IN = "numeric error in ";
 constexpr const char* STR_PAR = "()";
-constexpr const char* STR_PAR_EXPECTS_3_ARGUMENT_PAR = "() expects 3 argument(s)";
 constexpr const char* STR_PAR_EXPECTS_SCALAR_MIN_SLASH = "() expects scalar min/max";
 constexpr const char* STR_PAR_EXPECTS_SCALAR_VALUES = "() expects scalar values";
 constexpr const char* STR_INTERNAL_ERROR_IN_SCALAR_BINARY_BUILTIN = "internal error in scalar binary builtin";
-constexpr const char* STR_PAR_EXPECTS_0_ARGUMENT_PAR = "() expects 0 argument(s)";
-constexpr const char* STR_PAR_EXPECTS_1_ARGUMENT_PAR = "() expects 1 argument(s)";
 constexpr const char* STR_PAR_EXPECTS_A_NON_DASH = "() expects a non-negative integer";
 constexpr const char* STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN = "internal error in unary math builtin";
-constexpr const char* STR_NUMERIC_ERROR_IN_CLAMP_PAR = "numeric error in clamp()";
 constexpr const char* STR_PAR_EXPECTS = "() expects ";
 constexpr const char* STR_ARGUMENT_PAR_S = " argument(s)";
 constexpr const char* STR_MAX_EVALUATION_DEPTH_REACHED = "max evaluation depth reached";
@@ -262,6 +258,38 @@ long long gcdInt64(long long a, long long b) {
     b = t;
   }
   return a;
+}
+
+bool tryMulInt64Checked(long long a, long long b, long long& out) {
+  if (a == 0 || b == 0) {
+    out = 0;
+    return true;
+  }
+  if (a == -1) {
+    if (b == (std::numeric_limits<long long>::min)()) return false;
+    out = -b;
+    return true;
+  }
+  if (b == -1) {
+    if (a == (std::numeric_limits<long long>::min)()) return false;
+    out = -a;
+    return true;
+  }
+  if (a > 0) {
+    if (b > 0) {
+      if (a > (std::numeric_limits<long long>::max)() / b) return false;
+    } else {
+      if (b < (std::numeric_limits<long long>::min)() / a) return false;
+    }
+  } else {
+    if (b > 0) {
+      if (a < (std::numeric_limits<long long>::min)() / b) return false;
+    } else {
+      if (a != 0 && b < (std::numeric_limits<long long>::max)() / a) return false;
+    }
+  }
+  out = a * b;
+  return true;
 }
 
 std::string formatDoubleFast(double v) {
@@ -463,6 +491,45 @@ std::string formatUnsignedBase(std::uint64_t u, unsigned base, const char* prefi
     out.push_back(tmp[digitsCount - 1 - i]);
   }
   return out;
+}
+
+unsigned renderBaseRadix(int baseCode) {
+  if (baseCode == 16) return 16U;
+  if (baseCode == 8) return 8U;
+  return 2U;
+}
+
+const char* renderBasePrefix(int baseCode) {
+  if (baseCode == 16) return STR_PREFIX_HEX;
+  if (baseCode == 8) return STR_PREFIX_OCT;
+  return STR_PREFIX_BIN;
+}
+
+bool renderBaseUppercase(int baseCode) {
+  return baseCode == 16;
+}
+
+std::string formatUnsignedForRenderBase(std::uint64_t u, int baseCode) {
+  return formatUnsignedBase(u, renderBaseRadix(baseCode), renderBasePrefix(baseCode), renderBaseUppercase(baseCode));
+}
+
+std::string formatSignedMagnitudeForRenderBase(
+    long long iv,
+    int baseCode,
+    bool asUnsigned) {
+  if (asUnsigned) {
+    return formatUnsignedForRenderBase(static_cast<std::uint64_t>(iv), baseCode);
+  }
+  std::uint64_t mag = 0;
+  if (iv < 0) {
+    if (iv == (std::numeric_limits<long long>::min)()) {
+      mag = (1ull << 63);
+    } else {
+      mag = static_cast<std::uint64_t>(-iv);
+    }
+    return "-" + formatUnsignedForRenderBase(mag, baseCode);
+  }
+  return formatUnsignedForRenderBase(static_cast<std::uint64_t>(iv), baseCode);
 }
 
 std::string stripLineComments(const std::string& s) {
@@ -715,12 +782,25 @@ bool MathParser::isOpKeyword(const std::string& nameText, OperatorNameId id) {
   return nameText == opName(id);
 }
 
+bool MathParser::isLogicalBinaryOperatorKeyword(const std::string& nameText) {
+  return isOpKeyword(nameText, OperatorNameId::And) || isOpKeyword(nameText, OperatorNameId::Or);
+}
+
 bool MathParser::isReservedFunctionName(const std::string& nameText) {
   BuiltinFunctionId id = BuiltinFunctionId::Count;
   return tryGetBuiltinFunctionId(nameText, id)
       || isOpKeyword(nameText, OperatorNameId::Not)
-      || isOpKeyword(nameText, OperatorNameId::And)
-      || isOpKeyword(nameText, OperatorNameId::Or);
+      || isLogicalBinaryOperatorKeyword(nameText);
+}
+
+const char* MathParser::getReservedIdentifierError(const std::string& ident) {
+  if (isReservedFunctionName(ident)) {
+    return STR_RESERVED_FUNCTION_NAME;
+  }
+  if (ident == STR_PI || ident == STR_E) {
+    return STR_RESERVED_CONSTANT_NAME;
+  }
+  return nullptr;
 }
 
 bool MathParser::isTrailingFormatterFunctionName(const std::string& nameText) {
@@ -738,14 +818,14 @@ bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::str
     return false;
   }
   const char* hint = tryGetBuiltinFunctionMissingCallHint(ident);
-  if (hint != nullptr) setError(ctx, hint);
-  else setError(ctx, STR_HINT_PREFIX + ident + STR_PAR_DOTDOTDOT);
+  if (hint != nullptr) setValidationError(ctx, hint);
+  else setFunctionHintError(ctx, ident + STR_PAR_DOTDOTDOT);
   return true;
 }
 
 bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const {
-  if (isOpKeyword(ident, OperatorNameId::And) || isOpKeyword(ident, OperatorNameId::Or)) {
-    setError(ctx, STR_UNEXPECTED_TOKEN);
+  if (isLogicalBinaryOperatorKeyword(ident)) {
+    setUnexpectedTokenError(ctx);
     return true;
   }
   if (trySetMissingFunctionCallError(ctx, ident)) {
@@ -782,6 +862,293 @@ static bool isReservedBuiltinConstantName(const std::string& nameText) {
   return nameText == STR_PI || nameText == STR_E;
 }
 
+const char* MathParser::validateUserFunctionDefinitionNames(
+    const std::string& fnName,
+    const std::vector<std::string>& fnParams) {
+  if (const char* reservedErr = getReservedIdentifierError(fnName)) {
+    return reservedErr;
+  }
+  std::unordered_map<std::string, bool> seen;
+  for (const auto& p : fnParams) {
+    if (seen.find(p) != seen.end()) {
+      return STR_DUPLICATE_PARAMETER_NAME;
+    }
+    if (isReservedBuiltinConstantName(p)) {
+      return STR_RESERVED_CONSTANT_NAME;
+    }
+    seen[p] = true;
+  }
+  return nullptr;
+}
+
+std::string MathParser::getUserFunctionDefinitionErrorText(
+    const std::string& fnName,
+    const std::vector<std::string>& fnParams,
+    const std::string& fnExpr) const {
+  if (const char* udfNameErr = validateUserFunctionDefinitionNames(fnName, fnParams)) {
+    return udfNameErr;
+  }
+  if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
+    return STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName;
+  }
+  return "";
+}
+
+bool MathParser::trySetUserFunctionDefinitionError(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const std::vector<std::string>& fnParams,
+    const std::string& fnExpr) const {
+  const std::string err = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr);
+  if (err.empty()) {
+    return false;
+  }
+  setValidationError(ctx, err.c_str());
+  return true;
+}
+
+const char* MathParser::validateAssignmentTargetName(const std::string& ident) {
+  return getReservedIdentifierError(ident);
+}
+
+std::string MathParser::buildUnknownVariableErrorText(const std::string& unknownVarsText) {
+  return STR_UNKNOWN_VARIABLE_COLON + unknownVarsText;
+}
+
+std::string MathParser::buildUnknownFunctionErrorText(const std::string& unknownFuncsText) {
+  return STR_UNKNOWN_FUNCTION_COLON + unknownFuncsText;
+}
+
+void MathParser::appendUnknownFunctionErrorText(std::string& errorText, const std::string& unknownFuncsText) {
+  errorText += STR_SEMICOLON_UNKNOWN_FUNCTION_COLON + unknownFuncsText;
+}
+
+void MathParser::setValidationError(EvalContext& ctx, const char* errorText) const {
+  setError(ctx, errorText);
+}
+
+bool MathParser::trySetUnknownNameError(const EvalContext& ctx) {
+  lastError_ = buildUnknownNameErrorText(ctx.unknownVarsText, ctx.unknownFuncsText);
+  return !lastError_.empty();
+}
+
+std::string MathParser::buildUnknownNameErrorText(
+    const std::string& unknownVarsText,
+    const std::string& unknownFuncsText) {
+  if (!unknownVarsText.empty()) {
+    std::string errorText = buildUnknownVariableErrorText(unknownVarsText);
+    if (!unknownFuncsText.empty()) {
+      appendUnknownFunctionErrorText(errorText, unknownFuncsText);
+    }
+    return errorText;
+  }
+  if (!unknownFuncsText.empty()) {
+    return buildUnknownFunctionErrorText(unknownFuncsText);
+  }
+  return "";
+}
+
+bool MathParser::tryAppendParsedExpressionStatement(
+    EvalContext& ctx,
+    std::vector<AstStatement>& out) {
+  auto ex = parseExpression(ctx);
+  if (ctx.parseError || !ex) {
+    return false;
+  }
+  AstStatement st;
+  st.kind = AstStatement::Kind::Expr;
+  st.expr = std::move(ex);
+  out.emplace_back(std::move(st));
+  return true;
+}
+
+bool MathParser::hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node) {
+  return ctx.parseError || !node;
+}
+
+void MathParser::setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
+}
+
+void MathParser::setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+}
+
+void MathParser::setExactArgCountError(
+    EvalContext& ctx,
+    const std::string& fnName,
+    size_t expectedCount) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(expectedCount) + STR_ARGUMENT_PAR_S);
+}
+
+void MathParser::setScalarValuesError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_VALUES);
+}
+
+void MathParser::setIntegerValuesError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
+}
+
+void MathParser::setScalarMinMaxError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_MIN_SLASH);
+}
+
+void MathParser::setNonNegativeIntegerError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, fnName + STR_PAR_EXPECTS_A_NON_DASH);
+}
+
+void MathParser::setBitwiseIntegerOperandsError(EvalContext& ctx) const {
+  setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
+}
+
+void MathParser::setModuloIntegerOperandsError(EvalContext& ctx) const {
+  setError(ctx, STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
+}
+
+void MathParser::setIncompatibleOperandsError(EvalContext& ctx) const {
+  setError(ctx, STR_INCOMPATIBLE_OPERANDS);
+}
+
+void MathParser::setUnexpectedCommaError(EvalContext& ctx) const {
+  setError(ctx, STR_UNEXPECTED_COMMA);
+}
+
+void MathParser::setIndexingRequiresArrayError(EvalContext& ctx) const {
+  setError(ctx, STR_INDEXING_REQUIRES_AN_ARRAY_VALUE);
+}
+
+void MathParser::setMissingIndexError(EvalContext& ctx) const {
+  setError(ctx, STR_MISSING_INDEX);
+}
+
+void MathParser::setArrayIndexMustBeScalarError(EvalContext& ctx) const {
+  setError(ctx, STR_ARRAY_INDEX_MUST_BE_A_SCALAR);
+}
+
+void MathParser::setArrayIndexMustBeIntegerError(EvalContext& ctx) const {
+  setError(ctx, STR_ARRAY_INDEX_MUST_BE_AN_INTEGER);
+}
+
+void MathParser::setArrayIndexOutOfRangeError(EvalContext& ctx) const {
+  setError(ctx, STR_ARRAY_INDEX_IS_OUT_OF_RANGE);
+}
+
+void MathParser::setMissingClosingBracketError(EvalContext& ctx) const {
+  setError(ctx, STR_MISSING_CLOSING_BRACKET);
+}
+
+void MathParser::setMissingClosingParenthesisError(EvalContext& ctx) const {
+  setError(ctx, STR_MISSING_CLOSING_PARENTHESIS);
+}
+
+void MathParser::setFunctionHintError(EvalContext& ctx, const std::string& hintText) const {
+  setError(ctx, STR_HINT_PREFIX + hintText);
+}
+
+void MathParser::setInvalidHexLiteralError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INVALID_HEX_LITERAL);
+}
+
+void MathParser::setInvalidBinaryLiteralError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INVALID_BINARY_LITERAL);
+}
+
+void MathParser::setInvalidOctalLiteralError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INVALID_OCTAL_LITERAL);
+}
+
+void MathParser::setInvalidPrefixedLiteralError(EvalContext& ctx, char prefixChar) const {
+  switch (prefixChar) {
+    case 'x':
+    case 'X':
+      setInvalidHexLiteralError(ctx);
+      return;
+    case 'b':
+    case 'B':
+      setInvalidBinaryLiteralError(ctx);
+      return;
+    case 'o':
+    case 'O':
+      setInvalidOctalLiteralError(ctx);
+      return;
+    default:
+      setInvalidNumericLiteralError(ctx);
+      return;
+  }
+}
+
+void MathParser::setInternalUnaryOpError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_UNARY_OP);
+}
+
+void MathParser::setInternalBinaryOpError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_BINARY_OP);
+}
+
+void MathParser::setInternalEvalError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_EVAL_ERROR);
+}
+
+void MathParser::setNumericErrorInPowerOperation(EvalContext& ctx) const {
+  setStaticError(ctx, STR_NUMERIC_ERROR_IN_POWER_OPERATION);
+}
+
+void MathParser::setNumericErrorInExpression(EvalContext& ctx) const {
+  setStaticError(ctx, STR_NUMERIC_ERROR_IN_EXPRESSION);
+}
+
+void MathParser::setUserFunctionCallStackOverflowError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_USER_FUNCTION_CALL_STACK_OVERFLOW);
+}
+
+void MathParser::setRecursiveUserFunctionCallError(EvalContext& ctx, const std::string& fnName) const {
+  setError(ctx, STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
+}
+
+void MathParser::setMaxEvaluationDepthReachedError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_MAX_EVALUATION_DEPTH_REACHED);
+}
+
+void MathParser::setInvalidNumericLiteralError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INVALID_NUMERIC_LITERAL);
+}
+
+void MathParser::setPercentageRequiresScalarValueError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_PERCENTAGE_REQUIRES_SCALAR_VALUE);
+}
+
+void MathParser::setFailedToBuildArrayLiteralError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_FAILED_TO_BUILD_ARRAY_LITERAL);
+}
+
+void MathParser::setInternalAggregateBuiltinError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_ERROR_IN_AGGREGATE_BUILTIN);
+}
+
+void MathParser::setInternalScalarBinaryBuiltinError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_ERROR_IN_SCALAR_BINARY_BUILTIN);
+}
+
+void MathParser::setInternalUnaryMathBuiltinError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN);
+}
+
+void MathParser::setUnexpectedTokenAfterExpressionError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION);
+}
+
+void MathParser::setScalarOnlyExpressionEncounteredNonError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON);
+}
+
+void MathParser::setParseFailedError(EvalContext& ctx) const {
+  setStaticError(ctx, STR_PARSE_FAILED);
+}
+
+void MathParser::setStaticError(EvalContext& ctx, const char* errorText) const {
+  setError(ctx, errorText);
+}
+
 bool MathParser::isIdentStart(char c) {
   return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
 }
@@ -790,9 +1157,52 @@ bool MathParser::isIdentChar(char c) {
   return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
+bool MathParser::isNumericLiteralStart(char c) {
+  return std::isdigit(static_cast<unsigned char>(c)) || c == '.';
+}
+
+std::string MathParser::consumeLowerIdentToken(EvalContext& ctx) {
+  const char* start = ctx.p++;
+  while (isIdentChar(*ctx.p)) {
+    ++ctx.p;
+  }
+  return toLower(std::string(start, static_cast<std::size_t>(ctx.p - start)));
+}
+
+bool MathParser::tryConsumeCommaArgSeparator(EvalContext& ctx, bool& hasComma) const {
+  hasComma = false;
+  if (*ctx.p != ',') {
+    return true;
+  }
+  hasComma = true;
+  ++ctx.p;
+  skipSpaces(ctx);
+  if (*ctx.p == ')' || *ctx.p == ',') {
+    setUnexpectedCommaError(ctx);
+    return false;
+  }
+  return true;
+}
+
 void MathParser::skipSpaces(EvalContext& ctx) {
   while (*ctx.p && std::isspace(static_cast<unsigned char>(*ctx.p))) {
     ++ctx.p;
+  }
+}
+
+void MathParser::setUnexpectedTokenError(EvalContext& ctx) const {
+  setError(ctx, STR_UNEXPECTED_TOKEN);
+}
+
+void MathParser::setUnexpectedTrailingInputError(EvalContext& ctx) const {
+  setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
+}
+
+void MathParser::setMissingClosingParenLikeError(EvalContext& ctx) const {
+  if (isIdentStart(*ctx.p) || isNumericLiteralStart(*ctx.p)) {
+    setUnexpectedTokenError(ctx);
+  } else {
+    setMissingClosingParenthesisError(ctx);
   }
 }
 
@@ -824,6 +1234,217 @@ static bool isPercentPostfixContext(const char* p) {
   if (*q == '<' || *q == '>' || *q == '=' || *q == '!') return true;
   if (*q == '&' || *q == '|') return true;
   return false;
+}
+
+bool MathParser::tryConsumeLogicalBinaryOperator(EvalContext& ctx, OperatorNameId keywordId, char symbol) const {
+  skipSpaces(ctx);
+  if (ctx.p[0] == symbol && ctx.p[1] == symbol) {
+    ctx.p += 2;
+    return true;
+  }
+  return consumeKeyword(ctx, opName(keywordId).c_str());
+}
+
+bool MathParser::parseParenthesizedExprList(
+    EvalContext& ctx,
+    std::vector<std::unique_ptr<Expr>>& outValues) {
+  skipSpaces(ctx);
+  if (*ctx.p == ')') {
+    return true;
+  }
+  while (true) {
+    outValues.emplace_back(parseExpression(ctx));
+    if (ctx.parseError) {
+      return false;
+    }
+    skipSpaces(ctx);
+    bool hasComma = false;
+    if (!tryConsumeCommaArgSeparator(ctx, hasComma)) {
+      return false;
+    }
+    if (!hasComma) {
+      return true;
+    }
+  }
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::makeBinaryExpr(
+    std::unique_ptr<Expr> left,
+    std::unique_ptr<Expr> right,
+    Expr::BinaryOp op,
+    bool setPercentFlag) {
+  auto out = std::make_unique<Expr>();
+  out->tag = Expr::Tag::Binary;
+  out->binaryOp = op;
+  out->left = std::move(left);
+  out->right = std::move(right);
+  if (setPercentFlag) {
+    out->rhsIsDirectPostfixPercent = exprIsDirectPostfixPercent(*out->right);
+  }
+  return out;
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseLeftAssocBinary(
+    EvalContext& ctx,
+    std::unique_ptr<Expr> (MathParser::*parseOperand)(EvalContext&),
+    bool (MathParser::*tryConsumeOp)(EvalContext&, Expr::BinaryOp&),
+    bool setPercentFlag) {
+  auto left = (this->*parseOperand)(ctx);
+  if (ctx.parseError || !left) {
+    return nullptr;
+  }
+  while (true) {
+    Expr::BinaryOp op = Expr::BinaryOp::None;
+    if (!(this->*tryConsumeOp)(ctx, op)) {
+      break;
+    }
+    auto right = (this->*parseOperand)(ctx);
+    if (ctx.parseError || !right) {
+      return nullptr;
+    }
+    left = makeBinaryExpr(std::move(left), std::move(right), op, setPercentFlag);
+  }
+  return left;
+}
+
+bool MathParser::tryConsumeBitAndOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (*ctx.p != '&' || ctx.p[1] == '&') {
+    return false;
+  }
+  ++ctx.p;
+  outOp = Expr::BinaryOp::BitAnd;
+  return true;
+}
+
+bool MathParser::tryConsumeBitXorOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (*ctx.p != '^') {
+    return false;
+  }
+  ++ctx.p;
+  outOp = Expr::BinaryOp::BitXor;
+  return true;
+}
+
+bool MathParser::tryConsumeBitOrOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (*ctx.p != '|' || ctx.p[1] == '|') {
+    return false;
+  }
+  ++ctx.p;
+  outOp = Expr::BinaryOp::BitOr;
+  return true;
+}
+
+bool MathParser::tryConsumeShiftOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (ctx.p[0] == '<' && ctx.p[1] == '<') {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::ShiftLeft;
+    return true;
+  }
+  if (ctx.p[0] == '>' && ctx.p[1] == '>') {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::ShiftRight;
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryConsumeAddSubOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (*ctx.p == '+') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::Add;
+    return true;
+  }
+  if (*ctx.p == '-') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::Sub;
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryConsumeMulDivModOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (*ctx.p == '*') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::Mul;
+    return true;
+  }
+  if (*ctx.p == '/') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::Div;
+    return true;
+  }
+  if (*ctx.p == '%') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::Modulo;
+    return true;
+  }
+  if (*ctx.p == '(') {
+    outOp = Expr::BinaryOp::Mul;
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryConsumeCompareOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  skipSpaces(ctx);
+  if (std::strncmp(ctx.p, STR_LT_EQ, 2) == 0) {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::CmpLe;
+    return true;
+  }
+  if (std::strncmp(ctx.p, STR_GT_EQ, 2) == 0) {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::CmpGe;
+    return true;
+  }
+  if (std::strncmp(ctx.p, STR_EQ_EQ, 2) == 0) {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::CmpEq;
+    return true;
+  }
+  if (std::strncmp(ctx.p, STR_NOT_EQ, 2) == 0 || std::strncmp(ctx.p, STR_LT_GT, 2) == 0) {
+    ctx.p += 2;
+    outOp = Expr::BinaryOp::CmpNe;
+    return true;
+  }
+  if (*ctx.p == '=') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::CmpEq;
+    return true;
+  }
+  if (*ctx.p == '<') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::CmpLt;
+    return true;
+  }
+  if (*ctx.p == '>') {
+    ++ctx.p;
+    outOp = Expr::BinaryOp::CmpGt;
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryConsumeLogicalAndOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  if (!tryConsumeLogicalBinaryOperator(ctx, OperatorNameId::And, '&')) {
+    return false;
+  }
+  outOp = Expr::BinaryOp::LogicalAnd;
+  return true;
+}
+
+bool MathParser::tryConsumeLogicalOrOp(EvalContext& ctx, Expr::BinaryOp& outOp) {
+  if (!tryConsumeLogicalBinaryOperator(ctx, OperatorNameId::Or, '|')) {
+    return false;
+  }
+  outOp = Expr::BinaryOp::LogicalOr;
+  return true;
 }
 
 bool MathParser::isTruthy(const EvalValue& v) {
@@ -865,14 +1486,36 @@ bool MathParser::nearlyInt(double v, long long& out) {
   return true;
 }
 
+bool isWithinExactIntFromDoubleRange(double v) {
+  return std::isfinite(v) && std::fabs(v) <= K_MAX_EXACT_INT_FROM_DOUBLE;
+}
+
+bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
+  if (!isWithinExactIntFromDoubleRange(v)) {
+    return false;
+  }
+  const double kI64MinD = static_cast<double>((std::numeric_limits<long long>::min)());
+  const double kI64MaxD = static_cast<double>((std::numeric_limits<long long>::max)());
+  if (v < kI64MinD || v > kI64MaxD) {
+    return false;
+  }
+  const long long asInt = static_cast<long long>(v);
+  if (v != static_cast<double>(asInt)) {
+    return false;
+  }
+  out = asInt;
+  return true;
+}
+
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
   if (s.hasExactInt()) {
     outI = s.exactInt;
     return true;
   }
-  if (s.hasExactUInt64() &&
-      s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-    outI = static_cast<long long>(s.exactUInt64);
+  if (s.hasExactUInt64()) {
+    static_assert(sizeof(long long) == sizeof(std::uint64_t), "int64/uint64 size mismatch");
+    std::uint64_t bits = s.exactUInt64;
+    std::memcpy(&outI, &bits, sizeof(bits));
     return true;
   }
   return false;
@@ -882,7 +1525,7 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
   if (tryGetExactSignedInt64FromScalar(s, outI)) {
     return true;
   }
-  return nearlyInt(s.scalar, outI);
+  return tryExtractExactInt64FromDoubleStrict(s.scalar, outI);
 }
 
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
@@ -890,35 +1533,23 @@ bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const
       !a.hasExactInt() && !a.hasExactUInt64() && !b.hasExactInt() && !b.hasExactUInt64();
 }
 
-MathParser::EvalValue MathParser::makeBinaryNumericError(
-    EvalContext& ctx,
-    const EvalValue& left,
-    const EvalValue& right,
-    const char* numericErrorText) {
-  if (left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size()) {
-    setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-  } else {
-    setError(ctx, numericErrorText);
-  }
-  return makeScalar(0);
-}
-
 bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
-  if (!std::isfinite(v) || v < 0.0) {
+  if (!isWithinExactIntFromDoubleRange(v) || v < 0.0) {
     return false;
   }
-  double r = std::round(v);
-  if (std::fabs(v - r) > 1e-12) {
+  if (v > static_cast<double>(std::numeric_limits<std::uint64_t>::max())) {
     return false;
   }
-  if (r > static_cast<double>(std::numeric_limits<std::uint64_t>::max())) {
+  const std::uint64_t u = static_cast<std::uint64_t>(v);
+  if (v != static_cast<double>(u)) {
     return false;
   }
-  out = static_cast<std::uint64_t>(r);
+  out = u;
   return true;
 }
 
 std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
+  const int baseCode = static_cast<int>(base);
   const double dval = v.scalarValue.scalar;
   if (base == RenderBase::Dec) {
     if (v.scalarValue.hasExactInt()) {
@@ -950,39 +1581,12 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
     u = static_cast<std::uint64_t>(v.scalarValue.exactInt);
   } else if (v.scalarValue.hasExactInt() && v.scalarValue.exactInt < 0) {
     const long long iv = v.scalarValue.exactInt;
-    if (v.hasRenderUnsigned()) {
-      if (base == RenderBase::Hex) {
-        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 16, STR_PREFIX_HEX, true);
-      }
-      if (base == RenderBase::Oct) {
-        return formatUnsignedBase(static_cast<std::uint64_t>(iv), 8, STR_PREFIX_OCT, false);
-      }
-      return formatUnsignedBase(static_cast<std::uint64_t>(iv), 2, STR_PREFIX_BIN, false);
-    }
-    std::uint64_t mag = 0;
-    if (iv == (std::numeric_limits<long long>::min)()) {
-      mag = (1ull << 63);
-    } else {
-      mag = static_cast<std::uint64_t>(-iv);
-    }
-    if (base == RenderBase::Hex) {
-      return "-" + formatUnsignedBase(mag, 16, STR_PREFIX_HEX, true);
-    }
-    if (base == RenderBase::Oct) {
-      return "-" + formatUnsignedBase(mag, 8, STR_PREFIX_OCT, false);
-    }
-    return "-" + formatUnsignedBase(mag, 2, STR_PREFIX_BIN, false);
+    return formatSignedMagnitudeForRenderBase(iv, baseCode, v.hasRenderUnsigned());
   } else if (!parseUInt64FromDouble(dval, u)) {
     return formatScalar(v, RenderBase::Dec);
   }
 
-  if (base == RenderBase::Hex) {
-    return formatUnsignedBase(u, 16, STR_PREFIX_HEX, true);
-  }
-  if (base == RenderBase::Oct) {
-    return formatUnsignedBase(u, 8, STR_PREFIX_OCT, false);
-  }
-  return formatUnsignedBase(u, 2, STR_PREFIX_BIN, false);
+  return formatUnsignedForRenderBase(u, baseCode);
 }
 
 std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) {
@@ -1082,7 +1686,7 @@ MathParser::EvalValue MathParser::makeScalar(double v) {
 MathParser::EvalValue MathParser::makeScalarMaybeExact(double v) {
   EvalValue out = makeScalar(v);
   long long asInt = 0;
-  if (nearlyInt(v, asInt)) {
+  if (tryExtractExactInt64FromDoubleStrict(v, asInt)) {
     out.scalarValue.scalarKind = ScalarKind::Int64;
     out.scalarValue.setExactIntValid(true);
     out.scalarValue.exactInt = asInt;
@@ -1187,15 +1791,19 @@ MathParser::RawResult MathParser::toRawResult(const EvalValue& v) {
   return out;
 }
 
-MathParser::EvalValue MathParser::scalarFromArrayAt(const EvalValue& arrV, std::size_t idx) {
-  EvalValue out = makeScalar(arrV.arr[idx].scalar);
-  out.scalarValue.scalarKind = arrV.arr[idx].scalarKind;
-  out.scalarValue.setExactIntValid(arrV.arr[idx].hasExactInt());
-  out.scalarValue.exactInt = arrV.arr[idx].exactInt;
-  out.scalarValue.setExactUInt64Valid(arrV.arr[idx].hasExactUInt64());
-  out.scalarValue.exactUInt64 = arrV.arr[idx].exactUInt64;
-  out.scalarValue.setDecScientificPow63High(arrV.arr[idx].hasDecScientificPow63High());
+MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarValue& sv) {
+  EvalValue out = makeScalar(sv.scalar);
+  out.scalarValue.scalarKind = sv.scalarKind;
+  out.scalarValue.setExactIntValid(sv.hasExactInt());
+  out.scalarValue.exactInt = sv.exactInt;
+  out.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
+  out.scalarValue.exactUInt64 = sv.exactUInt64;
+  out.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
   return out;
+}
+
+MathParser::EvalValue MathParser::scalarFromArrayAt(const EvalValue& arrV, std::size_t idx) {
+  return scalarFromScalarValue(arrV.arr[idx]);
 }
 
 void MathParser::setError(EvalContext& ctx, const std::string& msg) const {
@@ -1215,6 +1823,22 @@ bool MathParser::flattenArgs(const std::vector<EvalValue>& args, std::vector<dou
     } else {
       for (const auto& item : a.arr) {
         out.emplace_back(item.scalar);
+      }
+    }
+  }
+  return !out.empty();
+}
+
+bool MathParser::flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out) {
+  out.clear();
+  const std::size_t totalCount = countFlattenedScalars(args);
+  out.reserve(totalCount);
+  for (const auto& a : args) {
+    if (a.kind == ValueKind::Scalar) {
+      out.emplace_back(a);
+    } else {
+      for (const auto& item : a.arr) {
+        out.emplace_back(scalarFromScalarValue(item));
       }
     }
   }
@@ -1249,8 +1873,8 @@ int MathParser::expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector
       continue;
     }
     if (arg.kind == ValueKind::Array) {
-      for (std::size_t i = 0; i < arg.arr.size(); ++i) {
-        out.emplace_back(scalarFromArrayAt(arg, i));
+      for (const auto& item : arg.arr) {
+        out.emplace_back(scalarFromScalarValue(item));
       }
     } else {
       EvalValue copy = arg;
@@ -1320,16 +1944,17 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
   }
   if (v.scalarValue.hasDecScientificPow63High()) {
     const double p63 = std::ldexp(1.0, 63);
-    if (v.scalarValue.scalar == p63 || v.scalarValue.scalar == -p63) {
-      EvalValue out = makeScalar(-v.scalarValue.scalar);
-      out.scalarValue.setDecScientificPow63High(true);
-      return out;
+    if (v.scalarValue.scalar == p63) {
+      return makeScalarInt((std::numeric_limits<long long>::min)());
+    }
+    if (v.scalarValue.scalar == -p63) {
+      return makeScalarUInt(1ull << 63);
     }
   }
   if (v.scalarValue.hasExactInt()) {
     const long long x = v.scalarValue.exactInt;
     if (x == (std::numeric_limits<long long>::min)()) {
-      return makeScalar(-static_cast<double>(x));
+      return makeScalarUInt(1ull << 63);
     }
     return makeScalarInt(-x);
   }
@@ -1347,6 +1972,69 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     return makeScalar(-static_cast<double>(u));
   }
   return makeScalar(-v.scalarValue.scalar);
+}
+
+template <typename ScalarFn>
+MathParser::EvalValue MathParser::mapBinaryBroadcast(
+    const EvalValue& left,
+    const EvalValue& right,
+    ScalarFn&& scalarFn,
+    bool& ok) const {
+  if (left.kind == ValueKind::Scalar && right.kind == ValueKind::Scalar) {
+    EvalValue outS;
+    ok = scalarFn(left.scalarValue, right.scalarValue, outS);
+    return ok ? outS : makeScalar(0);
+  }
+  if (left.kind == ValueKind::Array && right.kind == ValueKind::Array) {
+    if (left.arr.size() != right.arr.size()) {
+      ok = false;
+      return makeScalar(0);
+    }
+    scratchBinaryOut_.clear();
+    scratchBinaryOut_.reserve(left.arr.size());
+    for (std::size_t i = 0; i < left.arr.size(); ++i) {
+      EvalValue outS;
+      if (!scalarFn(left.arr[i], right.arr[i], outS)) {
+        ok = false;
+        scratchBinaryOut_.clear();
+        return makeScalar(0);
+      }
+      scratchBinaryOut_.emplace_back(std::move(outS));
+    }
+    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
+    scratchBinaryOut_.clear();
+    return ret;
+  }
+  if (left.kind == ValueKind::Array) {
+    scratchBinaryOut_.clear();
+    scratchBinaryOut_.reserve(left.arr.size());
+    for (std::size_t i = 0; i < left.arr.size(); ++i) {
+      EvalValue outS;
+      if (!scalarFn(left.arr[i], right.scalarValue, outS)) {
+        ok = false;
+        scratchBinaryOut_.clear();
+        return makeScalar(0);
+      }
+      scratchBinaryOut_.emplace_back(std::move(outS));
+    }
+    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
+    scratchBinaryOut_.clear();
+    return ret;
+  }
+  scratchBinaryOut_.clear();
+  scratchBinaryOut_.reserve(right.arr.size());
+  for (std::size_t i = 0; i < right.arr.size(); ++i) {
+    EvalValue outS;
+    if (!scalarFn(left.scalarValue, right.arr[i], outS)) {
+      ok = false;
+      scratchBinaryOut_.clear();
+      return makeScalar(0);
+    }
+    scratchBinaryOut_.emplace_back(std::move(outS));
+  }
+  EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
+  scratchBinaryOut_.clear();
+  return ret;
 }
 
 MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue& b, char op, bool& ok) const {
@@ -1372,25 +2060,29 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
       return true;
     }
 
-    if (lv.hasExactInt() && rv.hasExactInt()) {
-      if (op == '+' && lv.exactInt == (std::numeric_limits<long long>::max)() && rv.exactInt == 1LL) {
+    long long li = 0;
+    long long ri = 0;
+    const bool leftExactInt64 = tryGetExactSignedInt64FromScalar(lv, li);
+    const bool rightExactInt64 = tryGetExactSignedInt64FromScalar(rv, ri);
+    if (leftExactInt64 && rightExactInt64) {
+      if (op == '+' && li == (std::numeric_limits<long long>::max)() && ri == 1LL) {
         outS = makePow63();
         return true;
       }
-      if (op == '-' && lv.exactInt == (std::numeric_limits<long long>::min)() && rv.exactInt == 1LL) {
+      if (op == '-' && li == (std::numeric_limits<long long>::min)() && ri == 1LL) {
         outS = makeNegPow63();
         return true;
       }
       long long outI = 0;
-      if (op == '+' && checkedAddLL(lv.exactInt, rv.exactInt, outI)) {
+      if (op == '+' && checkedAddLL(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
-      if (op == '-' && checkedSubLL(lv.exactInt, rv.exactInt, outI)) {
+      if (op == '-' && checkedSubLL(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
-      if (op == '*' && checkedMulLL(lv.exactInt, rv.exactInt, outI)) {
+      if (op == '*' && checkedMulLL(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
@@ -1413,64 +2105,45 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
     return true;
   };
 
-  if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
-    EvalValue outS;
-    ok = tryCombineScalarValues(a.scalarValue, b.scalarValue, outS);
-    return ok ? outS : makeScalar(0);
-  }
+  return mapBinaryBroadcast(a, b, tryCombineScalarValues, ok);
+}
 
-  if (a.kind == ValueKind::Array && b.kind == ValueKind::Array) {
-    if (a.arr.size() != b.arr.size()) {
+MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
+    const EvalValue& left,
+    const EvalValue& right,
+    BuiltinFunctionId id,
+    bool& ok) const {
+  ok = true;
+  const bool isLog = (id == BuiltinFunctionId::Log);
+  double (*binaryFn)(double, double) = nullptr;
+  if (!isLog) {
+    if (id == BuiltinFunctionId::Atan2) {
+      binaryFn = std::atan2;
+    } else if (id == BuiltinFunctionId::Hypot) {
+      binaryFn = [](double l, double r) {
+        return std::sqrt((l * l) + (r * r));
+      };
+    } else {
       ok = false;
       return makeScalar(0);
     }
-    scratchBinaryOut_.clear();
-    scratchBinaryOut_.reserve(a.arr.size());
-    for (std::size_t i = 0; i < a.arr.size(); ++i) {
-      EvalValue outS;
-      if (!tryCombineScalarValues(a.arr[i], b.arr[i], outS)) {
-        ok = false;
-        scratchBinaryOut_.clear();
-        return makeScalar(0);
-      }
-      scratchBinaryOut_.emplace_back(std::move(outS));
-    }
-    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-    scratchBinaryOut_.clear();
-    return ret;
   }
 
-  if (a.kind == ValueKind::Array) {
-    scratchBinaryOut_.clear();
-    scratchBinaryOut_.reserve(a.arr.size());
-    for (std::size_t i = 0; i < a.arr.size(); ++i) {
-      EvalValue outS;
-      if (!tryCombineScalarValues(a.arr[i], b.scalarValue, outS)) {
-        ok = false;
-        scratchBinaryOut_.clear();
-        return makeScalar(0);
+  auto applyScalarValue = [&](const EvalValue::ScalarValue& l, const EvalValue::ScalarValue& r, EvalValue& outS) -> bool {
+    double outD = 0.0;
+    if (isLog) {
+      if (l.scalar <= 0.0 || r.scalar <= 0.0 || r.scalar == 1.0) {
+        return false;
       }
-      scratchBinaryOut_.emplace_back(std::move(outS));
+      outD = std::log(l.scalar) / std::log(r.scalar);
+    } else {
+      outD = binaryFn(l.scalar, r.scalar);
     }
-    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-    scratchBinaryOut_.clear();
-    return ret;
-  }
+    outS = makeScalarMaybeExact(outD);
+    return true;
+  };
 
-  scratchBinaryOut_.clear();
-  scratchBinaryOut_.reserve(b.arr.size());
-  for (std::size_t i = 0; i < b.arr.size(); ++i) {
-    EvalValue outS;
-    if (!tryCombineScalarValues(a.scalarValue, b.arr[i], outS)) {
-      ok = false;
-      scratchBinaryOut_.clear();
-      return makeScalar(0);
-    }
-    scratchBinaryOut_.emplace_back(std::move(outS));
-  }
-  EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-  scratchBinaryOut_.clear();
-  return ret;
+  return mapBinaryBroadcast(left, right, applyScalarValue, ok);
 }
 
 bool MathParser::parseFunctionDefinition(
@@ -1485,11 +2158,7 @@ bool MathParser::parseFunctionDefinition(
     ctx.p = save;
     return false;
   }
-  const char* nameStart = ctx.p++;
-  while (isIdentChar(*ctx.p)) {
-    ++ctx.p;
-  }
-  std::string fnName(nameStart, static_cast<std::size_t>(ctx.p - nameStart));
+  std::string fnName = consumeLowerIdentToken(ctx);
   skipSpaces(ctx);
   if (*ctx.p != '(') {
     ctx.p = save;
@@ -1505,11 +2174,7 @@ bool MathParser::parseFunctionDefinition(
         ctx.p = save;
         return false;
       }
-      const char* pStart = ctx.p++;
-      while (isIdentChar(*ctx.p)) {
-        ++ctx.p;
-      }
-      params.emplace_back(toLower(std::string(pStart, static_cast<std::size_t>(ctx.p - pStart))));
+      params.emplace_back(consumeLowerIdentToken(ctx));
       skipSpaces(ctx);
       if (*ctx.p == ',') {
         ++ctx.p;
@@ -1533,7 +2198,7 @@ bool MathParser::parseFunctionDefinition(
   ++ctx.p;
   skipSpaces(ctx);
 
-  outName = toLower(fnName);
+  outName = fnName;
   outParams = std::move(params);
   const char* exprStart = ctx.p;
   while (*ctx.p && *ctx.p != ';') {
@@ -1550,198 +2215,164 @@ bool MathParser::parseFunctionDefinition(
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
   skipSpaces(ctx);
   if (*ctx.p == '(') {
-    ++ctx.p;
-    skipSpaces(ctx);
-    if (*ctx.p == ')') {
-      setError(ctx, STR_UNEXPECTED_TOKEN);
-      return nullptr;
-    }
-    std::vector<std::unique_ptr<Expr>> values;
-    values.emplace_back(parseExpression(ctx));
-    if (ctx.parseError) {
-      return nullptr;
-    }
-    skipSpaces(ctx);
-    while (*ctx.p == ',') {
-      ++ctx.p;
-      skipSpaces(ctx);
-      if (*ctx.p == ')') {
-        setError(ctx, STR_UNEXPECTED_COMMA);
-        return nullptr;
-      }
-      values.emplace_back(parseExpression(ctx));
-      if (ctx.parseError) {
-        return nullptr;
-      }
-      skipSpaces(ctx);
-    }
-    if (*ctx.p != ')') {
-      if (isIdentStart(*ctx.p) || std::isdigit(static_cast<unsigned char>(*ctx.p)) || *ctx.p == '.') {
-        setError(ctx, STR_UNEXPECTED_TOKEN);
-      } else {
-        setError(ctx, STR_MISSING_CLOSING_PARENTHESIS);
-      }
-      return nullptr;
-    }
-    ++ctx.p;
-    if (values.size() == 1) {
-      return std::move(values[0]);
-    }
-    auto arr = std::make_unique<Expr>();
-    arr->tag = Expr::Tag::ArrayOrParens;
-    arr->elements = std::move(values);
-    return arr;
+    return parsePrimaryParenthesized(ctx);
   }
-  if (std::isdigit(static_cast<unsigned char>(*ctx.p)) || *ctx.p == '.') {
-    if (ctx.p[0] == '0' && (ctx.p[1] == 'x' || ctx.p[1] == 'X')) {
-      const char* p = ctx.p + 2;
-      unsigned long long u = 0;
-      int digits = 0;
-      while (*p) {
-        const char c = *p;
-        int d = -1;
-        if (c >= '0' && c <= '9') d = c - '0';
-        else if (c >= 'a' && c <= 'f') d = 10 + (c - 'a');
-        else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
-        else break;
-        u = (u * 16ULL) + static_cast<unsigned long long>(d);
-        ++p;
-        ++digits;
-      }
-      if (digits == 0) {
-        setError(ctx, STR_INVALID_HEX_LITERAL);
-        return nullptr;
-      }
-      ctx.p = p;
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
-      lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
-      return lit;
-    }
-    if (ctx.p[0] == '0' && (ctx.p[1] == 'b' || ctx.p[1] == 'B')) {
-      const char* p = ctx.p + 2;
-      unsigned long long u = 0;
-      int digits = 0;
-      while (*p == '0' || *p == '1') {
-        u = (u << 1ULL) | static_cast<unsigned long long>(*p - '0');
-        ++p;
-        ++digits;
-      }
-      if (digits == 0) {
-        setError(ctx, STR_INVALID_BINARY_LITERAL);
-        return nullptr;
-      }
-      ctx.p = p;
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
-      lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
-      return lit;
-    }
-    if (ctx.p[0] == '0' && (ctx.p[1] == 'o' || ctx.p[1] == 'O')) {
-      const char* p = ctx.p + 2;
-      unsigned long long u = 0;
-      int digits = 0;
-      while (*p >= '0' && *p <= '7') {
-        u = (u * 8ULL) + static_cast<unsigned long long>(*p - '0');
-        ++p;
-        ++digits;
-      }
-      if (digits == 0) {
-        setError(ctx, STR_INVALID_OCTAL_LITERAL);
-        return nullptr;
-      }
-      ctx.p = p;
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
-      lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
-      return lit;
-    }
-    const char* numStart = ctx.p;
-    char* end = nullptr;
-    double d = std::strtod(ctx.p, &end);
-    if (end == ctx.p) {
-      setError(ctx, STR_INVALID_NUMERIC_LITERAL);
-      return nullptr;
-    }
-    ctx.p = end;
-    auto lit = std::make_unique<Expr>();
-    lit->tag = Expr::Tag::Literal;
-    lit->literalValue = makeScalar(d);
-    bool looksInt = true;
-    for (const char* q = numStart; q < end; ++q) {
-      if (*q == '.' || *q == 'e' || *q == 'E') {
-        looksInt = false;
-        break;
-      }
-    }
-    if (looksInt) {
-      std::uint64_t uv = 0;
-      if (parseUInt64FromDecimalLiteral(numStart, end, uv)) {
-        if (uv <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          lit->literalValue = makeScalarInt(static_cast<long long>(uv));
-        } else {
-          lit->literalValue = makeScalarUInt(uv);
-        }
-      }
-    }
-    return lit;
+  if (isNumericLiteralStart(*ctx.p)) {
+    return parsePrimaryNumericLiteral(ctx);
   }
   if (isIdentStart(*ctx.p)) {
-    const char* n0 = ctx.p++;
-    while (isIdentChar(*ctx.p)) {
-      ++ctx.p;
+    return parsePrimaryIdentifierOrCall(ctx);
+  }
+  setUnexpectedTokenError(ctx);
+  return nullptr;
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalContext& ctx) {
+  ++ctx.p;
+  skipSpaces(ctx);
+  if (*ctx.p == ')') {
+    setUnexpectedTokenError(ctx);
+    return nullptr;
+  }
+  std::vector<std::unique_ptr<Expr>> values;
+  if (!parseParenthesizedExprList(ctx, values) || values.empty()) {
+    return nullptr;
+  }
+  if (*ctx.p != ')') {
+    setMissingClosingParenLikeError(ctx);
+    return nullptr;
+  }
+  ++ctx.p;
+  if (values.size() == 1) {
+    return std::move(values[0]);
+  }
+  auto arr = std::make_unique<Expr>();
+  arr->tag = Expr::Tag::ArrayOrParens;
+  arr->elements = std::move(values);
+  return arr;
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
+  if (ctx.p[0] == '0' && (ctx.p[1] == 'x' || ctx.p[1] == 'X')) {
+    const char* p = ctx.p + 2;
+    unsigned long long u = 0;
+    int digits = 0;
+    while (*p) {
+      const char c = *p;
+      int d = -1;
+      if (c >= '0' && c <= '9') d = c - '0';
+      else if (c >= 'a' && c <= 'f') d = 10 + (c - 'a');
+      else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
+      else break;
+      u = (u * 16ULL) + static_cast<unsigned long long>(d);
+      ++p;
+      ++digits;
     }
-    std::string ident = toLower(std::string(n0, static_cast<std::size_t>(ctx.p - n0)));
-    skipSpaces(ctx);
-    if (*ctx.p == '(') {
-      ++ctx.p;
-      std::vector<std::unique_ptr<Expr>> args;
-      skipSpaces(ctx);
-      if (*ctx.p != ')') {
-        while (true) {
-          args.emplace_back(parseExpression(ctx));
-          if (ctx.parseError) {
-            return nullptr;
-          }
-          skipSpaces(ctx);
-          if (*ctx.p == ',') {
-            ++ctx.p;
-            skipSpaces(ctx);
-            if (*ctx.p == ')') {
-              setError(ctx, STR_UNEXPECTED_COMMA);
-              return nullptr;
-            }
-            continue;
-          }
-          break;
-        }
-      }
-      if (*ctx.p != ')') {
-        if (isIdentStart(*ctx.p) || std::isdigit(static_cast<unsigned char>(*ctx.p)) || *ctx.p == '.') {
-          setError(ctx, STR_UNEXPECTED_TOKEN);
-        } else {
-          setError(ctx, STR_MISSING_CLOSING_PARENTHESIS);
-        }
-        return nullptr;
-      }
-      ++ctx.p;
-      auto call = std::make_unique<Expr>();
-      call->tag = Expr::Tag::Call;
-      call->name = std::move(ident);
-      BuiltinFunctionId id = BuiltinFunctionId::Count;
-      if (tryGetBuiltinFunctionId(call->name, id)) {
-        call->builtinFunctionId = id;
-      }
-      call->elements = std::move(args);
-      return call;
+    if (digits == 0) {
+      setInvalidPrefixedLiteralError(ctx, 'x');
+      return nullptr;
     }
+    ctx.p = p;
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    return lit;
+  }
+  if (ctx.p[0] == '0' && (ctx.p[1] == 'b' || ctx.p[1] == 'B')) {
+    const char* p = ctx.p + 2;
+    unsigned long long u = 0;
+    int digits = 0;
+    while (*p == '0' || *p == '1') {
+      u = (u << 1ULL) | static_cast<unsigned long long>(*p - '0');
+      ++p;
+      ++digits;
+    }
+    if (digits == 0) {
+      setInvalidPrefixedLiteralError(ctx, 'b');
+      return nullptr;
+    }
+    ctx.p = p;
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    return lit;
+  }
+  if (ctx.p[0] == '0' && (ctx.p[1] == 'o' || ctx.p[1] == 'O')) {
+    const char* p = ctx.p + 2;
+    unsigned long long u = 0;
+    int digits = 0;
+    while (*p >= '0' && *p <= '7') {
+      u = (u * 8ULL) + static_cast<unsigned long long>(*p - '0');
+      ++p;
+      ++digits;
+    }
+    if (digits == 0) {
+      setInvalidPrefixedLiteralError(ctx, 'o');
+      return nullptr;
+    }
+    ctx.p = p;
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    return lit;
+  }
+  const char* numStart = ctx.p;
+  char* end = nullptr;
+  const double d = std::strtod(ctx.p, &end);
+  if (end == ctx.p) {
+    setInvalidNumericLiteralError(ctx);
+    return nullptr;
+  }
+  ctx.p = end;
+  auto lit = std::make_unique<Expr>();
+  lit->tag = Expr::Tag::Literal;
+  lit->literalValue = makeScalar(d);
+  bool looksInt = true;
+  for (const char* q = numStart; q < end; ++q) {
+    if (*q == '.' || *q == 'e' || *q == 'E') {
+      looksInt = false;
+      break;
+    }
+  }
+  if (looksInt) {
+    std::uint64_t uv = 0;
+    if (parseUInt64FromDecimalLiteral(numStart, end, uv)) {
+      lit->literalValue = (uv <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
+          ? makeScalarInt(static_cast<long long>(uv))
+          : makeScalarUInt(uv);
+    }
+  }
+  return lit;
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalContext& ctx) {
+  std::string ident = consumeLowerIdentToken(ctx);
+  skipSpaces(ctx);
+  if (*ctx.p != '(') {
     auto v = std::make_unique<Expr>();
     v->tag = Expr::Tag::Variable;
     v->name = std::move(ident);
     return v;
   }
-  setError(ctx, STR_UNEXPECTED_TOKEN);
-  return nullptr;
+  ++ctx.p;
+  std::vector<std::unique_ptr<Expr>> args;
+  if (!parseParenthesizedExprList(ctx, args)) {
+    return nullptr;
+  }
+  if (*ctx.p != ')') {
+    setMissingClosingParenLikeError(ctx);
+    return nullptr;
+  }
+  ++ctx.p;
+  auto call = std::make_unique<Expr>();
+  call->tag = Expr::Tag::Call;
+  call->name = std::move(ident);
+  BuiltinFunctionId id = BuiltinFunctionId::Count;
+  if (tryGetBuiltinFunctionId(call->name, id)) {
+    call->builtinFunctionId = id;
+  }
+  call->elements = std::move(args);
+  return call;
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
@@ -1753,7 +2384,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
   if (*ctx.p == '-') {
     ++ctx.p;
     auto inner = parseUnary(ctx);
-    if (ctx.parseError) {
+    if (hasExprParseFailure(ctx, inner)) {
       return nullptr;
     }
     auto u = std::make_unique<Expr>();
@@ -1764,7 +2395,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
   }
   if (consumeKeyword(ctx, opName(OperatorNameId::Not).c_str())) {
     auto inner = parseLogicalNot(ctx);
-    if (ctx.parseError) {
+    if (hasExprParseFailure(ctx, inner)) {
       return nullptr;
     }
     auto u = std::make_unique<Expr>();
@@ -1776,7 +2407,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
   if (*ctx.p == '!') {
     ++ctx.p;
     auto inner = parseUnary(ctx);
-    if (ctx.parseError) {
+    if (hasExprParseFailure(ctx, inner)) {
       return nullptr;
     }
     auto u = std::make_unique<Expr>();
@@ -1788,7 +2419,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
   if (*ctx.p == '~') {
     ++ctx.p;
     auto inner = parseUnary(ctx);
-    if (ctx.parseError) {
+    if (hasExprParseFailure(ctx, inner)) {
       return nullptr;
     }
     auto u = std::make_unique<Expr>();
@@ -1798,7 +2429,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
     return u;
   }
   auto prim = parsePrimary(ctx);
-  if (ctx.parseError || !prim) {
+  if (hasExprParseFailure(ctx, prim)) {
     return nullptr;
   }
   while (true) {
@@ -1807,14 +2438,14 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
       ++ctx.p;
       skipSpaces(ctx);
       if (*ctx.p == ']') {
-        setError(ctx, STR_MISSING_INDEX);
+        setMissingIndexError(ctx);
         return nullptr;
       }
       auto idx = parseExpression(ctx);
       if (ctx.parseError || !idx) return nullptr;
       skipSpaces(ctx);
       if (*ctx.p != ']') {
-        setError(ctx, STR_MISSING_CLOSING_BRACKET);
+        setMissingClosingBracketError(ctx);
         return nullptr;
       }
       ++ctx.p;
@@ -1862,185 +2493,31 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseMulDivMod(EvalContext& ctx) {
-  auto left = parsePower(ctx);
-  if (ctx.parseError || !left) {
-    return nullptr;
-  }
-  while (true) {
-    skipSpaces(ctx);
-    Expr::BinaryOp op = Expr::BinaryOp::None;
-    if (*ctx.p == '*' || *ctx.p == '/' || *ctx.p == '%') {
-      const char opCh = *ctx.p++;
-      if (opCh == '*') op = Expr::BinaryOp::Mul;
-      else if (opCh == '/') op = Expr::BinaryOp::Div;
-      else op = Expr::BinaryOp::Modulo;
-    } else if (*ctx.p == '(') {
-      op = Expr::BinaryOp::Mul;  // implicit multiplication: 2(3+4), (1+2)(3+4)
-    } else {
-      break;
-    }
-    auto right = parsePower(ctx);
-    if (ctx.parseError || !right) {
-      return nullptr;
-    }
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = op;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parsePower, &MathParser::tryConsumeMulDivModOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseShift(EvalContext& ctx) {
-  auto left = parseAddSub(ctx);
-  if (ctx.parseError || !left) return nullptr;
-  while (true) {
-    skipSpaces(ctx);
-    Expr::BinaryOp op = Expr::BinaryOp::None;
-    if (ctx.p[0] == '<' && ctx.p[1] == '<') {
-      op = Expr::BinaryOp::ShiftLeft;
-      ctx.p += 2;
-    } else if (ctx.p[0] == '>' && ctx.p[1] == '>') {
-      op = Expr::BinaryOp::ShiftRight;
-      ctx.p += 2;
-    } else {
-      break;
-    }
-    auto right = parseAddSub(ctx);
-    if (ctx.parseError || !right) return nullptr;
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = op;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseAddSub, &MathParser::tryConsumeShiftOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseBitAnd(EvalContext& ctx) {
-  auto left = parseShift(ctx);
-  if (ctx.parseError || !left) return nullptr;
-  while (true) {
-    skipSpaces(ctx);
-    if (*ctx.p != '&' || ctx.p[1] == '&') break;
-    ++ctx.p;
-    auto right = parseShift(ctx);
-    if (ctx.parseError || !right) return nullptr;
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = Expr::BinaryOp::BitAnd;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseShift, &MathParser::tryConsumeBitAndOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseBitXor(EvalContext& ctx) {
-  auto left = parseBitAnd(ctx);
-  if (ctx.parseError || !left) return nullptr;
-  while (true) {
-    skipSpaces(ctx);
-    // Operator contract: '^' is bitwise XOR; exponentiation uses '**'.
-    if (*ctx.p != '^') break;
-    ++ctx.p;
-    auto right = parseBitAnd(ctx);
-    if (ctx.parseError || !right) return nullptr;
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = Expr::BinaryOp::BitXor;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseBitAnd, &MathParser::tryConsumeBitXorOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseBitOr(EvalContext& ctx) {
-  auto left = parseBitXor(ctx);
-  if (ctx.parseError || !left) return nullptr;
-  while (true) {
-    skipSpaces(ctx);
-    if (*ctx.p != '|' || ctx.p[1] == '|') break;
-    ++ctx.p;
-    auto right = parseBitXor(ctx);
-    if (ctx.parseError || !right) return nullptr;
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = Expr::BinaryOp::BitOr;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseBitXor, &MathParser::tryConsumeBitOrOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseAddSub(EvalContext& ctx) {
-  auto left = parseMulDivMod(ctx);
-  if (ctx.parseError || !left) {
-    return nullptr;
-  }
-  while (true) {
-    skipSpaces(ctx);
-    if (*ctx.p != '+' && *ctx.p != '-') {
-      break;
-    }
-    const char opCh = *ctx.p++;
-    auto right = parseMulDivMod(ctx);
-    if (ctx.parseError || !right) {
-      return nullptr;
-    }
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = (opCh == '+') ? Expr::BinaryOp::Add : Expr::BinaryOp::Sub;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    out->rhsContainsPostfixPercent = exprContainsPostfixPercent(*out->right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseMulDivMod, &MathParser::tryConsumeAddSubOp, true);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseCompare(EvalContext& ctx) {
-  auto left = parseBitOr(ctx);
-  if (ctx.parseError || !left) {
-    return nullptr;
-  }
-  while (true) {
-    skipSpaces(ctx);
-    Expr::BinaryOp op = Expr::BinaryOp::None;
-    if (std::strncmp(ctx.p, STR_LT_EQ, 2) == 0 || std::strncmp(ctx.p, STR_GT_EQ, 2) == 0 ||
-        std::strncmp(ctx.p, STR_EQ_EQ, 2) == 0 || std::strncmp(ctx.p, STR_NOT_EQ, 2) == 0 ||
-        std::strncmp(ctx.p, STR_LT_GT, 2) == 0) {
-      if (ctx.p[0] == '<' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpLe;
-      else if (ctx.p[0] == '>' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpGe;
-      else if (ctx.p[0] == '=' && ctx.p[1] == '=') op = Expr::BinaryOp::CmpEq;
-      else op = Expr::BinaryOp::CmpNe;
-      ctx.p += 2;
-    } else if (*ctx.p == '=') {
-      op = Expr::BinaryOp::CmpEq;
-      ++ctx.p;
-    } else if (*ctx.p == '<' || *ctx.p == '>') {
-      const char opCh = *ctx.p++;
-      op = (opCh == '<') ? Expr::BinaryOp::CmpLt : Expr::BinaryOp::CmpGt;
-    } else {
-      break;
-    }
-    auto right = parseBitOr(ctx);
-    if (ctx.parseError || !right) {
-      return nullptr;
-    }
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = op;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseBitOr, &MathParser::tryConsumeCompareOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseLogicalNot(EvalContext& ctx) {
@@ -2060,59 +2537,11 @@ std::unique_ptr<MathParser::Expr> MathParser::parseLogicalNot(EvalContext& ctx) 
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseAnd(EvalContext& ctx) {
-  auto left = parseLogicalNot(ctx);
-  if (ctx.parseError || !left) {
-    return nullptr;
-  }
-  while (true) {
-    if (!consumeKeyword(ctx, opName(OperatorNameId::And).c_str())) {
-      skipSpaces(ctx);
-      if (ctx.p[0] == '&' && ctx.p[1] == '&') {
-        ctx.p += 2;
-      } else {
-        break;
-      }
-    }
-    auto right = parseLogicalNot(ctx);
-    if (ctx.parseError || !right) {
-      return nullptr;
-    }
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = Expr::BinaryOp::LogicalAnd;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseLogicalNot, &MathParser::tryConsumeLogicalAndOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseOr(EvalContext& ctx) {
-  auto left = parseAnd(ctx);
-  if (ctx.parseError || !left) {
-    return nullptr;
-  }
-  while (true) {
-    if (!consumeKeyword(ctx, opName(OperatorNameId::Or).c_str())) {
-      skipSpaces(ctx);
-      if (ctx.p[0] == '|' && ctx.p[1] == '|') {
-        ctx.p += 2;
-      } else {
-        break;
-      }
-    }
-    auto right = parseAnd(ctx);
-    if (ctx.parseError || !right) {
-      return nullptr;
-    }
-    auto out = std::make_unique<Expr>();
-    out->tag = Expr::Tag::Binary;
-    out->binaryOp = Expr::BinaryOp::LogicalOr;
-    out->left = std::move(left);
-    out->right = std::move(right);
-    left = std::move(out);
-  }
-  return left;
+  return parseLeftAssocBinary(ctx, &MathParser::parseAnd, &MathParser::tryConsumeLogicalOrOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseExpression(EvalContext& ctx) {
@@ -2131,32 +2560,7 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
     std::string fnExpr;
     const char* save = ctx.p;
     if (parseFunctionDefinition(ctx, fnName, fnParams, fnExpr)) {
-      {
-        std::unordered_map<std::string, bool> seen;
-        for (const auto& p : fnParams) {
-          if (seen.find(p) != seen.end()) {
-            setError(ctx, STR_DUPLICATE_PARAMETER_NAME);
-            return false;
-          }
-          if (isReservedBuiltinConstantName(p)) {
-            setError(ctx, STR_RESERVED_CONSTANT_NAME);
-            return false;
-          }
-          seen[p] = true;
-        }
-      }
-      {
-        if (isReservedBuiltinConstantName(fnName)) {
-          setError(ctx, STR_RESERVED_CONSTANT_NAME);
-          return false;
-        }
-        if (isReservedFunctionName(fnName)) {
-          setError(ctx, STR_RESERVED_FUNCTION_NAME);
-          return false;
-        }
-      }
-      if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
-        setError(ctx, STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
+      if (trySetUserFunctionDefinitionError(ctx, fnName, fnParams, fnExpr)) {
         return false;
       }
       AstStatement st;
@@ -2220,20 +2624,12 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
       }
       const char* assignSave = ctx.p;
       if (isIdentStart(*ctx.p)) {
-        const char* id0 = ctx.p++;
-        while (isIdentChar(*ctx.p)) {
-          ++ctx.p;
-        }
-        std::string ident = toLower(std::string(id0, static_cast<std::size_t>(ctx.p - id0)));
+        std::string ident = consumeLowerIdentToken(ctx);
         skipSpaces(ctx);
         // Single '=' is assignment; '==' is equality (do not steal first '=').
         if (*ctx.p == '=' && ctx.p[1] != '=') {
-          if (isReservedFunctionName(ident)) {
-            setError(ctx, STR_RESERVED_FUNCTION_NAME);
-            return false;
-          }
-          if (isReservedBuiltinConstantName(ident)) {
-            setError(ctx, STR_RESERVED_CONSTANT_NAME);
+          if (const char* assignNameErr = validateAssignmentTargetName(ident)) {
+            setValidationError(ctx, assignNameErr);
             return false;
           }
           ++ctx.p;
@@ -2248,24 +2644,14 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
           out.emplace_back(std::move(st));
         } else {
           ctx.p = assignSave;
-          auto ex = parseExpression(ctx);
-          if (ctx.parseError || !ex) {
+          if (!tryAppendParsedExpressionStatement(ctx, out)) {
             return false;
           }
-          AstStatement st;
-          st.kind = AstStatement::Kind::Expr;
-          st.expr = std::move(ex);
-          out.emplace_back(std::move(st));
         }
       } else {
-        auto ex = parseExpression(ctx);
-        if (ctx.parseError || !ex) {
+        if (!tryAppendParsedExpressionStatement(ctx, out)) {
           return false;
         }
-        AstStatement st;
-        st.kind = AstStatement::Kind::Expr;
-        st.expr = std::move(ex);
-        out.emplace_back(std::move(st));
       }
     }
 parse_program_statement_done:
@@ -2277,35 +2663,21 @@ parse_program_statement_done:
     if (*ctx.p == '\0') {
       break;
     }
-    setError(ctx, STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION);
+    setUnexpectedTokenAfterExpressionError(ctx);
     return false;
   }
   return true;
 }
 
-bool MathParser::exprContainsPostfixPercent(const Expr& e) {
+bool MathParser::exprIsDirectPostfixPercent(const Expr& e) {
   if (e.tag == Expr::Tag::PostfixPercent) {
     return true;
   }
   if (e.tag == Expr::Tag::Unary && e.child) {
-    return exprContainsPostfixPercent(*e.child);
+    return exprIsDirectPostfixPercent(*e.child);
   }
-  if (e.tag == Expr::Tag::Binary) {
-    return (e.left && exprContainsPostfixPercent(*e.left)) || (e.right && exprContainsPostfixPercent(*e.right));
-  }
-  if (e.tag == Expr::Tag::Call) {
-    for (const auto& ch : e.elements) {
-      if (exprContainsPostfixPercent(*ch)) {
-        return true;
-      }
-    }
-  }
-  if (e.tag == Expr::Tag::ArrayOrParens) {
-    for (const auto& ch : e.elements) {
-      if (exprContainsPostfixPercent(*ch)) {
-        return true;
-      }
-    }
+  if (e.tag == Expr::Tag::ArrayOrParens && e.elements.size() == 1U && e.elements[0]) {
+    return exprIsDirectPostfixPercent(*e.elements[0]);
   }
   return false;
 }
@@ -2378,6 +2750,136 @@ void MathParser::bindCompiledVariableRefs() {
   boundVariablesVersion_ = variablesVersion_;
 }
 
+MathParser::EvalValue MathParser::evalUnaryExpr(
+    const Expr& e,
+    EvalContext& ctx,
+    const std::unordered_map<std::string, EvalValue>* scopedVars,
+    bool scalarOnlyMode) {
+  const auto evalChild = [&](const Expr& childExpr) -> EvalValue {
+    return scalarOnlyMode ? evalExprScalar(childExpr, ctx, scopedVars) : evalExpr(childExpr, ctx, scopedVars);
+  };
+
+  if (e.unaryOp == '+') {
+    return evalChild(*e.child);
+  }
+
+  EvalValue v = evalChild(*e.child);
+  if (ctx.parseError) {
+    return v;
+  }
+
+  if (e.unaryOp == '-') {
+    return negateEvalValue(v);
+  }
+  if (e.unaryOp == 'N') {
+    return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
+  }
+  if (e.unaryOp == '~') {
+    if (!scalarOnlyMode && v.kind != ValueKind::Scalar) {
+      setBitwiseIntegerOperandsError(ctx);
+      return makeScalar(0);
+    }
+    long long iv = 0;
+    if (!tryGetSignedInt64FromScalar(v.scalarValue, iv)) {
+      setBitwiseIntegerOperandsError(ctx);
+      return makeScalar(0);
+    }
+    return makeScalarInt(~iv);
+  }
+
+  setInternalUnaryOpError(ctx);
+  return makeScalar(0);
+}
+
+MathParser::EvalValue MathParser::evalMappedBinaryOp(
+    EvalContext& ctx,
+    Expr::BinaryOp op,
+    const EvalValue& left,
+    const EvalValue& right) const {
+  const char opChar = (op == Expr::BinaryOp::Pow) ? '^' :
+                      (op == Expr::BinaryOp::Mul) ? '*' :
+                      (op == Expr::BinaryOp::Div) ? '/' :
+                      (op == Expr::BinaryOp::Add) ? '+' : '-';
+  bool ok = false;
+  EvalValue out = mapBinary(left, right, opChar, ok);
+  if (ok) {
+    return out;
+  }
+
+  if (op == Expr::BinaryOp::Pow) {
+    setNumericErrorInPowerOperation(ctx);
+  } else if (left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size()) {
+    setIncompatibleOperandsError(ctx);
+  } else {
+    setNumericErrorInExpression(ctx);
+  }
+  return makeScalar(0);
+}
+
+MathParser::EvalValue MathParser::evalInt64BinaryOp(
+    EvalContext& ctx,
+    const EvalValue& left,
+    const EvalValue& right,
+    Expr::BinaryOp op) const {
+  const bool isModulo = (op == Expr::BinaryOp::Modulo);
+  const auto setIntegerOperandError = [&]() {
+    if (isModulo) setModuloIntegerOperandsError(ctx);
+    else setBitwiseIntegerOperandsError(ctx);
+  };
+  const auto applyOp = [&](const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, EvalValue& outS) -> bool {
+    long long a = 0, b = 0;
+    if (!tryGetSignedInt64FromScalar(lv, a) || !tryGetSignedInt64FromScalar(rv, b)) return false;
+    if (isModulo) {
+      if (b == 0) {
+        setIncompatibleOperandsError(ctx);
+        return false;
+      }
+      outS = makeScalarInt(a % b);
+      return true;
+    }
+    if ((op == Expr::BinaryOp::ShiftLeft || op == Expr::BinaryOp::ShiftRight) && (b < 0 || b > 63)) {
+      setIncompatibleOperandsError(ctx);
+      return false;
+    }
+    const long long out = (op == Expr::BinaryOp::BitAnd) ? (a & b) :
+                          (op == Expr::BinaryOp::BitOr) ? (a | b) :
+                          (op == Expr::BinaryOp::BitXor) ? (a ^ b) :
+                          (op == Expr::BinaryOp::ShiftLeft) ? bitwiseShiftLeftDefined(a, static_cast<unsigned int>(b)) :
+                                                               bitwiseShiftRightDefined(a, static_cast<unsigned int>(b));
+    outS = makeScalarInt(out);
+    return true;
+  };
+  if (left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size()) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
+  bool ok = true;
+  EvalValue out = mapBinaryBroadcast(left, right, applyOp, ok);
+  if (!ok && !ctx.parseError) {
+    setIntegerOperandError();
+    return makeScalar(0);
+  }
+  return out;
+}
+
+bool MathParser::isComparisonBinaryOp(Expr::BinaryOp op) {
+  return op == Expr::BinaryOp::CmpLt || op == Expr::BinaryOp::CmpGt ||
+         op == Expr::BinaryOp::CmpLe || op == Expr::BinaryOp::CmpGe ||
+         op == Expr::BinaryOp::CmpEq || op == Expr::BinaryOp::CmpNe;
+}
+
+bool MathParser::evalComparisonByOp(Expr::BinaryOp op, int cmp) {
+  switch (op) {
+    case Expr::BinaryOp::CmpLt: return cmp < 0;
+    case Expr::BinaryOp::CmpGt: return cmp > 0;
+    case Expr::BinaryOp::CmpLe: return cmp <= 0;
+    case Expr::BinaryOp::CmpGe: return cmp >= 0;
+    case Expr::BinaryOp::CmpEq: return cmp == 0;
+    case Expr::BinaryOp::CmpNe: return cmp != 0;
+    default: return false;
+  }
+}
+
 MathParser::EvalValue MathParser::evalExprScalar(
     const Expr& e,
     EvalContext& ctx,
@@ -2394,28 +2896,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
         return makeScalar(0);
       }
       if (out.kind != ValueKind::Scalar) {
-        setError(ctx, STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON);
+        setScalarOnlyExpressionEncounteredNonError(ctx);
         return makeScalar(0);
       }
       return out;
     }
-    case Expr::Tag::Unary: {
-      if (e.unaryOp == '+') return evalExprScalar(*e.child, ctx, scopedVars);
-      EvalValue v = evalExprScalar(*e.child, ctx, scopedVars);
-      if (ctx.parseError) return v;
-      if (e.unaryOp == '-') return negateEvalValue(v);
-      if (e.unaryOp == 'N') return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
-      if (e.unaryOp == '~') {
-        long long iv = 0;
-        if (!tryGetSignedInt64FromScalar(v.scalarValue, iv)) {
-          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
-          return makeScalar(0);
-        }
-        return makeScalarInt(~iv);
-      }
-      setError(ctx, STR_INTERNAL_UNARY_OP);
-      return makeScalar(0);
-    }
+    case Expr::Tag::Unary:
+      return evalUnaryExpr(e, ctx, scopedVars, true);
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExprScalar(*e.child, ctx, scopedVars);
       if (ctx.parseError) return v;
@@ -2431,10 +2918,6 @@ MathParser::EvalValue MathParser::evalExprScalar(
       if (ctx.parseError) return l;
       EvalValue r = evalExprScalar(*e.right, ctx, scopedVars);
       if (ctx.parseError) return r;
-      const auto returnIntegerOperandError = [&](const char* msg) -> EvalValue {
-        setError(ctx, msg);
-        return makeScalar(0);
-      };
       switch (e.binaryOp) {
         case Expr::BinaryOp::LogicalOr:
           return makeScalarInt((isTruthy(l) || isTruthy(r)) ? 1LL : 0LL);
@@ -2443,10 +2926,12 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::Modulo: {
           long long a = 0, b = 0;
           if (!tryGetSignedInt64FromScalar(l.scalarValue, a) || !tryGetSignedInt64FromScalar(r.scalarValue, b)) {
-            return returnIntegerOperandError(STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
+            setModuloIntegerOperandsError(ctx);
+            return makeScalar(0);
           }
           if (b == 0) {
-            return returnIntegerOperandError(STR_INCOMPATIBLE_OPERANDS);
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
           }
           return makeScalarInt(a % b);
         }
@@ -2457,11 +2942,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::ShiftRight: {
           long long a = 0, b = 0;
           if (!tryGetSignedInt64FromScalar(l.scalarValue, a) || !tryGetSignedInt64FromScalar(r.scalarValue, b)) {
-            return returnIntegerOperandError(STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
+            setBitwiseIntegerOperandsError(ctx);
+            return makeScalar(0);
           }
           if ((e.binaryOp == Expr::BinaryOp::ShiftLeft || e.binaryOp == Expr::BinaryOp::ShiftRight) &&
               (b < 0 || b > 63)) {
-            return returnIntegerOperandError(STR_INCOMPATIBLE_OPERANDS);
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
           }
           if (e.binaryOp == Expr::BinaryOp::BitAnd) return makeScalarInt(a & b);
           if (e.binaryOp == Expr::BinaryOp::BitOr) return makeScalarInt(a | b);
@@ -2481,21 +2968,14 @@ MathParser::EvalValue MathParser::evalExprScalar(
           return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) == 0 ? 1LL : 0LL);
         case Expr::BinaryOp::CmpNe:
           return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) != 0 ? 1LL : 0LL);
-        case Expr::BinaryOp::Pow: {
-          bool ok = false;
-          EvalValue out = mapBinary(l, r, '^', ok);
-          if (!ok) {
-            setError(ctx, STR_NUMERIC_ERROR_IN_POWER_OPERATION);
-            return makeScalar(0);
-          }
-          return out;
-        }
+        case Expr::BinaryOp::Pow:
+          return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
         case Expr::BinaryOp::Mul:
         case Expr::BinaryOp::Div:
         case Expr::BinaryOp::Add:
         case Expr::BinaryOp::Sub: {
           if ((e.binaryOp == Expr::BinaryOp::Add || e.binaryOp == Expr::BinaryOp::Sub) &&
-              e.rhsContainsPostfixPercent) {
+              e.rhsIsDirectPostfixPercent) {
             r.scalarValue.scalar = l.scalarValue.scalar * r.scalarValue.scalar;
           }
 
@@ -2515,24 +2995,15 @@ MathParser::EvalValue MathParser::evalExprScalar(
             }
           }
 
-          const char opChar = (e.binaryOp == Expr::BinaryOp::Mul) ? '*' :
-                              (e.binaryOp == Expr::BinaryOp::Div) ? '/' :
-                              (e.binaryOp == Expr::BinaryOp::Add) ? '+' : '-';
-          bool ok = false;
-          EvalValue out = mapBinary(l, r, opChar, ok);
-          if (!ok) {
-            setError(ctx, STR_NUMERIC_ERROR_IN_EXPRESSION);
-            return makeScalar(0);
-          }
-          return out;
+          return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
         }
         default:
-          setError(ctx, STR_INTERNAL_BINARY_OP);
+          setInternalBinaryOpError(ctx);
           return makeScalar(0);
       }
     }
     default:
-      setError(ctx, STR_INTERNAL_EVAL_ERROR);
+      setInternalEvalError(ctx);
       return makeScalar(0);
   }
 }
@@ -2555,46 +3026,14 @@ MathParser::EvalValue MathParser::evalExpr(
       return makeScalar(0);
     }
     case Expr::Tag::Unary:
-      if (e.unaryOp == '+') {
-        return evalExpr(*e.child, ctx, scopedVars);
-      }
-      if (e.unaryOp == '-') {
-        EvalValue v = evalExpr(*e.child, ctx, scopedVars);
-        if (ctx.parseError) {
-          return v;
-        }
-        return negateEvalValue(v);
-      }
-      if (e.unaryOp == 'N') {
-        EvalValue v = evalExpr(*e.child, ctx, scopedVars);
-        if (ctx.parseError) {
-          return v;
-        }
-        return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
-      }
-      if (e.unaryOp == '~') {
-        EvalValue v = evalExpr(*e.child, ctx, scopedVars);
-        if (ctx.parseError) return v;
-        if (v.kind != ValueKind::Scalar) {
-          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
-          return makeScalar(0);
-        }
-        long long iv = 0;
-        if (!tryGetSignedInt64FromScalar(v.scalarValue, iv)) {
-          setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
-          return makeScalar(0);
-        }
-        return makeScalarInt(~iv);
-      }
-      setError(ctx, STR_INTERNAL_UNARY_OP);
-      return makeScalar(0);
+      return evalUnaryExpr(e, ctx, scopedVars, false);
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExpr(*e.child, ctx, scopedVars);
       if (ctx.parseError) {
         return v;
       }
       if (v.kind != ValueKind::Scalar) {
-        setError(ctx, STR_PERCENTAGE_REQUIRES_SCALAR_VALUE);
+        setPercentageRequiresScalarValueError(ctx);
         return makeScalar(0);
       }
       v.scalarValue.scalar /= 100.0;
@@ -2603,32 +3042,28 @@ MathParser::EvalValue MathParser::evalExpr(
       return v;
     }
     case Expr::Tag::ArrayOrParens: {
-      std::vector<EvalValue> values;
-      values.reserve(e.elements.size());
+      std::vector<EvalValue> flatVals;
+      flatVals.reserve(e.elements.size());
       for (const auto& ch : e.elements) {
-        values.emplace_back(evalExpr(*ch, ctx, scopedVars));
+        EvalValue a = evalExpr(*ch, ctx, scopedVars);
         if (ctx.parseError) {
           return makeScalar(0);
         }
-      }
-      std::vector<EvalValue> flatVals;
-      std::size_t flatCount = 0;
-      for (const auto& a : values) {
-        flatCount += (a.kind == ValueKind::Scalar) ? 1 : a.arr.size();
-      }
-      flatVals.reserve(flatCount);
-      for (const auto& a : values) {
         if (a.kind == ValueKind::Scalar) {
-          flatVals.emplace_back(a);
+          flatVals.emplace_back(std::move(a));
         } else {
-          for (std::size_t i = 0; i < a.arr.size(); ++i) {
-            EvalValue elem = scalarFromArrayAt(a, i);
-            flatVals.emplace_back(std::move(elem));
+          if (a.arr.empty()) {
+            continue;
+          }
+          const std::size_t oldSize = flatVals.size();
+          flatVals.reserve(oldSize + a.arr.size());
+          for (const auto& item : a.arr) {
+            flatVals.emplace_back(scalarFromScalarValue(item));
           }
         }
       }
       if (flatVals.empty()) {
-        setError(ctx, STR_FAILED_TO_BUILD_ARRAY_LITERAL);
+        setFailedToBuildArrayLiteralError(ctx);
         return makeScalar(0);
       }
       return makeArrayFromScalars(flatVals);
@@ -2648,24 +3083,24 @@ MathParser::EvalValue MathParser::evalExpr(
       EvalValue base = evalExpr(*e.left, ctx, scopedVars);
       if (ctx.parseError) return base;
       if (base.kind != ValueKind::Array) {
-        setError(ctx, STR_INDEXING_REQUIRES_AN_ARRAY_VALUE);
+        setIndexingRequiresArrayError(ctx);
         return makeScalar(0);
       }
       EvalValue idxv = evalExpr(*e.right, ctx, scopedVars);
       if (ctx.parseError) return idxv;
       if (idxv.kind != ValueKind::Scalar) {
-        setError(ctx, STR_ARRAY_INDEX_MUST_BE_A_SCALAR);
+        setArrayIndexMustBeScalarError(ctx);
         return makeScalar(0);
       }
       long long idx = 0;
       if (!nearlyInt(idxv.scalarValue.scalar, idx)) {
-        setError(ctx, STR_ARRAY_INDEX_MUST_BE_AN_INTEGER);
+        setArrayIndexMustBeIntegerError(ctx);
         return makeScalar(0);
       }
       const long long n = static_cast<long long>(base.arr.size());
       long long realIdx = (idx >= 0) ? idx : (n + idx);
       if (realIdx < 0 || realIdx >= n) {
-        setError(ctx, STR_ARRAY_INDEX_IS_OUT_OF_RANGE);
+        setArrayIndexOutOfRangeError(ctx);
         return makeScalar(0);
       }
       return scalarFromArrayAt(base, static_cast<std::size_t>(realIdx));
@@ -2694,7 +3129,7 @@ MathParser::EvalValue MathParser::evalExpr(
         return 0;
       };
       const auto returnIntegerOperandError = [&](const char* msg) -> EvalValue {
-        setError(ctx, msg);
+        setValidationError(ctx, msg);
         return makeScalar(0);
       };
       enum class BinaryEvalStatus {
@@ -2726,124 +3161,14 @@ MathParser::EvalValue MathParser::evalExpr(
         }
         return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1LL : 0LL);
       }
-      if (e.binaryOp == Expr::BinaryOp::Modulo) {
+      if (e.binaryOp == Expr::BinaryOp::Modulo || e.binaryOp == Expr::BinaryOp::BitAnd ||
+          e.binaryOp == Expr::BinaryOp::BitOr || e.binaryOp == Expr::BinaryOp::BitXor ||
+          e.binaryOp == Expr::BinaryOp::ShiftLeft || e.binaryOp == Expr::BinaryOp::ShiftRight) {
         EvalValue l = makeScalar(0), r = makeScalar(0);
         if (evalBinaryOperands(l, r) != BinaryEvalStatus::Ok) {
           return makeScalar(0);
         }
-        auto applyModuloScalars = [&](const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, EvalValue& outS) -> bool {
-          long long a = 0, b = 0;
-          if (!tryGetSignedInt64FromScalar(lv, a) || !tryGetSignedInt64FromScalar(rv, b)) return false;
-          if (b == 0) {
-            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-            return false;
-          }
-          outS = makeScalarInt(a % b);
-          return true;
-        };
-        auto applyModuloOverOperands = [&](const EvalValue& lv, const EvalValue& rv) -> EvalValue {
-          const auto returnModuloOperandError = [&]() -> EvalValue {
-            setError(ctx, STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
-            scratchBinaryOut_.clear();
-            return makeScalar(0);
-          };
-          if (lv.kind == ValueKind::Scalar && rv.kind == ValueKind::Scalar) {
-            EvalValue outS;
-            if (!applyModuloScalars(lv.scalarValue, rv.scalarValue, outS)) {
-              if (ctx.parseError) return makeScalar(0);
-              return returnIntegerOperandError(STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES);
-            }
-            return outS;
-          }
-          if (lv.kind == ValueKind::Array && rv.kind == ValueKind::Array && lv.arr.size() != rv.arr.size()) {
-            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-            return makeScalar(0);
-          }
-          const std::size_t outCount = (lv.kind == ValueKind::Array) ? lv.arr.size() : rv.arr.size();
-          scratchBinaryOut_.clear();
-          scratchBinaryOut_.reserve(outCount);
-          for (std::size_t i = 0; i < outCount; ++i) {
-            const EvalValue::ScalarValue& lItem = (lv.kind == ValueKind::Array) ? lv.arr[i] : lv.scalarValue;
-            const EvalValue::ScalarValue& rItem = (rv.kind == ValueKind::Array) ? rv.arr[i] : rv.scalarValue;
-            EvalValue outS;
-            if (!applyModuloScalars(lItem, rItem, outS)) {
-              if (ctx.parseError) {
-                scratchBinaryOut_.clear();
-                return makeScalar(0);
-              }
-              return returnModuloOperandError();
-            }
-            scratchBinaryOut_.emplace_back(std::move(outS));
-          }
-          EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-          scratchBinaryOut_.clear();
-          return ret;
-        };
-        return applyModuloOverOperands(l, r);
-      }
-      if (e.binaryOp == Expr::BinaryOp::BitAnd || e.binaryOp == Expr::BinaryOp::BitOr ||
-          e.binaryOp == Expr::BinaryOp::BitXor || e.binaryOp == Expr::BinaryOp::ShiftLeft ||
-          e.binaryOp == Expr::BinaryOp::ShiftRight) {
-        EvalValue l = makeScalar(0), r = makeScalar(0);
-        if (evalBinaryOperands(l, r) != BinaryEvalStatus::Ok) {
-          return makeScalar(0);
-        }
-        auto applyBitwiseScalars = [&](const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, EvalValue& outS) -> bool {
-          long long a = 0, b = 0;
-          if (!tryGetSignedInt64FromScalar(lv, a) || !tryGetSignedInt64FromScalar(rv, b)) return false;
-          if ((e.binaryOp == Expr::BinaryOp::ShiftLeft || e.binaryOp == Expr::BinaryOp::ShiftRight) &&
-              (b < 0 || b > 63)) {
-            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-            return false;
-          }
-          long long out = 0;
-          if (e.binaryOp == Expr::BinaryOp::BitAnd) out = (a & b);
-          else if (e.binaryOp == Expr::BinaryOp::BitOr) out = (a | b);
-          else if (e.binaryOp == Expr::BinaryOp::BitXor) out = (a ^ b);
-          else if (e.binaryOp == Expr::BinaryOp::ShiftLeft) out = bitwiseShiftLeftDefined(a, static_cast<unsigned int>(b));
-          else out = bitwiseShiftRightDefined(a, static_cast<unsigned int>(b));
-          outS = makeScalarInt(out);
-          return true;
-        };
-        auto applyBitwiseOverOperands = [&](const EvalValue& lv, const EvalValue& rv) -> EvalValue {
-          const auto returnBitwiseOperandError = [&]() -> EvalValue {
-            setError(ctx, STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
-            scratchBinaryOut_.clear();
-            return makeScalar(0);
-          };
-          if (lv.kind == ValueKind::Scalar && rv.kind == ValueKind::Scalar) {
-            EvalValue outS;
-            if (!applyBitwiseScalars(lv.scalarValue, rv.scalarValue, outS)) {
-              if (ctx.parseError) return makeScalar(0);
-              return returnIntegerOperandError(STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES);
-            }
-            return outS;
-          }
-          if (lv.kind == ValueKind::Array && rv.kind == ValueKind::Array && lv.arr.size() != rv.arr.size()) {
-            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-            return makeScalar(0);
-          }
-          const std::size_t outCount = (lv.kind == ValueKind::Array) ? lv.arr.size() : rv.arr.size();
-          scratchBinaryOut_.clear();
-          scratchBinaryOut_.reserve(outCount);
-          for (std::size_t i = 0; i < outCount; ++i) {
-            const EvalValue::ScalarValue& lItem = (lv.kind == ValueKind::Array) ? lv.arr[i] : lv.scalarValue;
-            const EvalValue::ScalarValue& rItem = (rv.kind == ValueKind::Array) ? rv.arr[i] : rv.scalarValue;
-            EvalValue outS;
-            if (!applyBitwiseScalars(lItem, rItem, outS)) {
-              if (ctx.parseError) {
-                scratchBinaryOut_.clear();
-                return makeScalar(0);
-              }
-              return returnBitwiseOperandError();
-            }
-            scratchBinaryOut_.emplace_back(std::move(outS));
-          }
-          EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-          scratchBinaryOut_.clear();
-          return ret;
-        };
-        return applyBitwiseOverOperands(l, r);
+        return evalInt64BinaryOp(ctx, l, r, e.binaryOp);
       }
       const auto evalComparison = [&](int& outCmp) -> bool {
         EvalValue l = evalExpr(*e.left, ctx, scopedVars);
@@ -2853,27 +3178,10 @@ MathParser::EvalValue MathParser::evalExpr(
         outCmp = compareValues(l, r);
         return true;
       };
-      const auto evalComparisonByOp = [&](int cmp) -> bool {
-        switch (e.binaryOp) {
-          case Expr::BinaryOp::CmpLt: return cmp < 0;
-          case Expr::BinaryOp::CmpGt: return cmp > 0;
-          case Expr::BinaryOp::CmpLe: return cmp <= 0;
-          case Expr::BinaryOp::CmpGe: return cmp >= 0;
-          case Expr::BinaryOp::CmpEq: return cmp == 0;
-          case Expr::BinaryOp::CmpNe: return cmp != 0;
-          default: return false;
-        }
-      };
-      if (e.binaryOp == Expr::BinaryOp::CmpLe || e.binaryOp == Expr::BinaryOp::CmpGe ||
-          e.binaryOp == Expr::BinaryOp::CmpEq || e.binaryOp == Expr::BinaryOp::CmpNe) {
+      if (isComparisonBinaryOp(e.binaryOp)) {
         int cmp = 0;
         if (!evalComparison(cmp)) return makeScalar(0);
-        return makeScalarInt(evalComparisonByOp(cmp) ? 1LL : 0LL);
-      }
-      if (e.binaryOp == Expr::BinaryOp::CmpLt || e.binaryOp == Expr::BinaryOp::CmpGt) {
-        int cmp = 0;
-        if (!evalComparison(cmp)) return makeScalar(0);
-        return makeScalarInt(evalComparisonByOp(cmp) ? 1LL : 0LL);
+        return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
       }
       EvalValue l = evalExpr(*e.left, ctx, scopedVars);
       if (ctx.parseError) {
@@ -2884,43 +3192,24 @@ MathParser::EvalValue MathParser::evalExpr(
         return r;
       }
       if ((e.binaryOp == Expr::BinaryOp::Add || e.binaryOp == Expr::BinaryOp::Sub) &&
-          e.rhsContainsPostfixPercent &&
+          e.rhsIsDirectPostfixPercent &&
           l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
         r.scalarValue.scalar = l.scalarValue.scalar * r.scalarValue.scalar;
       }
       if (e.binaryOp == Expr::BinaryOp::Pow) {
-        bool ok = false;
-        EvalValue out = mapBinary(l, r, '^', ok);
-        if (!ok) {
-          setError(ctx, STR_NUMERIC_ERROR_IN_POWER_OPERATION);
-          return makeScalar(0);
-        }
-        return out;
+        return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
       }
       if (e.binaryOp == Expr::BinaryOp::Mul || e.binaryOp == Expr::BinaryOp::Div ||
           e.binaryOp == Expr::BinaryOp::Add || e.binaryOp == Expr::BinaryOp::Sub) {
-        const char opChar = (e.binaryOp == Expr::BinaryOp::Mul) ? '*' :
-                            (e.binaryOp == Expr::BinaryOp::Div) ? '/' :
-                            (e.binaryOp == Expr::BinaryOp::Add) ? '+' : '-';
-        bool ok = false;
-        EvalValue out = mapBinary(l, r, opChar, ok);
-        if (!ok) {
-          if (l.kind == ValueKind::Array && r.kind == ValueKind::Array && l.arr.size() != r.arr.size()) {
-            setError(ctx, STR_INCOMPATIBLE_OPERANDS);
-          } else {
-            setError(ctx, STR_NUMERIC_ERROR_IN_EXPRESSION);
-          }
-          return makeScalar(0);
-        }
-        return out;
+        return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
       }
-      setError(ctx, STR_INTERNAL_BINARY_OP);
+      setInternalBinaryOpError(ctx);
       return makeScalar(0);
     }
     default:
       break;
   }
-  setError(ctx, STR_INTERNAL_EVAL_ERROR);
+  setInternalEvalError(ctx);
   return makeScalar(0);
 }
 
@@ -2956,13 +3245,84 @@ MathParser::EvalValue MathParser::runCompiledProgram(
   return out;
 }
 
-bool MathParser::flattenRequired(
+bool MathParser::argsContainNonFinite(const std::vector<EvalValue>& args) {
+  for (const auto& a : args) {
+    if (a.kind == ValueKind::Scalar) {
+      if (!std::isfinite(a.scalarValue.scalar)) return true;
+      continue;
+    }
+    for (const auto& item : a.arr) {
+      if (!std::isfinite(item.scalar)) return true;
+    }
+  }
+  return false;
+}
+
+bool MathParser::isFormatBuiltin(BuiltinFunctionId id) {
+  return id == BuiltinFunctionId::Hex || id == BuiltinFunctionId::Oct || id == BuiltinFunctionId::Bin ||
+      id == BuiltinFunctionId::Uhex || id == BuiltinFunctionId::Uoct || id == BuiltinFunctionId::Ubin;
+}
+
+bool MathParser::isIntegerOnlyBuiltin(BuiltinFunctionId id) {
+  return id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Mod ||
+      id == BuiltinFunctionId::Fact || id == BuiltinFunctionId::Factorial;
+}
+
+bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
+  return id == BuiltinFunctionId::Unpack || id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted ||
+      id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed || id == BuiltinFunctionId::Unique ||
+      id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
+}
+
+bool MathParser::validateIntegerRepresentableArgs(
     EvalContext& ctx,
     const std::string& fnName,
     const std::vector<EvalValue>& args,
-    std::vector<double>& flat) const {
-  if (args.empty() || !flattenArgs(args, flat)) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+    bool allowNonFiniteForFormat) const {
+  for (const auto& a : args) {
+    const auto validateScalar = [&](const EvalValue::ScalarValue& s) -> bool {
+      if (!std::isfinite(s.scalar)) {
+        return allowNonFiniteForFormat;
+      }
+      if (s.hasExactInt() || s.hasExactUInt64()) {
+        return true;
+      }
+      long long signedV = 0;
+      return tryGetSignedInt64FromScalar(s, signedV);
+    };
+    if (a.kind == ValueKind::Scalar) {
+      if (!validateScalar(a.scalarValue)) {
+        setIntegerValuesError(ctx, fnName);
+        return false;
+      }
+      continue;
+    }
+    for (const auto& item : a.arr) {
+      if (!validateScalar(item)) {
+        setIntegerValuesError(ctx, fnName);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool MathParser::validateBuiltinArgs(
+    EvalContext& ctx,
+    const std::string& fnName,
+    BuiltinFunctionId id,
+    const std::vector<EvalValue>& args) const {
+  if (isFormatBuiltin(id)) {
+    return validateIntegerRepresentableArgs(ctx, fnName, args, true);
+  }
+  if (isIntegerOnlyBuiltin(id)) {
+    return validateIntegerRepresentableArgs(ctx, fnName, args, false);
+  }
+  if (isNonCalculatingBuiltin(id)) {
+    return true;
+  }
+  if (argsContainNonFinite(args)) {
+    setNumericErrorInFunction(ctx, fnName);
     return false;
   }
   return true;
@@ -2971,7 +3331,7 @@ bool MathParser::flattenRequired(
 MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Unpack);
   if (args.empty()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
   const auto markExpanded = [](EvalValue v) {
@@ -2981,21 +3341,10 @@ MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vec
   if (args.size() == 1) {
     return markExpanded(args[0]);
   }
-  const std::size_t totalCount = countFlattenedScalars(args);
-  if (totalCount == 0) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
-    return makeScalar(0);
-  }
   std::vector<EvalValue> elems;
-  elems.reserve(totalCount);
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      elems.emplace_back(a);
-    } else {
-      for (std::size_t i = 0; i < a.arr.size(); ++i) {
-        elems.emplace_back(scalarFromArrayAt(a, i));
-      }
-    }
+  if (!flattenArgsToScalars(args, elems)) {
+    setAtLeastOneArgError(ctx, fnName);
+    return makeScalar(0);
   }
   return markExpanded(makeArrayFromScalars(elems));
 }
@@ -3024,11 +3373,11 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg ||
       id == BuiltinFunctionId::Mean) {
     if (args.empty()) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+      setAtLeastOneArgError(ctx, fnName);
       return makeScalar(0);
     }
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
-      return makeScalar(args[0].scalarValue.scalar);
+      return args[0];
     }
     double acc = 0.0;
     bool hasValue = false;
@@ -3052,13 +3401,13 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
 
     if (n == 0) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
-      return makeScalar(0);
+      setAtLeastOneArgError(ctx, fnName);
+        return makeScalar(0);
     }
     if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
       acc /= static_cast<double>(n);
     }
-    return makeScalar(acc);
+    return makeScalarMaybeExact(acc);
   }
 
   switch (id) {
@@ -3066,15 +3415,15 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       if (args.size() == 1U) {
         const EvalValue& single = args.front();
         if (single.kind == ValueKind::Scalar) {
-          return makeScalar(single.scalarValue.scalar);
+          return single;
         }
         if (single.arr.size() == 1U) {
-          return makeScalar(single.arr.front().scalar);
+          return scalarFromArrayAt(single, 0);
         }
       }
       std::vector<double> flat;
       if (!flattenArgs(args, flat)) {
-        setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+        setAtLeastOneArgError(ctx, fnName);
         return makeScalar(0);
       }
       const std::size_t n = flat.size();
@@ -3101,7 +3450,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         m2 += delta * delta2;
       });
       if (n == 0) {
-        setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+        setAtLeastOneArgError(ctx, fnName);
         return makeScalar(0);
       }
       double var = m2 / static_cast<double>(n);
@@ -3113,7 +3462,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     default:
       break;
   }
-  setError(ctx, STR_INTERNAL_ERROR_IN_AGGREGATE_BUILTIN);
+  setInternalAggregateBuiltinError(ctx);
   return makeScalar(0);
 }
 
@@ -3130,79 +3479,86 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     if ((bits << 1) == 0) bits = 0;
     return bits;
   };
-  auto dedupUniqueInPlace = [&](std::vector<double>& values) {
+  auto dedupUniqueInPlace = [&](std::vector<EvalValue>& values) {
     std::unordered_set<std::uint64_t> seen;
     seen.reserve(values.size() * 2 + 1);
     std::size_t writePos = 0;
     for (std::size_t readPos = 0; readPos < values.size(); ++readPos) {
-      const double v = values[readPos];
+      const double v = values[readPos].scalarValue.scalar;
       if (std::isnan(v)) {
-        values[writePos++] = v; // NaN never equals NaN in existing semantics; keep all.
+        values[writePos++] = values[readPos]; // NaN never equals NaN in existing semantics; keep all.
         continue;
       }
       if (seen.insert(keyForUnique(v)).second) {
-        values[writePos++] = v;
+        values[writePos++] = values[readPos];
       }
     }
     values.resize(writePos);
   };
 
   if (args.empty()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
-  const auto copyArrayScalars = [&](const EvalValue& a, std::vector<double>& out) {
+  const auto copyArrayScalars = [&](const EvalValue& a, std::vector<EvalValue>& out) {
     out.clear();
     out.reserve(a.arr.size());
     for (const auto& item : a.arr) {
-      out.emplace_back(item.scalar);
+      out.emplace_back(scalarFromScalarValue(item));
     }
   };
-  const auto copySingleArgToFlat = [&](const EvalValue& a, std::vector<double>& out) {
+  const auto copySingleArgToFlat = [&](const EvalValue& a, std::vector<EvalValue>& out) {
     out.clear();
     if (a.kind == ValueKind::Scalar) {
-      out.emplace_back(a.scalarValue.scalar);
+      out.emplace_back(a);
       return;
     }
     copyArrayScalars(a, out);
   };
+  const auto sortScalarsInPlace = [](std::vector<EvalValue>& values) {
+    std::sort(
+        values.begin(),
+        values.end(),
+        [](const EvalValue& lhs, const EvalValue& rhs) { return lhs.scalarValue.scalar < rhs.scalarValue.scalar; });
+  };
   if (args.size() == 1) {
     const EvalValue& a = args[0];
     if (a.kind == ValueKind::Scalar) {
-      return makeArray(std::vector<double>{a.scalarValue.scalar});
+      return makeArrayFromScalars(std::vector<EvalValue>{a});
     }
-    std::vector<double> out;
+    std::vector<EvalValue> out;
     copySingleArgToFlat(a, out);
     if (out.empty()) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+      setAtLeastOneArgError(ctx, fnName);
       return makeScalar(0);
     }
     if (id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted) {
-      std::sort(out.begin(), out.end());
-      return makeArray(out);
+      sortScalarsInPlace(out);
+      return makeArrayFromScalars(out);
     }
     if (id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed) {
       std::reverse(out.begin(), out.end());
-      return makeArray(out);
+      return makeArrayFromScalars(out);
     }
     if (id == BuiltinFunctionId::Unique) {
       dedupUniqueInPlace(out);
-      return makeArray(out);
+      return makeArrayFromScalars(out);
     }
   }
 
-  std::vector<double> flat;
-  if (!flattenRequired(ctx, fnName, args, flat)) {
+  std::vector<EvalValue> flat;
+  if (!flattenArgsToScalars(args, flat)) {
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
   if (id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted) {
-    std::sort(flat.begin(), flat.end());
+    sortScalarsInPlace(flat);
   } else if (id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed) {
     std::reverse(flat.begin(), flat.end());
   } else {
     dedupUniqueInPlace(flat);
   }
-  return makeArray(flat);
+  return makeArrayFromScalars(flat);
 }
 
 MathParser::EvalValue MathParser::builtinBaseFormat(
@@ -3211,52 +3567,17 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.empty()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
-  auto ensureIntegerScalarValue = [&](const EvalValue::ScalarValue& s) {
-    return s.hasExactInt() || s.hasExactUInt64();
-  };
-  auto ensureIntegerScalar = [&](const EvalValue& s) {
-    return ensureIntegerScalarValue(s.scalarValue);
-  };
-  auto validateIntegerArg = [&](const EvalValue& v) -> bool {
-    if (v.kind == ValueKind::Scalar) {
-      return ensureIntegerScalar(v);
-    }
-    for (const auto& item : v.arr) {
-      if (!ensureIntegerScalarValue(item)) {
-        return false;
-      }
-    }
-    return true;
-  };
-  for (const auto& a : args) {
-    if (!validateIntegerArg(a)) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
-      return makeScalar(0);
-    }
-  }
-
   EvalValue out;
   if (args.size() == 1) {
     out = args[0];
   } else {
-    const std::size_t totalCount = countFlattenedScalars(args);
-    if (totalCount == 0) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
-      return makeScalar(0);
-    }
     std::vector<EvalValue> elems;
-    elems.reserve(totalCount);
-    for (const auto& a : args) {
-      if (a.kind == ValueKind::Scalar) {
-        elems.emplace_back(a);
-      } else {
-        for (std::size_t i = 0; i < a.arr.size(); ++i) {
-          elems.emplace_back(scalarFromArrayAt(a, i));
-        }
-      }
+    if (!flattenArgsToScalars(args, elems)) {
+      setAtLeastOneArgError(ctx, fnName);
+      return makeScalar(0);
     }
     out = makeArrayFromScalars(elems);
   }
@@ -3281,7 +3602,7 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
 MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Pow);
   if (args.size() != 2) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
   if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
@@ -3290,7 +3611,7 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
     if (isPureFloatingScalarPair(a, b)) {
       double out = 0.0;
       if (!applyBinary(a.scalar, b.scalar, '^', out)) {
-        setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
+        setNumericErrorInFunction(ctx, fnName);
         return makeScalar(0);
       }
       return makeScalarMaybeExact(out);
@@ -3299,7 +3620,7 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
   bool ok = false;
   EvalValue out = mapBinary(args[0], args[1], '^', ok);
   if (!ok) {
-    setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
+    setNumericErrorInFunction(ctx, fnName);
     return makeScalar(0);
   }
   return out;
@@ -3310,31 +3631,55 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
+  if (id == BuiltinFunctionId::Atan2) {
+    if (args.size() != 2) {
+      setExactArgCountError(ctx, fnName, 2);
+      return makeScalar(0);
+    }
+    bool ok = false;
+    EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
+    if (!ok) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    return out;
+  }
+
+  if (id == BuiltinFunctionId::Hypot) {
+    if (args.size() != 2) {
+      setExactArgCountError(ctx, fnName, 2);
+      return makeScalar(0);
+    }
+    bool ok = false;
+    EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
+    if (!ok) {
+      setNumericErrorInFunction(ctx, fnName);
+      return makeScalar(0);
+    }
+    return out;
+  }
+
   if (id == BuiltinFunctionId::Clamp) {
     if (args.size() != 3) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_3_ARGUMENT_PAR);
+      setExactArgCountError(ctx, fnName, 3);
       return makeScalar(0);
     }
     if (args[1].kind != ValueKind::Scalar || args[2].kind != ValueKind::Scalar) {
-      setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_MIN_SLASH);
+      setScalarMinMaxError(ctx, fnName);
       return makeScalar(0);
     }
     return builtinApplyClamp(ctx, args[0], args[1], args[2]);
   }
 
   if (args.size() != 2) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
   const bool hasNonScalarArg = std::any_of(args.begin(), args.end(), [](const EvalValue& v) {
     return v.kind != ValueKind::Scalar;
   });
   if (hasNonScalarArg) {
-    const bool numericErrorForNonScalar =
-        (id == BuiltinFunctionId::Atan2 || id == BuiltinFunctionId::Hypot);
-    setError(
-        ctx,
-        numericErrorForNonScalar ? (STR_NUMERIC_ERROR_IN + fnName + STR_PAR) : (fnName + STR_PAR_EXPECTS_SCALAR_VALUES));
+    setScalarValuesError(ctx, fnName);
     return makeScalar(0);
   }
   switch (id) {
@@ -3351,7 +3696,7 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       long long a = 0, b = 0;
       if (!tryGetSignedInt64FromScalar(args[0].scalarValue, a) ||
           !tryGetSignedInt64FromScalar(args[1].scalarValue, b)) {
-        setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
+        setIntegerValuesError(ctx, fnName);
         return makeScalar(0);
       }
       if (id == BuiltinFunctionId::Gcd) {
@@ -3361,19 +3706,31 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       if (g == 0) {
         return makeScalarInt(0);
       }
-      return makeScalarInt((a / g) * b);
+      long long l = 0;
+      if (!tryMulInt64Checked(a / g, b, l)) {
+        setNumericErrorInFunction(ctx, fnName);
+        return makeScalar(0);
+      }
+      if (l < 0) {
+        if (l == (std::numeric_limits<long long>::min)()) {
+          setNumericErrorInFunction(ctx, fnName);
+          return makeScalar(0);
+        }
+        l = -l;
+      }
+      return makeScalarInt(l);
     }
     default:
       break;
   }
-  setError(ctx, STR_INTERNAL_ERROR_IN_SCALAR_BINARY_BUILTIN);
+  setInternalScalarBinaryBuiltinError(ctx);
   return makeScalar(0);
 }
 
 MathParser::EvalValue MathParser::builtinRand(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Rand);
   if (!args.empty()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_0_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 0);
     return makeScalar(0);
   }
   return makeScalar(randomUnitScalar());
@@ -3382,24 +3739,53 @@ MathParser::EvalValue MathParser::builtinRand(EvalContext& ctx, const std::vecto
 MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Mod);
   if (args.size() != 2) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
-  if (args[0].kind != ValueKind::Scalar || args[1].kind != ValueKind::Scalar) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_SCALAR_VALUES);
+  auto applyModScalar = [&](const EvalValue::ScalarValue& aS, const EvalValue::ScalarValue& bS, EvalValue& outS) -> bool {
+    long long a = 0, b = 0;
+    if (!tryGetSignedInt64FromScalar(aS, a) || !tryGetSignedInt64FromScalar(bS, b)) {
+      setIntegerValuesError(ctx, fnName);
+      return false;
+    }
+    if (b == 0) {
+      setNumericErrorInFunction(ctx, fnName);
+      return false;
+    }
+    outS = makeScalarInt(a % b);
+    return true;
+  };
+
+  if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
+    EvalValue outS;
+    if (!applyModScalar(args[0].scalarValue, args[1].scalarValue, outS)) {
+      return makeScalar(0);
+    }
+    return outS;
+  }
+
+  if (args[0].kind == ValueKind::Array && args[1].kind == ValueKind::Array &&
+      args[0].arr.size() != args[1].arr.size()) {
+    setNumericErrorInFunction(ctx, fnName);
     return makeScalar(0);
   }
-  long long a = 0, b = 0;
-  if (!tryGetSignedInt64FromScalar(args[0].scalarValue, a) ||
-      !tryGetSignedInt64FromScalar(args[1].scalarValue, b)) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_INTEGER_VALUES);
-    return makeScalar(0);
+
+  const std::size_t outCount = (args[0].kind == ValueKind::Array) ? args[0].arr.size() : args[1].arr.size();
+  scratchBinaryOut_.clear();
+  scratchBinaryOut_.reserve(outCount);
+  for (std::size_t i = 0; i < outCount; ++i) {
+    const EvalValue::ScalarValue& aItem = (args[0].kind == ValueKind::Array) ? args[0].arr[i] : args[0].scalarValue;
+    const EvalValue::ScalarValue& bItem = (args[1].kind == ValueKind::Array) ? args[1].arr[i] : args[1].scalarValue;
+    EvalValue outS;
+    if (!applyModScalar(aItem, bItem, outS)) {
+      scratchBinaryOut_.clear();
+      return makeScalar(0);
+    }
+    scratchBinaryOut_.emplace_back(std::move(outS));
   }
-  if (b == 0) {
-    setError(ctx, STR_NUMERIC_ERROR_IN + fnName + STR_PAR);
-    return makeScalar(0);
-  }
-  return makeScalarInt(a % b);
+  EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
+  scratchBinaryOut_.clear();
+  return ret;
 }
 
 MathParser::EvalValue MathParser::builtinFactorial(
@@ -3429,12 +3815,12 @@ MathParser::EvalValue MathParser::builtinFactorial(
       121645100408832000LL,
       2432902008176640000LL};
   if (args.size() != 1) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_1_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 1);
     return makeScalar(0);
   }
   long long n = 0;
   if (args[0].kind != ValueKind::Scalar || !nearlyInt(args[0].scalarValue.scalar, n) || n < 0) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_A_NON_DASH);
+    setNonNegativeIntegerError(ctx, fnName);
     return makeScalar(0);
   }
   if (n <= 20) {
@@ -3453,7 +3839,7 @@ MathParser::EvalValue MathParser::builtinDegRad(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.empty()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
   const bool toDeg = (id == BuiltinFunctionId::Deg);
@@ -3470,26 +3856,18 @@ MathParser::EvalValue MathParser::builtinDegRad(
     }
     return makeArrayFromScalars(outVals);
   }
-  const std::size_t totalCount = countFlattenedScalars(args);
-  if (totalCount == 0) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_AT_LEAST_1);
+  std::vector<EvalValue> inVals;
+  if (!flattenArgsToScalars(args, inVals)) {
+    setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
-
-  std::vector<double> out;
-  out.reserve(totalCount);
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      const double x = a.scalarValue.scalar;
-      out.emplace_back(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0));
-    } else {
-      for (const auto& item : a.arr) {
-        const double x = item.scalar;
-        out.emplace_back(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0));
-      }
-    }
+  std::vector<EvalValue> outVals;
+  outVals.reserve(inVals.size());
+  for (const auto& item : inVals) {
+    const double x = item.scalarValue.scalar;
+    outVals.emplace_back(makeScalarMaybeExact(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0)));
   }
-  return makeArray(out);
+  return makeArrayFromScalars(outVals);
 }
 
 MathParser::EvalValue MathParser::builtinUnaryMath(
@@ -3498,7 +3876,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (args.size() != 1) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_1_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 1);
     return makeScalar(0);
   }
   if (args[0].kind == ValueKind::Scalar) {
@@ -3590,27 +3968,47 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     case BuiltinFunctionId::Sqr:
       return mapUnaryFn(args[0], squareScalar);
     case BuiltinFunctionId::Abs:
-      return mapUnaryFn(args[0], std::fabs);
+      {
+        std::vector<EvalValue> outVals;
+        outVals.reserve(args[0].arr.size());
+        for (const auto& e : args[0].arr) {
+          if (e.hasExactUInt64()) {
+            outVals.emplace_back(makeScalarUInt(e.exactUInt64));
+          } else {
+            outVals.emplace_back(makeScalarMaybeExact(std::fabs(e.scalar)));
+          }
+        }
+        return makeArrayFromScalars(outVals);
+      }
     case BuiltinFunctionId::Floor:
     case BuiltinFunctionId::Ceil:
     case BuiltinFunctionId::Trunc:
     case BuiltinFunctionId::Int:
     case BuiltinFunctionId::Round:
     case BuiltinFunctionId::Sign: {
-      auto intFunc = [&](double x) -> long long {
-        if (id == BuiltinFunctionId::Floor) return static_cast<long long>(std::floor(x));
-        if (id == BuiltinFunctionId::Ceil) return static_cast<long long>(std::ceil(x));
-        if (id == BuiltinFunctionId::Round) return static_cast<long long>(std::round(x));
-        if (id == BuiltinFunctionId::Sign) return (x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL);
-        return static_cast<long long>(std::trunc(x)); // trunc/int
+      auto applyIntLikeUnaryToScalar = [&](const EvalValue::ScalarValue& sItem) -> EvalValue {
+        const double x = sItem.scalar;
+        if (id == BuiltinFunctionId::Sign) {
+          if (sItem.hasExactInt()) return makeScalarInt((sItem.exactInt > 0) ? 1LL : ((sItem.exactInt < 0) ? -1LL : 0LL));
+          if (sItem.hasExactUInt64()) return makeScalarInt((sItem.exactUInt64 == 0u) ? 0LL : 1LL);
+          return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
+        }
+        if (sItem.hasExactInt()) return makeScalarInt(sItem.exactInt);
+        if (sItem.hasExactUInt64() && sItem.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+          return makeScalarInt(static_cast<long long>(sItem.exactUInt64));
+        }
+        if (id == BuiltinFunctionId::Floor) return makeScalarInt(static_cast<long long>(std::floor(x)));
+        if (id == BuiltinFunctionId::Ceil) return makeScalarInt(static_cast<long long>(std::ceil(x)));
+        if (id == BuiltinFunctionId::Round) return makeScalarInt(static_cast<long long>(std::round(x)));
+        return makeScalarInt(static_cast<long long>(std::trunc(x))); // trunc/int
       };
       if (args[0].kind == ValueKind::Scalar) {
-        return makeScalarInt(intFunc(args[0].scalarValue.scalar));
+        return applyIntLikeUnaryToScalar(args[0].scalarValue);
       }
       std::vector<EvalValue> outVals;
       outVals.reserve(args[0].arr.size());
       for (const auto& e : args[0].arr) {
-        outVals.emplace_back(makeScalarInt(intFunc(e.scalar)));
+        outVals.emplace_back(applyIntLikeUnaryToScalar(e));
       }
       return makeArrayFromScalars(outVals);
     }
@@ -3620,87 +4018,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     default:
       break;
   }
-  setError(ctx, STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN);
+  setInternalUnaryMathBuiltinError(ctx);
   return makeScalar(0);
-}
-
-MathParser::EvalValue MathParser::builtinApplyLogWithBase(
-    EvalContext& ctx,
-    const EvalValue& valueV,
-    const EvalValue& baseV) const {
-  const std::string errFn = getFunctionName(BuiltinFunctionId::Log);
-  const auto failNumericError = [&]() -> EvalValue {
-    setError(ctx, STR_NUMERIC_ERROR_IN + errFn + STR_PAR);
-    return makeScalar(0);
-  };
-  const auto evalLogScalar = [&](double value, double base, EvalValue& out) -> bool {
-    if (value <= 0.0 || base <= 0.0 || base == 1.0) {
-      return false;
-    }
-    out = makeScalar(std::log(value) / std::log(base));
-    return true;
-  };
-  if (valueV.kind == ValueKind::Scalar && baseV.kind == ValueKind::Scalar) {
-    EvalValue out;
-    if (!evalLogScalar(valueV.scalarValue.scalar, baseV.scalarValue.scalar, out)) {
-      return failNumericError();
-    }
-    return out;
-  }
-  scratchLogOut_.clear();
-  if (valueV.kind == ValueKind::Array && baseV.kind == ValueKind::Array) {
-    if (valueV.arr.size() != baseV.arr.size()) {
-      return failNumericError();
-    }
-    scratchLogOut_.reserve(valueV.arr.size());
-    for (std::size_t i = 0; i < valueV.arr.size(); ++i) {
-      EvalValue out;
-      if (!evalLogScalar(valueV.arr[i].scalar, baseV.arr[i].scalar, out)) {
-        scratchLogOut_.clear();
-        return failNumericError();
-      }
-      scratchLogOut_.emplace_back(std::move(out));
-    }
-    EvalValue ret = makeArrayFromScalars(scratchLogOut_);
-    scratchLogOut_.clear();
-    return ret;
-  }
-  if (valueV.kind == ValueKind::Array) {
-    if (baseV.kind == ValueKind::Scalar) {
-      const double base = baseV.scalarValue.scalar;
-      if (base <= 0.0 || base == 1.0) {
-        return failNumericError();
-      }
-      const double logBase = std::log(base);
-      scratchLogOut_.reserve(valueV.arr.size());
-      for (const auto& item : valueV.arr) {
-        if (item.scalar <= 0.0) {
-          scratchLogOut_.clear();
-          return failNumericError();
-        }
-        scratchLogOut_.emplace_back(makeScalar(std::log(item.scalar) / logBase));
-      }
-      EvalValue ret = makeArrayFromScalars(scratchLogOut_);
-      scratchLogOut_.clear();
-      return ret;
-    }
-    return failNumericError();
-  }
-  if (baseV.kind == ValueKind::Array) {
-    scratchLogOut_.reserve(baseV.arr.size());
-    for (std::size_t i = 0; i < baseV.arr.size(); ++i) {
-      EvalValue out;
-      if (!evalLogScalar(valueV.scalarValue.scalar, baseV.arr[i].scalar, out)) {
-        scratchLogOut_.clear();
-        return failNumericError();
-      }
-      scratchLogOut_.emplace_back(std::move(out));
-    }
-    EvalValue ret = makeArrayFromScalars(scratchLogOut_);
-    scratchLogOut_.clear();
-    return ret;
-  }
-  return failNumericError();
 }
 
 MathParser::EvalValue MathParser::builtinApplyClamp(
@@ -3709,7 +4028,7 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     const EvalValue& minV,
     const EvalValue& maxV) const {
   if (minV.kind != ValueKind::Scalar || maxV.kind != ValueKind::Scalar) {
-    setError(ctx, getFunctionName(BuiltinFunctionId::Clamp) + STR_PAR_EXPECTS_SCALAR_MIN_SLASH);
+    setScalarMinMaxError(ctx, getFunctionName(BuiltinFunctionId::Clamp));
     return makeScalar(0);
   }
   if (valueV.kind == ValueKind::Scalar) {
@@ -3727,17 +4046,23 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     scratchClampOut_.clear();
     return ret;
   }
-  setError(ctx, STR_NUMERIC_ERROR_IN_CLAMP_PAR);
+  setNumericErrorInFunction(ctx, getFunctionName(BuiltinFunctionId::Clamp));
   return makeScalar(0);
 }
 
 MathParser::EvalValue MathParser::builtinLog(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Log);
   if (args.size() != 2) {
-    setError(ctx, fnName + STR_PAR_EXPECTS_2_ARGUMENT_PAR);
+    setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
-  return builtinApplyLogWithBase(ctx, args[0], args[1]);
+  bool ok = false;
+  EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], BuiltinFunctionId::Log, ok);
+  if (!ok) {
+    setNumericErrorInFunction(ctx, fnName);
+    return makeScalar(0);
+  }
+  return out;
 }
 
 MathParser::EvalValue MathParser::evalUserFunctionCall(
@@ -3751,22 +4076,22 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     return makeScalar(0);
   }
   if (args.size() != uf->params.size()) {
-    setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(uf->params.size()) + STR_ARGUMENT_PAR_S);
+    setExactArgCountError(ctx, fnName, uf->params.size());
     return makeScalar(0);
   }
   if (ctx.evalDepth >= kMaxEvalDepth) {
-    setError(ctx, STR_MAX_EVALUATION_DEPTH_REACHED);
+    setMaxEvaluationDepthReachedError(ctx);
     return makeScalar(0);
   }
 
   for (const std::string& active : userFunctionCallStack_) {
     if (active == fnName) {
-      setError(ctx, STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
+      setRecursiveUserFunctionCallError(ctx, fnName);
       return makeScalar(0);
     }
   }
   if (userFunctionCallStack_.size() >= static_cast<std::size_t>(kMaxEvalDepth)) {
-    setError(ctx, STR_USER_FUNCTION_CALL_STACK_OVERFLOW);
+    setUserFunctionCallStackOverflowError(ctx);
     return makeScalar(0);
   }
   userFunctionCallStack_.push_back(fnName);
@@ -3794,7 +4119,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     }
     skipSpaces(parseCtx);
     if (!parseCtx.parseError && *parseCtx.p != '\0') {
-      setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
+      setUnexpectedTrailingInputError(ctx);
       return makeScalar(0);
     }
     uf->compiledProgram = std::move(compiledBody);
@@ -3816,7 +4141,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
 MathParser::EvalValue MathParser::evalFunctionCall(
     EvalContext& ctx,
     const std::string& fnName,
-    std::vector<EvalValue> args,
+    std::vector<EvalValue>&& args,
     BuiltinFunctionId preboundId,
     const std::unordered_map<std::string, EvalValue>* scopedVars) {
   normalizeCallArgs(args);
@@ -3824,6 +4149,9 @@ MathParser::EvalValue MathParser::evalFunctionCall(
   BuiltinFunctionId id = preboundId;
   if (id == BuiltinFunctionId::Count && !tryGetBuiltinFunctionId(fnName, id)) {
     return evalUserFunctionCall(ctx, fnName, args, scopedVars);
+  }
+  if (!validateBuiltinArgs(ctx, fnName, id, args)) {
+    return makeScalar(0);
   }
 
   switch (id) {
@@ -3909,13 +4237,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
 }
 
 bool MathParser::compile(const std::string& mathExpression) {
-  hasResult_ = false;
-  lastError_.clear();
-  compiledProgram_.clear();
-  hasCompiledProgram_ = false;
-  compiledScalarOnly_ = false;
-  compiledHasAssignments_ = false;
-  boundVariablesVersion_ = static_cast<std::size_t>(-1);
+  resetCompileState();
 
   EvalContext ctx;
   ctx.sourceExpr = stripLineComments(mathExpression);
@@ -3925,14 +4247,14 @@ bool MathParser::compile(const std::string& mathExpression) {
   std::vector<AstStatement> program;
   if (!parseProgram(ctx, program)) {
     if (!ctx.parseError) {
-      setError(ctx, STR_PARSE_FAILED);
+      setParseFailedError(ctx);
     }
     lastError_ = ctx.errorText;
     return false;
   }
   skipSpaces(ctx);
   if (!ctx.parseError && *ctx.p != '\0') {
-    setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
+    setUnexpectedTrailingInputError(ctx);
   }
   if (ctx.parseError) {
     lastError_ = ctx.errorText;
@@ -3951,44 +4273,60 @@ bool MathParser::compile(const std::string& mathExpression) {
 }
 
 void MathParser::evaluate() {
+  resetEvaluateState();
+
+  EvalContext ctx;
+  if (!prepareEvaluate(ctx)) {
+    return;
+  }
+  EvalValue out = runCompiledProgram(ctx, compiledProgram_, nullptr, compiledScalarOnly_);
+  finalizeEvaluate(ctx, std::move(out));
+}
+
+void MathParser::resetCompileState() {
+  hasResult_ = false;
+  lastError_.clear();
+  compiledProgram_.clear();
+  hasCompiledProgram_ = false;
+  compiledScalarOnly_ = false;
+  compiledHasAssignments_ = false;
+  boundVariablesVersion_ = static_cast<std::size_t>(-1);
+}
+
+void MathParser::resetEvaluateState() {
   hasResult_ = false;
   lastError_.clear();
   lastResult_ = makeScalar(0);
   userFunctionCallStack_.clear();
+}
 
+bool MathParser::prepareEvaluate(EvalContext& ctx) {
+  ctx.start = nullptr;
+  ctx.p = nullptr;
   if (!hasCompiledProgram_) {
     lastError_ = STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR;
-    return;
+    return false;
   }
   if (boundVariablesVersion_ != variablesVersion_) {
     bindCompiledVariableRefs();
   }
   if (compiledProgram_.empty()) {
-    // Mirrors Basic smoke behavior for comment-only / empty input: no result, no error.
-    return;
+    return false;
   }
+  return true;
+}
 
-  EvalContext ctx;
-  ctx.start = nullptr;
-  ctx.p = nullptr;
-  EvalValue out = runCompiledProgram(ctx, compiledProgram_, nullptr, compiledScalarOnly_);
+bool MathParser::finalizeEvaluate(EvalContext& ctx, EvalValue&& out) {
   if (ctx.parseError) {
     lastError_ = ctx.errorText;
-    return;
+    return false;
   }
-  if (!ctx.unknownVarsText.empty()) {
-    lastError_ = STR_UNKNOWN_VARIABLE_COLON + ctx.unknownVarsText;
-    if (!ctx.unknownFuncsText.empty()) {
-      lastError_ += STR_SEMICOLON_UNKNOWN_FUNCTION_COLON + ctx.unknownFuncsText;
-    }
-    return;
+  if (trySetUnknownNameError(ctx)) {
+    return false;
   }
-  if (!ctx.unknownFuncsText.empty()) {
-    lastError_ = STR_UNKNOWN_FUNCTION_COLON + ctx.unknownFuncsText;
-    return;
-  }
-  lastResult_ = out;
+  lastResult_ = std::move(out);
   hasResult_ = true;
+  return true;
 }
 
 void MathParser::parseAndEvaluate(const std::string& mathExpression) {
@@ -4027,31 +4365,8 @@ std::string MathParser::addUserFunction(const std::string& mathExpression) {
     return STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION;
   }
 
-  {
-    std::unordered_map<std::string, bool> seen;
-    for (const auto& p : fnParams) {
-      if (seen.find(p) != seen.end()) {
-        return STR_DUPLICATE_PARAMETER_NAME;
-      }
-      if (isReservedBuiltinConstantName(p)) {
-        return STR_RESERVED_CONSTANT_NAME;
-      }
-      seen[p] = true;
-    }
-  }
-
-  {
-    if (isReservedBuiltinConstantName(fnName)) {
-      return STR_RESERVED_CONSTANT_NAME;
-    }
-    if (isReservedFunctionName(fnName)) {
-      return STR_RESERVED_FUNCTION_NAME;
-    }
-  }
-
-  if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
-    return STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName;
-  }
+  const std::string udfErr = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr);
+  if (!udfErr.empty()) return udfErr;
 
   upsertUserFunction(UserFunction{fnName, fnParams, fnExpr});
   return "";

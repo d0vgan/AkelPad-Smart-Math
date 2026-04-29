@@ -245,7 +245,7 @@ private:
     BuiltinFunctionId builtinFunctionId = BuiltinFunctionId::Count;
     const EvalValue* boundVariable = nullptr;
     BinaryOp binaryOp = BinaryOp::None;
-    bool rhsContainsPostfixPercent = false;
+    bool rhsIsDirectPostfixPercent = false;
     char unaryOp = 0;
     std::unique_ptr<Expr> child;
     std::unique_ptr<Expr> left;
@@ -284,7 +284,6 @@ private:
   std::vector<std::string> userFunctionCallStack_;
   std::vector<AstStatement> compiledProgram_;
   mutable std::vector<EvalValue> scratchExpandedArgs_;
-  mutable std::vector<EvalValue> scratchLogOut_;
   mutable std::vector<EvalValue> scratchBinaryOut_;
   mutable std::vector<EvalValue> scratchClampOut_;
   std::size_t variablesVersion_ = 0;
@@ -296,14 +295,46 @@ private:
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
   static bool isIdentChar(char c);
+  static bool isNumericLiteralStart(char c);
+  static std::string consumeLowerIdentToken(EvalContext& ctx);
+  bool tryConsumeCommaArgSeparator(EvalContext& ctx, bool& hasComma) const;
   static void skipSpaces(EvalContext& ctx);
+  void setUnexpectedTokenError(EvalContext& ctx) const;
+  void setUnexpectedTrailingInputError(EvalContext& ctx) const;
+  void setMissingClosingParenLikeError(EvalContext& ctx) const;
   static bool consumeKeyword(EvalContext& ctx, const char* kw);
+  bool tryConsumeLogicalBinaryOperator(EvalContext& ctx, OperatorNameId keywordId, char symbol) const;
+  static std::unique_ptr<Expr> makeBinaryExpr(
+      std::unique_ptr<Expr> left,
+      std::unique_ptr<Expr> right,
+      Expr::BinaryOp op,
+      bool setPercentFlag);
+  bool parseParenthesizedExprList(
+      EvalContext& ctx,
+      std::vector<std::unique_ptr<Expr>>& outValues);
+  std::unique_ptr<Expr> parsePrimaryParenthesized(EvalContext& ctx);
+  std::unique_ptr<Expr> parsePrimaryNumericLiteral(EvalContext& ctx);
+  std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
   static bool nearlyInt(double v, long long& out);
   static bool parseUInt64FromDouble(double v, std::uint64_t& out);
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  static bool argsContainNonFinite(const std::vector<EvalValue>& args);
+  static bool isFormatBuiltin(BuiltinFunctionId id);
+  static bool isIntegerOnlyBuiltin(BuiltinFunctionId id);
+  static bool isNonCalculatingBuiltin(BuiltinFunctionId id);
+  bool validateIntegerRepresentableArgs(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const std::vector<EvalValue>& args,
+      bool allowNonFiniteForFormat) const;
+  bool validateBuiltinArgs(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args) const;
   static bool isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b);
 
   static std::string formatScalar(const EvalValue& v, RenderBase base);
@@ -317,7 +348,9 @@ private:
   static bool tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFunctionId& outId);
   static const char* tryGetBuiltinFunctionMissingCallHint(const std::string& nameText);
   static bool isOpKeyword(const std::string& nameText, OperatorNameId id);
+  static bool isLogicalBinaryOperatorKeyword(const std::string& nameText);
   static bool isReservedFunctionName(const std::string& nameText);
+  static const char* getReservedIdentifierError(const std::string& ident);
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
   bool trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const;
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
@@ -325,6 +358,72 @@ private:
       const Expr& e,
       const std::unordered_map<std::string, EvalValue>* scopedVars,
       EvalValue& out) const;
+  static const char* validateUserFunctionDefinitionNames(
+      const std::string& fnName,
+      const std::vector<std::string>& fnParams);
+  std::string getUserFunctionDefinitionErrorText(
+      const std::string& fnName,
+      const std::vector<std::string>& fnParams,
+      const std::string& fnExpr) const;
+  bool trySetUserFunctionDefinitionError(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const std::vector<std::string>& fnParams,
+      const std::string& fnExpr) const;
+  static const char* validateAssignmentTargetName(const std::string& ident);
+  static std::string buildUnknownVariableErrorText(const std::string& unknownVarsText);
+  static std::string buildUnknownFunctionErrorText(const std::string& unknownFuncsText);
+  static void appendUnknownFunctionErrorText(std::string& errorText, const std::string& unknownFuncsText);
+  void setValidationError(EvalContext& ctx, const char* errorText) const;
+  bool trySetUnknownNameError(const EvalContext& ctx);
+  static std::string buildUnknownNameErrorText(
+      const std::string& unknownVarsText,
+      const std::string& unknownFuncsText);
+  bool tryAppendParsedExpressionStatement(
+      EvalContext& ctx,
+      std::vector<AstStatement>& out);
+  static bool hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node);
+  void setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const;
+  void setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const;
+  void setExactArgCountError(EvalContext& ctx, const std::string& fnName, size_t expectedCount) const;
+  void setScalarValuesError(EvalContext& ctx, const std::string& fnName) const;
+  void setIntegerValuesError(EvalContext& ctx, const std::string& fnName) const;
+  void setScalarMinMaxError(EvalContext& ctx, const std::string& fnName) const;
+  void setNonNegativeIntegerError(EvalContext& ctx, const std::string& fnName) const;
+  void setBitwiseIntegerOperandsError(EvalContext& ctx) const;
+  void setModuloIntegerOperandsError(EvalContext& ctx) const;
+  void setIncompatibleOperandsError(EvalContext& ctx) const;
+  void setUnexpectedCommaError(EvalContext& ctx) const;
+  void setIndexingRequiresArrayError(EvalContext& ctx) const;
+  void setMissingIndexError(EvalContext& ctx) const;
+  void setArrayIndexMustBeScalarError(EvalContext& ctx) const;
+  void setArrayIndexMustBeIntegerError(EvalContext& ctx) const;
+  void setArrayIndexOutOfRangeError(EvalContext& ctx) const;
+  void setMissingClosingBracketError(EvalContext& ctx) const;
+  void setMissingClosingParenthesisError(EvalContext& ctx) const;
+  void setFunctionHintError(EvalContext& ctx, const std::string& hintText) const;
+  void setInvalidHexLiteralError(EvalContext& ctx) const;
+  void setInvalidBinaryLiteralError(EvalContext& ctx) const;
+  void setInvalidOctalLiteralError(EvalContext& ctx) const;
+  void setInvalidPrefixedLiteralError(EvalContext& ctx, char prefixChar) const;
+  void setInternalUnaryOpError(EvalContext& ctx) const;
+  void setInternalBinaryOpError(EvalContext& ctx) const;
+  void setInternalEvalError(EvalContext& ctx) const;
+  void setNumericErrorInPowerOperation(EvalContext& ctx) const;
+  void setNumericErrorInExpression(EvalContext& ctx) const;
+  void setUserFunctionCallStackOverflowError(EvalContext& ctx) const;
+  void setRecursiveUserFunctionCallError(EvalContext& ctx, const std::string& fnName) const;
+  void setMaxEvaluationDepthReachedError(EvalContext& ctx) const;
+  void setInvalidNumericLiteralError(EvalContext& ctx) const;
+  void setPercentageRequiresScalarValueError(EvalContext& ctx) const;
+  void setFailedToBuildArrayLiteralError(EvalContext& ctx) const;
+  void setInternalAggregateBuiltinError(EvalContext& ctx) const;
+  void setInternalScalarBinaryBuiltinError(EvalContext& ctx) const;
+  void setInternalUnaryMathBuiltinError(EvalContext& ctx) const;
+  void setUnexpectedTokenAfterExpressionError(EvalContext& ctx) const;
+  void setScalarOnlyExpressionEncounteredNonError(EvalContext& ctx) const;
+  void setParseFailedError(EvalContext& ctx) const;
+  void setStaticError(EvalContext& ctx, const char* errorText) const;
 
   void setError(EvalContext& ctx, const std::string& msg) const;
 
@@ -334,6 +433,20 @@ private:
   std::unique_ptr<Expr> parseAnd(EvalContext& ctx);
   std::unique_ptr<Expr> parseLogicalNot(EvalContext& ctx);
   std::unique_ptr<Expr> parseCompare(EvalContext& ctx);
+  std::unique_ptr<Expr> parseLeftAssocBinary(
+      EvalContext& ctx,
+      std::unique_ptr<Expr> (MathParser::*parseOperand)(EvalContext&),
+      bool (MathParser::*tryConsumeOp)(EvalContext&, Expr::BinaryOp&),
+      bool setPercentFlag = false);
+  bool tryConsumeBitAndOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeBitXorOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeBitOrOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeShiftOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeAddSubOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeMulDivModOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeCompareOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeLogicalAndOp(EvalContext& ctx, Expr::BinaryOp& outOp);
+  bool tryConsumeLogicalOrOp(EvalContext& ctx, Expr::BinaryOp& outOp);
   std::unique_ptr<Expr> parseBitOr(EvalContext& ctx);
   std::unique_ptr<Expr> parseBitXor(EvalContext& ctx);
   std::unique_ptr<Expr> parseBitAnd(EvalContext& ctx);
@@ -346,7 +459,24 @@ private:
 
   EvalValue evalExpr(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
   EvalValue evalExprScalar(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
-  static bool exprContainsPostfixPercent(const Expr& e);
+  EvalValue evalUnaryExpr(
+      const Expr& e,
+      EvalContext& ctx,
+      const std::unordered_map<std::string, EvalValue>* scopedVars,
+      bool scalarOnlyMode);
+  EvalValue evalMappedBinaryOp(
+      EvalContext& ctx,
+      Expr::BinaryOp op,
+      const EvalValue& left,
+      const EvalValue& right) const;
+  EvalValue evalInt64BinaryOp(
+      EvalContext& ctx,
+      const EvalValue& left,
+      const EvalValue& right,
+      Expr::BinaryOp op) const;
+  static bool isComparisonBinaryOp(Expr::BinaryOp op);
+  static bool evalComparisonByOp(Expr::BinaryOp op, int cmp);
+  static bool exprIsDirectPostfixPercent(const Expr& e);
   bool exprIsScalarOnly(const Expr& e) const;
   bool programIsScalarOnly(const std::vector<AstStatement>& program) const;
   EvalValue runCompiledProgram(
@@ -358,15 +488,9 @@ private:
   EvalValue evalFunctionCall(
       EvalContext& ctx,
       const std::string& fnName,
-      std::vector<EvalValue> args,
+      std::vector<EvalValue>&& args,
       BuiltinFunctionId preboundId,
       const std::unordered_map<std::string, EvalValue>* scopedVars);
-
-  bool flattenRequired(
-      EvalContext& ctx,
-      const std::string& fnName,
-      const std::vector<EvalValue>& args,
-      std::vector<double>& flat) const;
 
   EvalValue builtinUnpack(EvalContext& ctx, const std::vector<EvalValue>& args) const;
   EvalValue builtinAggregateFamily(
@@ -407,13 +531,16 @@ private:
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
   EvalValue builtinLog(EvalContext& ctx, const std::vector<EvalValue>& args) const;
-  EvalValue builtinApplyLogWithBase(EvalContext& ctx, const EvalValue& valueV, const EvalValue& baseV) const;
   EvalValue builtinApplyClamp(EvalContext& ctx, const EvalValue& valueV, const EvalValue& minV, const EvalValue& maxV) const;
   EvalValue evalUserFunctionCall(
       EvalContext& ctx,
       const std::string& fnName,
       const std::vector<EvalValue>& args,
       const std::unordered_map<std::string, EvalValue>* scopedVars);
+  void resetCompileState();
+  void resetEvaluateState();
+  bool prepareEvaluate(EvalContext& ctx);
+  bool finalizeEvaluate(EvalContext& ctx, EvalValue&& out);
 
   bool parseFunctionDefinition(
       EvalContext& ctx,
@@ -422,6 +549,7 @@ private:
       std::string& outExpr) const;
 
   static bool flattenArgs(const std::vector<EvalValue>& args, std::vector<double>& out);
+  static bool flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out);
   static std::size_t countFlattenedScalars(const std::vector<EvalValue>& args);
   static int expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector<EvalValue>& out);
   void setVariable(const std::string& name, const EvalValue& value);
@@ -437,14 +565,17 @@ private:
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);
   static RawResult toRawResult(const EvalValue& v);
+  static EvalValue scalarFromScalarValue(const EvalValue::ScalarValue& sv);
   static EvalValue scalarFromArrayAt(const EvalValue& arrV, std::size_t idx);
-  EvalValue makeBinaryNumericError(
-      EvalContext& ctx,
-      const EvalValue& left,
-      const EvalValue& right,
-      const char* numericErrorText);
   static bool applyBinary(double a, double b, char op, double& out);
   static EvalValue mapUnaryFn(const EvalValue& in, double (*fn)(double));
+  template <typename ScalarFn>
+  EvalValue mapBinaryBroadcast(const EvalValue& left, const EvalValue& right, ScalarFn&& scalarFn, bool& ok) const;
+  EvalValue mapBinaryBuiltinMathFunction(
+      const EvalValue& left,
+      const EvalValue& right,
+      BuiltinFunctionId id,
+      bool& ok) const;
   /** Unary minus with exact int/uint preservation; LLONG_MIN -> double. */
   static EvalValue negateEvalValue(const EvalValue& v);
   EvalValue mapBinary(const EvalValue& a, const EvalValue& b, char op, bool& ok) const;
