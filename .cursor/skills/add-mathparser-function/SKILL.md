@@ -40,6 +40,11 @@ Before editing files, confirm or infer:
 
 If requirements are ambiguous, ask concise clarifying questions before coding.
 
+For any **new operator** or **new builtin function**, explicitly decide whether non-finite values (`inf`, `-inf`, `nan`) should be accepted or rejected:
+- use common sense, standard math expectations, and typical calculator behavior,
+- keep Basic/C++ parity for this decision,
+- add/update tests to lock the chosen behavior and associated error text.
+
 ## Files To Update
 
 1. `MathParser.bas`

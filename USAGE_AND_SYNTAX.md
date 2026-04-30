@@ -269,6 +269,8 @@ Quick index (alphabetical):
 | `median(...)` | aggregation |
 | `min(...)` | aggregation |
 | `mod(value, divisor)` | numeric utility |
+| `ncr(n, r)` | numeric utility |
+| `npr(n, r)` | numeric utility |
 | `oct(...)` | output formatting |
 | `pow(value, power)` | power/root |
 | `product/prod(...)` | aggregation |
@@ -363,11 +365,15 @@ Purpose: rounding, bounds, integer helpers, factorial.
 - `gcd(a, b)` - greatest common divisor
 - `lcm(a, b)` - least common multiple
 - `mod(value, divisor)` - modulo as a function form of `%`
+- `ncr(n, r)` - combinations (`n` choose `r`)
+- `npr(n, r)` - permutations (`n` permute `r`)
 - `fact(n)`, `factorial(n)` - factorial for non-negative integers
 - Examples:
   - `round(2.5)` -> `3`
   - `clamp(15,0,10)` -> `10`
   - `gcd(84,30)` -> `6`
+  - `ncr(5,2)` -> `10`
+  - `npr(5,2)` -> `20`
   - `fact(21)` -> `5.109094217170944e+019`
 
 ### Arrays and Aggregation

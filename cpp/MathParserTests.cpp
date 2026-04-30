@@ -752,6 +752,26 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                 MathParser p;
                  return expectEval(p, "lcm(18446744073709551615,3)", "3", why);
               }});
+  t.push_back({"edge/ncr basic", [](std::string& why) {
+                MathParser p;
+                return expectEval(p, "ncr(5,2)", "10", why);
+              }});
+  t.push_back({"edge/npr basic", [](std::string& why) {
+                MathParser p;
+                return expectEval(p, "npr(5,2)", "20", why);
+              }});
+  t.push_back({"edge/ncr invalid domain", [](std::string& why) {
+                MathParser p;
+                return expectEvalErrorContains(p, "ncr(5,7)", "numeric error in ncr()", why);
+              }});
+  t.push_back({"edge/npr rejects inf integer-only", [](std::string& why) {
+                MathParser p;
+                return expectEvalErrorContains(p, "npr(inf,2)", "npr() expects integer values", why);
+              }});
+  t.push_back({"edge/ncr missing call hint", [](std::string& why) {
+                MathParser p;
+                return expectEvalErrorContains(p, "ncr", "function: ncr(n, r)", why);
+              }});
   t.push_back({"edge/mod ll const", [](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "a", 100LL);
@@ -2229,19 +2249,19 @@ std::vector<TestCase> buildRegressionCases() {
               }});
   t.push_back({"regression/UDF self-reference rejected at runtime", [](std::string& why) {
                 MathParser p;
-                return expectEvalErrorContains(p, "x(a)=x(a); x(1)", "recursive user function call: x", why);
+                return expectEvalErrorContains(p, "x(a)=x(a); x(1)", "recursive function call: x", why);
               }});
   t.push_back({"regression/mutual recursion y<->g rejected at runtime", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(
-                    p, "g(a)=y(a)+1; y(a)=g(a)+2; y(5)", "recursive user function call", why);
+                    p, "g(a)=y(a)+1; y(a)=g(a)+2; y(5)", "recursive function call", why);
               }});
   t.push_back({"regression/mutual recursion cycle a..d rejected at runtime", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(
                     p,
                     "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)",
-                    "recursive user function call",
+                    "recursive function call",
                     why);
               }});
   t.push_back({"regression/unique single-array variable keeps order", [](std::string& why) {
@@ -2814,7 +2834,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "(8,9); bin()", "(0b1000,0b1001)"} ,
     {ParityBasicCase::Kind::Expected, "15; uhex", "0xF"} ,
     {ParityBasicCase::Kind::ErrorContains, "0xAA; foo()", "unknown function"} ,
-    {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive user function call: y"} ,
+    {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
 };
 
 std::vector<TestCase> buildParityBasicFromSmokeCases() {

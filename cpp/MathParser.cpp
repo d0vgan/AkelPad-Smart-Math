@@ -80,6 +80,8 @@ constexpr const char* STR_CLAMP = "clamp";
 constexpr const char* STR_HYPOT = "hypot";
 constexpr const char* STR_GCD = "gcd";
 constexpr const char* STR_LCM = "lcm";
+constexpr const char* STR_NCR = "ncr";
+constexpr const char* STR_NPR = "npr";
 constexpr const char* STR_PRODUCT = "product";
 constexpr const char* STR_PROD = "prod";
 constexpr const char* STR_MIN = "min";
@@ -90,35 +92,20 @@ constexpr const char* STR_UBIN = "ubin";
 constexpr const char* STR_NOT = "not";
 constexpr const char* STR_AND = "and";
 constexpr const char* STR_OR = "or";
-constexpr const char* STR_HINT_SIN = "function: sin(angle)";
-constexpr const char* STR_HINT_POW = "function: pow(base, exp)";
-constexpr const char* STR_HINT_SQR = "function: sqr(value)";
-constexpr const char* STR_HINT_LN = "function: ln(value)";
-constexpr const char* STR_HINT_HEX = "function: hex(...)";
-constexpr const char* STR_HINT_BIN = "function: bin(...)";
-constexpr const char* STR_HINT_OCT = "function: oct(...)";
-constexpr const char* STR_HINT_UHEX = "function: uhex(...)";
-constexpr const char* STR_HINT_UBIN = "function: ubin(...)";
-constexpr const char* STR_HINT_UOCT = "function: uoct(...)";
-constexpr const char* STR_HINT_SUM = "function: sum(...)";
-constexpr const char* STR_HINT_SORT = "function: sort(...)";
-constexpr const char* STR_HINT_REVERSE = "function: reverse(...)";
-constexpr const char* STR_HINT_UNIQUE = "function: unique(...)";
-constexpr const char* STR_HINT_UNPACK = "function: unpack(...)";
-constexpr const char* STR_HINT_RAND = "function: rand()";
-constexpr const char* STR_HINT_RANDOM = "function: random(min, max)";
-constexpr const char* STR_HINT_MEAN = "function: mean(...)";
-constexpr const char* STR_HINT_MEDIAN = "function: median(...)";
-constexpr const char* STR_HINT_FLOOR = "function: floor(value)";
-constexpr const char* STR_HINT_CEIL = "function: ceil(value)";
-constexpr const char* STR_HINT_TRUNC = "function: trunc(value)";
-constexpr const char* STR_HINT_ROUND = "function: round(value)";
-constexpr const char* STR_HINT_SIGN = "function: sign(value)";
-constexpr const char* STR_HINT_DEG = "function: deg(...)";
-constexpr const char* STR_HINT_RAD = "function: rad(...)";
-constexpr const char* STR_HINT_INT = "function: int(value)";
-constexpr const char* STR_HINT_FRAC = "function: frac(value)";
 constexpr const char* STR_HINT_PREFIX = "function: ";
+constexpr const char* STR_PAR_EMPTY = "()";
+constexpr const char* STR_PAR_MIN_COMMA_MAX = "(min, max)";
+constexpr const char* STR_PAR_VALUE_COMMA_POWER = "(value, power)";
+constexpr const char* STR_PAR_Y_COMMA_X = "(y, x)";
+constexpr const char* STR_PAR_ANGLE = "(angle)";
+constexpr const char* STR_PAR_VALUE = "(value)";
+constexpr const char* STR_PAR_VALUE_COMMA_BASE = "(value, base)";
+constexpr const char* STR_PAR_N = "(n)";
+constexpr const char* STR_PAR_VALUE_COMMA_DIVISOR = "(value, divisor)";
+constexpr const char* STR_PAR_VALUE_COMMA_MIN_COMMA_MAX = "(value, min, max)";
+constexpr const char* STR_PAR_X_COMMA_Y = "(x, y)";
+constexpr const char* STR_PAR_A_COMMA_B = "(a, b)";
+constexpr const char* STR_PAR_N_COMMA_R = "(n, r)";
 constexpr const char* STR_PAR_DOTDOTDOT = "(...)";
 constexpr const char* STR_UNEXPECTED_TOKEN = "unexpected token";
 constexpr const char* STR_INCOMPATIBLE_OPERANDS = "incompatible operands";
@@ -144,7 +131,7 @@ constexpr const char* STR_LT_GT = "<>";
 constexpr const char* STR_DUPLICATE_PARAMETER_NAME = "duplicate parameter name";
 constexpr const char* STR_RESERVED_CONSTANT_NAME = "reserved constant name";
 constexpr const char* STR_RESERVED_FUNCTION_NAME = "reserved function name";
-constexpr const char* STR_RECURSIVE_USER_FUNCTION_CALL_COLON = "recursive user function call: ";
+constexpr const char* STR_RECURSIVE_USER_FUNCTION_CALL_COLON = "recursive function call: ";
 constexpr const char* STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION = "unexpected token after expression";
 constexpr const char* STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON = "scalar-only expression encountered non-scalar value";
 constexpr const char* STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES = "bitwise operands must be integer values";
@@ -174,7 +161,7 @@ constexpr const char* STR_INTERNAL_ERROR_IN_UNARY_MATH_BUILTIN = "internal error
 constexpr const char* STR_PAR_EXPECTS = "() expects ";
 constexpr const char* STR_ARGUMENT_PAR_S = " argument(s)";
 constexpr const char* STR_MAX_EVALUATION_DEPTH_REACHED = "max evaluation depth reached";
-constexpr const char* STR_USER_FUNCTION_CALL_STACK_OVERFLOW = "user function call stack overflow";
+constexpr const char* STR_USER_FUNCTION_CALL_STACK_OVERFLOW = "function call stack overflow";
 constexpr const char* STR_FAILED_TO_PARSE_USER_FUNCTION_BODY = "failed to parse user function body";
 constexpr const char* STR_UNEXPECTED_TRAILING_INPUT = "unexpected trailing input";
 constexpr const char* STR_PARSE_FAILED = "parse failed";
@@ -249,6 +236,46 @@ double fracScalar(double x) {
   return x - std::trunc(x);
 }
 
+int parseDigitForRadix(char c, unsigned int radix) {
+  int d = -1;
+  if (c >= '0' && c <= '9') d = c - '0';
+  else if (c >= 'a' && c <= 'f') d = 10 + (c - 'a');
+  else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
+  if (d < 0 || static_cast<unsigned int>(d) >= radix) {
+    return -1;
+  }
+  return d;
+}
+
+bool tryParsePrefixedUIntLiteral(const char* p, char prefixLower, unsigned int radix, const char*& outEnd, std::uint64_t& outValue) {
+  if (p[0] != '0') {
+    return false;
+  }
+  const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(p[1])));
+  if (px != prefixLower) {
+    return false;
+  }
+
+  const char* cur = p + 2;
+  std::uint64_t u = 0;
+  int digits = 0;
+  while (*cur) {
+    const int d = parseDigitForRadix(*cur, radix);
+    if (d < 0) {
+      break;
+    }
+    u = (u * static_cast<std::uint64_t>(radix)) + static_cast<std::uint64_t>(d);
+    ++cur;
+    ++digits;
+  }
+  if (digits == 0) {
+    return false;
+  }
+  outEnd = cur;
+  outValue = u;
+  return true;
+}
+
 long long gcdInt64(long long a, long long b) {
   if (a < 0) a = -a;
   if (b < 0) b = -b;
@@ -289,6 +316,46 @@ bool tryMulInt64Checked(long long a, long long b, long long& out) {
     }
   }
   out = a * b;
+  return true;
+}
+
+bool tryComputeNprInt64(long long n, long long r, long long& out) {
+  if (n < 0 || r < 0 || r > n) return false;
+  long long acc = 1;
+  for (long long i = 0; i < r; ++i) {
+    long long term = n - i;
+    if (!tryMulInt64Checked(acc, term, acc)) return false;
+  }
+  out = acc;
+  return true;
+}
+
+bool tryComputeNcrInt64(long long n, long long r, long long& out) {
+  if (n < 0 || r < 0 || r > n) return false;
+  if (r == 0) {
+    out = 1;
+    return true;
+  }
+  long long rEff = r;
+  if ((n - rEff) < rEff) rEff = (n - rEff);
+  long long acc = 1;
+  for (long long i = 1; i <= rEff; ++i) {
+    long long num = (n - rEff) + i;
+    long long den = i;
+    long long g1 = gcdInt64(num, den);
+    if (g1 > 1) {
+      num /= g1;
+      den /= g1;
+    }
+    long long g2 = gcdInt64(acc, den);
+    if (g2 > 1) {
+      acc /= g2;
+      den /= g2;
+    }
+    if (den != 1) return false;
+    if (!tryMulInt64Checked(acc, num, acc)) return false;
+  }
+  out = acc;
   return true;
 }
 
@@ -701,7 +768,7 @@ const std::vector<std::string>& MathParser::functionNames() {
       STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,  STR_FRACT,    STR_ABS,  STR_FLOOR,
       STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
       STR_SORT,   STR_SORTED, STR_REVERSE, STR_REVERSED, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_FACTORIAL, STR_AVG, STR_MEAN,
-      STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_PRODUCT, STR_PROD, STR_MIN, STR_MAX,
+      STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_NCR, STR_NPR, STR_PRODUCT, STR_PROD, STR_MIN, STR_MAX,
       STR_UHEX,   STR_UOCT,   STR_UBIN};
   return kNames;
 }
@@ -741,42 +808,110 @@ bool MathParser::tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFun
   return true;
 }
 
-const char* MathParser::tryGetBuiltinFunctionMissingCallHint(const std::string& nameText) {
-  static const std::unordered_map<std::string, const char*> kHints = {
-      {STR_SIN, STR_HINT_SIN},
-      {STR_POW, STR_HINT_POW},
-      {STR_SQR, STR_HINT_SQR},
-      {STR_LN, STR_HINT_LN},
-      {STR_HEX, STR_HINT_HEX},
-      {STR_BIN, STR_HINT_BIN},
-      {STR_OCT, STR_HINT_OCT},
-      {STR_UHEX, STR_HINT_UHEX},
-      {STR_UBIN, STR_HINT_UBIN},
-      {STR_UOCT, STR_HINT_UOCT},
-      {STR_SUM, STR_HINT_SUM},
-      {STR_SORT, STR_HINT_SORT},
-      {STR_SORTED, STR_HINT_SORT},
-      {STR_REVERSE, STR_HINT_REVERSE},
-      {STR_REVERSED, STR_HINT_REVERSE},
-      {STR_UNIQUE, STR_HINT_UNIQUE},
-      {STR_UNPACK, STR_HINT_UNPACK},
-      {STR_RAND, STR_HINT_RAND},
-      {STR_RANDOM, STR_HINT_RANDOM},
-      {STR_MEAN, STR_HINT_MEAN},
-      {STR_MEDIAN, STR_HINT_MEDIAN},
-      {STR_FLOOR, STR_HINT_FLOOR},
-      {STR_CEIL, STR_HINT_CEIL},
-      {STR_TRUNC, STR_HINT_TRUNC},
-      {STR_ROUND, STR_HINT_ROUND},
-      {STR_SIGN, STR_HINT_SIGN},
-      {STR_DEG, STR_HINT_DEG},
-      {STR_RAD, STR_HINT_RAD},
-      {STR_INT, STR_HINT_INT},
-      {STR_FRAC, STR_HINT_FRAC},
-      {STR_FRACT, STR_HINT_FRAC},
-  };
-  auto it = kHints.find(nameText);
-  return (it != kHints.end()) ? it->second : nullptr;
+BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id) {
+  switch (id) {
+    case BuiltinFunctionId::Rand: return BuiltinHintKind::EmptyPar;
+    case BuiltinFunctionId::Random: return BuiltinHintKind::MinMax;
+    case BuiltinFunctionId::Bin:
+    case BuiltinFunctionId::Hex:
+    case BuiltinFunctionId::Oct:
+    case BuiltinFunctionId::Ubin:
+    case BuiltinFunctionId::Uhex:
+    case BuiltinFunctionId::Uoct: return BuiltinHintKind::DotDotDot;
+    case BuiltinFunctionId::Pow: return BuiltinHintKind::ValuePower;
+    case BuiltinFunctionId::Atan2: return BuiltinHintKind::YX;
+    case BuiltinFunctionId::Sin:
+    case BuiltinFunctionId::Cos:
+    case BuiltinFunctionId::Tan: return BuiltinHintKind::Angle;
+    case BuiltinFunctionId::Asin:
+    case BuiltinFunctionId::Arcsin:
+    case BuiltinFunctionId::Acos:
+    case BuiltinFunctionId::Arccos:
+    case BuiltinFunctionId::Atan:
+    case BuiltinFunctionId::Arctan:
+    case BuiltinFunctionId::Sinh:
+    case BuiltinFunctionId::Cosh:
+    case BuiltinFunctionId::Tanh:
+    case BuiltinFunctionId::Exp:
+    case BuiltinFunctionId::Ln:
+    case BuiltinFunctionId::Log10:
+    case BuiltinFunctionId::Sqrt:
+    case BuiltinFunctionId::Sqr:
+    case BuiltinFunctionId::Int:
+    case BuiltinFunctionId::Abs:
+    case BuiltinFunctionId::Floor:
+    case BuiltinFunctionId::Ceil:
+    case BuiltinFunctionId::Trunc:
+    case BuiltinFunctionId::Round:
+    case BuiltinFunctionId::Sign:
+    case BuiltinFunctionId::Frac:
+    case BuiltinFunctionId::Fract: return BuiltinHintKind::Value;
+    case BuiltinFunctionId::Log: return BuiltinHintKind::ValueBase;
+    case BuiltinFunctionId::Deg:
+    case BuiltinFunctionId::Rad:
+    case BuiltinFunctionId::Sum:
+    case BuiltinFunctionId::Median:
+    case BuiltinFunctionId::Variance:
+    case BuiltinFunctionId::Stddev:
+    case BuiltinFunctionId::Unique:
+    case BuiltinFunctionId::Unpack:
+    case BuiltinFunctionId::Avg:
+    case BuiltinFunctionId::Mean:
+    case BuiltinFunctionId::Product:
+    case BuiltinFunctionId::Prod:
+    case BuiltinFunctionId::Min:
+    case BuiltinFunctionId::Max:
+    case BuiltinFunctionId::Sort:
+    case BuiltinFunctionId::Sorted:
+    case BuiltinFunctionId::Reverse:
+    case BuiltinFunctionId::Reversed: return BuiltinHintKind::DotDotDot;
+    case BuiltinFunctionId::Fact:
+    case BuiltinFunctionId::Factorial: return BuiltinHintKind::N;
+    case BuiltinFunctionId::Mod: return BuiltinHintKind::ValueDivisor;
+    case BuiltinFunctionId::Clamp: return BuiltinHintKind::ValueMinMax;
+    case BuiltinFunctionId::Hypot: return BuiltinHintKind::XY;
+    case BuiltinFunctionId::Gcd:
+    case BuiltinFunctionId::Lcm: return BuiltinHintKind::AB;
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr: return BuiltinHintKind::AB;
+    default: return BuiltinHintKind::None;
+  }
+}
+
+MathParser::BuiltinFunctionId MathParser::getBuiltinHintDisplayId(BuiltinFunctionId id) {
+  switch (id) {
+    case BuiltinFunctionId::Arcsin: return BuiltinFunctionId::Asin;
+    case BuiltinFunctionId::Arccos: return BuiltinFunctionId::Acos;
+    case BuiltinFunctionId::Arctan: return BuiltinFunctionId::Atan;
+    case BuiltinFunctionId::Fract: return BuiltinFunctionId::Frac;
+    case BuiltinFunctionId::Sorted: return BuiltinFunctionId::Sort;
+    case BuiltinFunctionId::Reversed: return BuiltinFunctionId::Reverse;
+    default: return id;
+  }
+}
+
+std::string MathParser::getBuiltinFunctionMissingCallHint(BuiltinFunctionId id) {
+  const BuiltinHintKind kind = getBuiltinHintKind(id);
+  if (kind == BuiltinHintKind::None) return "";
+  const std::string& fnName = getFunctionName(getBuiltinHintDisplayId(id));
+  switch (kind) {
+    case BuiltinHintKind::EmptyPar: return fnName + STR_PAR_EMPTY;
+    case BuiltinHintKind::MinMax: return fnName + STR_PAR_MIN_COMMA_MAX;
+    case BuiltinHintKind::DotDotDot: return fnName + STR_PAR_DOTDOTDOT;
+    case BuiltinHintKind::ValuePower: return fnName + STR_PAR_VALUE_COMMA_POWER;
+    case BuiltinHintKind::YX: return fnName + STR_PAR_Y_COMMA_X;
+    case BuiltinHintKind::Angle: return fnName + STR_PAR_ANGLE;
+    case BuiltinHintKind::Value: return fnName + STR_PAR_VALUE;
+    case BuiltinHintKind::ValueBase: return fnName + STR_PAR_VALUE_COMMA_BASE;
+    case BuiltinHintKind::N: return fnName + STR_PAR_N;
+    case BuiltinHintKind::ValueDivisor: return fnName + STR_PAR_VALUE_COMMA_DIVISOR;
+    case BuiltinHintKind::ValueMinMax: return fnName + STR_PAR_VALUE_COMMA_MIN_COMMA_MAX;
+    case BuiltinHintKind::XY: return fnName + STR_PAR_X_COMMA_Y;
+    case BuiltinHintKind::AB:
+      if (id == BuiltinFunctionId::Ncr || id == BuiltinFunctionId::Npr) return fnName + STR_PAR_N_COMMA_R;
+      return fnName + STR_PAR_A_COMMA_B;
+    default: return "";
+  }
 }
 
 bool MathParser::isOpKeyword(const std::string& nameText, OperatorNameId id) {
@@ -818,8 +953,8 @@ bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::str
   if (!tryGetBuiltinFunctionId(ident, bid)) {
     return false;
   }
-  const char* hint = tryGetBuiltinFunctionMissingCallHint(ident);
-  if (hint != nullptr) setValidationError(ctx, hint);
+  std::string hint = getBuiltinFunctionMissingCallHint(bid);
+  if (!hint.empty()) setFunctionHintError(ctx, hint);
   else setFunctionHintError(ctx, ident + STR_PAR_DOTDOTDOT);
   return true;
 }
@@ -961,6 +1096,64 @@ bool MathParser::tryAppendParsedExpressionStatement(
   st.expr = std::move(ex);
   out.emplace_back(std::move(st));
   return true;
+}
+
+bool MathParser::tryAppendFunctionDefinitionStatement(EvalContext& ctx, std::vector<AstStatement>& out) const {
+  std::string fnName;
+  std::vector<std::string> fnParams;
+  std::string fnExpr;
+  if (!parseFunctionDefinition(ctx, fnName, fnParams, fnExpr)) {
+    return false;
+  }
+  if (trySetUserFunctionDefinitionError(ctx, fnName, fnParams, fnExpr)) {
+    return false;
+  }
+  AstStatement st;
+  st.kind = AstStatement::Kind::FunDef;
+  st.fun = UserFunction{fnName, fnParams, fnExpr};
+  out.emplace_back(std::move(st));
+  return true;
+}
+
+bool MathParser::tryAppendAssignOrExpressionStatement(EvalContext& ctx, std::vector<AstStatement>& out) {
+  const char* assignSave = ctx.p;
+  if (isIdentStart(*ctx.p)) {
+    std::string ident = consumeLowerIdentToken(ctx);
+    skipSpaces(ctx);
+    // Single '=' is assignment; '==' is equality (do not steal first '=').
+    if (*ctx.p == '=' && ctx.p[1] != '=') {
+      if (const char* assignNameErr = validateAssignmentTargetName(ident)) {
+        setValidationError(ctx, assignNameErr);
+        return false;
+      }
+      ++ctx.p;
+      auto ex = parseExpression(ctx);
+      if (ctx.parseError || !ex) {
+        return false;
+      }
+      AstStatement st;
+      st.kind = AstStatement::Kind::Assign;
+      st.assignName = std::move(ident);
+      st.expr = std::move(ex);
+      out.emplace_back(std::move(st));
+      return true;
+    }
+    ctx.p = assignSave;
+  }
+  return tryAppendParsedExpressionStatement(ctx, out);
+}
+
+bool MathParser::consumeProgramStatementSeparator(EvalContext& ctx) {
+  skipSpaces(ctx);
+  if (*ctx.p == ';') {
+    ++ctx.p;
+    return true;
+  }
+  if (*ctx.p == '\0') {
+    return false;
+  }
+  setUnexpectedTokenAfterExpressionError(ctx);
+  return false;
 }
 
 bool MathParser::hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node) {
@@ -2254,67 +2447,39 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalCont
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
+  const char* parsedEnd = nullptr;
+  std::uint64_t parsedUInt = 0;
   if (ctx.p[0] == '0' && (ctx.p[1] == 'x' || ctx.p[1] == 'X')) {
-    const char* p = ctx.p + 2;
-    unsigned long long u = 0;
-    int digits = 0;
-    while (*p) {
-      const char c = *p;
-      int d = -1;
-      if (c >= '0' && c <= '9') d = c - '0';
-      else if (c >= 'a' && c <= 'f') d = 10 + (c - 'a');
-      else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
-      else break;
-      u = (u * 16ULL) + static_cast<unsigned long long>(d);
-      ++p;
-      ++digits;
-    }
-    if (digits == 0) {
+    if (!tryParsePrefixedUIntLiteral(ctx.p, 'x', 16U, parsedEnd, parsedUInt)) {
       setInvalidPrefixedLiteralError(ctx, 'x');
       return nullptr;
     }
-    ctx.p = p;
+    ctx.p = parsedEnd;
     auto lit = std::make_unique<Expr>();
     lit->tag = Expr::Tag::Literal;
-    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    lit->literalValue = makeScalarUInt(parsedUInt);
     return lit;
   }
   if (ctx.p[0] == '0' && (ctx.p[1] == 'b' || ctx.p[1] == 'B')) {
-    const char* p = ctx.p + 2;
-    unsigned long long u = 0;
-    int digits = 0;
-    while (*p == '0' || *p == '1') {
-      u = (u << 1ULL) | static_cast<unsigned long long>(*p - '0');
-      ++p;
-      ++digits;
-    }
-    if (digits == 0) {
+    if (!tryParsePrefixedUIntLiteral(ctx.p, 'b', 2U, parsedEnd, parsedUInt)) {
       setInvalidPrefixedLiteralError(ctx, 'b');
       return nullptr;
     }
-    ctx.p = p;
+    ctx.p = parsedEnd;
     auto lit = std::make_unique<Expr>();
     lit->tag = Expr::Tag::Literal;
-    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    lit->literalValue = makeScalarUInt(parsedUInt);
     return lit;
   }
   if (ctx.p[0] == '0' && (ctx.p[1] == 'o' || ctx.p[1] == 'O')) {
-    const char* p = ctx.p + 2;
-    unsigned long long u = 0;
-    int digits = 0;
-    while (*p >= '0' && *p <= '7') {
-      u = (u * 8ULL) + static_cast<unsigned long long>(*p - '0');
-      ++p;
-      ++digits;
-    }
-    if (digits == 0) {
+    if (!tryParsePrefixedUIntLiteral(ctx.p, 'o', 8U, parsedEnd, parsedUInt)) {
       setInvalidPrefixedLiteralError(ctx, 'o');
       return nullptr;
     }
-    ctx.p = p;
+    ctx.p = parsedEnd;
     auto lit = std::make_unique<Expr>();
     lit->tag = Expr::Tag::Literal;
-    lit->literalValue = makeScalarUInt(static_cast<std::uint64_t>(u));
+    lit->literalValue = makeScalarUInt(parsedUInt);
     return lit;
   }
   const char* numStart = ctx.p;
@@ -2549,6 +2714,69 @@ std::unique_ptr<MathParser::Expr> MathParser::parseExpression(EvalContext& ctx) 
   return parseOr(ctx);
 }
 
+bool MathParser::tryAppendTrailingFormatterSugarStatement(
+    EvalContext& ctx,
+    std::vector<AstStatement>& out,
+    bool& handled) {
+  handled = false;
+  if (out.empty() || !isIdentStart(*ctx.p)) {
+    return true;
+  }
+  const char* sugarStart = ctx.p;
+  const char* q = ctx.p + 1;
+  while (isIdentChar(*q)) {
+    ++q;
+  }
+  const std::string ident = toLower(std::string(sugarStart, static_cast<std::size_t>(q - sugarStart)));
+  if (!isTrailingFormatterFunctionName(ident)) {
+    return true;
+  }
+  const char* sugarEnd = q;
+  while (*sugarEnd != '\0' && std::isspace(static_cast<unsigned char>(*sugarEnd))) {
+    ++sugarEnd;
+  }
+  bool sugarOk = false;
+  if (*sugarEnd == ';' || *sugarEnd == '\0') {
+    sugarOk = true;
+  } else if (*sugarEnd == '(') {
+    const char* r = sugarEnd + 1;
+    while (*r != '\0' && std::isspace(static_cast<unsigned char>(*r))) {
+      ++r;
+    }
+    if (*r == ')') {
+      ++r;
+      while (*r != '\0' && std::isspace(static_cast<unsigned char>(*r))) {
+        ++r;
+      }
+      if (*r == ';' || *r == '\0') {
+        sugarOk = true;
+        sugarEnd = r;
+      }
+    }
+  }
+  if (!sugarOk) {
+    return true;
+  }
+  auto callExpr = std::make_unique<Expr>();
+  callExpr->tag = Expr::Tag::Call;
+  callExpr->name = ident;
+  BuiltinFunctionId id = BuiltinFunctionId::Count;
+  if (tryGetBuiltinFunctionId(callExpr->name, id)) {
+    callExpr->builtinFunctionId = id;
+  }
+  auto ansExpr = std::make_unique<Expr>();
+  ansExpr->tag = Expr::Tag::Variable;
+  ansExpr->name = STR_ANS;
+  callExpr->elements.emplace_back(std::move(ansExpr));
+  AstStatement st;
+  st.kind = AstStatement::Kind::Expr;
+  st.expr = std::move(callExpr);
+  out.emplace_back(std::move(st));
+  ctx.p = sugarEnd;
+  handled = true;
+  return true;
+}
+
 bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) {
   out.clear();
   while (true) {
@@ -2556,115 +2784,24 @@ bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) 
     if (*ctx.p == '\0') {
       break;
     }
-    std::string fnName;
-    std::vector<std::string> fnParams;
-    std::string fnExpr;
     const char* save = ctx.p;
-    if (parseFunctionDefinition(ctx, fnName, fnParams, fnExpr)) {
-      if (trySetUserFunctionDefinitionError(ctx, fnName, fnParams, fnExpr)) {
-        return false;
-      }
-      AstStatement st;
-      st.kind = AstStatement::Kind::FunDef;
-      st.fun = UserFunction{fnName, fnParams, fnExpr};
-      out.emplace_back(std::move(st));
+    if (tryAppendFunctionDefinitionStatement(ctx, out)) {
+      // handled above
     } else {
       ctx.p = save;
       skipSpaces(ctx);
-      if (!out.empty() && isIdentStart(*ctx.p)) {
-        const char* sugarStart = ctx.p;
-        const char* q = ctx.p + 1;
-        while (isIdentChar(*q)) {
-          ++q;
-        }
-        const std::string ident = toLower(std::string(sugarStart, static_cast<std::size_t>(q - sugarStart)));
-        if (isTrailingFormatterFunctionName(ident)) {
-          const char* sugarEnd = q;
-          while (*sugarEnd != '\0' && std::isspace(static_cast<unsigned char>(*sugarEnd))) {
-            ++sugarEnd;
-          }
-          bool sugarOk = false;
-          if (*sugarEnd == ';' || *sugarEnd == '\0') {
-            sugarOk = true;
-          } else if (*sugarEnd == '(') {
-            const char* r = sugarEnd + 1;
-            while (*r != '\0' && std::isspace(static_cast<unsigned char>(*r))) {
-              ++r;
-            }
-            if (*r == ')') {
-              ++r;
-              while (*r != '\0' && std::isspace(static_cast<unsigned char>(*r))) {
-                ++r;
-              }
-              if (*r == ';' || *r == '\0') {
-                sugarOk = true;
-                sugarEnd = r;
-              }
-            }
-          }
-          if (sugarOk) {
-            auto callExpr = std::make_unique<Expr>();
-            callExpr->tag = Expr::Tag::Call;
-            callExpr->name = ident;
-            BuiltinFunctionId id = BuiltinFunctionId::Count;
-            if (tryGetBuiltinFunctionId(callExpr->name, id)) {
-              callExpr->builtinFunctionId = id;
-            }
-            auto ansExpr = std::make_unique<Expr>();
-            ansExpr->tag = Expr::Tag::Variable;
-            ansExpr->name = STR_ANS;
-            callExpr->elements.emplace_back(std::move(ansExpr));
-            AstStatement st;
-            st.kind = AstStatement::Kind::Expr;
-            st.expr = std::move(callExpr);
-            out.emplace_back(std::move(st));
-            ctx.p = sugarEnd;
-            goto parse_program_statement_done;
-          }
-        }
+      bool statementHandled = false;
+      if (!tryAppendTrailingFormatterSugarStatement(ctx, out, statementHandled)) {
+        return false;
       }
-      const char* assignSave = ctx.p;
-      if (isIdentStart(*ctx.p)) {
-        std::string ident = consumeLowerIdentToken(ctx);
-        skipSpaces(ctx);
-        // Single '=' is assignment; '==' is equality (do not steal first '=').
-        if (*ctx.p == '=' && ctx.p[1] != '=') {
-          if (const char* assignNameErr = validateAssignmentTargetName(ident)) {
-            setValidationError(ctx, assignNameErr);
-            return false;
-          }
-          ++ctx.p;
-          auto ex = parseExpression(ctx);
-          if (ctx.parseError || !ex) {
-            return false;
-          }
-          AstStatement st;
-          st.kind = AstStatement::Kind::Assign;
-          st.assignName = std::move(ident);
-          st.expr = std::move(ex);
-          out.emplace_back(std::move(st));
-        } else {
-          ctx.p = assignSave;
-          if (!tryAppendParsedExpressionStatement(ctx, out)) {
-            return false;
-          }
-        }
-      } else {
-        if (!tryAppendParsedExpressionStatement(ctx, out)) {
+      if (!statementHandled) {
+        if (!tryAppendAssignOrExpressionStatement(ctx, out)) {
           return false;
         }
       }
     }
-parse_program_statement_done:
-    skipSpaces(ctx);
-    if (*ctx.p == ';') {
-      ++ctx.p;
-      continue;
-    }
-    if (*ctx.p == '\0') {
-      break;
-    }
-    setUnexpectedTokenAfterExpressionError(ctx);
+    if (consumeProgramStatementSeparator(ctx)) continue;
+    if (*ctx.p == '\0') break;
     return false;
   }
   return true;
@@ -3265,7 +3402,8 @@ bool MathParser::isFormatBuiltin(BuiltinFunctionId id) {
 }
 
 bool MathParser::isIntegerOnlyBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Mod ||
+  return id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Ncr ||
+      id == BuiltinFunctionId::Npr || id == BuiltinFunctionId::Mod ||
       id == BuiltinFunctionId::Fact || id == BuiltinFunctionId::Factorial;
 }
 
@@ -3725,6 +3863,22 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
         l = -l;
       }
       return makeScalarInt(l);
+    }
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr: {
+      long long n = 0, r = 0;
+      if (!tryGetSignedInt64FromScalar(args[0].scalarValue, n) ||
+          !tryGetSignedInt64FromScalar(args[1].scalarValue, r)) {
+        setIntegerValuesError(ctx, fnName);
+        return makeScalar(0);
+      }
+      long long out = 0;
+      const bool ok = (id == BuiltinFunctionId::Npr) ? tryComputeNprInt64(n, r, out) : tryComputeNcrInt64(n, r, out);
+      if (!ok) {
+        setNumericErrorInFunction(ctx, fnName);
+        return makeScalar(0);
+      }
+      return makeScalarInt(out);
     }
     default:
       break;
@@ -4193,6 +4347,8 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Hypot:
     case BuiltinFunctionId::Gcd:
     case BuiltinFunctionId::Lcm:
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr:
     case BuiltinFunctionId::Random:
     case BuiltinFunctionId::Clamp:
       return builtinScalarBinaryFamily(ctx, fnName, id, args);

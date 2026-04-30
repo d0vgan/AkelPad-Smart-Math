@@ -43,6 +43,7 @@ Focus on these goals:
 - Avoid unnecessary allocations/copies in hot paths.
 - Do not replace iterator-style walks with eager flattening unless required by semantics.
 - Keep string constants naming conventions (`FB_STR_*`, `STR_*`).
+- If a cleanup/refactor introduces or changes behavior for a builtin operator/function path, explicitly decide whether non-finite values (`inf`, `-inf`, `nan`) are accepted or rejected based on common math and calculator behavior; keep Basic/C++ parity and lock with tests.
 
 ## Refactor workflow
 

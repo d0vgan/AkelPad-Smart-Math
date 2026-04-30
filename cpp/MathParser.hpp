@@ -126,6 +126,8 @@ private:
     Hypot,
     Gcd,
     Lcm,
+    Ncr,
+    Npr,
     Product,
     Prod,
     Min,
@@ -141,6 +143,23 @@ private:
     And,
     Or,
     Count
+  };
+
+  enum class BuiltinHintKind {
+    None = 0,
+    EmptyPar,
+    MinMax,
+    DotDotDot,
+    ValuePower,
+    YX,
+    Angle,
+    Value,
+    ValueBase,
+    N,
+    ValueDivisor,
+    ValueMinMax,
+    XY,
+    AB
   };
 
   enum class ValueKind { Scalar, Array };
@@ -347,7 +366,9 @@ private:
   static const std::string& getFunctionName(BuiltinFunctionId id);
   static const std::string& opName(OperatorNameId id);
   static bool tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFunctionId& outId);
-  static const char* tryGetBuiltinFunctionMissingCallHint(const std::string& nameText);
+  static BuiltinHintKind getBuiltinHintKind(BuiltinFunctionId id);
+  static BuiltinFunctionId getBuiltinHintDisplayId(BuiltinFunctionId id);
+  static std::string getBuiltinFunctionMissingCallHint(BuiltinFunctionId id);
   static bool isOpKeyword(const std::string& nameText, OperatorNameId id);
   static bool isLogicalBinaryOperatorKeyword(const std::string& nameText);
   static bool isReservedFunctionName(const std::string& nameText);
@@ -383,6 +404,17 @@ private:
   bool tryAppendParsedExpressionStatement(
       EvalContext& ctx,
       std::vector<AstStatement>& out);
+  bool tryAppendFunctionDefinitionStatement(
+      EvalContext& ctx,
+      std::vector<AstStatement>& out) const;
+  bool tryAppendAssignOrExpressionStatement(
+      EvalContext& ctx,
+      std::vector<AstStatement>& out);
+  bool consumeProgramStatementSeparator(EvalContext& ctx);
+  bool tryAppendTrailingFormatterSugarStatement(
+      EvalContext& ctx,
+      std::vector<AstStatement>& out,
+      bool& handled);
   static bool hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node);
   void setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const;
   void setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const;

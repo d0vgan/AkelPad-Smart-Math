@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 791) as SmokeCase
+  dim tests(1 to 803) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -804,10 +804,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(568).expr = "15; uhex":                                tests(568).expected = "0xF"
   tests(569).expr = "0xAA; foo()":                             tests(569).expectedErrContains = "unknown function"
 
-  tests(570).expr = "x(a)=x(a); x(1)":                        tests(570).expectedErrContains = "recursive user function call: x" ' [regression] direct self-call in UDF body
-  tests(571).expr = "y(a)=g(a)+y(a)+4":                      tests(571).expectedErrContains = "recursive user function call: y" ' [regression] self-call among other terms
-  tests(572).expr = "g(a)=y(a)+1; y(a)=g(a)+2; y(5)":        tests(572).expectedErrContains = "recursive user function call" ' [regression] mutual recursion y<->g
-  tests(573).expr = "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)": tests(573).expectedErrContains = "recursive user function call" ' [regression] longer cycle back to b
+  tests(570).expr = "x(a)=x(a); x(1)":                        tests(570).expectedErrContains = "recursive function call: x" ' [regression] direct self-call in UDF body
+  tests(571).expr = "y(a)=g(a)+y(a)+4":                      tests(571).expectedErrContains = "recursive function call: y" ' [regression] self-call among other terms
+  tests(572).expr = "g(a)=y(a)+1; y(a)=g(a)+2; y(5)":        tests(572).expectedErrContains = "recursive function call" ' [regression] mutual recursion y<->g
+  tests(573).expr = "a(x)=b(x); b(x)=c(x); c(x)=d(x); d(x)=b(x); a(1)": tests(573).expectedErrContains = "recursive function call" ' [regression] longer cycle back to b
   tests(574).expr = "2^3":                                   tests(574).expected = "1" ' [regression] caret is bitwise XOR
   tests(575).expr = "3^2":                                   tests(575).expected = "1" ' [regression] caret is not power
   tests(576).expr = "3**2":                                  tests(576).expected = "9" ' [regression] double-star power
@@ -1034,6 +1034,18 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(789).expr = "inf*0": tests(789).expected = "inf"
   tests(790).expr = "0*inf": tests(790).expected = "inf"
   tests(791).expr = "pow(inf,-2)": tests(791).expected = "0"
+  tests(792).expr = "ncr(5,2)": tests(792).expected = "10"
+  tests(793).expr = "npr(5,2)": tests(793).expected = "20"
+  tests(794).expr = "ncr(10,0)": tests(794).expected = "1"
+  tests(795).expr = "npr(10,0)": tests(795).expected = "1"
+  tests(796).expr = "ncr(5,7)": tests(796).expectedErrContains = "numeric error in ncr()"
+  tests(797).expr = "npr(5,7)": tests(797).expectedErrContains = "numeric error in npr()"
+  tests(798).expr = "ncr(-1,0)": tests(798).expectedErrContains = "numeric error in ncr()"
+  tests(799).expr = "npr(5,-1)": tests(799).expectedErrContains = "numeric error in npr()"
+  tests(800).expr = "ncr(5.5,2)": tests(800).expectedErrContains = "ncr() expects integer values"
+  tests(801).expr = "npr(inf,2)": tests(801).expectedErrContains = "npr() expects integer values"
+  tests(802).expr = "ncr": tests(802).expectedErrContains = "function: ncr(n, r)"
+  tests(803).expr = "npr": tests(803).expectedErrContains = "function: npr(n, r)"
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
   dim sigI as String
