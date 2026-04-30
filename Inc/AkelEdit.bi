@@ -3,6 +3,7 @@
 #include once "windows.bi"
 
 ' AkelEdit Messages
+const AEN_TEXTCHANGED = (WM_USER + 1060)
 const AEM_GETCHARSIZE = (WM_USER + 2164)
 const AEM_GETOPTIONS  = (WM_USER + 2203)
 const AEM_SETOPTIONS  = (WM_USER + 2204)
@@ -12,8 +13,8 @@ const AEM_SETCOLORS   = (WM_USER + 2208)
 ' AEM_SETOPTIONS Flags
 const AECOOP_SET = 1
 const AECOOP_OR  = 2
+const AECOOP_AND = 3
 const AECOOP_XOR = 4
-const AECOOP_AND = 8
 
 ' AECO Options
 const AECO_ACTIVELINE       = &h00000800
