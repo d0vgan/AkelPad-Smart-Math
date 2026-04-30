@@ -38,23 +38,35 @@ const EM_LINELENGTH       = &h00C1
   const EC_RIGHTMARGIN    = 2
 #endif
 
-' AkelPad Constants
-const AKD_FRAMEFIND             = (WM_USER + 50)
-' AKD_SETMAINPROC: corrected to match AkelPad 4.9.x+ SDK (was WM_USER + 52)
-const AKD_SETMAINPROC           = (WM_USER + 1217)
-const AKD_SETEDITPROC           = (WM_USER + 106)
-const AKD_FRAMEFINDW            = (WM_USER + 55)
-const AKDN_FRAME_ACTIVATE       = (WM_USER + 256)
-const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 263)
-
-' Main-window notification sent when AkelPad is closing (added)
+' AkelPad Notifications
 const AKDN_MAIN_ONFINISH        = (WM_USER + 6)
+const AKDN_FRAME_ACTIVATE       = (WM_USER + 22)
+const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 54)
 
-' Plugin Manager Constants
-const AKD_DLLFINDW = (WM_USER + 14)
-const AKD_DLLSAVE  = (WM_USER + 25)
-const DLLSF_NOW    = 1
-const DLLSF_ONEXIT = 2
+' AkelPad Messages
+const AKD_SETMAINPROC           = (WM_USER + 102)
+const AKD_SETEDITPROC           = (WM_USER + 106)
+const AKD_GETFRAMEINFO          = (WM_USER + 199)
+const AKD_GETEDITINFO           = (WM_USER + 200)
+const AKD_FRAMEFIND             = (WM_USER + 264)
+const AKD_FRAMEFINDW            = (WM_USER + 266)
+const AKD_DLLCALLW              = (WM_USER + 303)
+const AKD_DLLFINDW              = (WM_USER + 307)
+const AKD_DLLSAVE               = (WM_USER + 312)
+const AKD_BEGINOPTIONSA         = (WM_USER + 332)
+const AKD_BEGINOPTIONSW         = (WM_USER + 333)
+const AKD_OPTIONA               = (WM_USER + 335)
+const AKD_OPTIONW               = (WM_USER + 336)
+const AKD_ENDOPTIONS            = (WM_USER + 341)
+
+const DLLSF_NOW    = &h01
+const DLLSF_ONEXIT = &h02
+const POB_READ     = &h01
+const POB_SAVE     = &h02
+const PO_DWORD     = 1
+const PO_STRING    = 3
+const FWF_CURRENT  = 1
+const FI_WNDEDIT   = 2
 
 #ifndef MAX_PATH
   const MAX_PATH = 260
@@ -80,6 +92,20 @@ type PLUGINVERSION
   dwExeMinVersion3x as DWORD
   dwExeMinVersion4x as DWORD
   pPluginName as ZString ptr
+end type
+
+type PLUGINOPTIONW
+  pOptionName as WString ptr
+  dwType as DWORD
+  lpData as UByte ptr
+  dwData as DWORD
+end type
+
+type PLUGINCALLSENDW
+  pFunction as WString ptr
+  lParam as LPARAM
+  dwSupport as DWORD
+  nResult as LPARAM
 end type
 
 ' Callback type used for all WNDPROCDATA proc fields
@@ -142,7 +168,25 @@ end type
 
 type EDITINFO
   hWndEdit as HWND
-  hDocEdit as HWND
+  hDocEdit as any ptr
+  pFile as UBYTE ptr
+  szFile as ZString ptr
+  wszFile as WString ptr
+  nCodePage as Integer
+  bBOM as WINBOOL
+  nNewLine as Integer
+  bModified as WINBOOL
+  bReadOnly as WINBOOL
+  bWordWrap as WINBOOL
+  bOvertypeMode as WINBOOL
+  hWndMaster as HWND
+  hDocMaster as any ptr
+  hWndClone1 as HWND
+  hDocClone1 as any ptr
+  hWndClone2 as HWND
+  hDocClone2 as any ptr
+  hWndClone3 as HWND
+  hDocClone3 as any ptr
 end type
 
 type FRAMEDATA
