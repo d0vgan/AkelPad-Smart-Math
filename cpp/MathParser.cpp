@@ -808,7 +808,7 @@ bool MathParser::tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFun
   return true;
 }
 
-BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id) {
+MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id) {
   switch (id) {
     case BuiltinFunctionId::Rand: return BuiltinHintKind::EmptyPar;
     case BuiltinFunctionId::Random: return BuiltinHintKind::MinMax;
@@ -891,7 +891,7 @@ MathParser::BuiltinFunctionId MathParser::getBuiltinHintDisplayId(BuiltinFunctio
 }
 
 std::string MathParser::getBuiltinFunctionMissingCallHint(BuiltinFunctionId id) {
-  const BuiltinHintKind kind = getBuiltinHintKind(id);
+  const MathParser::BuiltinHintKind kind = getBuiltinHintKind(id);
   if (kind == BuiltinHintKind::None) return "";
   const std::string& fnName = getFunctionName(getBuiltinHintDisplayId(id));
   switch (kind) {
