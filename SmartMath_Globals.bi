@@ -55,7 +55,7 @@ const SMARTMATH_ERROR_PREFIX        = " ! "
 '  Global Variables (Extern)
 ' -----------------------------------------------------------------------------
 extern lpEditProcData as WNDPROCDATA ptr
-extern bSmartMathActive as BOOL
+extern g_bSmartMathActive as BOOL
 extern g_bOldRichEdit as BOOL
 
 extern rcOldMargin as RECT
@@ -78,8 +78,6 @@ extern g_hMainWnd as HWND
 extern g_hMainMenu as HMENU
 extern g_hWndEdit as HWND
 extern g_bShuttingDown as BOOL
-extern g_pfnOldMainProc as WNDPROC
-extern g_wszIniPath as WString * 260
 
 ' -----------------------------------------------------------------------------
 '  Global Function Prototypes
@@ -95,4 +93,3 @@ declare sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
 declare sub ShowAboutDialog(byval hWnd as HWND)
 declare sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
 declare sub LogInfo(byref sMsg as String)
-declare function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT

@@ -15,6 +15,10 @@ const AKELDLL = MAKE_IDENTIFIER(2, 2, 0, 4)
 #define UD_UNLOAD &h00000000
 #define UD_NONUNLOAD_ACTIVE &h00000001
 
+#define WMD_SDI   0  ' Single document interface (SDI)
+#define WMD_MDI   1  ' Multiple document interface (MDI)
+#define WMD_PMDI  2  ' Pseudo-Multiple document interface (PMDI)
+
 #ifndef WM_USER
   const WM_USER = &h0400
 #endif

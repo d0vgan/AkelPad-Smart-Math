@@ -4,7 +4,7 @@
 dim shared lpEditProcData as WNDPROCDATA ptr = 0
 dim shared lpMainProcData as WNDPROCDATA ptr = 0
 dim shared lpFrameProcData as WNDPROCDATA ptr = 0
-dim shared bSmartMathActive as BOOL = FALSE
+dim shared g_bSmartMathActive as BOOL = FALSE
 dim shared g_bOldRichEdit as BOOL = FALSE
 
 dim shared rcOldMargin as RECT
@@ -96,9 +96,6 @@ private sub RestoreAnsFromCachedRender(byref sRender as String)
   Parser_TryEvaluateEx(sExpr, dResult, sResult, bIsArray)
 end sub
 
-' FIX: Use a plain Win32 WNDPROC pointer instead of AKD_SETMAINPROC / WNDPROCDATA.
-dim shared g_pfnOldMainProc as WNDPROC = 0
-dim shared g_wszIniPath as WString * 260
 dim shared g_bSmartMathDocActive as BOOL = FALSE
 dim shared g_lastDocModeFrame as FRAMEDATA ptr = 0
 dim shared g_lastDocModeEdit as HWND = 0
@@ -859,10 +856,37 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
   ReleaseDC(hWnd, hDC)
 end sub
 
+declare function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+declare function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+declare function FrameGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+
+private sub SetSmartMathProcData(byval pd as PLUGINDATA ptr)
+  SendMessage(pd->hMainWnd, AKD_SETEDITPROC, cast(WPARAM, @EditGlobalProc), cast(LPARAM, @lpEditProcData))
+  SendMessage(pd->hMainWnd, AKD_SETMAINPROC, cast(WPARAM, @MainGlobalProc), cast(LPARAM, @lpMainProcData))
+  if pd->nMDI = WMD_MDI then
+    SendMessage(pd->hMainWnd, AKD_SETFRAMEPROC, cast(WPARAM, @FrameGlobalProc), cast(LPARAM, @lpFrameProcData))
+  end if
+end sub
+
+private sub SetOriginalProcData()
+  if lpEditProcData <> 0 then
+    SendMessage(g_hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
+    lpEditProcData = 0
+  end if
+  if lpMainProcData <> 0 then
+    SendMessage(g_hMainWnd, AKD_SETMAINPROC, 0, cast(LPARAM, @lpMainProcData))
+    lpMainProcData = 0
+  end if
+  if lpFrameProcData <> 0 then
+    SendMessage(g_hMainWnd, AKD_SETFRAMEPROC, 0, cast(LPARAM, @lpFrameProcData))
+    lpFrameProcData = 0
+  end if
+end sub
+
 ' -----------------------------------------------------------------------------
 '  Main-window subclass procedure
 ' -----------------------------------------------------------------------------
-function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
   if uMsg = WM_COMMAND then
     dim nCmd as Integer = LOWORD(wParam)
 
@@ -939,25 +963,30 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
 
   elseif uMsg = AKDN_MAIN_ONFINISH then
     g_bShuttingDown = TRUE
-    dim pfnOld as WNDPROC = g_pfnOldMainProc
+    dim bWasSmartMathActive as BOOL = g_bSmartMathActive
 
-    if bSmartMathActive then
-      SendMessage(g_hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
-      SendMessage(g_hMainWnd, AKD_SETMAINPROC, 0, cast(LPARAM, @lpMainProcData))
-      SendMessage(g_hMainWnd, AKD_SETFRAMEPROC, 0, cast(LPARAM, @lpFrameProcData))
-      bSmartMathActive = FALSE
+    if g_bSmartMathActive then
+      g_bSmartMathActive = FALSE
+    end if
+
+    dim result as LRESULT = 0
+    if lpMainProcData andalso lpMainProcData->NextProc then
+      result = lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
+    end if
+
+    if bWasSmartMathActive then
+      SetOriginalProcData()
     end if
 
     UninitSmartMathMenu(TRUE)
 
-    if pfnOld then
-      return CallWindowProc(pfnOld, hWnd, uMsg, wParam, lParam)
-    end if
-    return 0
+    return result
   end if
 
-  if g_pfnOldMainProc then
-    return CallWindowProc(g_pfnOldMainProc, hWnd, uMsg, wParam, lParam)
+  CheckEditNotifications(hWnd, uMsg, wParam, lParam)
+
+  if lpMainProcData andalso lpMainProcData->NextProc then
+    return lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
   end if
   return 0
 end function
@@ -1157,18 +1186,6 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 end function
 
 ' -----------------------------------------------------------------------------
-'  Global Main Window Subclass
-' -----------------------------------------------------------------------------
-function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
-  CheckEditNotifications(hWnd, uMsg, wParam, lParam)
-  if lpMainProcData andalso lpMainProcData->NextProc then
-    return lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
-  else
-    return 0
-  end if
-end function
-
-' -----------------------------------------------------------------------------
 '  Global Frame Window Subclass
 ' -----------------------------------------------------------------------------
 function FrameGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
@@ -1202,18 +1219,16 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
   g_hWndEdit  = pd->hWndEdit
   g_bOldRichEdit = pd->bOldRichEdit
 
-  dim pf as PLUGINFUNCTION ptr
+  ' dim pf as PLUGINFUNCTION ptr
 
-  if bSmartMathActive then
+  if g_bSmartMathActive then
     LogInfo("Deactivating Global Edit Hook...")
     pd->nUnload = UD_UNLOAD
 
+    SetOriginalProcData()
     UninitSmartMathMenu(FALSE)
 
-    SendMessage(pd->hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
-    SendMessage(g_hMainWnd, AKD_SETMAINPROC, 0, cast(LPARAM, @lpMainProcData))
-    SendMessage(g_hMainWnd, AKD_SETFRAMEPROC, 0, cast(LPARAM, @lpFrameProcData))
-    bSmartMathActive = FALSE
+    g_bSmartMathActive = FALSE
     InvalidateRenderCache()
 
     if pd->hWndEdit then
@@ -1224,19 +1239,19 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
       InvalidateRect(pd->hWndEdit, 0, TRUE)
     end if
 
-    pf = cast(PLUGINFUNCTION ptr, SendMessageW(pd->hMainWnd, AKD_DLLFINDW, cast(WPARAM, @wstr("SmartMath::ToggleSmartMath")), 0))
-    if pf <> 0 then
-      pf->bAutoLoad = FALSE
-      SendMessage(pd->hMainWnd, AKD_DLLSAVE, DLLSF_NOW, 0)
-    end if
+    ' The code below leads to undesired effects;
+    ' instead, use AkelPad's native way of auto-load
+    ' by checking the plugin's function checkbox.
+    'pf = cast(PLUGINFUNCTION ptr, SendMessageW(pd->hMainWnd, AKD_DLLFINDW, cast(WPARAM, @wstr("SmartMath::ToggleSmartMath")), 0))
+    'if pf <> 0 then
+    '  pf->bAutoLoad = FALSE
+    '  SendMessage(pd->hMainWnd, AKD_DLLSAVE, DLLSF_NOW, 0)
+    'end if
 
   else
     LogInfo("Activating Global Edit Hook...")
     pd->nUnload = UD_NONUNLOAD_ACTIVE
 
-    if g_wszIniPath = "" andalso pd->wszAkelDir <> 0 then
-      g_wszIniPath = *(pd->wszAkelDir) & wstr("\AkelFiles\Plugs\SmartMath.ini")
-    end if
     LoadSettings()
 
     g_bShuttingDown = FALSE
@@ -1250,10 +1265,9 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     nLastNavSelEnd = -1
     nOldMargin = 0
 
-    SendMessage(pd->hMainWnd, AKD_SETEDITPROC, cast(WPARAM, @EditGlobalProc), cast(LPARAM, @lpEditProcData))
-    SendMessage(pd->hMainWnd, AKD_SETMAINPROC, cast(WPARAM, @MainGlobalProc), cast(LPARAM, @lpMainProcData))
-    SendMessage(pd->hMainWnd, AKD_SETFRAMEPROC, cast(WPARAM, @FrameGlobalProc), cast(LPARAM, @lpFrameProcData))
-    bSmartMathActive = TRUE
+    SetSmartMathProcData(pd)
+
+    g_bSmartMathActive = TRUE
 
     InitSmartMathMenu()
 
@@ -1275,13 +1289,16 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
       InvalidateRect(hEditAct, 0, TRUE)
     end if
 
-    pf = cast(PLUGINFUNCTION ptr, SendMessageW(pd->hMainWnd, AKD_DLLFINDW, cast(WPARAM, @wstr("SmartMath::ToggleSmartMath")), 0))
-    if pf <> 0 then
-      pf->bAutoLoad = TRUE
-      if pd->bOnStart = FALSE then
-        SendMessage(pd->hMainWnd, AKD_DLLSAVE, DLLSF_NOW, 0)
-      end if
-    end if
+    ' The code below leads to undesired effects;
+    ' instead, use AkelPad's native way of auto-load
+    ' by checking the plugin's function checkbox .
+    'pf = cast(PLUGINFUNCTION ptr, SendMessageW(pd->hMainWnd, AKD_DLLFINDW, cast(WPARAM, @wstr("SmartMath::ToggleSmartMath")), 0))
+    'if pf <> 0 then
+    '  pf->bAutoLoad = TRUE
+    '  if pd->bOnStart = FALSE then
+    '    SendMessage(pd->hMainWnd, AKD_DLLSAVE, DLLSF_NOW, 0)
+    '  end if
+    'end if
 
   end if
 

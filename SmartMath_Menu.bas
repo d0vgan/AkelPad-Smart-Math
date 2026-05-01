@@ -101,9 +101,6 @@ sub InitSmartMathMenu()
   InsertMenuW(g_hMainMenu, MENU_ABOUT_POSITION + 1, MF_BYPOSITION or MF_POPUP, cast(UINT_PTR, hSmartMathMenu), wstr("SmartMath"))
   DrawMenuBar(g_hMainWnd)
   UpdateMenuChecks()
-
-  ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
-  g_pfnOldMainProc = cast(WNDPROC, SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, @SmartMathMainProc)))
 end sub
 
 ' -----------------------------------------------------------------------------
@@ -112,13 +109,7 @@ end sub
 sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
   if hSmartMathMenu = 0 then exit sub
 
-  if g_pfnOldMainProc then
-    ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
-    SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, g_pfnOldMainProc))
-    g_pfnOldMainProc = 0
-  end if
-
-  if g_hMainMenu then
+  if (g_hMainMenu <> 0) andalso IsMenu(g_hMainMenu) then
     dim nIndex as Integer = -1
     dim j as Integer
     for j = 0 to GetMenuItemCount(g_hMainMenu) - 1
@@ -130,12 +121,16 @@ sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
     if nIndex <> -1 then
       RemoveMenu(g_hMainMenu, nIndex, MF_BYPOSITION)
       if not bAppClosing then
-        DrawMenuBar(g_hMainWnd)
+        if (g_hMainWnd <> 0) andalso IsWindow(g_hMainWnd) then
+          DrawMenuBar(g_hMainWnd)
+        end if
       end if
     end if
   end if
 
-  DestroyMenu(hSmartMathMenu)
+  if IsMenu(hSmartMathMenu) then
+    DestroyMenu(hSmartMathMenu)
+  end if
   hSmartMathMenu = 0
   hSubMenuDecimals = 0
   hSubMenuColor = 0
