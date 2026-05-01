@@ -34,6 +34,14 @@ dim shared g_cacheReady as BOOL = FALSE
 redim shared g_cachedLineText(0 to 0) as String
 redim shared g_cachedRenderText(0 to 0) as String
 
+' -----------------------------------------------------------------------------
+'  Debug logging
+' -----------------------------------------------------------------------------
+sub LogInfo(byref sMsg as String)
+  dim sOut as String = "[SmartMath] " & sMsg
+  OutputDebugString(strptr(sOut))
+end sub
+
 private sub InvalidateRenderCache()
   g_cacheReady = FALSE
   g_cacheLineCount = -1
@@ -130,10 +138,10 @@ end sub
 private sub TryApplySmartMathCoderTheme()
   ' "Coder::HighLight" function must be running to apply the SmartMath coder theme.
   dim pf as PLUGINFUNCTION ptr = cast(PLUGINFUNCTION ptr, SendMessageW(g_hMainWnd, AKD_DLLFINDW, cast(WPARAM, strptr(SMARTMATH_CODER_HIGHLIGHT_FUNC)), 0))
-  ' OutputDebugString("[SmartMath] : pf=" & pf & ", bRunning=" & pf->bRunning)
+  ' LogInfo("TryApplySmartMathCoderTheme: pf=" & pf & ", bRunning=" & pf->bRunning)
   if pf = 0 orelse pf->bRunning = FALSE then exit sub
 
-  ' OutputDebugString("[SmartMath] TryApplySmartMathCoderTheme: calling SetCoderAliasW")
+  ' LogInfo("TryApplySmartMathCoderTheme: calling SetCoderAliasW")
 
   ' Set the SmartMath coder alias.
   SetCoderAliasW(strptr(SMARTMATH_CODER_ALIAS))
@@ -222,6 +230,8 @@ private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
 end function
 
 private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
+  ' LogInfo("RefreshSmartMathDocMode: entering")
+
   dim pFrameCurrent as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFIND, FWF_CURRENT, 0))
   dim hWndEditCurrent as HWND = hWndEdit
 
@@ -244,6 +254,7 @@ private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
   end if
 
   dim bNewActive as BOOL = IsSmartMathDocument(hWndEditCurrent)
+  ' LogInfo("RefreshSmartMathDocMode: bNewActive=" & bNewActive)
   SetSmartMathDocActiveState(hWndEditCurrent, bNewActive, TRUE)
 end sub
 
@@ -255,9 +266,8 @@ private sub TryRefreshSmartMathDocMarker(byval pHdr as AENMHDR ptr)
   if (g_bSmartMathDocActive = FALSE) andalso bNowSmartMath then
     SetSmartMathDocActiveState(hEditFromNotify, TRUE, TRUE)
   elseif g_bSmartMathDocActive andalso bNowSmartMath then
-    ' Stay active, but ensure theme application is not skipped for this edit context.
     g_hWndEdit = hEditFromNotify
-    TryApplySmartMathCoderTheme()
+    ' TryApplySmartMathCoderTheme()
   elseif g_bSmartMathDocActive andalso (bNowSmartMath = FALSE) then
     SetSmartMathDocActiveState(hEditFromNotify, FALSE, FALSE)
   end if
@@ -274,7 +284,7 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
     if nChangedLine >= 0 then
       nOldCaretLine = nChangedLine
     end if
-    ' OutputDebugString("[SmartMath] AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
+    ' LogInfo("AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
     if nChangedLine = 0 then
       TryRefreshSmartMathDocMarker(pHdr)
     end if
@@ -283,7 +293,7 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
 
   if pHdr->code = AEN_TEXTINSERTEND then
     dim pIns as AENTEXTINSERT ptr = cast(AENTEXTINSERT ptr, lParam)
-    ' OutputDebugString("[SmartMath] AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
+    ' LogInfo("AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
     if pIns->crAkelRange.ciMin.nLine = 0 then
       TryRefreshSmartMathDocMarker(pHdr)
     end if
@@ -345,14 +355,6 @@ private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   end if
 
   SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0)
-end sub
-
-' -----------------------------------------------------------------------------
-'  Debug logging
-' -----------------------------------------------------------------------------
-sub LogInfo(byref sMsg as String)
-  dim sOut as String = "[SmartMath] " & sMsg
-  OutputDebugString(strptr(sOut))
 end sub
 
 ' -----------------------------------------------------------------------------
@@ -926,6 +928,10 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
   elseif (uMsg = AKDN_FRAME_ACTIVATE) orelse (uMsg = AKDN_OPENDOCUMENT_FINISH) then
     dim hWndEditCurrent as HWND = GetWndEdit(g_hMainWnd)
     if hWndEditCurrent <> 0 then
+      if uMsg = AKDN_OPENDOCUMENT_FINISH then
+        ' clearing g_lastDocModeFrame to be sure IsSmartMathDocument() will be called
+        g_lastDocModeFrame = 0
+      end if
       RefreshSmartMathDocMode(hWndEditCurrent)
     end if
 
