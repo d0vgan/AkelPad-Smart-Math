@@ -102,9 +102,13 @@ const DLLA_CODER_SETALIAS = 6
 
 type DLLECCODERSETTINGS_SETALIAS
   dwStructSize as UINT_PTR
-  nAction as LPARAM
-  pszAlias as UByte ptr
+  nAction as INT_PTR
+  pszAlias as const UByte ptr
 end type
+
+#if sizeof(DLLECCODERSETTINGS_SETALIAS) <> (sizeof(UINT_PTR) + sizeof(INT_PTR) + sizeof(any ptr))
+  #error "DLLECCODERSETTINGS_SETALIAS layout mismatch"
+#endif
 
 private sub CallPluginFuncW(byval pFunctionName as WString ptr, byval params as any ptr)
   dim pcsW as PLUGINCALLSENDW
@@ -126,7 +130,10 @@ end sub
 private sub TryApplySmartMathCoderTheme()
   ' "Coder::HighLight" function must be running to apply the SmartMath coder theme.
   dim pf as PLUGINFUNCTION ptr = cast(PLUGINFUNCTION ptr, SendMessageW(g_hMainWnd, AKD_DLLFINDW, cast(WPARAM, strptr(SMARTMATH_CODER_HIGHLIGHT_FUNC)), 0))
+  ' OutputDebugString("[SmartMath] : pf=" & pf & ", bRunning=" & pf->bRunning)
   if pf = 0 orelse pf->bRunning = FALSE then exit sub
+
+  ' OutputDebugString("[SmartMath] TryApplySmartMathCoderTheme: calling SetCoderAliasW")
 
   ' Set the SmartMath coder alias.
   SetCoderAliasW(strptr(SMARTMATH_CODER_ALIAS))
@@ -172,8 +179,36 @@ private function GetWndEdit(byval hMainWnd as HWND) as HWND
   return ei.hWndEdit
 end function
 
+private function IsSpaceOrTabAfterHash(byval ch as String) as BOOL
+  if Len(ch) <> 1 then return FALSE
+  select case Asc(ch)
+    case 9, 32  '' HT, space
+      return TRUE
+    case else
+      return FALSE
+  end select
+end function
+
+'' First line: '#' then only spaces/tabs, then exactly SmartMath | smartmath | SMARTMATH; rest of line ignored.
+private function FirstLineHasSmartMathMarker(byref sLine0 as String) as BOOL
+  if Len(sLine0) = 0 then return FALSE
+  if Left(sLine0, 1) <> "#" then return FALSE
+
+  dim i as Integer = 2
+  while i <= Len(sLine0)
+    if IsSpaceOrTabAfterHash(Mid(sLine0, i, 1)) = FALSE then exit while
+    i += 1
+  wend
+
+  dim rest as String = Mid(sLine0, i)
+  const MARKER_LEN as Integer = 9  '' Len("SmartMath") etc.
+  if Len(rest) < MARKER_LEN then return FALSE
+  dim head as String = Left(rest, MARKER_LEN)
+  return (head = "SmartMath") orelse (head = "smartmath") orelse (head = "SMARTMATH")
+end function
+
 private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
-  ' "# SmartMath" is the marker for SmartMath documents
+  ' First line: "#" ... optional spaces/tabs ... SmartMath | smartmath | SMARTMATH.
   if hWndEdit = 0 then return FALSE
   if IsWindow(hWndEdit) = FALSE then return FALSE
   dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
@@ -183,13 +218,7 @@ private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
   dim nLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, nLineIndex, 0)
   if nLineLen <= 0 then return FALSE
   dim sLine0 as String = LTrim(GetLineText(hWndEdit, 0, nLineLen))
-  if Len(sLine0) = 0 then return FALSE
-  if Left(sLine0, 1) <> "#" then return FALSE
-
-  dim afterHash as String = LTrim(Mid(sLine0, 2))
-  if Len(afterHash) < 9 then return FALSE
-  dim marker as String = Left(afterHash, 9)
-  return (marker = "SmartMath") orelse (marker = "smartmath") orelse (marker = "SMARTMATH")
+  return FirstLineHasSmartMathMarker(sLine0)
 end function
 
 private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
@@ -225,6 +254,10 @@ private sub TryRefreshSmartMathDocMarker(byval pHdr as AENMHDR ptr)
   dim bNowSmartMath as BOOL = IsSmartMathDocument(hEditFromNotify)
   if (g_bSmartMathDocActive = FALSE) andalso bNowSmartMath then
     SetSmartMathDocActiveState(hEditFromNotify, TRUE, TRUE)
+  elseif g_bSmartMathDocActive andalso bNowSmartMath then
+    ' Stay active, but ensure theme application is not skipped for this edit context.
+    g_hWndEdit = hEditFromNotify
+    TryApplySmartMathCoderTheme()
   elseif g_bSmartMathDocActive andalso (bNowSmartMath = FALSE) then
     SetSmartMathDocActiveState(hEditFromNotify, FALSE, FALSE)
   end if
@@ -241,7 +274,7 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
     if nChangedLine >= 0 then
       nOldCaretLine = nChangedLine
     end if
-    OutputDebugString("[SmartMath] AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
+    ' OutputDebugString("[SmartMath] AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
     if nChangedLine = 0 then
       TryRefreshSmartMathDocMarker(pHdr)
     end if
@@ -250,7 +283,7 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
 
   if pHdr->code = AEN_TEXTINSERTEND then
     dim pIns as AENTEXTINSERT ptr = cast(AENTEXTINSERT ptr, lParam)
-    OutputDebugString("[SmartMath] AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
+    ' OutputDebugString("[SmartMath] AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
     if pIns->crAkelRange.ciMin.nLine = 0 then
       TryRefreshSmartMathDocMarker(pHdr)
     end if
