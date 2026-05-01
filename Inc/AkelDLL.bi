@@ -38,6 +38,9 @@ const EM_LINELENGTH       = &h00C1
   const EC_RIGHTMARGIN    = 2
 #endif
 
+' AkelPad Control IDs
+const ID_EDIT             = 10001
+
 ' AkelPad Notifications
 const AKDN_MAIN_ONFINISH        = (WM_USER + 6)
 const AKDN_FRAME_ACTIVATE       = (WM_USER + 22)
@@ -46,6 +49,7 @@ const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 54)
 ' AkelPad Messages
 const AKD_SETMAINPROC           = (WM_USER + 102)
 const AKD_SETEDITPROC           = (WM_USER + 106)
+const AKD_SETFRAMEPROC          = (WM_USER + 110)
 const AKD_GETFRAMEINFO          = (WM_USER + 199)
 const AKD_GETEDITINFO           = (WM_USER + 200)
 const AKD_FRAMEFIND             = (WM_USER + 264)
@@ -79,11 +83,6 @@ const FI_WNDEDIT   = 2
 #define MENU_OPTIONS_POSITION 3
 #define MENU_MDI_POSITION     4
 #define MENU_ABOUT_POSITION   5
-
-type CHARRANGE64
-  cpMin as Integer
-  cpMax as Integer
-end type
 
 type PLUGINVERSION
   cb as DWORD
@@ -164,6 +163,7 @@ type PLUGINDATA
   hLangModule as HMODULE
   wLangSystem as LANGID
   wLangModule as LANGID
+  nSaveHistory as Integer
 end type
 
 type EDITINFO
@@ -196,6 +196,7 @@ type FRAMEDATA
   nFrameID as UInteger
   hWndEditParent as HWND
   ei as EDITINFO
+  ' note: this structure is incomplete, be sure to complete it if needed
 end type
 
 ' Plugin Stack Structure

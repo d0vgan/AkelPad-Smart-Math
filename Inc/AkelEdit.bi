@@ -46,4 +46,36 @@ type AECOLORS
   crAltLineBorder as COLORREF
 end type
 
+type AENMHDR
+  hwndFrom as HWND
+  idFrom as UINT_PTR
+  code as UINT
+  docFrom as any ptr
+end type
+
+type AECHARINDEX
+  nLine as Integer
+  lpLine as any ptr
+  nCharInLine as Integer
+end type
+
+type AECHARRANGE
+  ciMin as AECHARINDEX
+  ciMax as AECHARINDEX
+end type
+
+type CHARRANGE64
+  cpMin as INT_PTR
+  cpMax as INT_PTR
+end type
+
+type AENTEXTCHANGE
+  hdr as AENMHDR
+  crSel as AECHARRANGE
+  ciCaret as AECHARINDEX
+  dwType as DWORD
+  bColumnSel as BOOL
+  crRichSel as CHARRANGE64
+end type
+
 #endif
