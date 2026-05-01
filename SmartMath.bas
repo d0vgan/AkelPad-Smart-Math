@@ -263,6 +263,8 @@ private sub TryRefreshSmartMathDocMarker(byval pHdr as AENMHDR ptr)
   if (hEditFromNotify = 0) orelse (IsWindow(hEditFromNotify) = FALSE) then exit sub
 
   dim bNowSmartMath as BOOL = IsSmartMathDocument(hEditFromNotify)
+  ' LogInfo("TryRefreshSmartMathDocMarker: bNowSmartMath=" & bNowSmartMath & ", g_bSmartMathDocActive=" & g_bSmartMathDocActive)
+
   if (g_bSmartMathDocActive = FALSE) andalso bNowSmartMath then
     SetSmartMathDocActiveState(hEditFromNotify, TRUE, TRUE)
   elseif g_bSmartMathDocActive andalso bNowSmartMath then

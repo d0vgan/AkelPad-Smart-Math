@@ -55,9 +55,9 @@ type AENMHDR
 end type
 
 type AECHARINDEX
-  nLine as Integer
+  nLine as Long ' corresponds to 32-bit `int` in C!
   lpLine as any ptr
-  nCharInLine as Integer
+  nCharInLine as Long ' corresponds to 32-bit `int` in C!
 end type
 
 type AECHARRANGE
@@ -86,7 +86,7 @@ type AENTEXTINSERT
   dwType as DWORD
   wpText as WString ptr
   dwTextLen as UINT_PTR
-  nNewLine as Integer
+  nNewLine as Long ' corresponds to 32-bit `int` in C!
   bColumnSel as BOOL
   dwInsertFlags as DWORD
   crAkelRange as AECHARRANGE
