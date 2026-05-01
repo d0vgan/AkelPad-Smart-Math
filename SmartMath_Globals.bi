@@ -10,6 +10,9 @@
 #ifndef EM_GETFIRSTVISIBLELINE
   const EM_GETFIRSTVISIBLELINE = &h00CE
 #endif
+#ifndef EM_REPLACESEL
+  const EM_REPLACESEL = &hC2
+#endif
 
 ' -----------------------------------------------------------------------------
 '  Menu IDs for SmartMath decimal-place selector.

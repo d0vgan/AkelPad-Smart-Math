@@ -2,6 +2,8 @@
 
 ' --- Shared global variables definitions ---
 dim shared lpEditProcData as WNDPROCDATA ptr = 0
+dim shared lpMainProcData as WNDPROCDATA ptr = 0
+dim shared lpFrameProcData as WNDPROCDATA ptr = 0
 dim shared bSmartMathActive as BOOL = FALSE
 dim shared g_bOldRichEdit as BOOL = FALSE
 
@@ -89,6 +91,228 @@ end sub
 ' FIX: Use a plain Win32 WNDPROC pointer instead of AKD_SETMAINPROC / WNDPROCDATA.
 dim shared g_pfnOldMainProc as WNDPROC = 0
 dim shared g_wszIniPath as WString * 260
+dim shared g_bSmartMathDocActive as BOOL = FALSE
+dim shared g_lastDocModeFrame as FRAMEDATA ptr = 0
+dim shared g_lastDocModeEdit as HWND = 0
+dim shared SMARTMATH_CODER_HIGHLIGHT_FUNC as WString * 32 = WStr("Coder::HighLight")
+dim shared SMARTMATH_CODER_SETTINGS_FUNC as WString * 32 = WStr("Coder::Settings")
+dim shared SMARTMATH_CODER_ALIAS as WString * 32 = WStr(".smartmath")
+
+const DLLA_CODER_SETALIAS = 6
+
+type DLLECCODERSETTINGS_SETALIAS
+  dwStructSize as UINT_PTR
+  nAction as LPARAM
+  pszAlias as UByte ptr
+end type
+
+private sub CallPluginFuncW(byval pFunctionName as WString ptr, byval params as any ptr)
+  dim pcsW as PLUGINCALLSENDW
+  pcsW.pFunction = pFunctionName
+  pcsW.lParam = cast(LPARAM, params)
+  pcsW.dwSupport = 0
+  pcsW.nResult = 0
+  SendMessageW(g_hMainWnd, AKD_DLLCALLW, 0, cast(LPARAM, @pcsW))
+end sub
+
+private sub SetCoderAliasW(byval pAliasName as WString ptr)
+  dim stParams as DLLECCODERSETTINGS_SETALIAS
+  stParams.dwStructSize = sizeof(DLLECCODERSETTINGS_SETALIAS)
+  stParams.nAction = DLLA_CODER_SETALIAS
+  stParams.pszAlias = cast(UByte ptr, pAliasName)
+  CallPluginFuncW(strptr(SMARTMATH_CODER_SETTINGS_FUNC), @stParams)
+end sub
+
+private sub TryApplySmartMathCoderTheme()
+  ' "Coder::HighLight" function must be running to apply the SmartMath coder theme.
+  dim pf as PLUGINFUNCTION ptr = cast(PLUGINFUNCTION ptr, SendMessageW(g_hMainWnd, AKD_DLLFINDW, cast(WPARAM, strptr(SMARTMATH_CODER_HIGHLIGHT_FUNC)), 0))
+  if pf = 0 orelse pf->bRunning = FALSE then exit sub
+
+  ' Set the SmartMath coder alias.
+  SetCoderAliasW(strptr(SMARTMATH_CODER_ALIAS))
+end sub
+
+declare function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen as Integer) as String
+
+private sub SetSmartMathDocActiveState(byval hWndEdit as HWND, byval bActive as BOOL, byval bApplyTheme as BOOL = TRUE)
+  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then
+    g_hWndEdit = 0
+    g_bSmartMathDocActive = FALSE
+    exit sub
+  end if
+
+  g_hWndEdit = hWndEdit
+  g_bSmartMathDocActive = bActive
+  InvalidateRenderCache()
+
+  if bActive then
+    if bApplyTheme then
+      TryApplySmartMathCoderTheme()
+    end if
+    dim bVisible as BOOL
+    UpdateMarginAndState(hWndEdit, bVisible)
+    InvalidateRect(hWndEdit, 0, TRUE)
+  else
+    SendMessage(hWndEdit, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
+    nOldMargin = 0
+    rcOldMargin.left = 0 : rcOldMargin.right = 0
+    rcOldMargin.top = 0  : rcOldMargin.bottom = 0
+    nOldFirstLine = -1
+    nOldCaretLine = -1
+    nLastNavSelStart = -1
+    nLastNavSelEnd = -1
+    InvalidateRect(hWndEdit, 0, TRUE)
+  end if
+end sub
+
+private function GetWndEdit(byval hMainWnd as HWND) as HWND
+  dim ei as EDITINFO
+  ei.hWndEdit = 0
+  SendMessage(hMainWnd, AKD_GETEDITINFO, 0, cast(LPARAM, @ei))
+  return ei.hWndEdit
+end function
+
+private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
+  ' "# SmartMath" is the marker for SmartMath documents
+  if hWndEdit = 0 then return FALSE
+  if IsWindow(hWndEdit) = FALSE then return FALSE
+  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
+  if nLineCount <= 0 then return FALSE
+  dim nLineIndex as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
+  if nLineIndex < 0 then return FALSE
+  dim nLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, nLineIndex, 0)
+  if nLineLen <= 0 then return FALSE
+  dim sLine0 as String = LTrim(GetLineText(hWndEdit, 0, nLineLen))
+  if Len(sLine0) = 0 then return FALSE
+  if Left(sLine0, 1) <> "#" then return FALSE
+
+  dim afterHash as String = LTrim(Mid(sLine0, 2))
+  if Len(afterHash) < 9 then return FALSE
+  dim marker as String = Left(afterHash, 9)
+  return (marker = "SmartMath") orelse (marker = "smartmath") orelse (marker = "SMARTMATH")
+end function
+
+private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
+  dim pFrameCurrent as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFIND, FWF_CURRENT, 0))
+  dim hWndEditCurrent as HWND = hWndEdit
+
+  if (pFrameCurrent = g_lastDocModeFrame) andalso (hWndEditCurrent = g_lastDocModeEdit) then
+    exit sub
+  end if
+
+  g_lastDocModeFrame = pFrameCurrent
+  g_lastDocModeEdit = hWndEditCurrent
+
+  if hWndEditCurrent = 0 then
+    g_bSmartMathDocActive = FALSE
+    g_hWndEdit = 0
+    exit sub
+  end if
+  if IsWindow(hWndEditCurrent) = FALSE then
+    g_bSmartMathDocActive = FALSE
+    g_hWndEdit = 0
+    exit sub
+  end if
+
+  dim bNewActive as BOOL = IsSmartMathDocument(hWndEditCurrent)
+  SetSmartMathDocActiveState(hWndEditCurrent, bNewActive, TRUE)
+end sub
+
+private sub TryRefreshSmartMathDocMarker(byval pHdr as AENMHDR ptr)
+  dim hEditFromNotify as HWND = pHdr->hwndFrom
+  if (hEditFromNotify = 0) orelse (IsWindow(hEditFromNotify) = FALSE) then exit sub
+
+  dim bNowSmartMath as BOOL = IsSmartMathDocument(hEditFromNotify)
+  if (g_bSmartMathDocActive = FALSE) andalso bNowSmartMath then
+    SetSmartMathDocActiveState(hEditFromNotify, TRUE, TRUE)
+  elseif g_bSmartMathDocActive andalso (bNowSmartMath = FALSE) then
+    SetSmartMathDocActiveState(hEditFromNotify, FALSE, FALSE)
+  end if
+end sub
+
+private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM)
+  if (uMsg <> WM_NOTIFY) orelse (wParam <> ID_EDIT) orelse (lParam = 0) orelse (g_bShuttingDown) then exit sub
+
+  dim pHdr as AENMHDR ptr = cast(AENMHDR ptr, lParam)
+
+  if pHdr->code = AEN_TEXTCHANGED then
+    dim pChange as AENTEXTCHANGE ptr = cast(AENTEXTCHANGE ptr, lParam)
+    dim nChangedLine as Integer = pChange->ciCaret.nLine
+    if nChangedLine >= 0 then
+      nOldCaretLine = nChangedLine
+    end if
+    OutputDebugString("[SmartMath] AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
+    if nChangedLine = 0 then
+      TryRefreshSmartMathDocMarker(pHdr)
+    end if
+    exit sub
+  end if
+
+  if pHdr->code = AEN_TEXTINSERTEND then
+    dim pIns as AENTEXTINSERT ptr = cast(AENTEXTINSERT ptr, lParam)
+    OutputDebugString("[SmartMath] AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
+    if pIns->crAkelRange.ciMin.nLine = 0 then
+      TryRefreshSmartMathDocMarker(pHdr)
+    end if
+    exit sub
+  end if
+end sub
+
+' On plugin activation: ensure the active document starts with "# SmartMath" marker line.
+private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
+  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
+  if IsSmartMathDocument(hWndEdit) then exit sub
+
+  dim selStart as Integer = 0
+  dim selEnd as Integer = 0
+  SendMessage(hWndEdit, EM_GETSEL, cast(WPARAM, @selStart), cast(LPARAM, @selEnd))
+
+  dim nCaretLine as Integer = SendMessage(hWndEdit, EM_EXLINEFROMCHAR, 0, -1)
+  if nCaretLine < 0 then nCaretLine = 0
+
+  dim nLineStart as Integer = SendMessage(hWndEdit, EM_LINEINDEX, nCaretLine, 0)
+  if nLineStart < 0 then nLineStart = 0
+
+  dim colOffset as Integer = selStart - nLineStart
+  if colOffset < 0 then colOffset = 0
+
+  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
+  dim idxFirst as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
+  dim lenFirstLine as Integer = 0
+  if idxFirst >= 0 then
+    lenFirstLine = SendMessage(hWndEdit, EM_LINELENGTH, idxFirst, 0)
+  end if
+  dim bEmpty as BOOL = ((nLineCount <= 1) andalso (lenFirstLine = 0))
+
+  dim insertLen as Integer = 0
+
+  SendMessage(hWndEdit, EM_SETSEL, 0, 0)
+
+  if IsWindowUnicode(hWndEdit) then
+    dim ins as WString * 64 = WStr("# SmartMath") & wchr(13, 10)
+    SendMessageW(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(ins)))
+    insertLen = Len(ins)
+  else
+    dim insA as String = "# SmartMath" & Chr(13) & Chr(10)
+    SendMessageA(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(insA)))
+    insertLen = Len(insA)
+  end if
+
+  if bEmpty then
+    SendMessage(hWndEdit, EM_SETSEL, insertLen, insertLen)
+  else
+    dim newLine as Integer = nCaretLine + 1
+    dim newLineStart as Integer = SendMessage(hWndEdit, EM_LINEINDEX, newLine, 0)
+    if newLineStart < 0 then newLineStart = insertLen
+    dim newLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, newLineStart, 0)
+    dim colUse as Integer = colOffset
+    if colUse > newLineLen then colUse = newLineLen
+    dim newPos as Integer = newLineStart + colUse
+    SendMessage(hWndEdit, EM_SETSEL, newPos, newPos)
+  end if
+
+  SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0)
+end sub
 
 ' -----------------------------------------------------------------------------
 '  Debug logging
@@ -413,6 +637,15 @@ sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
     exit sub
   end if
 
+  if g_bSmartMathDocActive = FALSE then
+    bVisible = FALSE
+    if nOldMargin <> 0 then
+      SendMessage(hWnd, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
+      nOldMargin = 0
+    end if
+    exit sub
+  end if
+
   bVisible = FALSE
   dim rcClient as RECT
   GetClientRect(hWnd, @rcClient)
@@ -476,6 +709,7 @@ end sub
 
 sub DrawDynamicMathResults(byval hWnd as HWND)
   if g_bShuttingDown then exit sub
+  if g_bSmartMathDocActive = FALSE then exit sub
 
   dim hDC as HDC = GetDC(hWnd)
   if hDC = 0 then exit sub
@@ -656,12 +890,20 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
       return 0
     end if
 
+  elseif (uMsg = AKDN_FRAME_ACTIVATE) orelse (uMsg = AKDN_OPENDOCUMENT_FINISH) then
+    dim hWndEditCurrent as HWND = GetWndEdit(g_hMainWnd)
+    if hWndEditCurrent <> 0 then
+      RefreshSmartMathDocMode(hWndEditCurrent)
+    end if
+
   elseif uMsg = AKDN_MAIN_ONFINISH then
     g_bShuttingDown = TRUE
     dim pfnOld as WNDPROC = g_pfnOldMainProc
 
     if bSmartMathActive then
       SendMessage(g_hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
+      SendMessage(g_hMainWnd, AKD_SETMAINPROC, 0, cast(LPARAM, @lpMainProcData))
+      SendMessage(g_hMainWnd, AKD_SETFRAMEPROC, 0, cast(LPARAM, @lpFrameProcData))
       bSmartMathActive = FALSE
     end if
 
@@ -699,10 +941,12 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 
   select case uMsg
     case WM_PAINT
-      GetUpdateRect(hWnd, @rcUpdate, FALSE)
-      dim rcIntersect as RECT
-      if (rcOldMargin.right = 0) orelse IntersectRect(@rcIntersect, @rcUpdate, @rcOldMargin) then
-        bNeedRedraw = TRUE
+      if g_bSmartMathDocActive then
+        GetUpdateRect(hWnd, @rcUpdate, FALSE)
+        dim rcIntersect as RECT
+        if (rcOldMargin.right = 0) orelse IntersectRect(@rcIntersect, @rcUpdate, @rcOldMargin) then
+          bNeedRedraw = TRUE
+        end if
       end if
 
     case WM_SETFOCUS
@@ -799,6 +1043,9 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       case WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP, _
            WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, _
            WM_MOUSEWHEEL, WM_HSCROLL, WM_VSCROLL, WM_CHAR, WM_SIZE
+        if g_bSmartMathDocActive = FALSE then
+          return lRes
+        end if
 
         if (uMsg <> WM_MOUSEMOVE) orelse (wParam and MK_LBUTTON) then
           dim bVisible as BOOL
@@ -869,6 +1116,30 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 end function
 
 ' -----------------------------------------------------------------------------
+'  Global Main Window Subclass
+' -----------------------------------------------------------------------------
+function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+  CheckEditNotifications(hWnd, uMsg, wParam, lParam)
+  if lpMainProcData andalso lpMainProcData->NextProc then
+    return lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
+  else
+    return 0
+  end if
+end function
+
+' -----------------------------------------------------------------------------
+'  Global Frame Window Subclass
+' -----------------------------------------------------------------------------
+function FrameGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
+  CheckEditNotifications(hWnd, uMsg, wParam, lParam)
+  if lpFrameProcData andalso lpFrameProcData->NextProc then
+    return lpFrameProcData->NextProc(hWnd, uMsg, wParam, lParam)
+  else
+    return 0
+  end if
+end function
+
+' -----------------------------------------------------------------------------
 '  Exported Functions
 ' -----------------------------------------------------------------------------
 extern "C"
@@ -899,6 +1170,8 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     UninitSmartMathMenu(FALSE)
 
     SendMessage(pd->hMainWnd, AKD_SETEDITPROC, 0, cast(LPARAM, @lpEditProcData))
+    SendMessage(g_hMainWnd, AKD_SETMAINPROC, 0, cast(LPARAM, @lpMainProcData))
+    SendMessage(g_hMainWnd, AKD_SETFRAMEPROC, 0, cast(LPARAM, @lpFrameProcData))
     bSmartMathActive = FALSE
     InvalidateRenderCache()
 
@@ -937,20 +1210,28 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     nOldMargin = 0
 
     SendMessage(pd->hMainWnd, AKD_SETEDITPROC, cast(WPARAM, @EditGlobalProc), cast(LPARAM, @lpEditProcData))
+    SendMessage(pd->hMainWnd, AKD_SETMAINPROC, cast(WPARAM, @MainGlobalProc), cast(LPARAM, @lpMainProcData))
+    SendMessage(pd->hMainWnd, AKD_SETFRAMEPROC, cast(WPARAM, @FrameGlobalProc), cast(LPARAM, @lpFrameProcData))
     bSmartMathActive = TRUE
 
     InitSmartMathMenu()
 
-    if pd->hWndEdit then
+    dim hEditAct as HWND = pd->hWndEdit
+    if hEditAct = 0 then hEditAct = GetWndEdit(pd->hMainWnd)
+
+    if hEditAct <> 0 then
+      EnsureSmartMathFirstLineOnActivate(hEditAct)
+      g_hWndEdit = hEditAct
+      RefreshSmartMathDocMode(hEditAct)
       if not g_bOldRichEdit then
-        dwOldAkelOptions = SendMessage(pd->hWndEdit, AEM_GETOPTIONS, 0, 0)
-        SendMessage(pd->hWndEdit, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
+        dwOldAkelOptions = SendMessage(hEditAct, AEM_GETOPTIONS, 0, 0)
+        SendMessage(hEditAct, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
       end if
 
       dim bInitialVis as BOOL
-      UpdateMarginAndState(pd->hWndEdit, bInitialVis)
+      UpdateMarginAndState(hEditAct, bInitialVis)
 
-      InvalidateRect(pd->hWndEdit, 0, TRUE)
+      InvalidateRect(hEditAct, 0, TRUE)
     end if
 
     pf = cast(PLUGINFUNCTION ptr, SendMessageW(pd->hMainWnd, AKD_DLLFINDW, cast(WPARAM, @wstr("SmartMath::ToggleSmartMath")), 0))
