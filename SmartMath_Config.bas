@@ -44,6 +44,26 @@ private sub ResetSettingsCacheReadState()
   g_settingsCache.hasArrayOutputSeparator = FALSE
 end sub
 
+private sub CacheSetInt(byref hasValue as BOOL, byref cacheValue as Integer, byval value as Integer)
+  hasValue = TRUE
+  cacheValue = value
+end sub
+
+private sub CacheSetDword(byref hasValue as BOOL, byref cacheValue as DWORD, byval value as DWORD)
+  hasValue = TRUE
+  cacheValue = value
+end sub
+
+private sub CacheSetBool(byref hasValue as BOOL, byref cacheValue as BOOL, byval value as BOOL)
+  hasValue = TRUE
+  cacheValue = value
+end sub
+
+private sub CacheSetString(byref hasValue as BOOL, byref cacheValue as String, byval value as String)
+  hasValue = TRUE
+  cacheValue = value
+end sub
+
 private sub EnsureSettingsCacheInitialized()
   if g_settingsCache.isInitialized = FALSE then
     ResetSettingsCacheReadState()
@@ -129,47 +149,40 @@ sub LoadSettings()
 
   if readDwordW(hOptions, SMARTMATH_OPT_DECIMALS, dwVal) = sizeof(DWORD) then
     g_nDecimals = CInt(dwVal)
-    g_settingsCache.hasDecimals = TRUE
-    g_settingsCache.nDecimals = g_nDecimals
+    CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
   end if
 
   if readDwordW(hOptions, SMARTMATH_OPT_COLOR, dwVal) = sizeof(DWORD) then
     g_crResultColor = dwVal
-    g_settingsCache.hasColor = TRUE
-    g_settingsCache.crResultColor = g_crResultColor
+    CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
   end if
 
   if readDwordW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, dwVal) = sizeof(DWORD) then
     g_bUseThousandsSeparator = (dwVal <> 0u)
-    g_settingsCache.hasThousandsSeparator = TRUE
-    g_settingsCache.bUseThousandsSeparator = g_bUseThousandsSeparator
+    CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
   end if
 
   if readDwordW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, dwVal) = sizeof(DWORD) then
     g_bLogParsedLines = (dwVal <> 0u)
-    g_settingsCache.hasLogParsedLines = TRUE
-    g_settingsCache.bLogParsedLines = g_bLogParsedLines
+    CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
   end if
 
   sVal = WStr(SMARTMATH_DECIMAL_SEPARATOR_DEFAULT)
   if readStringW(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
     g_sDecimalSeparator = Left(sVal, 1)
-    g_settingsCache.hasDecimalSeparator = TRUE
-    g_settingsCache.sDecimalSeparator = g_sDecimalSeparator
+    CacheSetString(g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator, g_sDecimalSeparator)
   end if
 
   sVal = WStr(SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT)
   if readStringW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
     g_sThousandsSeparator = Left(sVal, 1)
-    g_settingsCache.hasThousandsSeparatorChar = TRUE
-    g_settingsCache.sThousandsSeparator = g_sThousandsSeparator
+    CacheSetString(g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator, g_sThousandsSeparator)
   end if
 
   sVal = WStr(SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT)
   if readStringW(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
     g_sArrayOutputSeparator = Left(sVal, 1)
-    g_settingsCache.hasArrayOutputSeparator = TRUE
-    g_settingsCache.sArrayOutputSeparator = g_sArrayOutputSeparator
+    CacheSetString(g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator, g_sArrayOutputSeparator)
   end if
 
   ' OutputDebugString("[SmartMath] LoadSettings: g_nDecimals=" & g_nDecimals)
@@ -226,47 +239,40 @@ sub SaveSettings()
 
   if shouldSaveDecimals then
     writeDwordW(hOptions, SMARTMATH_OPT_DECIMALS, g_nDecimals)
-    g_settingsCache.hasDecimals = TRUE
-    g_settingsCache.nDecimals = g_nDecimals
+    CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
   end if
 
   if shouldSaveColor then
     writeDwordW(hOptions, SMARTMATH_OPT_COLOR, g_crResultColor)
-    g_settingsCache.hasColor = TRUE
-    g_settingsCache.crResultColor = g_crResultColor
+    CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
   end if
 
   if shouldSaveThousandsFlag then
     writeDwordW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, IIf(g_bUseThousandsSeparator, 1u, 0u))
-    g_settingsCache.hasThousandsSeparator = TRUE
-    g_settingsCache.bUseThousandsSeparator = g_bUseThousandsSeparator
+    CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
   end if
 
   if shouldSaveLogFlag then
     writeDwordW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, IIf(g_bLogParsedLines, 1u, 0u))
-    g_settingsCache.hasLogParsedLines = TRUE
-    g_settingsCache.bLogParsedLines = g_bLogParsedLines
+    CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
   end if
 
   if shouldSaveDecimalSep then
     sVal = WStr(g_sDecimalSeparator)
     writeStringW(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, sVal)
-    g_settingsCache.hasDecimalSeparator = TRUE
-    g_settingsCache.sDecimalSeparator = g_sDecimalSeparator
+    CacheSetString(g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator, g_sDecimalSeparator)
   end if
 
   if shouldSaveThousandsSep then
     sVal = WStr(g_sThousandsSeparator)
     writeStringW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, sVal)
-    g_settingsCache.hasThousandsSeparatorChar = TRUE
-    g_settingsCache.sThousandsSeparator = g_sThousandsSeparator
+    CacheSetString(g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator, g_sThousandsSeparator)
   end if
 
   if shouldSaveArraySep then
     sVal = WStr(g_sArrayOutputSeparator)
     writeStringW(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, sVal)
-    g_settingsCache.hasArrayOutputSeparator = TRUE
-    g_settingsCache.sArrayOutputSeparator = g_sArrayOutputSeparator
+    CacheSetString(g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator, g_sArrayOutputSeparator)
   end if
 
   SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0) ' be sure to close the options handle
