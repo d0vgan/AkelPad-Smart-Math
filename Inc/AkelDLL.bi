@@ -46,6 +46,7 @@ const EM_LINELENGTH       = &h00C1
 const ID_EDIT             = 10001
 
 ' AkelPad Notifications
+const AKDN_MAIN_ONSTART_FINISH  = (WM_USER + 4)
 const AKDN_MAIN_ONFINISH        = (WM_USER + 6)
 const AKDN_FRAME_ACTIVATE       = (WM_USER + 22)
 const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 54)

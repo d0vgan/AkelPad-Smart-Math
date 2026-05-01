@@ -326,26 +326,27 @@ private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   end if
   dim bEmpty as BOOL = ((nLineCount <= 1) andalso (lenFirstLine = 0))
 
-  dim insertLen as Integer = 0
+  const MARKER_BODY as String = "# SmartMath"
 
   SendMessage(hWndEdit, EM_SETSEL, 0, 0)
 
   if IsWindowUnicode(hWndEdit) then
-    dim ins as WString * 64 = WStr("# SmartMath") & wchr(13, 10)
+    dim ins as WString * 64 = WStr(MARKER_BODY) & wchr(13, 10)
     SendMessageW(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(ins)))
-    insertLen = Len(ins)
   else
-    dim insA as String = "# SmartMath" & Chr(13) & Chr(10)
+    dim insA as String = MARKER_BODY & Chr(13) & Chr(10)
     SendMessageA(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(insA)))
-    insertLen = Len(insA)
   end if
 
+  dim docChars as Integer = cast(Integer, SendMessage(hWndEdit, WM_GETTEXTLENGTH, 0, 0))
+
   if bEmpty then
-    SendMessage(hWndEdit, EM_SETSEL, insertLen, insertLen)
+    SendMessage(hWndEdit, EM_SETSEL, docChars, docChars)
   else
     dim newLine as Integer = nCaretLine + 1
     dim newLineStart as Integer = SendMessage(hWndEdit, EM_LINEINDEX, newLine, 0)
-    if newLineStart < 0 then newLineStart = insertLen
+    if newLineStart < 0 then newLineStart = SendMessage(hWndEdit, EM_LINEINDEX, 1, 0)
+    if newLineStart < 0 then newLineStart = docChars
     dim newLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, newLineStart, 0)
     dim colUse as Integer = colOffset
     if colUse > newLineLen then colUse = newLineLen
@@ -354,6 +355,21 @@ private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   end if
 
   SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0)
+end sub
+
+' After hooks are live: insert marker if needed, sync doc mode, margins, AkelEdit options.
+private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND)
+  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
+  EnsureSmartMathFirstLineOnActivate(hWndEdit)
+  g_hWndEdit = hWndEdit
+  RefreshSmartMathDocMode(hWndEdit)
+  if not g_bOldRichEdit then
+    dwOldAkelOptions = SendMessage(hWndEdit, AEM_GETOPTIONS, 0, 0)
+    SendMessage(hWndEdit, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
+  end if
+  dim bInitialVis as BOOL
+  UpdateMarginAndState(hWndEdit, bInitialVis)
+  InvalidateRect(hWndEdit, 0, TRUE)
 end sub
 
 ' -----------------------------------------------------------------------------
@@ -961,6 +977,21 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       RefreshSmartMathDocMode(hWndEditCurrent)
     end if
 
+  elseif uMsg = AKDN_MAIN_ONSTART_FINISH then
+    if g_bSmartMathActive then
+      dim result as LRESULT = 0
+      if lpMainProcData andalso lpMainProcData->NextProc then
+        result = lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
+      end if
+
+      dim hEditStart as HWND = GetWndEdit(g_hMainWnd)
+      if hEditStart <> 0 then
+        SyncSmartMathActiveEditorState(hEditStart)
+      end if
+
+      return result
+    end if
+
   elseif uMsg = AKDN_MAIN_ONFINISH then
     g_bShuttingDown = TRUE
     dim bWasSmartMathActive as BOOL = g_bSmartMathActive
@@ -1275,18 +1306,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     if hEditAct = 0 then hEditAct = GetWndEdit(pd->hMainWnd)
 
     if hEditAct <> 0 then
-      EnsureSmartMathFirstLineOnActivate(hEditAct)
-      g_hWndEdit = hEditAct
-      RefreshSmartMathDocMode(hEditAct)
-      if not g_bOldRichEdit then
-        dwOldAkelOptions = SendMessage(hEditAct, AEM_GETOPTIONS, 0, 0)
-        SendMessage(hEditAct, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
-      end if
-
-      dim bInitialVis as BOOL
-      UpdateMarginAndState(hEditAct, bInitialVis)
-
-      InvalidateRect(hEditAct, 0, TRUE)
+      SyncSmartMathActiveEditorState(hEditAct)
     end if
 
     ' The code below leads to undesired effects;
