@@ -129,7 +129,7 @@ type PLUGINDATA
   lParam as LPARAM
   hInstanceDLL as HINSTANCE
   lpPluginFunction as any ptr
-  nUnload as Integer
+  nUnload as Long ' corresponds to 32-bit `int` in C!
   bInMemory as WINBOOL
   bOnStart as WINBOOL
   pAkelDir as UBYTE ptr
@@ -137,7 +137,7 @@ type PLUGINDATA
   wszAkelDir as WString ptr
   hInstanceEXE as HINSTANCE
   hPluginsStack as any ptr
-  nSaveSettings as Integer
+  nSaveSettings as Long ' corresponds to 32-bit `int` in C!
   hMainWnd as HWND
   lpFrameData as any ptr
   hWndEdit as HWND
@@ -156,14 +156,14 @@ type PLUGINDATA
   bOldRichEdit as WINBOOL
   dwVerComctl32 as DWORD
   bAkelEdit as WINBOOL
-  nMDI as Integer
+  nMDI as Long ' corresponds to 32-bit `int` in C!
   pLangModule as UBYTE ptr
   szLangModule as ZString ptr
   wszLangModule as WString ptr
   hLangModule as HMODULE
   wLangSystem as LANGID
   wLangModule as LANGID
-  nSaveHistory as Integer
+  nSaveHistory as Long ' corresponds to 32-bit `int` in C!
 end type
 
 type EDITINFO
@@ -172,9 +172,9 @@ type EDITINFO
   pFile as UBYTE ptr
   szFile as ZString ptr
   wszFile as WString ptr
-  nCodePage as Integer
+  nCodePage as Long ' corresponds to 32-bit `int` in C!
   bBOM as WINBOOL
-  nNewLine as Integer
+  nNewLine as Long ' corresponds to 32-bit `int` in C!
   bModified as WINBOOL
   bReadOnly as WINBOOL
   bWordWrap as WINBOOL
@@ -193,7 +193,7 @@ type FRAMEDATA
   pNextFrame as FRAMEDATA ptr
   pPrevFrame as FRAMEDATA ptr
   cb as DWORD
-  nFrameID as UInteger
+  nFrameID as INT_PTR
   hWndEditParent as HWND
   ei as EDITINFO
   ' note: this structure is incomplete, be sure to complete it if needed
@@ -206,13 +206,13 @@ type PLUGINFUNCTION
   pFunction as UBYTE ptr
   szFunction as ZString * MAX_PATH
   wszFunction as WString * MAX_PATH
-  nFunctionLen as Integer
+  nFunctionLen as Long ' corresponds to 32-bit `int` in C!
   wHotkey as WORD
   bAutoLoad as WINBOOL
   bRunning as WINBOOL
   PluginProc as any ptr
   lpParameter as any ptr
-  nRefCount as Integer
+  nRefCount as Long ' corresponds to 32-bit `int` in C!
 end type
 
 #endif
