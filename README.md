@@ -1,6 +1,6 @@
 # SmartMath Plugin for AkelPad
 
-**SmartMath** is a lightweight, powerful plugin that turns AkelPad into a dynamic real-time calculator, inspired by tools like *Soulver* or *Numara*. It allows you to perform calculations naturally in plain text, showing results instantly on the screen without altering your actual file content.
+**SmartMath** is a lightweight, powerful plugin that turns AkelPad into a dynamic real-time calculator, inspired by tools like *Soulver*, *Numara* and *SpeQ Mathematics*. It allows you to perform calculations naturally in plain text, showing results instantly on the screen without altering your actual file content.
 
 ![image](https://i.ibb.co.com/Pvw762qh/akelpad-smartmath-01.png)
 
@@ -9,7 +9,7 @@
 ![image](https://i.ibb.co.com/NgRWmW9M/akelpad-smartmath-03.png)
 
 ### ✨ Features
-*   **Real-Time Evaluation:** Instantly evaluates addition, subtraction, multiplication, and division as you type.
+*   **Real-Time Evaluation:** Instantly evaluates mathematical expressions as you type.
 *   **Non-Invasive Rendering:** Results are drawn directly onto the screen margin using Windows GDI. Your actual text document remains 100% untouched and clean.
 *   **Variable Support:** Define variables (e.g., `base = 100`) and reference them in subsequent lines (e.g., `base * 1.15`).
 *   **Arrays:** Use array arguments and variables (e.g. `(1, 2, 3)*10` and `a = (pi/4, pi/2); sin(a)`).
@@ -37,7 +37,7 @@ To compile the plugin yourself:
 1.  Ensure you have the **FreeBASIC** compiler installed and added to your PATH.
 2.  Open a terminal in the project's root folder.
 3.  Run the `Compile.bat` file. This will link all the modules (`SmartMath.bas`, `SmartMath_Config.bas`, etc.) into a single DLL.
-4.  Use `Compile32.bat` to get a 32-bit (x86) binary and `Compile64.bat` to get a 64-bit (x86_64) binary. Note: path to `fbc` should either be in PATH or explicitly specified as `FB_HOME` in these .bat files.
+4.  Use `Compile32.bat` to get a 32-bit (x86) binary and `Compile64.bat` to get a 64-bit (x86_64) binary. Note: path to `fbc` should either be in PATH or explicitly specified as `FB_HOME` in these `.bat` files.
 
 ### 📘 Language Reference
 The full expression language reference (functions, operators, precedence, arrays, variables, comments, and usage tips) is documented in:
