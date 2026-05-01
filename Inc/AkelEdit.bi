@@ -3,12 +3,13 @@
 #include once "windows.bi"
 
 ' AkelEdit Messages
-const AEN_TEXTCHANGED = (WM_USER + 1060)
-const AEM_GETCHARSIZE = (WM_USER + 2164)
-const AEM_GETOPTIONS  = (WM_USER + 2203)
-const AEM_SETOPTIONS  = (WM_USER + 2204)
-const AEM_GETCOLORS   = (WM_USER + 2207)
-const AEM_SETCOLORS   = (WM_USER + 2208)
+const AEN_TEXTINSERTEND = (WM_USER + 1057)
+const AEN_TEXTCHANGED   = (WM_USER + 1060)
+const AEM_GETCHARSIZE   = (WM_USER + 2164)
+const AEM_GETOPTIONS    = (WM_USER + 2203)
+const AEM_SETOPTIONS    = (WM_USER + 2204)
+const AEM_GETCOLORS     = (WM_USER + 2207)
+const AEM_SETCOLORS     = (WM_USER + 2208)
 
 ' AEM_SETOPTIONS Flags
 const AECOOP_SET = 1
@@ -76,6 +77,20 @@ type AENTEXTCHANGE
   dwType as DWORD
   bColumnSel as BOOL
   crRichSel as CHARRANGE64
+end type
+
+type AENTEXTINSERT
+  hdr as AENMHDR
+  crSel as AECHARRANGE
+  ciCaret as AECHARINDEX
+  dwType as DWORD
+  wpText as WString ptr
+  dwTextLen as UINT_PTR
+  nNewLine as Integer
+  bColumnSel as BOOL
+  dwInsertFlags as DWORD
+  crAkelRange as AECHARRANGE
+  crRichRange as CHARRANGE64
 end type
 
 #endif
