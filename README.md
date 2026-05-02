@@ -34,9 +34,9 @@
 
 ### ⚙️ Compilation
 To compile the plugin yourself:
-1.  Ensure you have the **FreeBASIC** compiler installed and added to your PATH.
+1.  Ensure you have the **FreeBASIC** compiler installed and added to your PATH (the MinGW toolchain bundled with FB should include **`windres`**, which compiles `SmartMath.rc` into version metadata embedded in the DLL).
 2.  Open a terminal in the project's root folder.
-3.  Run the `Compile.bat` file. This will link all the modules (`SmartMath.bas`, `SmartMath_Config.bas`, etc.) into a single DLL.
+3.  Run the `Compile.bat` file. This will link all the modules (`SmartMath.bas`, `SmartMath_Config.bas`, etc.) and the Windows resource script **`SmartMath.rc`** (file description, version, copyright) into a single DLL.
 4.  Use `Compile32.bat` to get a 32-bit (x86) binary and `Compile64.bat` to get a 64-bit (x86_64) binary. Note: path to `fbc` should either be in PATH or explicitly specified as `FB_HOME` in these `.bat` files.
 
 ### 📘 Language Reference
