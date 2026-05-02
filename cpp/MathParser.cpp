@@ -44,6 +44,9 @@ constexpr const char* STR_ARCTAN = "arctan";
 constexpr const char* STR_SINH = "sinh";
 constexpr const char* STR_COSH = "cosh";
 constexpr const char* STR_TANH = "tanh";
+constexpr const char* STR_ACOSH = "acosh";
+constexpr const char* STR_ASINH = "asinh";
+constexpr const char* STR_ATANH = "atanh";
 constexpr const char* STR_EXP = "exp";
 constexpr const char* STR_LOG = "log";
 constexpr const char* STR_LN = "ln";
@@ -765,7 +768,7 @@ std::string MathParser::toLower(std::string s) {
 const std::vector<std::string>& MathParser::functionNames() {
   static const std::vector<std::string> kNames = {
       STR_RAND,   STR_RANDOM, STR_BIN,   STR_HEX,    STR_OCT,      STR_POW,  STR_ATAN2, STR_SIN,      STR_COS,  STR_TAN,
-      STR_ASIN,   STR_ARCSIN, STR_ACOS,  STR_ARCCOS, STR_ATAN,     STR_ARCTAN, STR_SINH, STR_COSH,     STR_TANH, STR_EXP,
+      STR_ASIN,   STR_ARCSIN, STR_ACOS,  STR_ARCCOS, STR_ATAN,     STR_ARCTAN, STR_SINH, STR_COSH,     STR_TANH, STR_ACOSH, STR_ASINH, STR_ATANH, STR_EXP,
       STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,  STR_FRACT,    STR_ABS,  STR_FLOOR,
       STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
       STR_SORT,   STR_SORTED, STR_REVERSE, STR_REVERSED, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_FACTORIAL, STR_AVG, STR_MEAN,
@@ -833,6 +836,9 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Sinh:
     case BuiltinFunctionId::Cosh:
     case BuiltinFunctionId::Tanh:
+    case BuiltinFunctionId::Acosh:
+    case BuiltinFunctionId::Asinh:
+    case BuiltinFunctionId::Atanh:
     case BuiltinFunctionId::Exp:
     case BuiltinFunctionId::Ln:
     case BuiltinFunctionId::Log10:
@@ -4056,6 +4062,9 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Sinh: return makeScalarMaybeExact(std::sinh(x));
       case BuiltinFunctionId::Cosh: return makeScalarMaybeExact(std::cosh(x));
       case BuiltinFunctionId::Tanh: return makeScalarMaybeExact(std::tanh(x));
+      case BuiltinFunctionId::Acosh: return makeScalarMaybeExact(std::acosh(x));
+      case BuiltinFunctionId::Asinh: return makeScalarMaybeExact(std::asinh(x));
+      case BuiltinFunctionId::Atanh: return makeScalarMaybeExact(std::atanh(x));
       case BuiltinFunctionId::Exp: return makeScalarMaybeExact(std::exp(x));
       case BuiltinFunctionId::Log10: return makeScalarMaybeExact(std::log10(x));
       case BuiltinFunctionId::Ln: return makeScalarMaybeExact(std::log(x));
@@ -4118,6 +4127,12 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       return mapUnaryFn(args[0], std::cosh);
     case BuiltinFunctionId::Tanh:
       return mapUnaryFn(args[0], std::tanh);
+    case BuiltinFunctionId::Acosh:
+      return mapUnaryFn(args[0], std::acosh);
+    case BuiltinFunctionId::Asinh:
+      return mapUnaryFn(args[0], std::asinh);
+    case BuiltinFunctionId::Atanh:
+      return mapUnaryFn(args[0], std::atanh);
     case BuiltinFunctionId::Exp:
       return mapUnaryFn(args[0], std::exp);
     case BuiltinFunctionId::Log10:
@@ -4377,6 +4392,9 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Sinh:
     case BuiltinFunctionId::Cosh:
     case BuiltinFunctionId::Tanh:
+    case BuiltinFunctionId::Acosh:
+    case BuiltinFunctionId::Asinh:
+    case BuiltinFunctionId::Atanh:
     case BuiltinFunctionId::Exp:
     case BuiltinFunctionId::Log10:
     case BuiltinFunctionId::Ln:

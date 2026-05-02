@@ -1,6 +1,12 @@
 #include once "crt.bi"
 #include once "Inc\MathParser.bi"
 
+extern "C"
+declare function acosh (byval x as double) as double
+declare function asinh (byval x as double) as double
+declare function atanh (byval x as double) as double
+end extern
+
 const FB_STR_AT as string = " at "
 const FB_STR_LINE_1_PREFIX as string = "line 1, "
 const FB_STR_COL as string = "col "
@@ -25,6 +31,9 @@ const FB_STR_ARCTAN as string = "arctan"
 const FB_STR_SINH as string = "sinh"
 const FB_STR_COSH as string = "cosh"
 const FB_STR_TANH as string = "tanh"
+const FB_STR_ACOSH as string = "acosh"
+const FB_STR_ASINH as string = "asinh"
+const FB_STR_ATANH as string = "atanh"
 const FB_STR_EXP as string = "exp"
 const FB_STR_LOG as string = "log"
 const FB_STR_LN as string = "ln"
@@ -531,6 +540,9 @@ enum BuiltinFunctionId
   FUNC_SINH
   FUNC_COSH
   FUNC_TANH
+  FUNC_ACOSH
+  FUNC_ASINH
+  FUNC_ATANH
   FUNC_EXP
   FUNC_LOG
   FUNC_LN
@@ -631,6 +643,9 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_SINH) = FB_STR_SINH
   FunctionNames(FUNC_COSH) = FB_STR_COSH
   FunctionNames(FUNC_TANH) = FB_STR_TANH
+  FunctionNames(FUNC_ACOSH) = FB_STR_ACOSH
+  FunctionNames(FUNC_ASINH) = FB_STR_ASINH
+  FunctionNames(FUNC_ATANH) = FB_STR_ATANH
   FunctionNames(FUNC_EXP) = FB_STR_EXP
   FunctionNames(FUNC_LOG) = FB_STR_LOG
   FunctionNames(FUNC_LN) = FB_STR_LN
@@ -787,7 +802,7 @@ private const BUILTIN_FLAG_TRAILING_FORMATTER as UInteger = 1u shl 5
 private function GetBuiltinFlags(byval id as Integer) as UInteger
   select case id
     case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ARCSIN, FUNC_ACOS, FUNC_ARCCOS, FUNC_ATAN, FUNC_ARCTAN, _
-         FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, _
+         FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, _
          FUNC_FRAC, FUNC_FRACT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN, FUNC_DEG, FUNC_RAD
       return BUILTIN_FLAG_UNARY
     case FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
@@ -839,7 +854,7 @@ private function GetBuiltinHintKind(byval id as Integer) as BuiltinHintKind
     case FUNC_SIN, FUNC_COS, FUNC_TAN: return BHK_ANGLE
     case FUNC_ASIN, FUNC_ARCSIN, FUNC_ACOS, FUNC_ARCCOS, FUNC_ATAN, FUNC_ARCTAN
       return BHK_VALUE
-    case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
+    case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
       return BHK_VALUE
     case FUNC_FRAC, FUNC_FRACT: return BHK_VALUE
     case FUNC_LOG: return BHK_VALUE_BASE
@@ -2277,6 +2292,12 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
     ValueSetScalarPromoteExactInt64(outV, cosh(x))
   elseif fnId = FUNC_TANH then
     ValueSetScalarPromoteExactInt64(outV, tanh(x))
+  elseif fnId = FUNC_ACOSH then
+    ValueSetScalarPromoteExactInt64(outV, acosh(x))
+  elseif fnId = FUNC_ASINH then
+    ValueSetScalarPromoteExactInt64(outV, asinh(x))
+  elseif fnId = FUNC_ATANH then
+    ValueSetScalarPromoteExactInt64(outV, atanh(x))
   elseif fnId = FUNC_EXP then
     ValueSetScalarPromoteExactInt64(outV, exp(x))
   elseif fnId = FUNC_LN then

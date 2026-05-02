@@ -244,9 +244,12 @@ Quick index (alphabetical):
 |---|---|
 | `abs(value)` | numeric utility |
 | `acos/arccos(value)` | trigonometric |
+| `acosh(value)` | trigonometric/hyperbolic |
 | `asin/arcsin(value)` | trigonometric |
+| `asinh(value)` | trigonometric/hyperbolic |
 | `atan/arctan(value)` | trigonometric |
 | `atan2(y, x)` | trigonometric |
+| `atanh(value)` | trigonometric/hyperbolic |
 | `avg/mean(...)` | aggregation |
 | `bin(...)` | output formatting |
 | `ceil(value)` | numeric utility |
@@ -313,6 +316,9 @@ Purpose: angle and trig math.
 - `sinh(value)` - hyperbolic sine
 - `cosh(value)` - hyperbolic cosine
 - `tanh(value)` - hyperbolic tangent
+- `asinh(value)` - inverse hyperbolic sine
+- `acosh(value)` - inverse hyperbolic cosine
+- `atanh(value)` - inverse hyperbolic tangent
 - `deg(...)` - convert radians to degrees
 - `rad(...)` - convert degrees to radians
 - Examples:

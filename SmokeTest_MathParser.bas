@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 810) as SmokeCase
+  dim tests(1 to 826) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1053,6 +1053,22 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(808).expr = "f(nan)=nan+1": tests(808).expectedErrContains = "reserved constant name"
   tests(809).expr = "nan(x)=x": tests(809).expectedErrContains = "reserved constant name"
   tests(810).expr = "(nan, inf)": tests(810).expected = "(nan, inf)"
+  tests(811).expr = "acosh(1)": tests(811).expected = "0"
+  tests(812).expr = "acosh(2)": tests(812).expected = "1.3169578969248166"
+  tests(813).expr = "acosh(0)": tests(813).expected = "nan"
+  tests(814).expr = "acosh(inf)": tests(814).expected = "inf"
+  tests(815).expr = "asinh(0)": tests(815).expected = "0"
+  tests(816).expr = "asinh(1)": tests(816).expected = "0.8813735870195431"
+  tests(817).expr = "asinh(-1)": tests(817).expected = "-0.8813735870195431"
+  tests(818).expr = "asinh((0,1))": tests(818).expected = "(0,0.8813735870195431)"
+  tests(819).expr = "atanh(0)": tests(819).expected = "0"
+  tests(820).expr = "atanh(0.5)": tests(820).expected = "0.5493061443340549"
+  tests(821).expr = "atanh(1)": tests(821).expected = "inf"
+  tests(822).expr = "atanh(-1)": tests(822).expected = "-inf"
+  tests(823).expr = "atanh(2)": tests(823).expected = "nan"
+  tests(824).expr = "acosh()": tests(824).expectedErrContains = "expects 1 argument(s)"
+  tests(825).expr = "asinh()": tests(825).expectedErrContains = "expects 1 argument(s)"
+  tests(826).expr = "atanh()": tests(826).expectedErrContains = "expects 1 argument(s)"
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
   dim sigI as String
