@@ -521,11 +521,14 @@ Example:
 
 - `unexpected token at col 5:  5*5 |: 25`
 
-## SmartMath.ini Options
+## SmartMath Options
 
-Manual formatting options in `[Options]`:
+Depending on AkelPad's settings, SmartMath Options are stored either in "AkelFiles\Plugs\SmartMath.ini" or under "HKEY_CURRENT_USER\SOFTWARE\Akelsoft\AkelPad\Plugs\SmartMath" in Registry.
+
+Manual formatting options:
 
 ```ini
+[Options]
 DecimalSeparatorChar=,
 ThousandsSeparatorChar=.
 ArrayOutputSeparatorChar=;
