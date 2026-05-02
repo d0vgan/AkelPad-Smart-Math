@@ -523,7 +523,7 @@ Example:
 
 ## SmartMath.ini Options
 
-Manual formatting options in `[Settings]`:
+Manual formatting options in `[Options]`:
 
 ```ini
 DecimalSeparatorChar=,
