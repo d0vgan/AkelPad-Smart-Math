@@ -90,6 +90,8 @@ declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
 declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
 declare function FormatArrayResultText(byref sArrayText as String) as String
+declare function NormalizeCopiedResult(byref sRes as String) as String
+declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()
 declare sub UpdateMenuChecks()
 declare sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)

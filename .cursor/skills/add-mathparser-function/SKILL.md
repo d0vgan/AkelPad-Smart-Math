@@ -1,6 +1,6 @@
 ---
 name: add-mathparser-function
-description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, update reserved-name checks for constants, or update USAGE_AND_SYNTAX documentation with consistent style and logic.
+description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, or update USAGE_AND_SYNTAX documentation with consistent style and logic.
 ---
 
 # Add MathParser Function or Builtin Constant
@@ -149,8 +149,9 @@ Follow all steps in order.
   - argument meaning and optional arguments.
 - Keep formatting consistent with neighboring hints.
 
-### 3) Build Sources (`Compile.bat`)
+### 3) Build Sources (`Compile.bat`, `Compile32.bat`, `Compile64.bat`)
 
+- **`Compile.bat` parity rule:** Whenever you change **`Compile.bat`** (for example add/remove/reorder Basic modules on the `fbc` line), apply the **same** source list to **`Compile32.bat`** and **`Compile64.bat`**. Keep all three in lockstep: same `.bas` / `.bi` inputs in the same order; only the 32-bit and 64-bit batches may differ by `-arch`, `-x` output name, or other architecture-specific `fbc` flags—not by which plugin sources are compiled.
 - Run `Compile.bat` only when **Basic parser source files** were changed.
   - Treat this Basic source set as build-triggering:
     - `MathParser.bas`
@@ -158,6 +159,7 @@ Follow all steps in order.
     - `SmartMath_About.bas`
     - `SmartMath_Config.bas`
     - `SmartMath_Format.bas`
+    - `SmartMath_CopyNormalize.bas`
     - `SmartMath_Globals.bi`
     - `SmartMath_Menu.bas`
   - Also include any additional Basic implementation/source modules if present.
@@ -168,6 +170,29 @@ Follow all steps in order.
   - rerun `Compile.bat`.
 - Repeat analyze/fix/rerun loop until compilation succeeds.
 - If compilation cannot succeed due to environment/toolchain issues, report the exact blocker and include the last relevant output.
+
+### 3.1) Formatter and copy regression tests (`RunFormatterTests.bat` + `RunCopyRegressionTests.bat`)
+
+Run **both** batches from the repo root whenever **Basic implementation source** from the step 3 / `Compile.bat` trigger set changed, **or** whenever **either** formatter **or** copy test sources changed:
+
+- Formatter / display: `FormatterRegressionTests.bas`, `FormatterTest_Globals.bas`
+- Clipboard double-click normalization: `CopyRegressionTests.bas` (reuses `FormatterTest_Globals.bas` + `SmartMath_CopyNormalize.bas`)
+
+**Formatter (`RunFormatterTests.bat`):**
+
+- Compiles `FormatterTest_Globals.bas` + `FormatterRegressionTests.bas` + `SmartMath_Format.bas` → `FormatterRegressionTests.exe`.
+- If compilation or the executable fails, treat as a blocker; fix `SmartMath_Format.bas` / globals / tests; rerun until exit code 0.
+
+**Copy normalization (`RunCopyRegressionTests.bat`):**
+
+- Compiles `FormatterTest_Globals.bas` + `CopyRegressionTests.bas` + `SmartMath_CopyNormalize.bas` → `CopyRegressionTests.exe`.
+- If compilation or the executable fails, treat as a blocker; fix `SmartMath_CopyNormalize.bas` / globals / tests; rerun until exit code 0.
+
+**Shared rules:**
+
+- These gates are **independent** of the DLL smoke build: run them even if `Compile.bat` failed so regressions stay visible—after fixing `Compile.bat` blockers, rerun `Compile.bat` and **both** regression batches.
+- If a batch is unavailable or fails due to environment/toolchain issues (for example FreeBASIC path), report the exact blocker and include the last relevant output.
+- If none of the trigger files above changed (docs-only / skills-only / C++-only with no Basic edits), skip this entire step 3.1.
 
 ### 4) Add Tests In `SmokeTest_MathParser.bas`
 
@@ -197,6 +222,7 @@ Minimum recommended coverage:
     - `SmartMath.bas`
     - `SmartMath_Format.bas`
   - If none of these changed (Basic test source, `MathParser.bas`, `SmartMath.bas`, `SmartMath_Format.bas`), skip compiling tests and skip `RunSmokeTests.bat`.
+  - Formatter and copy regression tests (**step 3.1**, `RunFormatterTests.bat` and `RunCopyRegressionTests.bat`) still apply whenever Basic implementation sources or formatter/copy test sources changed, even if this smoke-test skip condition is true (for example only `SmartMath_Config.bas` changed: run both regression batches, but smoke tests may be skipped per bullets above).
 - After updating Basic tests, build the updated smoke-test executable.
 - Then run smoke tests via `RunSmokeTests.bat`.
 - Treat smoke-test failures as blockers: investigate, fix, rebuild, and rerun until passing.
@@ -239,6 +265,7 @@ For each affected item, produce one of two outcomes:
 If claiming **No-op with justification**, add/adjust regression tests to prove behavior parity where practical.
 - After reflection, run only the checks relevant to changed source categories:
   - If Basic parser source changed: run `Compile.bat` until passing.
+  - If Basic implementation source changed (step 3 trigger set) or formatter/copy test sources changed: run `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` until passing (step 3.1).
   - If Basic test source changed: run Basic smoke-test build/run (`RunSmokeTests.bat`) until passing.
   - If C++ parser or C++ test source changed: run `cpp/BuildTests_vc2022_x64.bat`, then `cpp/MathParserTests.exe`, until passing.
 - Treat any parity mismatch, build failure, or test failure as blocker; analyze root cause, fix, rebuild, rerun, and repeat until all required sides pass.
@@ -253,6 +280,7 @@ Use these examples when deciding whether a gate must run:
   - `SmartMath_About.bas`
   - `SmartMath_Config.bas`
   - `SmartMath_Format.bas`
+  - `SmartMath_CopyNormalize.bas`
   - `SmartMath_Globals.bi`
   - `SmartMath_Menu.bas`
   - any additional Basic implementation/source modules if present.
@@ -262,6 +290,10 @@ Use these examples when deciding whether a gate must run:
   - any additional Basic test source modules if present.
   - additionally, run when `MathParser.bas` changed (primary parser-change trigger).
   - additionally, run as precaution when `SmartMath.bas` or `SmartMath_Format.bas` changed.
+
+- **Basic implementation or formatter/copy test source changed** (run **`RunFormatterTests.bat`** and **`RunCopyRegressionTests.bat`** — step 3.1):
+  - same file set as **Basic parser source changed** / `Compile.bat` (see list above), and
+  - `FormatterRegressionTests.bas`, `FormatterTest_Globals.bas`, `CopyRegressionTests.bas`.
 
 - **C++ parser or C++ test source changed** (run `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe`):
   - `cpp/MathParser.cpp`
@@ -346,13 +378,14 @@ Match the existing document’s structure, terminology, and density; do not docu
 
 ### Build and smoke
 
-Same as for functions: `Compile.bat`, then `RunSmokeTests.bat`, until clean.
+Same as for functions: `Compile.bat`, `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` when Basic implementation or formatter/copy test sources changed (step 3.1), then `RunSmokeTests.bat`, until clean.
 
 ## Validation Checklist
 
 Before finishing, verify:
 - Implementation, signature hints, tests, and `USAGE_AND_SYNTAX.md` are consistent with the final behavior.
-- Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
+- If `Compile.bat` was edited, `Compile32.bat` and `Compile64.bat` list the same Basic modules in the same order (step 3 parity rule).
+- Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (Basic implementation or formatter/copy test sources — step 3.1), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
 - Cross-language porting/parity is complete for **all** relevant code/test change types: Basic <-> C++ implementations and tests are mirrored, with no mismatches (skip only allowed when `cpp/MathParser.cpp` is missing, and it must be explicitly noted).
 - Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.
 - Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, and style/structure match surrounding sections.
@@ -369,5 +402,6 @@ When done, report:
 - files changed,
 - concise behavior summary,
 - test coverage added,
-- final `RunSmokeTests.bat` pass/fail summary line,
+- final `RunSmokeTests.bat` pass/fail summary line (when that gate ran),
+- final step 3.1 pass/fail summary lines for `RunFormatterTests.bat` / `FormatterRegressionTests.exe` and `RunCopyRegressionTests.bat` / `CopyRegressionTests.exe` (when that step ran),
 - any assumptions made due to missing requirements.
