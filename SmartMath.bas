@@ -303,6 +303,7 @@ end sub
 
 ' Same rule as inside EnsureSmartMathFirstLineOnActivate: one line (or none) and first line has no chars.
 private function EditorIsEmptyForSmartMathMarker(byval hWndEdit as HWND) as BOOL
+  ' LogInfo("EditorIsEmptyForSmartMathMarker: entering, hWndEdit=" & hWndEdit)
   if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then return FALSE
   dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
   dim idxFirst as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
@@ -367,6 +368,7 @@ end sub
 ' After hooks are live: optionally insert marker, sync doc mode, margins, AkelEdit options.
 ' applyToEmptyFileOnly: if TRUE, auto-insert "# SmartMath" only when the document is empty (startup / toggle).
 private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND, byval applyToEmptyFileOnly as BOOL = FALSE)
+  ' LogInfo("SyncSmartMathActiveEditorState: entering, hWndEdit=" & hWndEdit)
   if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
   if applyToEmptyFileOnly then
     if EditorIsEmptyForSmartMathMarker(hWndEdit) then
@@ -896,6 +898,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
         result = lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
       end if
 
+      ' LogInfo("MainGlobalProc: AKDN_MAIN_ONSTART_FINISH, g_bAkelPadReady=TRUE")
       g_bAkelPadReady = TRUE
       dim hEditStart as HWND = GetWndEdit(g_hMainWnd)
       if hEditStart <> 0 then
@@ -1218,6 +1221,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     dim hEditAct as HWND = pd->hWndEdit
     if hEditAct = 0 then hEditAct = GetWndEdit(pd->hMainWnd)
 
+    ' LogInfo("ToggleSmartMath: hEditAct=" & hEditAct)
     if hEditAct <> 0 then
       ' TODO: use something similar to `g_bAkelPadReady <> TRUE`,
       ' but be sure it reflects the actual state of the editor.
