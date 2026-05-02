@@ -76,6 +76,7 @@ const FB_STR_OR as string = "or"
 const FB_STR_PI as string = "pi"
 const FB_STR_E as string = "e"
 const FB_STR_INF as string = "inf"
+const FB_STR_NAN as string = "nan"
 const FB_STR_PAR as string = "()"
 const FB_STR_PAR_MIN_COMMA_MAX as string = "(min, max)"
 const FB_STR_PAR_DOTDOTDOT as string = "(...)"
@@ -590,6 +591,7 @@ enum BuiltinConstId
   CONST_PI = 0
   CONST_E
   CONST_INF
+  CONST_NAN
   CONST__COUNT
 end enum
 
@@ -722,6 +724,7 @@ private sub EnsureConstNames()
   ConstNames(CONST_PI) = FB_STR_PI
   ConstNames(CONST_E) = FB_STR_E
   ConstNames(CONST_INF) = FB_STR_INF
+  ConstNames(CONST_NAN) = FB_STR_NAN
   ConstNamesInitialized = TRUE
 end sub
 
@@ -996,14 +999,15 @@ private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
 end sub
 
 private function MakeNaN() as Double
-  return sqr(-1.0)
+  return 0.0 / 0.0
 end function
 
 private function IsNaNValue(byval d as Double) as Boolean
-  return (d <> d)
+  return (_isnan(d) <> 0)
 end function
 
 private function IsInfValue(byval d as Double) as Boolean
+  if _isnan(d) <> 0 then return FALSE
   dim infV as Double = 1.0 / 0.0
   return abs(d) = infV
 end function
@@ -1598,6 +1602,8 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
       ValueSetScalar(v, exp(1.0))
     case CONST_INF
       ValueSetScalar(v, 1.0 / 0.0)
+    case CONST_NAN
+      ValueSetScalar(v, MakeNaN())
     case else
       return FALSE
   end select

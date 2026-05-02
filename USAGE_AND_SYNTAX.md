@@ -81,7 +81,7 @@ Base-prefixed integer forms:
   - `a = 10`
 - Reserved names cannot be assignment targets:
   - function names (for example `hex`, `random`, `sin`)
-  - built-in constants (`pi`, `e`)
+  - built-in constants (`pi`, `e`, `inf`, `nan`)
 - Reuse values:
   - `a*3` -> `30`
 - `ans` is the last successful result:
@@ -113,6 +113,7 @@ Base-prefixed integer forms:
 - Reserved names cannot be used for function names:
   - `hex(x)=x` -> error (`reserved function name`)
   - `e(x)=x` -> error (`reserved constant name`)
+  - `nan=1` -> error (`reserved constant name`)
 - Call:
   - `f(5)` -> `26`
   - `f((10,20))` -> `(101, 401)`

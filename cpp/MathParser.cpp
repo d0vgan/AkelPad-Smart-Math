@@ -753,6 +753,7 @@ MathParser::MathParser() {
   addConst(STR_PI, kPi);
   addConst(STR_E, std::exp(1.0));
   addConst(STR_INF, std::numeric_limits<double>::infinity());
+  addConst(STR_NAN, std::numeric_limits<double>::quiet_NaN());
   setVariable(STR_ANS, makeScalarInt(0));
 }
 
@@ -933,7 +934,7 @@ const char* MathParser::getReservedIdentifierError(const std::string& ident) {
   if (isReservedFunctionName(ident)) {
     return STR_RESERVED_FUNCTION_NAME;
   }
-  if (ident == STR_PI || ident == STR_E || ident == STR_INF) {
+  if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN) {
     return STR_RESERVED_CONSTANT_NAME;
   }
   return nullptr;
@@ -995,7 +996,7 @@ bool MathParser::tryResolveVariableValue(
 }
 
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
-  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF;
+  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN;
 }
 
 const char* MathParser::validateUserFunctionDefinitionNames(
