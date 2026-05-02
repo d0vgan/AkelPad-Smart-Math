@@ -90,15 +90,6 @@ private function SplitTopLevelArrayCsvInner(byref inner as String, elems() as St
   return partCount + 1
 end function
 
-'' Parser array text may contain nan/inf/-inf; Val() does not recover those reliably.
-private function TryFormatParserNonFiniteToken(byref token as String) as String
-  dim t as String = LCase(Trim(token))
-  if t = "nan" then return SM_FMT_NAN
-  if t = "inf" then return SM_FMT_INF
-  if t = "-inf" then return SM_FMT_NEGINF
-  return ""
-end function
-
 '' Map parser scalar token to formatter display; empty if not non-finite.
 function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
   dim t as String = LCase(Trim(s))
@@ -265,7 +256,7 @@ function FormatArrayResultText(byref sArrayText as String) as String
       dim fj as Integer
       for fj = 0 to cntFast - 1
         if fj > 0 then outFast &= g_sArrayOutputSeparator & " "
-        dim nfFast as String = TryFormatParserNonFiniteToken(elemsFast(fj))
+        dim nfFast as String = FormatNonFiniteDisplayFromParserScalar(elemsFast(fj))
         if Len(nfFast) > 0 then
           outFast &= nfFast
         else
@@ -295,7 +286,7 @@ function FormatArrayResultText(byref sArrayText as String) as String
     dim ei as Integer
     for ei = 0 to cnt - 1
       if ei > 0 then outText &= g_sArrayOutputSeparator & " "
-      dim nf as String = TryFormatParserNonFiniteToken(elems(ei))
+      dim nf as String = FormatNonFiniteDisplayFromParserScalar(elems(ei))
       if Len(nf) > 0 then
         outText &= nf
       else

@@ -70,19 +70,6 @@ private sub EnsureSettingsCacheInitialized()
   end if
 end sub
 
-private function readDwordW( _
-  byval hOptions as HANDLE, _
-  byref optionName as WString, _
-  byref outValue as DWORD _
-) as Integer
-  dim poW as PLUGINOPTIONW
-  poW.pOptionName = strptr(optionName)
-  poW.dwType = PO_DWORD
-  poW.lpData = cast(UByte ptr, @outValue)
-  poW.dwData = sizeof(DWORD)
-  return CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))) ' returns the number of bytes copied
-end function
-
 private function readStringW( _
   byval hOptions as HANDLE, _
   byref optionName as WString, _
@@ -94,7 +81,13 @@ private function readStringW( _
   poW.dwType = PO_STRING
   poW.lpData = cast(UByte ptr, strptr(outValue))
   poW.dwData = outChars * 2
-  return CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))) ' returns the number of bytes copied
+  dim n as Integer = CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW)))
+  ' OutputDebugString("[SmartMath] readStringW: optionName=" & optionName & ", n=" & n & ", outValue=" & outValue)
+  ' PO_STRING: n is the number of bytes copied including the wide trailing L'\0' (2 bytes).
+  if n < 2 then
+    return 0
+  end if
+  return n - 2
 end function
 
 private sub writeStringW( _
@@ -110,17 +103,44 @@ private sub writeStringW( _
   SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))
 end sub
 
-private sub writeDwordW( _
+'' Integer options are stored as strings. No validation here — apply limits at each call site.
+private function readIntW( _
   byval hOptions as HANDLE, _
   byref optionName as WString, _
-  byval value as DWORD _
+  byref outValue as Integer _
+) as Integer
+  dim sBuf as WString * SMARTMATH_OPT_STR_MAX_CHARS
+  sBuf = WStr("")
+  dim nBytes as Integer = readStringW(hOptions, optionName, sBuf, SMARTMATH_OPT_STR_MAX_CHARS)
+  if nBytes <= 0 then return 0
+  outValue = CInt(Val(Str(sBuf)))
+  return nBytes
+end function
+
+private sub writeIntW( _
+  byval hOptions as HANDLE, _
+  byref optionName as WString, _
+  byval value as Integer _
 )
-  dim poW as PLUGINOPTIONW
-  poW.pOptionName = strptr(optionName)
-  poW.dwType = PO_DWORD
-  poW.lpData = cast(UByte ptr, @value)
-  poW.dwData = sizeof(DWORD)
-  SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))
+  dim sBuf as WString * SMARTMATH_OPT_STR_MAX_CHARS
+  sBuf = WStr(Str(value))
+  writeStringW(hOptions, optionName, sBuf)
+end sub
+
+private sub LoadIniSingleCharString( _
+  byval hOptions as HANDLE, _
+  byref optionName as WString, _
+  byref defaultPlain as String, _
+  byref target as String, _
+  byref hasFlag as BOOL, _
+  byref cacheStr as String _
+)
+  dim sLocal as WString * SMARTMATH_OPT_STR_MAX_CHARS
+  sLocal = WStr(defaultPlain)
+  if readStringW(hOptions, optionName, sLocal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
+    target = Left(sLocal, 1)
+    CacheSetString(hasFlag, cacheStr, target)
+  end if
 end sub
 
 sub LoadSettings()
@@ -144,46 +164,42 @@ sub LoadSettings()
   ' OutputDebugString("[SmartMath] hOptions=" & hOptions)
   if hOptions = 0 then exit sub ' can not read options
 
-  dim dwVal as DWORD
-  dim sVal as WString * SMARTMATH_OPT_STR_MAX_CHARS
+  dim iVal as Integer
 
-  if readDwordW(hOptions, SMARTMATH_OPT_DECIMALS, dwVal) = sizeof(DWORD) then
-    g_nDecimals = CInt(dwVal)
-    CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
+  if readIntW(hOptions, SMARTMATH_OPT_DECIMALS, iVal) > 0 then
+    if (iVal = -1) orelse (iVal >= 0 andalso iVal <= SMARTMATH_DECIMALS_MAX) then
+      g_nDecimals = iVal
+      CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
+    end if
   end if
 
-  if readDwordW(hOptions, SMARTMATH_OPT_COLOR, dwVal) = sizeof(DWORD) then
-    g_crResultColor = dwVal
-    CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
+  if readIntW(hOptions, SMARTMATH_OPT_COLOR, iVal) > 0 then
+    if iVal >= 0 andalso iVal <= &HFFFFFF then
+      g_crResultColor = cast(COLORREF, culng(iVal))
+      CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
+    end if
   end if
 
-  if readDwordW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, dwVal) = sizeof(DWORD) then
-    g_bUseThousandsSeparator = (dwVal <> 0u)
-    CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
+  if readIntW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, iVal) > 0 then
+    if iVal >= 0 then
+      g_bUseThousandsSeparator = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
+    end if
   end if
 
-  if readDwordW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, dwVal) = sizeof(DWORD) then
-    g_bLogParsedLines = (dwVal <> 0u)
-    CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
+  if readIntW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, iVal) > 0 then
+    if iVal >= 0 then
+      g_bLogParsedLines = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
+    end if
   end if
 
-  sVal = WStr(SMARTMATH_DECIMAL_SEPARATOR_DEFAULT)
-  if readStringW(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
-    g_sDecimalSeparator = Left(sVal, 1)
-    CacheSetString(g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator, g_sDecimalSeparator)
-  end if
-
-  sVal = WStr(SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT)
-  if readStringW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
-    g_sThousandsSeparator = Left(sVal, 1)
-    CacheSetString(g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator, g_sThousandsSeparator)
-  end if
-
-  sVal = WStr(SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT)
-  if readStringW(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, sVal, SMARTMATH_OPT_STR_MAX_CHARS) > 0 then
-    g_sArrayOutputSeparator = Left(sVal, 1)
-    CacheSetString(g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator, g_sArrayOutputSeparator)
-  end if
+  LoadIniSingleCharString(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, SMARTMATH_DECIMAL_SEPARATOR_DEFAULT, _
+    g_sDecimalSeparator, g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator)
+  LoadIniSingleCharString(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT, _
+    g_sThousandsSeparator, g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator)
+  LoadIniSingleCharString(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT, _
+    g_sArrayOutputSeparator, g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator)
 
   ' OutputDebugString("[SmartMath] LoadSettings: g_nDecimals=" & g_nDecimals)
   ' OutputDebugString("[SmartMath] LoadSettings: g_crResultColor=" & g_crResultColor)
@@ -238,22 +254,22 @@ sub SaveSettings()
   dim sVal as WString * SMARTMATH_OPT_STR_MAX_CHARS
 
   if shouldSaveDecimals then
-    writeDwordW(hOptions, SMARTMATH_OPT_DECIMALS, g_nDecimals)
+    writeIntW(hOptions, SMARTMATH_OPT_DECIMALS, g_nDecimals)
     CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
   end if
 
   if shouldSaveColor then
-    writeDwordW(hOptions, SMARTMATH_OPT_COLOR, g_crResultColor)
+    writeIntW(hOptions, SMARTMATH_OPT_COLOR, CInt(clngint(culng(g_crResultColor))))
     CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
   end if
 
   if shouldSaveThousandsFlag then
-    writeDwordW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, IIf(g_bUseThousandsSeparator, 1u, 0u))
+    writeIntW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, IIf(g_bUseThousandsSeparator, 1, 0))
     CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
   end if
 
   if shouldSaveLogFlag then
-    writeDwordW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, IIf(g_bLogParsedLines, 1u, 0u))
+    writeIntW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, IIf(g_bLogParsedLines, 1, 0))
     CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
   end if
 

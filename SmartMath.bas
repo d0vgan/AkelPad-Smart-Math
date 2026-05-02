@@ -5,6 +5,7 @@ dim shared lpEditProcData as WNDPROCDATA ptr = 0
 dim shared lpMainProcData as WNDPROCDATA ptr = 0
 dim shared lpFrameProcData as WNDPROCDATA ptr = 0
 dim shared g_bSmartMathActive as BOOL = FALSE
+dim shared g_bAkelPadReady as BOOL = FALSE
 dim shared g_bOldRichEdit as BOOL = FALSE
 
 dim shared rcOldMargin as RECT
@@ -300,6 +301,18 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
   end if
 end sub
 
+' Same rule as inside EnsureSmartMathFirstLineOnActivate: one line (or none) and first line has no chars.
+private function EditorIsEmptyForSmartMathMarker(byval hWndEdit as HWND) as BOOL
+  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then return FALSE
+  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
+  dim idxFirst as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
+  dim lenFirstLine as Integer = 0
+  if idxFirst >= 0 then
+    lenFirstLine = SendMessage(hWndEdit, EM_LINELENGTH, idxFirst, 0)
+  end if
+  return ((nLineCount <= 1) andalso (lenFirstLine = 0))
+end function
+
 ' On plugin activation: ensure the active document starts with "# SmartMath" marker line.
 private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
@@ -318,13 +331,7 @@ private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   dim colOffset as Integer = selStart - nLineStart
   if colOffset < 0 then colOffset = 0
 
-  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
-  dim idxFirst as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
-  dim lenFirstLine as Integer = 0
-  if idxFirst >= 0 then
-    lenFirstLine = SendMessage(hWndEdit, EM_LINELENGTH, idxFirst, 0)
-  end if
-  dim bEmpty as BOOL = ((nLineCount <= 1) andalso (lenFirstLine = 0))
+  dim bEmpty as BOOL = EditorIsEmptyForSmartMathMarker(hWndEdit)
 
   const MARKER_BODY as String = "# SmartMath"
 
@@ -357,10 +364,17 @@ private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
   SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0)
 end sub
 
-' After hooks are live: insert marker if needed, sync doc mode, margins, AkelEdit options.
-private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND)
+' After hooks are live: optionally insert marker, sync doc mode, margins, AkelEdit options.
+' applyToEmptyFileOnly: if TRUE, auto-insert "# SmartMath" only when the document is empty (startup / toggle).
+private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND, byval applyToEmptyFileOnly as BOOL = FALSE)
   if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
-  EnsureSmartMathFirstLineOnActivate(hWndEdit)
+  if applyToEmptyFileOnly then
+    if EditorIsEmptyForSmartMathMarker(hWndEdit) then
+      EnsureSmartMathFirstLineOnActivate(hWndEdit)
+    end if
+  else
+    EnsureSmartMathFirstLineOnActivate(hWndEdit)
+  end if
   g_hWndEdit = hWndEdit
   RefreshSmartMathDocMode(hWndEdit)
   if not g_bOldRichEdit then
@@ -523,7 +537,7 @@ private sub EnsureRenderCache(byval hWnd as HWND)
   for i = 0 to nLineCount - 1
     dim sRes as String = ""
     dim bIsError as Boolean = FALSE
-  BuildRenderedResultText(g_cachedLineText(i), sRes, bIsError, i)
+    BuildRenderedResultText(g_cachedLineText(i), sRes, bIsError, i)
 
     if (i < firstChanged) andalso g_cacheReady andalso (i < oldCount) andalso (g_cachedLineText(i) = oldLineText(i)) then
       g_cachedRenderText(i) = oldRenderText(i)
@@ -918,7 +932,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       end if
       return 0
 
-    elseif nCmd > IDM_DECIMAL_BASE andalso nCmd <= IDM_DECIMAL_BASE + 15 then
+    elseif nCmd > IDM_DECIMAL_BASE andalso nCmd <= IDM_DECIMAL_BASE + 1 + SMARTMATH_DECIMALS_MAX then
       g_nDecimals = nCmd - IDM_DECIMAL_BASE - 1
       InvalidateRenderCache()
       SaveSettings()
@@ -984,9 +998,10 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
         result = lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
       end if
 
+      g_bAkelPadReady = TRUE
       dim hEditStart as HWND = GetWndEdit(g_hMainWnd)
       if hEditStart <> 0 then
-        SyncSmartMathActiveEditorState(hEditStart)
+        SyncSmartMathActiveEditorState(hEditStart, TRUE)
       end if
 
       return result
@@ -1306,7 +1321,10 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     if hEditAct = 0 then hEditAct = GetWndEdit(pd->hMainWnd)
 
     if hEditAct <> 0 then
-      SyncSmartMathActiveEditorState(hEditAct)
+      ' TODO: use something similar to `g_bAkelPadReady <> TRUE`,
+      ' but be sure it reflects the actual state of the editor.
+      ' (currently g_bAkelPadReady is set _only_ when the plugin is active on startup).
+      SyncSmartMathActiveEditorState(hEditAct, FALSE)
     end if
 
     ' The code below leads to undesired effects;

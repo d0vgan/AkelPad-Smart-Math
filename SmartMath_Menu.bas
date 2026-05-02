@@ -10,7 +10,7 @@ sub UpdateMenuChecks()
     CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE, MF_BYCOMMAND or stAuto)
 
     dim i as Integer
-    for i = 0 to 14
+    for i = 0 to SMARTMATH_DECIMALS_MAX
       dim st as UINT
       if g_nDecimals = i then st = MF_CHECKED else st = MF_UNCHECKED
       CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE + 1 + i, MF_BYCOMMAND or st)
@@ -56,7 +56,7 @@ sub InitSmartMathMenu()
 
     dim i as Integer
     dim sLabel as WString * 64
-    for i = 0 to 14
+    for i = 0 to SMARTMATH_DECIMALS_MAX
       if i = 1 then
         sLabel = wstr("1 decimal place")
       else

@@ -14,6 +14,9 @@
   const EM_REPLACESEL = &hC2
 #endif
 
+' Max fixed decimal places in UI and in stored Decimals= option (values above clamp).
+const SMARTMATH_DECIMALS_MAX = 14
+
 ' -----------------------------------------------------------------------------
 '  Menu IDs for SmartMath decimal-place selector.
 '  Range 12000-12015 avoids AkelPad built-ins (<=10019) and common plugins.
