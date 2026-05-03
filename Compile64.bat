@@ -7,12 +7,12 @@ if not exist "%FB_HOME%" (
     echo ERROR: FreeBASIC not found in "%FB_HOME%". Please specify the correct path to FreeBASIC in "%~nx0".
     exit /b 1
 )
-if not exist "%FB_HOME%\bin\win32" (
-    echo ERROR: FreeBASIC bin\win32 not found in "%FB_HOME%\bin\win32"
+if not exist "%FB_HOME%\bin\win64" (
+    echo ERROR: FreeBASIC bin\win64 not found in "%FB_HOME%\bin\win64"
     exit /b 1
 )
 
-set "PATH=%PATH%;%FB_HOME%;%FB_HOME%\bin\win32"
+set "PATH=%PATH%;%FB_HOME%;%FB_HOME%\bin\win64"
 set "OUT_DIR=%~dp0AkelFiles\Plugs64"
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
 
