@@ -326,6 +326,8 @@ Purpose: angle and trig math.
   - `atan2(1,1)` -> `0.7853981633974483`
   - `deg(pi)` -> `180`
   - `rad(180)` -> `pi`
+  - `cos(rad(30,45,60))` -> `(0.866025, 0.707107, 0.5)`
+  - `deg(acos((sqrt(3)/2, sqrt(2)/2, 1/2)))` -> `(30, 45, 60)`
 
 ### Logarithmic and Exponential
 
@@ -558,7 +560,7 @@ LogParsedLines=1
 
 - `0` disables logging (default).
 - `1` enables logging.
-- Toggle SmartMath off/on (or restart AkelPad) after editing `SmartMath.ini`.
+- Toggle SmartMath off/on (or restart AkelPad) after editing `SmartMath.ini` or Registry.
 - Logs are sent through Windows `OutputDebugString`.
 - You can inspect logs with [DbgView (Sysinternals)](https://learn.microsoft.com/sysinternals/downloads/debugview).
 
