@@ -118,10 +118,13 @@ const FB_STR_ARGUMENT_PAR_S_COMMA as string = " argument(s), "
 const FB_STR_GIVEN as string = " given"
 const FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON as string = "recursive function call: "
 const FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW as string = "function call stack overflow"
+const FB_STR_LT as string = "<"
 const FB_STR_LT_LT as string = "<<"
+const FB_STR_GT as string = ">"
 const FB_STR_GT_GT as string = ">>"
 const FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES as string = "modulo operands must be integer values"
 const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operands must be integer values"
+const FB_STR_EQ as string = "="
 const FB_STR_EQ_EQ as string = "=="
 const FB_STR_LT_GT as string = "<>"
 const FB_STR_NOT_EQ as string = "!="
@@ -2689,11 +2692,11 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
     if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
       dim isNanCmpTrue as Boolean = FALSE
       select case op
-        case "=", FB_STR_EQ_EQ
+        case FB_STR_EQ, FB_STR_EQ_EQ
           isNanCmpTrue = FALSE
         case FB_STR_LT_GT, FB_STR_NOT_EQ
           isNanCmpTrue = TRUE
-        case "<", ">", FB_STR_LT_EQ, FB_STR_GT_EQ
+        case FB_STR_LT, FB_STR_GT, FB_STR_LT_EQ, FB_STR_GT_EQ
           isNanCmpTrue = FALSE
         case else
           return FALSE
@@ -2711,15 +2714,15 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
   if CompareEvalValues(leftV, rightV, cmp) = FALSE then return FALSE
   dim isTrue as Boolean = FALSE
   select case op
-    case "=", FB_STR_EQ_EQ
+    case FB_STR_EQ, FB_STR_EQ_EQ
       isTrue = (cmp = 0)
     case FB_STR_LT_GT, FB_STR_NOT_EQ
       isTrue = (cmp <> 0)
-    case "<"
+    case FB_STR_LT
       isTrue = (cmp < 0)
     case FB_STR_LT_EQ
       isTrue = (cmp <= 0)
-    case ">"
+    case FB_STR_GT
       isTrue = (cmp > 0)
     case FB_STR_GT_EQ
       isTrue = (cmp >= 0)
@@ -4089,7 +4092,7 @@ private function TryConsumeComparisonOperator(byref outOp as String) as Boolean
       outOp = FB_STR_EQ_EQ
       pStream += 2
     else
-      outOp = "="
+      outOp = FB_STR_EQ
       pStream += 1
     end if
     return TRUE
@@ -4104,7 +4107,7 @@ private function TryConsumeComparisonOperator(byref outOp as String) as Boolean
     elseif pStream[1] = CHAR_LESS_THAN then
       return FALSE
     else
-      outOp = "<"
+      outOp = FB_STR_LT
       pStream += 1
     end if
     return TRUE
@@ -4116,7 +4119,7 @@ private function TryConsumeComparisonOperator(byref outOp as String) as Boolean
     elseif pStream[1] = CHAR_GREATER_THAN then
       return FALSE
     else
-      outOp = ">"
+      outOp = FB_STR_GT
       pStream += 1
     end if
     return TRUE
