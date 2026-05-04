@@ -124,12 +124,6 @@ const FB_STR_GT as string = ">"
 const FB_STR_GT_GT as string = ">>"
 const FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES as string = "modulo operands must be integer values"
 const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operands must be integer values"
-const FB_STR_EQ as string = "="
-const FB_STR_EQ_EQ as string = "=="
-const FB_STR_LT_GT as string = "<>"
-const FB_STR_NOT_EQ as string = "!="
-const FB_STR_LT_EQ as string = "<="
-const FB_STR_GT_EQ as string = ">="
 const FB_STR_INCOMPATIBLE_OPERANDS as string = "incompatible operands"
 const FB_STR_PAR_EXPECTS_AT_LEAST_1 as string = "() expects at least 1 argument"
 const FB_STR_MISSING_OPENING_BRACKET as string = "missing opening bracket"
@@ -604,6 +598,17 @@ enum OperatorNameId
   OP_OR
   OP_MOD
   OP__COUNT
+end enum
+
+enum OperatorCmpNameId
+  OP_CMP_NONE = 0
+  OP_CMP_EQ  ' =, ==
+  OP_CMP_NE  ' <>, !=
+  OP_CMP_LT  ' <
+  OP_CMP_GT  ' >
+  OP_CMP_LE  ' <=
+  OP_CMP_GE  ' >=
+  OP_CMP__COUNT
 end enum
 
 enum BuiltinConstId
@@ -2686,26 +2691,18 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
   return TRUE
 end function
 
-private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorCmpNameId, byref outV as EvalValue) as Boolean
   '' IEEE: any scalar NaN makes comparisons unordered — only ``!=`` / ``<>`` is true.
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
     if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
-      dim isNanCmpTrue as Boolean = FALSE
       select case op
-        case FB_STR_EQ, FB_STR_EQ_EQ
-          isNanCmpTrue = FALSE
-        case FB_STR_LT_GT, FB_STR_NOT_EQ
-          isNanCmpTrue = TRUE
-        case FB_STR_LT, FB_STR_GT, FB_STR_LT_EQ, FB_STR_GT_EQ
-          isNanCmpTrue = FALSE
-        case else
+        case OP_CMP_NONE
           return FALSE
+        case OP_CMP_NE
+          ValueSetInt64(outV, 1)
+        case else
+          ValueSetInt64(outV, 0)
       end select
-      if isNanCmpTrue then
-        ValueSetInt64(outV, 1)
-      else
-        ValueSetInt64(outV, 0)
-      end if
       return TRUE
     end if
   end if
@@ -2714,17 +2711,17 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
   if CompareEvalValues(leftV, rightV, cmp) = FALSE then return FALSE
   dim isTrue as Boolean = FALSE
   select case op
-    case FB_STR_EQ, FB_STR_EQ_EQ
+    case OP_CMP_EQ
       isTrue = (cmp = 0)
-    case FB_STR_LT_GT, FB_STR_NOT_EQ
+    case OP_CMP_NE
       isTrue = (cmp <> 0)
-    case FB_STR_LT
+    case OP_CMP_LT
       isTrue = (cmp < 0)
-    case FB_STR_LT_EQ
+    case OP_CMP_LE
       isTrue = (cmp <= 0)
-    case FB_STR_GT
+    case OP_CMP_GT
       isTrue = (cmp > 0)
-    case FB_STR_GT_EQ
+    case OP_CMP_GE
       isTrue = (cmp >= 0)
     case else
       return FALSE
@@ -2779,7 +2776,7 @@ private sub ApplyBinaryParserOpInPlace(byref leftV as EvalValue, byref rightV as
   if ApplyBinaryParserOp(leftV, rightV, op, outV) then leftV = outV
 end sub
 
-private sub ApplyComparisonParserOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String)
+private sub ApplyComparisonParserOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorCmpNameId)
   dim outV as EvalValue
   if ApplyComparison(leftV, rightV, op, outV) = FALSE then
     SetIncompatibleOperandsError()
@@ -4086,46 +4083,46 @@ private function ParseBitwiseOr() as EvalValue
   return ParseLeftAssocInt64Binary(PARSE_INT64_LEVEL_BITXOR)
 end function
 
-private function TryConsumeComparisonOperator(byref outOp as String) as Boolean
+private function TryConsumeComparisonOperator(byref outOp as OperatorCmpNameId) as Boolean
   if pStream[0] = CHAR_EQUALS then
     if pStream[1] = CHAR_EQUALS then
-      outOp = FB_STR_EQ_EQ
+      outOp = OP_CMP_EQ
       pStream += 2
     else
-      outOp = FB_STR_EQ
+      outOp = OP_CMP_EQ
       pStream += 1
     end if
     return TRUE
   end if
   if pStream[0] = CHAR_LESS_THAN then
     if pStream[1] = CHAR_GREATER_THAN then
-      outOp = FB_STR_LT_GT
+      outOp = OP_CMP_NE
       pStream += 2
     elseif pStream[1] = CHAR_EQUALS then
-      outOp = FB_STR_LT_EQ
+      outOp = OP_CMP_LE
       pStream += 2
     elseif pStream[1] = CHAR_LESS_THAN then
       return FALSE
     else
-      outOp = FB_STR_LT
+      outOp = OP_CMP_LT
       pStream += 1
     end if
     return TRUE
   end if
   if pStream[0] = CHAR_GREATER_THAN then
     if pStream[1] = CHAR_EQUALS then
-      outOp = FB_STR_GT_EQ
+      outOp = OP_CMP_GE
       pStream += 2
     elseif pStream[1] = CHAR_GREATER_THAN then
       return FALSE
     else
-      outOp = FB_STR_GT
+      outOp = OP_CMP_GT
       pStream += 1
     end if
     return TRUE
   end if
   if pStream[0] = CHAR_EXCLAMATION andalso pStream[1] = CHAR_EQUALS then
-    outOp = FB_STR_NOT_EQ
+    outOp = OP_CMP_NE
     pStream += 2
     return TRUE
   end if
@@ -4137,7 +4134,7 @@ private function ParseComparison() as EvalValue
   SkipSpaces()
   while TRUE
     if parseError then exit while
-    dim op as String = ""
+    dim op as OperatorCmpNameId = OP_CMP_NONE
     if TryConsumeComparisonOperator(op) = FALSE then exit while
 
     dim n2 as EvalValue = ParseBitwiseOr()
