@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 867) as SmokeCase
+  dim tests(1 to 877) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1110,6 +1110,16 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(865).expr = "tan(-77778*pi)": tests(865).expected = "0"
   tests(866).expr = "bad1(x)=x)": tests(866).expectedErrContains = "unexpected characters" ' [regression] UDF body must be one expression; no extra )
   tests(867).expr = "bad2(x)=x$$5": tests(867).expectedErrContains = "unexpected characters" ' [regression] garbage after a valid expression prefix in UDF body
+  tests(868).expr = "!nan": tests(868).expected = "1" ' [spec] NaN is falsy in logical ops (IEEE: NaN <> 0 is true, so do not use <>0 alone for truthiness)
+  tests(869).expr = "nan && 1": tests(869).expected = "0" ' [spec] NaN is falsy
+  tests(870).expr = "nan || 0": tests(870).expected = "0" ' [spec] NaN is falsy
+  tests(871).expr = "nan==nan": tests(871).expected = "0" ' [spec] IEEE: NaN never equals NaN
+  tests(872).expr = "nan!=nan": tests(872).expected = "1" ' [spec] inequality is true for unordered
+  tests(873).expr = "nan<>nan": tests(873).expected = "1"
+  tests(874).expr = "nan<nan": tests(874).expected = "0"
+  tests(875).expr = "nan>nan": tests(875).expected = "0"
+  tests(876).expr = "nan<=nan": tests(876).expected = "0"
+  tests(877).expr = "nan>=nan": tests(877).expected = "0"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

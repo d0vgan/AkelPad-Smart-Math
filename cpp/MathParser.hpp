@@ -512,6 +512,8 @@ private:
       Expr::BinaryOp op) const;
   static bool isComparisonBinaryOp(Expr::BinaryOp op);
   static bool evalComparisonByOp(Expr::BinaryOp op, int cmp);
+  /** IEEE unordered comparison when either scalar operand is NaN (scalar-only fast path). */
+  static bool evalComparisonTruthWhenUnorderedNan(Expr::BinaryOp op);
   static bool exprIsDirectPostfixPercent(const Expr& e);
   bool exprIsScalarOnly(const Expr& e) const;
   bool programIsScalarOnly(const std::vector<AstStatement>& program) const;

@@ -476,8 +476,8 @@ Advanced examples:
 
 ### Compatibility Behavior (Current)
 
-- `nan == nan` currently evaluates to `1`.
-- On evaluation failure, `ans` resets to `0`.
+- `nan == nan` evaluates to `0` (IEEE unordered: NaN is not equal to any value, including another NaN).
+- `nan != nan` is `1`.
 
 These behaviors may differ from other tools/languages.
 

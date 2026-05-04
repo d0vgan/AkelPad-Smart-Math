@@ -1298,7 +1298,7 @@ std::vector<TestCase> buildNanInfCases() {
                  return expectEval(p, "sum(1,x)", "inf", why);
                }});
 
-  t.push_back({"naninf/not NaN is true (non-truthy)", [kQNaN](std::string& why) {
+  t.push_back({"naninf/not NaN is true (NaN is falsy)", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
                  return expectEval(p, "not x", "1", why);
@@ -1319,11 +1319,38 @@ std::vector<TestCase> buildNanInfCases() {
                  return expectEval(p, "x||1", "1", why);
                }});
 
-  // Comparator treats incomparable scalars as "equal" (cmp==0); documents current behavior.
-  t.push_back({"naninf/NaN == NaN compares equal (cmp tie)", [kQNaN](std::string& why) {
+  t.push_back({"naninf/NaN == NaN is false (IEEE unordered)", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEval(p, "x==x", "1", why);
+                 return expectEval(p, "x==x", "0", why);
+               }});
+  t.push_back({"naninf/nan==nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan==nan", "0", why);
+               }});
+  t.push_back({"naninf/nan!=nan literal true", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan!=nan", "1", why);
+               }});
+  t.push_back({"naninf/nan<>nan literal true", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan<>nan", "1", why);
+               }});
+  t.push_back({"naninf/nan<nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan<nan", "0", why);
+               }});
+  t.push_back({"naninf/nan>nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan>nan", "0", why);
+               }});
+  t.push_back({"naninf/nan<=nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan<=nan", "0", why);
+               }});
+  t.push_back({"naninf/nan>=nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan>=nan", "0", why);
                }});
   t.push_back({"naninf/+inf == +inf", [kPosInf](std::string& why) {
                  MathParser p;

@@ -1716,7 +1716,11 @@ bool MathParser::isTruthy(const EvalValue& v) {
   if (v.kind == ValueKind::Array) {
     return !v.arr.empty();
   }
-  return std::fabs(v.scalarValue.scalar) > 0.0;
+  const double s = v.scalarValue.scalar;
+  if (std::isnan(s)) {
+    return false;
+  }
+  return std::fabs(s) > 0.0;
 }
 
 std::string MathParser::trim(const std::string& s) {
@@ -3089,6 +3093,15 @@ bool MathParser::evalComparisonByOp(Expr::BinaryOp op, int cmp) {
   }
 }
 
+bool MathParser::evalComparisonTruthWhenUnorderedNan(Expr::BinaryOp op) {
+  switch (op) {
+    case Expr::BinaryOp::CmpNe:
+      return true;
+    default:
+      return false;
+  }
+}
+
 MathParser::EvalValue MathParser::evalExprScalar(
     const Expr& e,
     EvalContext& ctx,
@@ -3166,17 +3179,19 @@ MathParser::EvalValue MathParser::evalExprScalar(
           return makeScalarInt(bitwiseShiftRightDefined(a, static_cast<unsigned int>(b)));
         }
         case Expr::BinaryOp::CmpLt:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) < 0 ? 1LL : 0LL);
         case Expr::BinaryOp::CmpGt:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) > 0 ? 1LL : 0LL);
         case Expr::BinaryOp::CmpLe:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) <= 0 ? 1LL : 0LL);
         case Expr::BinaryOp::CmpGe:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) >= 0 ? 1LL : 0LL);
         case Expr::BinaryOp::CmpEq:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) == 0 ? 1LL : 0LL);
-        case Expr::BinaryOp::CmpNe:
-          return makeScalarInt(((l.scalarValue.scalar < r.scalarValue.scalar) ? -1 : (l.scalarValue.scalar > r.scalarValue.scalar ? 1 : 0)) != 0 ? 1LL : 0LL);
+        case Expr::BinaryOp::CmpNe: {
+          const double ls = l.scalarValue.scalar;
+          const double rs = r.scalarValue.scalar;
+          if (std::isnan(ls) || std::isnan(rs)) {
+            return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+          }
+          const int cmp = (ls < rs) ? -1 : (ls > rs) ? 1 : 0;
+          return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
+        }
         case Expr::BinaryOp::Pow:
           return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
         case Expr::BinaryOp::Mul:
@@ -3379,17 +3394,19 @@ MathParser::EvalValue MathParser::evalExpr(
         }
         return evalInt64BinaryOp(ctx, l, r, e.binaryOp);
       }
-      const auto evalComparison = [&](int& outCmp) -> bool {
-        EvalValue l = evalExpr(*e.left, ctx, scopedVars);
-        if (ctx.parseError) return false;
-        EvalValue r = evalExpr(*e.right, ctx, scopedVars);
-        if (ctx.parseError) return false;
-        outCmp = compareValues(l, r);
-        return true;
-      };
       if (isComparisonBinaryOp(e.binaryOp)) {
-        int cmp = 0;
-        if (!evalComparison(cmp)) return makeScalar(0);
+        EvalValue l = evalExpr(*e.left, ctx, scopedVars);
+        if (ctx.parseError) return makeScalar(0);
+        EvalValue r = evalExpr(*e.right, ctx, scopedVars);
+        if (ctx.parseError) return makeScalar(0);
+        if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
+          const double ls = l.scalarValue.scalar;
+          const double rs = r.scalarValue.scalar;
+          if (std::isnan(ls) || std::isnan(rs)) {
+            return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+          }
+        }
+        const int cmp = compareValues(l, r);
         return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
       }
       EvalValue l = evalExpr(*e.left, ctx, scopedVars);

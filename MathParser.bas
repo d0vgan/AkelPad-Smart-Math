@@ -2684,6 +2684,29 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
 end function
 
 private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+  '' IEEE: any scalar NaN makes comparisons unordered — only ``!=`` / ``<>`` is true.
+  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
+      dim isNanCmpTrue as Boolean = FALSE
+      select case op
+        case "=", FB_STR_EQ_EQ
+          isNanCmpTrue = FALSE
+        case FB_STR_LT_GT, FB_STR_NOT_EQ
+          isNanCmpTrue = TRUE
+        case "<", ">", FB_STR_LT_EQ, FB_STR_GT_EQ
+          isNanCmpTrue = FALSE
+        case else
+          return FALSE
+      end select
+      if isNanCmpTrue then
+        ValueSetInt64(outV, 1)
+      else
+        ValueSetInt64(outV, 0)
+      end if
+      return TRUE
+    end if
+  end if
+
   dim cmp as Integer = 0
   if CompareEvalValues(leftV, rightV, cmp) = FALSE then return FALSE
   dim isTrue as Boolean = FALSE
@@ -2715,6 +2738,7 @@ private function EvalValueIsTruthy(byref v as EvalValue) as Boolean
   if v.kind = VK_ARRAY then
     return (ValueArrayLen(v) > 0)
   end if
+  if IsNaNValue(v.scalar) then return FALSE
   return (v.scalar <> 0)
 end function
 
