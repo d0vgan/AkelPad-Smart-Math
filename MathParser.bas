@@ -156,6 +156,8 @@ const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
 const FB_STR_UNKNOWN_FUNCTION_COLON as string = "unknown function: "
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
+const PI_VAL as Double = 4.0 * atn(1.0) ' pi
+
 ' -----------------------------------------------------------------------------
 '  ASCII byte constants (single-byte stream; multi-byte UTF-8 not interpreted)
 ' -----------------------------------------------------------------------------
@@ -1031,6 +1033,12 @@ private function IsNonFiniteValue(byval d as Double) as Boolean
   return IsNaNValue(d) orelse IsInfValue(d)
 end function
 
+private function IsFiniteValue(byval d as Double) as Boolean
+  if IsNaNValue(d) then return FALSE
+  if IsInfValue(d) then return FALSE
+  return TRUE
+end function
+
 private function ScalarValueFromEvalScalar(byref v as EvalValue) as ScalarValue
   dim outV as ScalarValue
   outV.scalarStorageKind = v.scalarStorageKind
@@ -1612,7 +1620,7 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
   if cid < 0 then return FALSE
   select case cast(BuiltinConstId, cid)
     case CONST_PI
-      ValueSetScalar(v, 4.0 * atn(1.0))
+      ValueSetScalar(v, PI_VAL)
     case CONST_E
       ValueSetScalar(v, exp(1.0))
     case CONST_INF
@@ -2252,34 +2260,80 @@ private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref
   return TRUE
 end function
 
-private function Atan2Compat(byval y as Double, byval x as Double) as Double
-  dim piVal as Double = 4.0 * atn(1.0)
+private function IsMultipleOf(byval x as Double, byval x_mult as Double) as Boolean
+  dim abs_x as Double = abs(x)
+  dim y as Double = abs_x/x_mult + abs_x/1e+15
+  if y >= 1.0 then
+    if y/Fix(y) - 1.0 < 1e-14 then return TRUE
+  end if
+  return FALSE
+end function
+
+private function CalcSin(byval x as Double) as Double
+  if x=0.0 then return 0.0
+  if IsFiniteValue(x) then
+    if IsMultipleOf(x, PI_VAL) then
+      ' sin(N*pi), N = 1,2,3,4,...
+      return 0.0
+    end if
+  end if
+  return sin(x)
+end function
+
+private function CalcCos(byval x as Double) as Double
+  if IsFiniteValue(x) then
+    if not IsMultipleOf(x, PI_VAL) then
+      if IsMultipleOf(x, PI_VAL/2) then
+        ' cos(N*pi/2), N = 1,3,5,7,...
+        return 0.0
+      end if
+    end if
+  endif
+  return cos(x)
+end function
+
+private function CalcTan(byval x as Double) as Double
+  if x=0.0 then return 0.0
+  if IsFiniteValue(x) then
+    if IsMultipleOf(x, PI_VAL) then
+      ' tan(N*pi), N = 1,2,3,4,...
+      return 0.0
+    end if
+    if IsMultipleOf(x, PI_VAL/2) then
+      ' tan(N*pi/2), N = 1,3,5,7,...
+      if tan(x) > 0.0 then return 1.0/0.0 ' INF
+      return -1.0/0.0 ' -INF
+    end if
+  end if
+  return tan(x)
+end function
+
+private function CalcAtan2(byval y as Double, byval x as Double) as Double
   if x > 0 then return atn(y / x)
   if x < 0 then
     if y >= 0 then
-      return atn(y / x) + piVal
+      return atn(y / x) + PI_VAL
     else
-      return atn(y / x) - piVal
+      return atn(y / x) - PI_VAL
     end if
   end if
-  if y > 0 then return piVal / 2.0
-  if y < 0 then return -piVal / 2.0
+  if y > 0 then return PI_VAL / 2.0
+  if y < 0 then return -PI_VAL / 2.0
   return 0
 end function
 
-private function HypotCompat(byval x as Double, byval y as Double) as Double
+private function CalcHypot(byval x as Double, byval y as Double) as Double
   return sqr((x * x) + (y * y))
 end function
 
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
-  const PI_VAL as Double = 4.0 * atn(1.0)
   dim x as Double = scalarV.scalar
   if fnId = FUNC_SIN then
-    ValueSetScalarPromoteExactInt64(outV, sin(x))
+    ValueSetScalarPromoteExactInt64(outV, CalcSin(x))
   elseif fnId = FUNC_COS then
-    ValueSetScalarPromoteExactInt64(outV, cos(x))
+    ValueSetScalarPromoteExactInt64(outV, CalcCos(x))
   elseif fnId = FUNC_TAN then
-    ValueSetScalarPromoteExactInt64(outV, tan(x))
+    ValueSetScalarPromoteExactInt64(outV, CalcTan(x))
   elseif (fnId = FUNC_ASIN) orelse (fnId = FUNC_ARCSIN) then
     ValueSetScalarPromoteExactInt64(outV, asin(x))
   elseif (fnId = FUNC_ACOS) orelse (fnId = FUNC_ARCCOS) then
@@ -2508,11 +2562,11 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
     return TRUE
   end if
   if fnId = FUNC_ATAN2 then
-    ValueSetScalarPromoteExactInt64(outV, Atan2Compat(leftS.scalar, rightS.scalar))
+    ValueSetScalarPromoteExactInt64(outV, CalcAtan2(leftS.scalar, rightS.scalar))
     return TRUE
   end if
   if fnId = FUNC_HYPOT then
-    ValueSetScalarPromoteExactInt64(outV, HypotCompat(leftS.scalar, rightS.scalar))
+    ValueSetScalarPromoteExactInt64(outV, CalcHypot(leftS.scalar, rightS.scalar))
     return TRUE
   end if
   return FALSE

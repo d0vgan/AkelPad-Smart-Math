@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 826) as SmokeCase
+  dim tests(1 to 865) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1069,6 +1069,46 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(824).expr = "acosh()": tests(824).expectedErrContains = "expects 1 argument(s)"
   tests(825).expr = "asinh()": tests(825).expectedErrContains = "expects 1 argument(s)"
   tests(826).expr = "atanh()": tests(826).expectedErrContains = "expects 1 argument(s)"
+  tests(827).expr = "sin(pi/2)": tests(827).expected = "1"
+  tests(828).expr = "sin(-pi/2)": tests(828).expected = "-1"
+  tests(829).expr = "sin(77777*pi/2)": tests(829).expected = "1"
+  tests(830).expr = "sin(-77777*pi/2)": tests(830).expected = "-1"
+  tests(831).expr = "sin(0)": tests(831).expected = "0"
+  tests(832).expr = "sin(pi)": tests(832).expected = "0"
+  tests(833).expr = "sin(-pi)": tests(833).expected = "0"
+  tests(834).expr = "sin(2*pi)": tests(834).expected = "0"
+  tests(835).expr = "sin(-2*pi)": tests(835).expected = "0"
+  tests(836).expr = "sin(77777*pi)": tests(836).expected = "0"
+  tests(837).expr = "sin(-77777*pi)": tests(837).expected = "0"
+  tests(838).expr = "sin(77778*pi)": tests(838).expected = "0"
+  tests(839).expr = "sin(-77778*pi)": tests(839).expected = "0"
+  tests(840).expr = "cos(pi/2)": tests(840).expected = "0"
+  tests(841).expr = "cos(-pi/2)": tests(841).expected = "0"
+  tests(842).expr = "cos(77777*pi/2)": tests(842).expected = "0"
+  tests(843).expr = "cos(-77777*pi/2)": tests(843).expected = "0"
+  tests(844).expr = "cos(0)": tests(844).expected = "1"
+  tests(845).expr = "cos(pi)": tests(845).expected = "-1"
+  tests(846).expr = "cos(-pi)": tests(846).expected = "-1"
+  tests(847).expr = "cos(2*pi)": tests(847).expected = "1"
+  tests(848).expr = "cos(-2*pi)": tests(848).expected = "1"
+  tests(849).expr = "cos(77777*pi)": tests(849).expected = "-1"
+  tests(850).expr = "cos(-77777*pi)": tests(850).expected = "-1"
+  tests(851).expr = "cos(77778*pi)": tests(851).expected = "1"
+  tests(852).expr = "cos(-77778*pi)": tests(852).expected = "1"
+  tests(853).expr = "tan(pi/2)": tests(853).expected = "inf"
+  tests(854).expr = "tan(-pi/2)": tests(854).expected = "-inf"
+  tests(855).expr = "tan(77777*pi/2)": tests(855).expected = "inf"
+  tests(856).expr = "tan(-77777*pi/2)": tests(856).expected = "-inf"
+  tests(857).expr = "tan(0)": tests(857).expected = "0"
+  tests(858).expr = "tan(pi)": tests(858).expected = "0"
+  tests(859).expr = "tan(-pi)": tests(859).expected = "0"
+  tests(860).expr = "tan(2*pi)": tests(860).expected = "0"
+  tests(861).expr = "tan(-2*pi)": tests(861).expected = "0"
+  tests(862).expr = "tan(77777*pi)": tests(862).expected = "0"
+  tests(863).expr = "tan(-77777*pi)": tests(863).expected = "0"
+  tests(864).expr = "tan(77778*pi)": tests(864).expected = "0"
+  tests(865).expr = "tan(-77778*pi)": tests(865).expected = "0"
+
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
   dim sigI as String

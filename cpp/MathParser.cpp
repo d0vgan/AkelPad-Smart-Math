@@ -362,6 +362,55 @@ bool tryComputeNcrInt64(long long n, long long r, long long& out) {
   return true;
 }
 
+bool isMultipleOf(double x, double x_mult)
+{
+  const double abs_x = std::fabs(x);
+  const double y = abs_x/x_mult + abs_x/1e+15;
+  return ((y >= 1.0) && (y/std::trunc(y) - 1.0 < 1e-14));
+}
+
+double calcSin(double x)
+{
+  if (x == 0.0)
+    return 0.0;
+
+  if (std::isfinite(x))
+  {
+    if (isMultipleOf(x, kPi))
+      return 0.0; // sin(N*pi), N = 1,2,3,4,...
+  }
+
+  return std::sin(x);
+}
+
+double calcCos(double x)
+{
+  if (std::isfinite(x))
+  {
+    if ((!isMultipleOf(x, kPi)) && isMultipleOf(x, kPi/2))
+      return 0.0; // cos(N*pi/2), N = 1,3,5,7,...
+  }
+
+  return std::cos(x);
+}
+
+double calcTan(double x)
+{
+  if (x == 0.0)
+    return 0.0;
+
+  if (std::isfinite(x))
+  {
+    if (isMultipleOf(x, kPi))
+      return 0.0; // tan(N*pi), N = 1,2,3,4,...
+
+    if (isMultipleOf(x, kPi/2))
+      return ((std::tan(x) > 0.0) ? std::numeric_limits<double>::infinity() : -std::numeric_limits<double>::infinity()); // tan(N*pi/2), N = 1,3,5,7,...
+  }
+
+  return std::tan(x);
+}
+
 std::string formatDoubleFast(double v) {
   // Custom "general" formatter: 16 significant digits in fixed mode, 16 in scientific (smoke parity).
   // Uses only direct character-buffer operations.
@@ -4050,9 +4099,9 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     const EvalValue::ScalarValue& s = args[0].scalarValue;
     const double x = args[0].scalarValue.scalar;
     switch (id) {
-      case BuiltinFunctionId::Sin: return makeScalarMaybeExact(std::sin(x));
-      case BuiltinFunctionId::Cos: return makeScalarMaybeExact(std::cos(x));
-      case BuiltinFunctionId::Tan: return makeScalarMaybeExact(std::tan(x));
+      case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
+      case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
+      case BuiltinFunctionId::Tan: return makeScalarMaybeExact(calcTan(x));
       case BuiltinFunctionId::Asin:
       case BuiltinFunctionId::Arcsin: return makeScalarMaybeExact(std::asin(x));
       case BuiltinFunctionId::Acos:
