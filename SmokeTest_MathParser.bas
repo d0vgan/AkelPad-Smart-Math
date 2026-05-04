@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 865) as SmokeCase
+  dim tests(1 to 867) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1108,6 +1108,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(863).expr = "tan(-77777*pi)": tests(863).expected = "0"
   tests(864).expr = "tan(77778*pi)": tests(864).expected = "0"
   tests(865).expr = "tan(-77778*pi)": tests(865).expected = "0"
+  tests(866).expr = "bad1(x)=x)": tests(866).expectedErrContains = "unexpected characters" ' [regression] UDF body must be one expression; no extra )
+  tests(867).expr = "bad2(x)=x$$5": tests(867).expectedErrContains = "unexpected characters" ' [regression] garbage after a valid expression prefix in UDF body
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

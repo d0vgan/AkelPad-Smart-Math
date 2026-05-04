@@ -166,7 +166,7 @@ constexpr const char* STR_ARGUMENT_PAR_S = " argument(s)";
 constexpr const char* STR_MAX_EVALUATION_DEPTH_REACHED = "max evaluation depth reached";
 constexpr const char* STR_USER_FUNCTION_CALL_STACK_OVERFLOW = "function call stack overflow";
 constexpr const char* STR_FAILED_TO_PARSE_USER_FUNCTION_BODY = "failed to parse user function body";
-constexpr const char* STR_UNEXPECTED_TRAILING_INPUT = "unexpected trailing input";
+constexpr const char* STR_UNEXPECTED_INPUT = "unexpected characters";
 constexpr const char* STR_PARSE_FAILED = "parse failed";
 constexpr const char* STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR = "nothing compiled; call compile() first";
 constexpr const char* STR_UNKNOWN_VARIABLE_COLON = "unknown variable: ";
@@ -1076,12 +1076,27 @@ const char* MathParser::validateUserFunctionDefinitionNames(
 std::string MathParser::getUserFunctionDefinitionErrorText(
     const std::string& fnName,
     const std::vector<std::string>& fnParams,
-    const std::string& fnExpr) const {
+    const std::string& fnExpr) {
   if (const char* udfNameErr = validateUserFunctionDefinitionNames(fnName, fnParams)) {
     return udfNameErr;
   }
   if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
     return STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName;
+  }
+  EvalContext bodyCtx;
+  bodyCtx.sourceExpr = fnExpr;
+  bodyCtx.p = fnExpr.c_str();
+  bodyCtx.start = bodyCtx.p;
+  std::unique_ptr<Expr> ex = parseExpression(bodyCtx);
+  if (bodyCtx.parseError || !ex) {
+    if (!bodyCtx.errorText.empty()) {
+      return bodyCtx.errorText;
+    }
+    return STR_FAILED_TO_PARSE_USER_FUNCTION_BODY;
+  }
+  skipSpaces(bodyCtx);
+  if (*bodyCtx.p != '\0') {
+    return STR_UNEXPECTED_INPUT;
   }
   return "";
 }
@@ -1090,7 +1105,7 @@ bool MathParser::trySetUserFunctionDefinitionError(
     EvalContext& ctx,
     const std::string& fnName,
     const std::vector<std::string>& fnParams,
-    const std::string& fnExpr) const {
+    const std::string& fnExpr) {
   const std::string err = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr);
   if (err.empty()) {
     return false;
@@ -1154,7 +1169,7 @@ bool MathParser::tryAppendParsedExpressionStatement(
   return true;
 }
 
-bool MathParser::tryAppendFunctionDefinitionStatement(EvalContext& ctx, std::vector<AstStatement>& out) const {
+bool MathParser::tryAppendFunctionDefinitionStatement(EvalContext& ctx, std::vector<AstStatement>& out) {
   std::string fnName;
   std::vector<std::string> fnParams;
   std::string fnExpr;
@@ -1444,8 +1459,8 @@ void MathParser::setUnexpectedTokenError(EvalContext& ctx) const {
   setError(ctx, STR_UNEXPECTED_TOKEN);
 }
 
-void MathParser::setUnexpectedTrailingInputError(EvalContext& ctx) const {
-  setError(ctx, STR_UNEXPECTED_TRAILING_INPUT);
+void MathParser::setUnexpectedInputError(EvalContext& ctx) const {
+  setError(ctx, STR_UNEXPECTED_INPUT);
 }
 
 void MathParser::setMissingClosingParenLikeError(EvalContext& ctx) const {
@@ -4344,7 +4359,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     }
     skipSpaces(parseCtx);
     if (!parseCtx.parseError && *parseCtx.p != '\0') {
-      setUnexpectedTrailingInputError(ctx);
+      setUnexpectedInputError(ctx);
       return makeScalar(0);
     }
     uf->compiledProgram = std::move(compiledBody);
@@ -4484,7 +4499,7 @@ bool MathParser::compile(const std::string& mathExpression) {
   }
   skipSpaces(ctx);
   if (!ctx.parseError && *ctx.p != '\0') {
-    setUnexpectedTrailingInputError(ctx);
+    setUnexpectedInputError(ctx);
   }
   if (ctx.parseError) {
     lastError_ = ctx.errorText;

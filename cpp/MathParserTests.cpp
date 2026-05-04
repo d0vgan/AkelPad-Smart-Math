@@ -295,6 +295,24 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+  t.push_back({"unit/addUserFunction rejects trailing junk in body", [](std::string& why) {
+                 MathParser p;
+                 const std::string err = p.addUserFunction("bad1(x)=x)");
+                 if (err != "unexpected characters") {
+                   why = "expected unexpected characters, got: " + err;
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"unit/addUserFunction rejects invalid body expression", [](std::string& why) {
+                 MathParser p;
+                 const std::string err = p.addUserFunction("bad2(x)=x$$5");
+                 if (err != "unexpected characters") {
+                   why = "expected unexpected characters, got: " + err;
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"unit/format getResultAsHexOctBinDec", [](std::string& why) {
                  MathParser p;
                  p.parseAndEvaluate("255");

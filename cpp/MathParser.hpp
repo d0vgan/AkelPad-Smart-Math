@@ -322,7 +322,7 @@ private:
   bool tryConsumeCommaArgSeparator(EvalContext& ctx, bool& hasComma) const;
   static void skipSpaces(EvalContext& ctx);
   void setUnexpectedTokenError(EvalContext& ctx) const;
-  void setUnexpectedTrailingInputError(EvalContext& ctx) const;
+  void setUnexpectedInputError(EvalContext& ctx) const;
   void setMissingClosingParenLikeError(EvalContext& ctx) const;
   static bool consumeKeyword(EvalContext& ctx, const char* kw);
   bool tryConsumeLogicalBinaryOperator(EvalContext& ctx, OperatorNameId keywordId, char symbol) const;
@@ -389,12 +389,12 @@ private:
   std::string getUserFunctionDefinitionErrorText(
       const std::string& fnName,
       const std::vector<std::string>& fnParams,
-      const std::string& fnExpr) const;
+      const std::string& fnExpr);
   bool trySetUserFunctionDefinitionError(
       EvalContext& ctx,
       const std::string& fnName,
       const std::vector<std::string>& fnParams,
-      const std::string& fnExpr) const;
+      const std::string& fnExpr);
   static const char* validateAssignmentTargetName(const std::string& ident);
   static std::string buildUnknownVariableErrorText(const std::string& unknownVarsText);
   static std::string buildUnknownFunctionErrorText(const std::string& unknownFuncsText);
@@ -409,7 +409,7 @@ private:
       std::vector<AstStatement>& out);
   bool tryAppendFunctionDefinitionStatement(
       EvalContext& ctx,
-      std::vector<AstStatement>& out) const;
+      std::vector<AstStatement>& out);
   bool tryAppendAssignOrExpressionStatement(
       EvalContext& ctx,
       std::vector<AstStatement>& out);

@@ -150,6 +150,8 @@ const FB_STR_RESERVED_FUNCTION_NAME_COLON as string = "reserved function name: "
 const FB_STR_RESERVED_CONSTANT_NAME_COLON as string = "reserved constant name: "
 const FB_STR_DUPLICATE_PARAMETER_NAME_COLON as string = "duplicate parameter name: "
 const FB_STR_FUNCTION_BODY_IS_EMPTY as string = "function body is empty"
+const FB_STR_FAILED_TO_PARSE_USER_FUNCTION_BODY as string = "failed to parse user function body"
+const FB_STR_UNEXPECTED_INPUT as string = "unexpected characters"
 const FB_STR_DEFINED as string = "defined "
 const FB_MAX_EXACT_INT_FROM_DOUBLE as Double = 9007199254740992.0 ' 2^53
 const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
@@ -1730,6 +1732,8 @@ private function UdfBodyCallsDefinedFunction(byref bodyText as String, byref fnN
   return FALSE
 end function
 
+declare function TryValidateUserFunctionBodyExpression(byref body as String, byref errText as String) as Boolean
+
 private function TryValidateUserFunctionDefinition(byref fnName as String, fnParams() as String, byref body as String, byref errText as String) as Boolean
   if TryValidateUserFunctionDefinitionNames(fnName, fnParams(), errText) = FALSE then
     return FALSE
@@ -1740,6 +1744,9 @@ private function TryValidateUserFunctionDefinition(byref fnName as String, fnPar
   end if
   if UdfBodyCallsDefinedFunction(body, fnName) then
     errText = FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & fnName
+    return FALSE
+  end if
+  if TryValidateUserFunctionBodyExpression(body, errText) = FALSE then
     return FALSE
   end if
   return TRUE
@@ -2079,7 +2086,7 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   parseError = 0
   outV = ParseExpression()
   SkipSpaces()
-  if pStream[0] <> CHAR_NUL then parseError = 1
+  if pStream[0] <> CHAR_NUL then SetParseError(FB_STR_UNEXPECTED_INPUT)
   dim evalError as Integer = parseError
 
   pStream = savedStream
@@ -4174,6 +4181,50 @@ end function
 private function ParseExpression() as EvalValue
   wasPercentage = FALSE
   return ParseLogicalOr()
+end function
+
+private function TryValidateUserFunctionBodyExpression(byref body as String, byref errText as String) as Boolean
+  dim savedStream as ZString ptr = pStream
+  dim savedExprStart as ZString ptr = exprStart
+  dim savedParseError as Integer = parseError
+  dim savedWasPercentage as Boolean = wasPercentage
+  dim savedBaseCol as Integer = errorBaseCol
+  dim savedLastErr as String = lastErrorText
+  dim savedUnknownVars as String = unknownVarsText
+  dim savedUnknownFuncs as String = unknownFuncsText
+
+  lastErrorText = ""
+  unknownVarsText = ""
+  unknownFuncsText = ""
+  pStream = strptr(body)
+  exprStart = pStream
+  errorBaseCol = 1
+  parseError = 0
+
+  dim dummy as EvalValue
+  dummy = ParseExpression()
+  SkipSpaces()
+
+  dim ok as Boolean = TRUE
+  if parseError then
+    ok = FALSE
+    errText = lastErrorText
+    if len(errText) = 0 then errText = FB_STR_FAILED_TO_PARSE_USER_FUNCTION_BODY
+  elseif pStream[0] <> CHAR_NUL then
+    ok = FALSE
+    errText = FB_STR_UNEXPECTED_INPUT
+  end if
+
+  pStream = savedStream
+  exprStart = savedExprStart
+  parseError = savedParseError
+  wasPercentage = savedWasPercentage
+  errorBaseCol = savedBaseCol
+  lastErrorText = savedLastErr
+  unknownVarsText = savedUnknownVars
+  unknownFuncsText = savedUnknownFuncs
+
+  return ok
 end function
 
 private sub ResetTopLevelEvaluationState(byref exprInput as String)
