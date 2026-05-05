@@ -1553,6 +1553,27 @@ std::vector<TestCase> buildNanInfCases() {
                  return expectEval(p, "sin(x)", "nan", why);
                }});
 
+  t.push_back({"naninf/int rejects -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+               }});
+  t.push_back({"naninf/int rejects inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+               }});
+  t.push_back({"naninf/int rejects -nan", [kQNaN](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", -kQNaN);
+                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+               }});
+  t.push_back({"naninf/int rejects nan", [kQNaN](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kQNaN);
+                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+               }});
+
   return t;
 }
 
@@ -2938,6 +2959,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "(0x3C & 0x75, 0x01 | 0x30); hex", "(0x34,0x31)"} ,
     {ParityBasicCase::Kind::Expected, "(8,9); bin()", "(0b1000,0b1001)"} ,
     {ParityBasicCase::Kind::Expected, "15; uhex", "0xF"} ,
+    {ParityBasicCase::Kind::Expected, "(45,60,90); rad", "(0.7853981633974483, 1.047197551196598, 1.570796326794897)"} ,
+    {ParityBasicCase::Kind::Expected, "(pi/4,pi/3,pi/2); deg", "(45, 60, 90)"} ,
     {ParityBasicCase::Kind::ErrorContains, "0xAA; foo()", "unknown function"} ,
     {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
 };

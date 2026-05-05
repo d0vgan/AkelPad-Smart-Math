@@ -327,7 +327,7 @@ Purpose: angle and trig math.
   - `deg(pi)` -> `180`
   - `rad(180)` -> `pi`
   - `cos(rad(30,45,60))` -> `(0.866025, 0.707107, 0.5)`
-  - `deg(acos((sqrt(3)/2, sqrt(2)/2, 1/2)))` -> `(30, 45, 60)`
+  - `acos((sqrt(3)/2, sqrt(2)/2, 1/2)); deg` -> `(30, 45, 60)`
 
 ### Logarithmic and Exponential
 

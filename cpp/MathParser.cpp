@@ -1001,7 +1001,8 @@ bool MathParser::isTrailingFormatterFunctionName(const std::string& nameText) {
     return false;
   }
   return id == BuiltinFunctionId::Hex || id == BuiltinFunctionId::Oct || id == BuiltinFunctionId::Bin
-      || id == BuiltinFunctionId::Uhex || id == BuiltinFunctionId::Uoct || id == BuiltinFunctionId::Ubin;
+      || id == BuiltinFunctionId::Uhex || id == BuiltinFunctionId::Uoct || id == BuiltinFunctionId::Ubin
+      || id == BuiltinFunctionId::Rad || id == BuiltinFunctionId::Deg;
 }
 
 bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const {

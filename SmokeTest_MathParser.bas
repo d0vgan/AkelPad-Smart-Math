@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 877) as SmokeCase
+  dim tests(1 to 883) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1046,6 +1046,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(801).expr = "npr(inf,2)": tests(801).expectedErrContains = "npr() expects integer values"
   tests(802).expr = "ncr": tests(802).expectedErrContains = "function: ncr(n, r)"
   tests(803).expr = "npr": tests(803).expectedErrContains = "function: npr(n, r)"
+
   tests(804).expr = "nan+1": tests(804).expected = "nan"
   tests(805).expr = "NAN+1": tests(805).expected = "nan"
   tests(806).expr = "nan=1": tests(806).expectedErrContains = "reserved constant name"
@@ -1053,6 +1054,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(808).expr = "f(nan)=nan+1": tests(808).expectedErrContains = "reserved constant name"
   tests(809).expr = "nan(x)=x": tests(809).expectedErrContains = "reserved constant name"
   tests(810).expr = "(nan, inf)": tests(810).expected = "(nan, inf)"
+
   tests(811).expr = "acosh(1)": tests(811).expected = "0"
   tests(812).expr = "acosh(2)": tests(812).expected = "1.3169578969248166"
   tests(813).expr = "acosh(0)": tests(813).expected = "nan"
@@ -1069,6 +1071,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(824).expr = "acosh()": tests(824).expectedErrContains = "expects 1 argument(s)"
   tests(825).expr = "asinh()": tests(825).expectedErrContains = "expects 1 argument(s)"
   tests(826).expr = "atanh()": tests(826).expectedErrContains = "expects 1 argument(s)"
+
   tests(827).expr = "sin(pi/2)": tests(827).expected = "1"
   tests(828).expr = "sin(-pi/2)": tests(828).expected = "-1"
   tests(829).expr = "sin(77777*pi/2)": tests(829).expected = "1"
@@ -1108,8 +1111,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(863).expr = "tan(-77777*pi)": tests(863).expected = "0"
   tests(864).expr = "tan(77778*pi)": tests(864).expected = "0"
   tests(865).expr = "tan(-77778*pi)": tests(865).expected = "0"
+
   tests(866).expr = "bad1(x)=x)": tests(866).expectedErrContains = "unexpected characters" ' [regression] UDF body must be one expression; no extra )
   tests(867).expr = "bad2(x)=x$$5": tests(867).expectedErrContains = "unexpected characters" ' [regression] garbage after a valid expression prefix in UDF body
+
   tests(868).expr = "!nan": tests(868).expected = "1" ' [spec] NaN is falsy in logical ops (IEEE: NaN <> 0 is true, so do not use <>0 alone for truthiness)
   tests(869).expr = "nan && 1": tests(869).expected = "0" ' [spec] NaN is falsy
   tests(870).expr = "nan || 0": tests(870).expected = "0" ' [spec] NaN is falsy
@@ -1120,6 +1125,14 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(875).expr = "nan>nan": tests(875).expected = "0"
   tests(876).expr = "nan<=nan": tests(876).expected = "0"
   tests(877).expr = "nan>=nan": tests(877).expected = "0"
+
+  tests(878).expr = "x=-nan; int(x)": tests(878).expectedErrContains = "numeric error"
+  tests(879).expr = "x=nan; int(x)": tests(879).expectedErrContains = "numeric error"
+  tests(880).expr = "x=-inf; int(x)": tests(880).expectedErrContains = "numeric error"
+  tests(881).expr = "x=inf; int(x)": tests(881).expectedErrContains = "numeric error"
+
+  tests(882).expr = "(45,60,90); rad": tests(882).expected = "(0.7853981633974483, 1.047197551196598, 1.570796326794897)"
+  tests(883).expr = "(pi/4,pi/3,pi/2); deg": tests(883).expected = "(45, 60, 90)"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
