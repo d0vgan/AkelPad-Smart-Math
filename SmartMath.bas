@@ -13,7 +13,6 @@ dim shared nOldFirstLine as Integer = -1
 dim shared nOldCaretLine as Integer = -1
 dim shared nLastNavSelStart as Integer = -1
 dim shared nLastNavSelEnd as Integer = -1
-dim shared nOldMargin as Integer = 0
 dim shared dwOldAkelOptions as DWORD = 0
 
 dim shared g_nDecimals as Integer = -1
@@ -163,11 +162,9 @@ private sub SetSmartMathDocActiveState(byval hWndEdit as HWND, byval bActive as 
       TryApplySmartMathCoderTheme()
     end if
     dim bVisible as BOOL
-    UpdateMarginAndState(hWndEdit, bVisible)
+    UpdateInternalState(hWndEdit, bVisible)
     InvalidateRect(hWndEdit, 0, TRUE)
   else
-    SendMessage(hWndEdit, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
-    nOldMargin = 0
     rcOldMargin.left = 0 : rcOldMargin.right = 0
     rcOldMargin.top = 0  : rcOldMargin.bottom = 0
     nOldFirstLine = -1
@@ -384,7 +381,7 @@ private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND, byval applyTo
     SendMessage(hWndEdit, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
   end if
   dim bInitialVis as BOOL
-  UpdateMarginAndState(hWndEdit, bInitialVis)
+  UpdateInternalState(hWndEdit, bInitialVis)
   InvalidateRect(hWndEdit, 0, TRUE)
 end sub
 
@@ -595,79 +592,18 @@ end function
 ' -----------------------------------------------------------------------------
 '  Drawing Logic & Positioning
 ' -----------------------------------------------------------------------------
-sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
-  if g_bShuttingDown then
+sub UpdateInternalState(byval hWnd as HWND, byref bVisible as BOOL)
+  if g_bShuttingDown orelse (g_bSmartMathDocActive = FALSE) then
     bVisible = FALSE
-    exit sub
-  end if
-
-  if g_bSmartMathDocActive = FALSE then
-    bVisible = FALSE
-    if nOldMargin <> 0 then
-      SendMessage(hWnd, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
-      nOldMargin = 0
-    end if
     exit sub
   end if
 
   bVisible = FALSE
-  dim rcClient as RECT
-  GetClientRect(hWnd, @rcClient)
-
-  dim nFirstVisible as Integer = SendMessage(hWnd, EM_GETFIRSTVISIBLELINE, 0, 0)
-  dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
-
-  dim hDC as HDC = GetDC(hWnd)
-  dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
-  dim hOldFont as HFONT
-  if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
-
-  dim maxTextWidth as Integer = 0
 
   EnsureRenderCache(hWnd)
 
-  dim i as Integer
-  for i = 0 to nLineCount - 1
-    dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
-    dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
-
-    dim ptClient_y as Integer = -10001
-
-    if i >= nFirstVisible then
-      dim ptClient as POINT
-      dim res as LRESULT
-      if g_bOldRichEdit then
-        res = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
-        ptClient_y = cast(short, HiWord(res))
-      else
-        SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptClient), nLineIndex + nLineLen)
-        ptClient_y = ptClient.y
-      end if
-
-      if ptClient_y > rcClient.bottom then exit for
-    end if
-
-    dim sRes as String = ""
-    if i >= 0 andalso i < g_cacheLineCount then sRes = g_cachedRenderText(i)
-
-    if len(sRes) > 0 andalso i >= nFirstVisible andalso ptClient_y > -10000 then
-      bVisible = TRUE
-      dim sz as SIZE
-      GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
-      if sz.cx > maxTextWidth then maxTextWidth = sz.cx
-    end if
-  next i
-
-  if hFont then SelectObject(hDC, hOldFont)
-  ReleaseDC(hWnd, hDC)
-
-  ' Keep editor layout untouched to avoid soft-wrap side effects on long lines.
-  ' Results are rendered as an overlay and clipped on the right side in drawing code.
-  dim nRequiredMargin as Integer = 0
-
-  if nRequiredMargin <> nOldMargin then
-    SendMessage(hWnd, EM_SETMARGINS, EC_RIGHTMARGIN, nRequiredMargin shl 16)
-    nOldMargin = nRequiredMargin
+  if g_cacheLineCount > 0 then
+    bVisible = TRUE
   end if
 end sub
 
@@ -747,16 +683,10 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
         if nCharHeight <= 0 then nCharHeight = sz.cy
 
         dim lineRect as RECT
-        lineRect.left = IIf(nOldMargin > 0, rcClient.right - nOldMargin, rcClient.left)
+        lineRect.left = rcClient.left
         lineRect.right = rcClient.right
         lineRect.top = ptClient_y
         lineRect.bottom = ptClient_y + nCharHeight
-
-        ' In overlay mode (nOldMargin = 0), never paint active-line background here:
-        ' it can cover editor text because this drawing runs after editor paint.
-        if bFillActive andalso (nOldMargin > 0) andalso (i = nCaretLine) andalso hBrushActive then
-          FillRect(hDC, @lineRect, hBrushActive)
-        end if
 
         if bIsError then
           SetTextColor(hDC, &H0000FF)
@@ -827,7 +757,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       UpdateMenuChecks()
       if g_hWndEdit then
         dim bVis as BOOL
-        UpdateMarginAndState(g_hWndEdit, bVis)
+        UpdateInternalState(g_hWndEdit, bVis)
         InvalidateRect(g_hWndEdit, 0, TRUE)
       end if
       return 0
@@ -839,7 +769,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       UpdateMenuChecks()
       if g_hWndEdit then
         dim bVis as BOOL
-        UpdateMarginAndState(g_hWndEdit, bVis)
+        UpdateInternalState(g_hWndEdit, bVis)
         InvalidateRect(g_hWndEdit, 0, TRUE)
       end if
       return 0
@@ -871,7 +801,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       UpdateMenuChecks()
       if g_hWndEdit then
         dim bVis as BOOL
-        UpdateMarginAndState(g_hWndEdit, bVis)
+        UpdateInternalState(g_hWndEdit, bVis)
         InvalidateRect(g_hWndEdit, 0, TRUE)
       end if
       return 0
@@ -967,9 +897,6 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       end if
 
     case WM_SETFOCUS
-      if nOldMargin > 0 then
-        SendMessage(hWnd, EM_SETMARGINS, EC_RIGHTMARGIN, nOldMargin shl 16)
-      end if
       if not g_bOldRichEdit then
         SendMessage(hWnd, AEM_SETOPTIONS, AECOOP_OR, AECO_ACTIVELINE)
       end if
@@ -999,40 +926,35 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
         dim sRes as String = BuildResultTextForLine(hWnd, lineIdx)
         if len(sRes) > 0 then
           dim hitResultArea as BOOL = FALSE
-          if nOldMargin > 0 then
-            dim nMarginLeft as Integer = rcClient.right - nOldMargin
-            if xPos >= nMarginLeft then hitResultArea = TRUE
-          else
-            dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
-            dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
-            dim ptLineEndX as Integer = rcClient.left
-            if nLineIndex >= 0 then
-              if g_bOldRichEdit then
-                dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
-                ptLineEndX = cast(short, LoWord(res))
-              else
-                dim ptLine as POINT
-                SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptLine), nLineIndex + nLineLen)
-                ptLineEndX = ptLine.x
-              end if
+          dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
+          dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+          dim ptLineEndX as Integer = rcClient.left
+          if nLineIndex >= 0 then
+            if g_bOldRichEdit then
+              dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
+              ptLineEndX = cast(short, LoWord(res))
+            else
+              dim ptLine as POINT
+              SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptLine), nLineIndex + nLineLen)
+              ptLineEndX = ptLine.x
             end if
+          end if
 
-            dim hDC as HDC = GetDC(hWnd)
-            if hDC <> 0 then
-              dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
-              dim hOldFont as HFONT
-              if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
-              dim sz as SIZE
-              GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
-              if hFont then SelectObject(hDC, hOldFont)
-              ReleaseDC(hWnd, hDC)
+          dim hDC as HDC = GetDC(hWnd)
+          if hDC <> 0 then
+            dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
+            dim hOldFont as HFONT
+            if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
+            dim sz as SIZE
+            GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
+            if hFont then SelectObject(hDC, hOldFont)
+            ReleaseDC(hWnd, hDC)
 
-              dim drawX as Integer = rcClient.right - sz.cx - 10
-              dim minDrawX as Integer = ptLineEndX + 6
-              if minDrawX < rcClient.left then minDrawX = rcClient.left
-              dim clipLeft as Integer = IIf(drawX > minDrawX, drawX, minDrawX)
-              if xPos >= clipLeft andalso xPos <= rcClient.right then hitResultArea = TRUE
-            end if
+            dim drawX as Integer = rcClient.right - sz.cx - 10
+            dim minDrawX as Integer = ptLineEndX + 6
+            if minDrawX < rcClient.left then minDrawX = rcClient.left
+            dim clipLeft as Integer = IIf(drawX > minDrawX, drawX, minDrawX)
+            if xPos >= clipLeft andalso xPos <= rcClient.right then hitResultArea = TRUE
           end if
 
           if hitResultArea then
@@ -1066,20 +988,12 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 
         if (uMsg <> WM_MOUSEMOVE) orelse (wParam and MK_LBUTTON) then
           dim bVisible as BOOL
-          UpdateMarginAndState(hWnd, bVisible)
+          UpdateInternalState(hWnd, bVisible)
 
           dim rcClient as RECT
           GetClientRect(hWnd, @rcClient)
 
-          dim rcNewMargin as RECT
-          if nOldMargin > 0 then
-            rcNewMargin.left = rcClient.right - nOldMargin
-            rcNewMargin.top = rcClient.top
-            rcNewMargin.right = rcClient.right
-            rcNewMargin.bottom = rcClient.bottom
-          else
-            rcNewMargin = rcClient
-          end if
+          dim rcNewMargin as RECT = rcClient
 
           dim nFirstVisible as Integer = SendMessage(hWnd, EM_GETFIRSTVISIBLELINE, 0, 0)
           dim nCaretLine as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, -1)
@@ -1179,7 +1093,6 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     InvalidateRenderCache()
 
     if pd->hWndEdit then
-      SendMessage(pd->hWndEdit, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
       if not g_bOldRichEdit then
         SendMessage(pd->hWndEdit, AEM_SETOPTIONS, AECOOP_SET, dwOldAkelOptions)
       end if
@@ -1210,7 +1123,6 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     nOldCaretLine = -1
     nLastNavSelStart = -1
     nLastNavSelEnd = -1
-    nOldMargin = 0
 
     SetSmartMathProcData(pd)
 
