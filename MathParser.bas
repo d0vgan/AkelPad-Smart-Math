@@ -118,10 +118,6 @@ const FB_STR_ARGUMENT_PAR_S_COMMA as string = " argument(s), "
 const FB_STR_GIVEN as string = " given"
 const FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON as string = "recursive function call: "
 const FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW as string = "function call stack overflow"
-const FB_STR_LT as string = "<"
-const FB_STR_LT_LT as string = "<<"
-const FB_STR_GT as string = ">"
-const FB_STR_GT_GT as string = ">>"
 const FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES as string = "modulo operands must be integer values"
 const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operands must be integer values"
 const FB_STR_INCOMPATIBLE_OPERANDS as string = "incompatible operands"
@@ -609,6 +605,17 @@ enum OperatorCmpNameId
   OP_CMP_LE  ' <=
   OP_CMP_GE  ' >=
   OP_CMP__COUNT
+end enum
+
+enum OperatorBitNameId
+  OP_BIT_NONE = 0
+  OP_BIT_AND  ' &
+  OP_BIT_OR   ' |
+  OP_BIT_XOR  ' ^
+  OP_BIT_SHL  ' <<
+  OP_BIT_SHR  ' >>
+  OP_BIT_MOD  ' % (mod)
+  OP_BIT__COUNT
 end enum
 
 enum BuiltinConstId
@@ -2506,14 +2513,14 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   return TRUE
 end function
 
-declare function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref op as String, byref outV as EvalValue) as Boolean
+declare function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
 declare function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
 
 private const MAP_BINARY_OP_NUMERIC as Integer = 1
 private const MAP_BINARY_OP_INT64 as Integer = 2
 private const MAP_BINARY_OP_SCALAR_MATH as Integer = 3
 
-private function TryMapBinaryPair(byval mode as Integer, byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref intOp as String, byval fnId as Integer, byref outV as EvalValue) as Boolean
+private function TryMapBinaryPair(byval mode as Integer, byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
   select case mode
     case MAP_BINARY_OP_NUMERIC
       return ValueApplyBinaryScalars(leftS, rightS, op, outV)
@@ -2525,7 +2532,7 @@ private function TryMapBinaryPair(byval mode as Integer, byref leftS as ScalarVa
   return FALSE
 end function
 
-private function MapBinaryBroadcastScalars(byval mode as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref intOp as String, byval fnId as Integer, byref outV as EvalValue) as Boolean
+private function MapBinaryBroadcastScalars(byval mode as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
   dim i as Integer
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
     return TryMapBinaryPair(mode, leftV.scalarValue, rightV.scalarValue, op, intOp, fnId, outV)
@@ -2566,8 +2573,7 @@ private function MapBinaryBroadcastScalars(byval mode as Integer, byref leftV as
 end function
 
 private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
-  dim emptyOp as String = ""
-  return MapBinaryBroadcastScalars(MAP_BINARY_OP_NUMERIC, leftV, rightV, op, emptyOp, -1, outV)
+  return MapBinaryBroadcastScalars(MAP_BINARY_OP_NUMERIC, leftV, rightV, op, OP_BIT_NONE, -1, outV)
 end function
 
 private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
@@ -2588,17 +2594,16 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
 end function
 
 private function ApplyScalarBinaryMathFunctionValues(byref leftV as EvalValue, byref rightV as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
-  dim emptyOp as String = ""
-  return MapBinaryBroadcastScalars(MAP_BINARY_OP_SCALAR_MATH, leftV, rightV, 0, emptyOp, fnId, outV)
+  return MapBinaryBroadcastScalars(MAP_BINARY_OP_SCALAR_MATH, leftV, rightV, 0, OP_BIT_NONE, fnId, outV)
 end function
 
-private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref op as String, byref outV as EvalValue) as Boolean
-  dim requiresIntegers as Boolean = (op = FB_STR_LT_LT orelse op = FB_STR_GT_GT orelse op = "&" orelse op = "^" orelse op = "|" orelse op = OpName(OP_MOD))
+private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
+  dim requiresIntegers as Boolean = (op = OP_BIT_SHL orelse op = OP_BIT_SHR orelse op = OP_BIT_AND orelse op = OP_BIT_XOR orelse op = OP_BIT_OR orelse op = OP_BIT_MOD)
   dim l as LongInt, r as LongInt
 
   if requiresIntegers then
     if (TryGetExactInt64Scalar(leftS, l) = FALSE) orelse (TryGetExactInt64Scalar(rightS, r) = FALSE) then
-      if op = OpName(OP_MOD) then
+      if op = OP_BIT_MOD then
         SetModuloIntegerOperandsError()
       else
         SetBitwiseIntegerOperandsError()
@@ -2608,19 +2613,19 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
   end if
 
   select case op
-    case FB_STR_LT_LT
+    case OP_BIT_SHL
       if r < 0 orelse r > 63 then return FALSE
       ValueSetInt64(outV, l shl r)
-    case FB_STR_GT_GT
+    case OP_BIT_SHR
       if r < 0 orelse r > 63 then return FALSE
       ValueSetInt64(outV, l shr r)
-    case "&"
+    case OP_BIT_AND
       ValueSetInt64(outV, l and r)
-    case "^"
+    case OP_BIT_XOR
       ValueSetInt64(outV, l xor r)
-    case "|"
+    case OP_BIT_OR
       ValueSetInt64(outV, l or r)
-    case OpName(OP_MOD)
+    case OP_BIT_MOD
       if r = 0 then return FALSE
       ValueSetInt64(outV, l mod r)
     case else
@@ -2629,7 +2634,7 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
   return TRUE
 end function
 
-private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
   return MapBinaryBroadcastScalars(MAP_BINARY_OP_INT64, leftV, rightV, 0, op, -1, outV)
 end function
 
@@ -2750,7 +2755,7 @@ private sub ValueSetBoolResult(byval b as Boolean, byref outV as EvalValue)
   end if
 end sub
 
-private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String, byref outV as EvalValue) as Boolean
+private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
   if ValueApplyBinaryInt64(leftV, rightV, op, outV) = FALSE then
     SetIncompatibleOperandsError()
     return FALSE
@@ -2766,7 +2771,7 @@ private function ApplyBinaryParserOp(byref leftV as EvalValue, byref rightV as E
   return TRUE
 end function
 
-private sub ApplyInt64ParserOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byref op as String)
+private sub ApplyInt64ParserOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId)
   dim outV as EvalValue
   if ApplyInt64ParserOp(leftV, rightV, op, outV) then leftV = outV
 end sub
@@ -3526,8 +3531,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if fnId = FUNC_MOD then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    dim opMod as String = OpName(OP_MOD)
-    if ValueApplyBinaryInt64(args(0), args(1), opMod, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
+    if ValueApplyBinaryInt64(args(0), args(1), OP_BIT_MOD, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
     return outV
   end if
 
@@ -3841,10 +3845,10 @@ private function ParsePower() as EvalValue
   return n
 end function
 
-private function TryConsumeMultiplicativeOp(byref op as UByte, byref useInt64 as Integer, byref intOp as String) as Boolean
+private function TryConsumeMultiplicativeOp(byref op as UByte, byref useInt64 as Integer, byref intOp as OperatorBitNameId) as Boolean
   op = 0
   useInt64 = FALSE
-  intOp = ""
+  intOp = OP_BIT_NONE
   if pStream[0] = CHAR_ASTERISK andalso pStream[1] <> CHAR_ASTERISK then
     op = CHAR_ASTERISK
     pStream += 1
@@ -3857,7 +3861,7 @@ private function TryConsumeMultiplicativeOp(byref op as UByte, byref useInt64 as
   end if
   if pStream[0] = CHAR_PERCENT then
     useInt64 = TRUE
-    intOp = OpName(OP_MOD)
+    intOp = OP_BIT_MOD
     pStream += 1
     return TRUE
   end if
@@ -3868,7 +3872,7 @@ private function TryConsumeMultiplicativeOp(byref op as UByte, byref useInt64 as
   return FALSE
 end function
 
-private sub ApplyMultiplicativeOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byval useInt64 as Integer, byref intOp as String, byval op as UByte)
+private sub ApplyMultiplicativeOpInPlace(byref leftV as EvalValue, byref rightV as EvalValue, byval useInt64 as Integer, byval intOp as OperatorBitNameId, byval op as UByte)
   if useInt64 then
     ApplyInt64ParserOpInPlace(leftV, rightV, intOp)
   else
@@ -3896,10 +3900,9 @@ private function ParseUnary() as EvalValue
     v = ParseUnary()
     if parseError then return v
     dim outV as EvalValue
-    dim op as String = "^"
     dim minusOne as EvalValue
     ValueSetInt64(minusOne, -1)
-    if ApplyInt64ParserOp(v, minusOne, op, outV) = FALSE then return outV
+    if ApplyInt64ParserOp(v, minusOne, OP_BIT_XOR, outV) = FALSE then return outV
     return outV
   elseif pStream[0] = CHAR_EXCLAMATION andalso pStream[1] <> CHAR_EQUALS then
     pStream += 1
@@ -3954,7 +3957,7 @@ private function ParseMultiplicative() as EvalValue
 
     dim op as UByte = 0
     dim useInt64 as Integer = FALSE
-    dim intOp as String = ""
+    dim intOp as OperatorBitNameId = OP_BIT_NONE
     if TryConsumeMultiplicativeOp(op, useInt64, intOp) = FALSE then exit while
 
     dim n2 as EvalValue = ParseUnary()
@@ -4023,29 +4026,29 @@ private function ParseInt64OperandLevel(byval levelId as Integer) as EvalValue
   return outV
 end function
 
-private function TryConsumeInt64BinaryOp(byval levelId as Integer, byref outOp as String) as Boolean
+private function TryConsumeInt64BinaryOp(byval levelId as Integer, byref outOp as OperatorBitNameId) as Boolean
   select case levelId
     case PARSE_INT64_LEVEL_ADDITIVE
       if (pStream[0] = CHAR_LESS_THAN andalso pStream[1] = CHAR_LESS_THAN) orelse (pStream[0] = CHAR_GREATER_THAN andalso pStream[1] = CHAR_GREATER_THAN) then
-        if pStream[0] = CHAR_LESS_THAN then outOp = FB_STR_LT_LT else outOp = FB_STR_GT_GT
+        if pStream[0] = CHAR_LESS_THAN then outOp = OP_BIT_SHL else outOp = OP_BIT_SHR
         pStream += 2
         return TRUE
       end if
     case PARSE_INT64_LEVEL_SHIFT
       if pStream[0] = CHAR_AMPERSAND andalso pStream[1] <> CHAR_AMPERSAND then
-        outOp = "&"
+        outOp = OP_BIT_AND
         pStream += 1
         return TRUE
       end if
     case PARSE_INT64_LEVEL_BITAND
       if pStream[0] = CHAR_CARET then
-        outOp = "^"
+        outOp = OP_BIT_XOR
         pStream += 1
         return TRUE
       end if
     case PARSE_INT64_LEVEL_BITXOR
       if pStream[0] = CHAR_PIPE andalso pStream[1] <> CHAR_PIPE then
-        outOp = "|"
+        outOp = OP_BIT_OR
         pStream += 1
         return TRUE
       end if
@@ -4058,7 +4061,7 @@ private function ParseLeftAssocInt64Binary(byval operandLevelId as Integer) as E
   SkipSpaces()
   while TRUE
     if parseError then exit while
-    dim op as String = ""
+    dim op as OperatorBitNameId = OP_BIT_NONE
     if TryConsumeInt64BinaryOp(operandLevelId, op) = FALSE then exit while
     dim n2 as EvalValue = ParseInt64OperandLevel(operandLevelId)
     ApplyInt64ParserOpInPlace(n, n2, op)
