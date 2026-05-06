@@ -419,6 +419,27 @@ function FormatResult(byval d as Double) as String
   return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
 end function
 
+function IsDecIntStr(byref s as String) as Boolean
+  dim n as Integer = len(s)
+  if n = 0 then return FALSE
+
+  dim p as ZString ptr = strptr(s)
+  dim i as Integer = 0
+  dim ch as UByte = p[i]
+  if (ch = asc("-")) orelse (ch = asc("+")) then
+    if n = 1 then return FALSE
+    i += 1
+  end if
+
+  while i < n
+    ch = p[i]
+    if (ch < asc("0")) orelse (ch > asc("9")) then return FALSE
+    i += 1
+  wend
+
+  return TRUE
+end function
+
 '' Shared by FormatArrayResultText tuple branches: rawTokens TRUE keeps parser scalars; FALSE runs FormatNumericValue(Val).
 private sub AppendTupleBodyFromElems(byref outText as String, elems() as String, byval cnt as Integer, byval rawTokens as Boolean)
   dim j as Integer
@@ -430,7 +451,12 @@ private sub AppendTupleBodyFromElems(byref outText as String, elems() as String,
     elseif rawTokens then
       outText &= elems(j)
     else
-      outText &= FormatNumericValue(Val(elems(j)))
+      dim elem as String = Trim(elems(j))
+      if IsDecIntStr(elem) then
+        outText &= AddThousandsSeparator(elem)
+      else
+        outText &= FormatNumericValue(Val(elem))
+      end if
     end if
   next j
 end sub

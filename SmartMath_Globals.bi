@@ -91,6 +91,7 @@ declare function FormatResult(byval d as Double) as String
 declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
 declare function FormatArrayResultText(byref sArrayText as String) as String
 declare function AddThousandsSeparator(byref sRes as String) as String
+declare function IsDecIntStr(byref s as String) as Boolean
 declare function NormalizeCopiedResult(byref sRes as String) as String
 declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()

@@ -412,27 +412,6 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
-private function IsDecIntStr(byref s as String) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
-
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  dim ch as UByte = p[i]
-  if (ch = asc("-")) orelse (ch = asc("+")) then
-    if n = 1 then return FALSE
-    i += 1
-  end if
-
-  while i < n
-    ch = p[i]
-    if (ch < asc("0")) orelse (ch > asc("9")) then return FALSE
-    i += 1
-  wend
-
-  return TRUE
-end function
-
 private sub BuildRenderedResultText(byref sLine as String, byref sRes as String, byref bIsError as Boolean, byval lineIdx as Integer = -1)
   sRes = ""
   bIsError = FALSE
