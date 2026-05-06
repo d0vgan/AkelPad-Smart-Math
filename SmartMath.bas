@@ -456,6 +456,7 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
   dim bIsArray as Boolean
 
   if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
+    ' LogInfo("Result: " & sResult)
     dim sTrimResult as String = lcase(trim(sResult))
     dim bPrefixedScalar as Boolean = (left(sTrimResult, 2) = "0x") orelse (left(sTrimResult, 3) = "-0x") _
                                   orelse (left(sTrimResult, 2) = "0b") orelse (left(sTrimResult, 3) = "-0b") _
@@ -474,7 +475,7 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
       else
         if IsDecIntStr(sResult) then
           ' preserving the exact integer result
-          sRes = SMARTMATH_RESULT_PREFIX & sResult
+          sRes = SMARTMATH_RESULT_PREFIX & AddThousandsSeparator(sResult)
         else
           sRes = FormatResult(dResult)
         end if

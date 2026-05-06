@@ -336,11 +336,15 @@ private function FormatNumericValue(byval d as Double) as String
       end if
 
       dim isInt64Like as Boolean = FALSE
-      const I64_MAX_D as Double = 9223372036854775807.0
-      const I64_MIN_D as Double = -9223372036854775808.0
-      if d >= I64_MIN_D andalso d <= I64_MAX_D then
-        if d = Fix(d) then isInt64Like = TRUE
-      end if
+      '
+      ' Note: the Formatter must not do this;
+      ' instead, rely on the parser to preserve exact integers.
+      '
+      ' const I64_MAX_D as Double = 9223372036854775807.0
+      ' const I64_MIN_D as Double = -9223372036854775808.0
+      ' if d >= I64_MIN_D andalso d <= I64_MAX_D then
+      '   if d = Fix(d) then isInt64Like = TRUE
+      ' end if
 
       if isInt64Like = FALSE then
         if ad >= Pow10Cached(g_nDecimals + 6) then useScientific = TRUE
@@ -367,6 +371,10 @@ private function FormatNumericValue(byval d as Double) as String
 
   NormalizeScientificExponentTail(sRes)
 
+  return AddThousandsSeparator(sRes)
+end function
+
+function AddThousandsSeparator(byref sRes as String) as String
   if g_bUseThousandsSeparator then
     dim oldEPos as Integer = IndexOfExponentLetter(sRes)
     dim expPart2 as String = ""

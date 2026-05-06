@@ -3704,6 +3704,7 @@ private function ParseFactor() as EvalValue
       ' decimal number
       dim fract as Double = 1
       dim decIntAcc as ULongInt = 0
+      dim decFracAcc as ULongInt = 0
       dim numIntDigits as Integer = 0
       dim decIntOverflow as Boolean = FALSE
       const U64_MAX_DIV10 as ULongInt = (FB_U64_MAX \ 10ull)
@@ -3730,14 +3731,17 @@ private function ParseFactor() as EvalValue
         end if
         pStream += 1
         while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
+          dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
           fract /= 10
-          dVal += (pStream[0] - CHAR_DIGIT_0) * fract
+          dVal += digit * fract
+          decFracAcc = decFracAcc * 10 + CULngInt(digit)
           numFractionDigits += 1
           pStream += 1
         wend
       end if
       ' exponent
       dim hasExponent as Boolean = FALSE
+      dim exactIntLiteral as Boolean = FALSE
       if pStream[0] = CHAR_LC_E orelse pStream[0] = CHAR_E then
         dim pExp as ZString ptr = pStream + 1
         dim expVal as integer = 0
@@ -3755,15 +3759,25 @@ private function ParseFactor() as EvalValue
             expVal = expVal * 10 + (pStream[0] - CHAR_DIGIT_0)
             pStream += 1
           wend
-          if (not decIntOverflow) andalso (expSign = 1) andalso (expVal + numIntDigits <= 19) andalso (numFractionDigits + numIntDigits < expVal) then
-            decIntAcc = 10 ^ expVal
-            if FB_U64_MAX / decIntAcc > dVal then
-              decIntAcc = CULngInt(dVal * decIntAcc)
-              numFractionDigits = 0  ' allowing keepExactUInt
-              hasExponent = FALSE  ' allowing keepExactUInt
+          if (not decIntOverflow) andalso (expSign = 1) andalso (expVal + numIntDigits <= 19) andalso (numFractionDigits + expVal <= 18) then
+            if expVal >= numFractionDigits then
+              dim scale as ULongInt = 10 ^ expVal
+              dim exactInt as ULongInt = decIntAcc * scale
+              if numFractionDigits > 0 then
+                exactInt += decFracAcc * (10 ^ (expVal - numFractionDigits))
+              end if
+              if exactInt <= FB_U64_MAX then
+                decIntAcc = exactInt
+                numFractionDigits = 0  ' allowing keepExactUInt
+                hasExponent = FALSE  ' allowing keepExactUInt
+                dVal = CDbl(exactInt)
+                exactIntLiteral = TRUE
+              end if
             end if
           end if
-          dVal *= (10 ^ (expSign * expVal))
+          if not exactIntLiteral then
+            dVal *= (10 ^ (expSign * expVal))
+          end if
         end if
       end if
       if numFractionDigits = 0 then
