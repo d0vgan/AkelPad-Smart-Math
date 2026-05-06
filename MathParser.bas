@@ -146,12 +146,18 @@ const FB_STR_FUNCTION_BODY_IS_EMPTY as string = "function body is empty"
 const FB_STR_FAILED_TO_PARSE_USER_FUNCTION_BODY as string = "failed to parse user function body"
 const FB_STR_UNEXPECTED_INPUT as string = "unexpected characters"
 const FB_STR_DEFINED as string = "defined "
-const FB_MAX_EXACT_INT_FROM_DOUBLE as Double = 9007199254740992.0 ' 2^53
 const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
 const FB_STR_UNKNOWN_FUNCTION_COLON as string = "unknown function: "
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
-const PI_VAL as Double = 4.0 * atn(1.0) ' pi
+const FB_U64_MAX as ULongInt = CULngInt(&hFFFFFFFFFFFFFFFFull)
+const FB_I64_MIN as LongInt = -9223372036854775807 - 1 ' -0x8000000000000000
+const FB_I64_MAX as LongInt = 9223372036854775807 ' 0x7FFFFFFFFFFFFFFF
+const FB_I64_MAX_U as ULongInt = 9223372036854775807
+const FB_I64_MIN_D as Double = -9223372036854775808.0
+const FB_I64_MAX_D as Double = 9223372036854775807.0
+const FB_MAX_EXACT_INT_FROM_DOUBLE as Double = 9007199254740992.0 ' 2^53
+const FB_PI_VAL as Double = 4.0 * atn(1.0) ' pi
 
 ' -----------------------------------------------------------------------------
 '  ASCII byte constants (single-byte stream; multi-byte UTF-8 not interpreted)
@@ -822,10 +828,8 @@ private function GetBuiltinFlags(byval id as Integer) as UInteger
   select case id
     case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ARCSIN, FUNC_ACOS, FUNC_ARCCOS, FUNC_ATAN, FUNC_ARCTAN, _
          FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, _
-         FUNC_FRAC, FUNC_FRACT, FUNC_ABS, FUNC_SIGN
+         FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_FRAC, FUNC_FRACT, FUNC_ABS, FUNC_SIGN
       return BUILTIN_FLAG_UNARY
-    case FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND
-      return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_FINITE_REQUIRED
     case FUNC_DEG, FUNC_RAD
       return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_TRAILING_FORMATTER
     case FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
@@ -1159,18 +1163,16 @@ private sub ValueSetUInt64(byref v as EvalValue, byval n as ULongInt)
   v.scalarStorageKind = SSK_UINT64
   v.exactUInt64Valid = TRUE
   v.exactUInt64 = n
-  if n <= CULngInt(9223372036854775807) then
+  if n <= FB_I64_MAX_U then
     v.exactInt64Valid = TRUE
     v.exactInt64 = CLngInt(n)
   end if
 end sub
 
 private function TryGetExactInt64FromDouble(byval n as Double, byref outV as LongInt) as Boolean
-  const I64_MIN_D as Double = -9223372036854775808.0
-  const I64_MAX_D as Double = 9223372036854775807.0
   if IsNonFiniteValue(n) then return FALSE
   if n < -FB_MAX_EXACT_INT_FROM_DOUBLE orelse n > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
-  if n < I64_MIN_D orelse n > I64_MAX_D then return FALSE
+  if n < FB_I64_MIN_D orelse n > FB_I64_MAX_D then return FALSE
   dim t as LongInt = CLngInt(n)
   if n <> CDbl(t) then return FALSE
   outV = t
@@ -1240,46 +1242,40 @@ private sub SwapDouble(byref a as Double, byref b as Double)
 end sub
 
 private function TryAddInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
-  const I64_MAX as LongInt = 9223372036854775807
-  const I64_MIN as LongInt = -9223372036854775807 - 1
-  if (b > 0 andalso a > I64_MAX - b) orelse (b < 0 andalso a < I64_MIN - b) then return FALSE
+  if (b > 0 andalso a > FB_I64_MAX - b) orelse (b < 0 andalso a < FB_I64_MIN - b) then return FALSE
   outV = a + b
   return TRUE
 end function
 
 private function TrySubInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
-  const I64_MAX as LongInt = 9223372036854775807
-  const I64_MIN as LongInt = -9223372036854775807 - 1
-  if (b < 0 andalso a > I64_MAX + b) orelse (b > 0 andalso a < I64_MIN + b) then return FALSE
+  if (b < 0 andalso a > FB_I64_MAX + b) orelse (b > 0 andalso a < FB_I64_MIN + b) then return FALSE
   outV = a - b
   return TRUE
 end function
 
 private function TryMulInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
-  const I64_MAX as LongInt = 9223372036854775807
-  const I64_MIN as LongInt = -9223372036854775807 - 1
   if a = 0 orelse b = 0 then outV = 0: return TRUE
   if a = -1 then
-    if b = I64_MIN then return FALSE
+    if b = FB_I64_MIN then return FALSE
     outV = -b
     return TRUE
   end if
   if b = -1 then
-    if a = I64_MIN then return FALSE
+    if a = FB_I64_MIN then return FALSE
     outV = -a
     return TRUE
   end if
   if a > 0 then
     if b > 0 then
-      if a > I64_MAX \ b then return FALSE
+      if a > FB_I64_MAX \ b then return FALSE
     else
-      if b < I64_MIN \ a then return FALSE
+      if b < FB_I64_MIN \ a then return FALSE
     end if
   else
     if b > 0 then
-      if a < I64_MIN \ b then return FALSE
+      if a < FB_I64_MIN \ b then return FALSE
     else
-      if a <> 0 andalso b < I64_MAX \ a then return FALSE
+      if a <> 0 andalso b < FB_I64_MAX \ a then return FALSE
     end if
   end if
   outV = a * b
@@ -1641,7 +1637,7 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
   if cid < 0 then return FALSE
   select case cast(BuiltinConstId, cid)
     case CONST_PI
-      ValueSetScalar(v, PI_VAL)
+      ValueSetScalar(v, FB_PI_VAL)
     case CONST_E
       ValueSetScalar(v, exp(1.0))
     case CONST_INF
@@ -2198,7 +2194,7 @@ private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval
     dim l as LongInt
     if TryMulInt64(q, b, l) = FALSE then return FALSE
     if l < 0 then
-      if l = -9223372036854775807 - 1 then return FALSE
+      if l = FB_I64_MIN then return FALSE
       l = -l
     end if
     ValueSetInt64(outV, l)
@@ -2298,7 +2294,7 @@ end function
 private function CalcSin(byval x as Double) as Double
   if x=0.0 then return 0.0
   if IsFiniteValue(x) then
-    if IsMultipleOf(x, PI_VAL) then
+    if IsMultipleOf(x, FB_PI_VAL) then
       ' sin(N*pi), N = 1,2,3,4,...
       return 0.0
     end if
@@ -2308,8 +2304,8 @@ end function
 
 private function CalcCos(byval x as Double) as Double
   if IsFiniteValue(x) then
-    if not IsMultipleOf(x, PI_VAL) then
-      if IsMultipleOf(x, PI_VAL/2) then
+    if not IsMultipleOf(x, FB_PI_VAL) then
+      if IsMultipleOf(x, FB_PI_VAL/2) then
         ' cos(N*pi/2), N = 1,3,5,7,...
         return 0.0
       end if
@@ -2321,11 +2317,11 @@ end function
 private function CalcTan(byval x as Double) as Double
   if x=0.0 then return 0.0
   if IsFiniteValue(x) then
-    if IsMultipleOf(x, PI_VAL) then
+    if IsMultipleOf(x, FB_PI_VAL) then
       ' tan(N*pi), N = 1,2,3,4,...
       return 0.0
     end if
-    if IsMultipleOf(x, PI_VAL/2) then
+    if IsMultipleOf(x, FB_PI_VAL/2) then
       ' tan(N*pi/2), N = 1,3,5,7,...
       if tan(x) > 0.0 then return 1.0/0.0 ' INF
       return -1.0/0.0 ' -INF
@@ -2338,19 +2334,56 @@ private function CalcAtan2(byval y as Double, byval x as Double) as Double
   if x > 0 then return atn(y / x)
   if x < 0 then
     if y >= 0 then
-      return atn(y / x) + PI_VAL
+      return atn(y / x) + FB_PI_VAL
     else
-      return atn(y / x) - PI_VAL
+      return atn(y / x) - FB_PI_VAL
     end if
   end if
-  if y > 0 then return PI_VAL / 2.0
-  if y < 0 then return -PI_VAL / 2.0
+  if y > 0 then return FB_PI_VAL / 2.0
+  if y < 0 then return -FB_PI_VAL / 2.0
   return 0
 end function
 
 private function CalcHypot(byval x as Double, byval y as Double) as Double
   return sqr((x * x) + (y * y))
 end function
+
+private sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
+  dim x as Double = scalarV.scalar
+
+  if IsNonFiniteValue(x) then
+    ValueSetScalar(outV, x)
+  elseif scalarV.exactUInt64Valid then
+    ValueSetUInt64(outV, scalarV.exactUInt64)
+  elseif scalarV.exactInt64Valid then
+    ValueSetInt64(outV, scalarV.exactInt64)
+  elseif (x > FB_MAX_EXACT_INT_FROM_DOUBLE) orelse (x < -FB_MAX_EXACT_INT_FROM_DOUBLE) then
+    if (x <= FB_I64_MAX_D) andalso (x >= FB_I64_MIN_D) then
+      ValueSetInt64(outV, CLngInt(x))
+    elseif (x <= FB_U64_MAX) andalso (x >= 0) then
+      ValueSetUInt64(outV, CULngInt(x))
+    else
+      ValueSetScalar(outV, x)
+    end if
+  else
+    dim rounded as LongInt = 0
+    select case fnId
+      case FUNC_INT, FUNC_TRUNC
+        rounded = CLngInt(Fix(x))
+      case FUNC_FLOOR
+        rounded = CLngInt(Int(x))
+      case FUNC_CEIL
+        rounded = CLngInt(-Int(-x))
+      case FUNC_ROUND
+        if x >= 0 then
+          rounded = CLngInt(Int(x + 0.5))
+        else
+          rounded = CLngInt(-Int(-x + 0.5))
+        end if
+    end select
+    ValueSetInt64(outV, rounded)
+  end if
+end sub
 
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   dim x as Double = scalarV.scalar
@@ -2388,14 +2421,10 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
     ValueSetScalarPromoteExactInt64(outV, sqr(x))
   elseif fnId = FUNC_SQR then
     ValueSetScalarPromoteExactInt64(outV, x * x)
-  elseif (fnId = FUNC_INT) orelse (fnId = FUNC_TRUNC) then
-    if scalarV.exactInt64Valid then
-      ValueSetInt64(outV, scalarV.exactInt64)
-    elseif scalarV.exactUInt64Valid andalso scalarV.exactUInt64 <= CULngInt(9223372036854775807) then
-      ValueSetInt64(outV, CLngInt(scalarV.exactUInt64))
-    else
-      ValueSetInt64(outV, CLngInt(Fix(x)))
-    end if
+  elseif (fnId = FUNC_INT) orelse (fnId = FUNC_TRUNC) orelse _
+         (fnId = FUNC_FLOOR) orelse (fnId = FUNC_CEIL) orelse _
+         (fnId = FUNC_ROUND) then
+    calcRoundingFn(fnId, scalarV, outV)
   elseif (fnId = FUNC_FRAC) orelse (fnId = FUNC_FRACT) then
     ValueSetScalarPromoteExactInt64(outV, x - Fix(x))
   elseif fnId = FUNC_ABS then
@@ -2405,32 +2434,6 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
       ValueSetUInt64(outV, scalarV.exactUInt64)
     else
       ValueSetScalarPromoteExactInt64(outV, abs(x))
-    end if
-  elseif fnId = FUNC_FLOOR then
-    if scalarV.exactInt64Valid then
-      ValueSetInt64(outV, scalarV.exactInt64)
-    elseif scalarV.exactUInt64Valid andalso scalarV.exactUInt64 <= CULngInt(9223372036854775807) then
-      ValueSetInt64(outV, CLngInt(scalarV.exactUInt64))
-    else
-      ValueSetInt64(outV, CLngInt(Int(x)))
-    end if
-  elseif fnId = FUNC_CEIL then
-    if scalarV.exactInt64Valid then
-      ValueSetInt64(outV, scalarV.exactInt64)
-    elseif scalarV.exactUInt64Valid andalso scalarV.exactUInt64 <= CULngInt(9223372036854775807) then
-      ValueSetInt64(outV, CLngInt(scalarV.exactUInt64))
-    else
-      ValueSetInt64(outV, CLngInt(-Int(-x)))
-    end if
-  elseif fnId = FUNC_ROUND then
-    if scalarV.exactInt64Valid then
-      ValueSetInt64(outV, scalarV.exactInt64)
-    elseif scalarV.exactUInt64Valid andalso scalarV.exactUInt64 <= CULngInt(9223372036854775807) then
-      ValueSetInt64(outV, CLngInt(scalarV.exactUInt64))
-    elseif x >= 0 then
-      ValueSetInt64(outV, CLngInt(Int(x + 0.5)))
-    else
-      ValueSetInt64(outV, CLngInt(-Int(-x + 0.5)))
     end if
   elseif fnId = FUNC_SIGN then
     if scalarV.exactInt64Valid then
@@ -2455,9 +2458,9 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
       ValueSetInt64(outV, 0)
     end if
   elseif fnId = FUNC_DEG then
-    ValueSetScalarPromoteExactInt64(outV, x * 180.0 / PI_VAL)
+    ValueSetScalarPromoteExactInt64(outV, x * 180.0 / FB_PI_VAL)
   elseif fnId = FUNC_RAD then
-    ValueSetScalarPromoteExactInt64(outV, x * PI_VAL / 180.0)
+    ValueSetScalarPromoteExactInt64(outV, x * FB_PI_VAL / 180.0)
   else
     return FALSE
   end if
@@ -3665,7 +3668,7 @@ private function ParseFactor() as EvalValue
         return n
       end if
       dVal = CDbl(hexVal)
-      if hexVal <= CULngInt(9223372036854775807) then
+      if hexVal <= FB_I64_MAX_U then
         keepExactInt = TRUE
         keepInt = CLngInt(hexVal)
       end if
@@ -3678,7 +3681,7 @@ private function ParseFactor() as EvalValue
         return n
       end if
       dVal = CDbl(binVal)
-      if binVal <= CULngInt(9223372036854775807) then
+      if binVal <= FB_I64_MAX_U then
         keepExactInt = TRUE
         keepInt = CLngInt(binVal)
       end if
@@ -3691,7 +3694,7 @@ private function ParseFactor() as EvalValue
         return n
       end if
       dVal = CDbl(octVal)
-      if octVal <= CULngInt(9223372036854775807) then
+      if octVal <= FB_I64_MAX_U then
         keepExactInt = TRUE
         keepInt = CLngInt(octVal)
       end if
@@ -3701,10 +3704,10 @@ private function ParseFactor() as EvalValue
       ' decimal number
       dim fract as Double = 1
       dim decIntAcc as ULongInt = 0
+      dim numIntDigits as Integer = 0
       dim decIntOverflow as Boolean = FALSE
-      const U64_MAX as ULongInt = CULngInt(&hFFFFFFFFFFFFFFFFull)
-      const U64_MAX_DIV10 as ULongInt = (U64_MAX \ 10ull)
-      const U64_MAX_MOD10 as Integer = CInt(U64_MAX mod 10ull)
+      const U64_MAX_DIV10 as ULongInt = (FB_U64_MAX \ 10ull)
+      const U64_MAX_MOD10 as Integer = CInt(FB_U64_MAX mod 10ull)
       while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
         dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
         dVal = dVal * 10 + digit
@@ -3717,15 +3720,19 @@ private function ParseFactor() as EvalValue
             decIntAcc = decIntAcc * 10 + CULngInt(digit)
           end if
         end if
+        numIntDigits += 1
         pStream += 1
       wend
-      dim hasFraction as Boolean = FALSE
+      dim numFractionDigits as Integer = 0
       if pStream[0] = CHAR_DOT then
-        hasFraction = TRUE
+        if numIntDigits = 0 then
+          numIntDigits = 1  ' .5 -> 0.5
+        end if
         pStream += 1
         while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
           fract /= 10
           dVal += (pStream[0] - CHAR_DIGIT_0) * fract
+          numFractionDigits += 1
           pStream += 1
         wend
       end if
@@ -3748,16 +3755,26 @@ private function ParseFactor() as EvalValue
             expVal = expVal * 10 + (pStream[0] - CHAR_DIGIT_0)
             pStream += 1
           wend
+          if (not decIntOverflow) andalso (expSign = 1) andalso (expVal + numIntDigits <= 19) andalso (numFractionDigits + numIntDigits < expVal) then
+            decIntAcc = 10 ^ expVal
+            if FB_U64_MAX / decIntAcc > dVal then
+              decIntAcc = CULngInt(dVal * decIntAcc)
+              numFractionDigits = 0  ' allowing keepExactUInt
+              hasExponent = FALSE  ' allowing keepExactUInt
+            end if
+          end if
           dVal *= (10 ^ (expSign * expVal))
         end if
       end if
-      if hasFraction = FALSE andalso hasExponent = FALSE andalso decIntOverflow = FALSE then
-        if decIntAcc <= CULngInt(9223372036854775807) then
-          keepExactInt = TRUE
-          keepInt = CLngInt(decIntAcc)
+      if numFractionDigits = 0 then
+        if (not hasExponent) andalso (not decIntOverflow) then
+          if decIntAcc <= FB_I64_MAX_U then
+            keepExactInt = TRUE
+            keepInt = CLngInt(decIntAcc)
+          end if
+          keepExactUInt = TRUE
+          keepUInt = decIntAcc
         end if
-        keepExactUInt = TRUE
-        keepUInt = decIntAcc
       end if
     end if
 

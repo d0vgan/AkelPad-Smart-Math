@@ -3503,8 +3503,7 @@ bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
 }
 
 bool MathParser::isFiniteRequiredBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Int || id == BuiltinFunctionId::Floor || id == BuiltinFunctionId::Ceil ||
-      id == BuiltinFunctionId::Trunc || id == BuiltinFunctionId::Round || id == BuiltinFunctionId::Random;
+  return id == BuiltinFunctionId::Random;
 }
 
 bool MathParser::validateIntegerRepresentableArgs(
@@ -4119,6 +4118,52 @@ MathParser::EvalValue MathParser::builtinDegRad(
   return makeArrayFromScalars(outVals);
 }
 
+MathParser::EvalValue MathParser::calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s)
+{
+  const double x = s.scalar;
+  if (!std::isfinite(x))
+    return makeScalar(x);
+
+  if (s.hasExactUInt64())
+    return makeScalarUInt(s.exactUInt64);
+
+  if (s.hasExactInt())
+    return makeScalarInt(s.exactInt);
+
+  if (x > K_MAX_EXACT_INT_FROM_DOUBLE || x < -K_MAX_EXACT_INT_FROM_DOUBLE)
+  {
+    static const double dblUint64Max = std::pow(2.0, 64.0) - 1.0;
+
+    if (x <= (std::numeric_limits<long long>::max)() && x >= (std::numeric_limits<long long>::min)())
+      return makeScalarInt(static_cast<long long>(x));
+
+    if (x <= dblUint64Max && x >= 0.0)
+      return makeScalarUInt(static_cast<std::uint64_t>(x));
+
+    return makeScalar(x);
+  }
+
+  long long rounded = 0;
+  switch (id) {
+    case BuiltinFunctionId::Floor:
+      rounded = static_cast<long long>(std::floor(x));
+      break;
+    case BuiltinFunctionId::Ceil:
+      rounded = static_cast<long long>(std::ceil(x));
+      break;
+    case BuiltinFunctionId::Trunc:
+    case BuiltinFunctionId::Int:
+      rounded = static_cast<long long>(std::trunc(x));
+      break;
+    case BuiltinFunctionId::Round:
+      rounded = static_cast<long long>(std::round(x));
+      break;
+    default:
+      break;
+  }
+  return makeScalarInt(rounded);
+}
+
 MathParser::EvalValue MathParser::builtinUnaryMath(
     EvalContext& ctx,
     const std::string& fnName,
@@ -4130,7 +4175,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
   }
   if (args[0].kind == ValueKind::Scalar) {
     const EvalValue::ScalarValue& s = args[0].scalarValue;
-    const double x = args[0].scalarValue.scalar;
+    const double x = s.scalar;
     switch (id) {
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
       case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
@@ -4154,30 +4199,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Sqr: return makeScalarMaybeExact(x * x);
       case BuiltinFunctionId::Abs: return makeScalarMaybeExact(std::fabs(x));
       case BuiltinFunctionId::Floor:
-        if (s.hasExactInt()) return makeScalarInt(s.exactInt);
-        if (s.hasExactUInt64() && s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          return makeScalarInt(static_cast<long long>(s.exactUInt64));
-        }
-        return makeScalarInt(static_cast<long long>(std::floor(x)));
       case BuiltinFunctionId::Ceil:
-        if (s.hasExactInt()) return makeScalarInt(s.exactInt);
-        if (s.hasExactUInt64() && s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          return makeScalarInt(static_cast<long long>(s.exactUInt64));
-        }
-        return makeScalarInt(static_cast<long long>(std::ceil(x)));
       case BuiltinFunctionId::Trunc:
       case BuiltinFunctionId::Int:
-        if (s.hasExactInt()) return makeScalarInt(s.exactInt);
-        if (s.hasExactUInt64() && s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          return makeScalarInt(static_cast<long long>(s.exactUInt64));
-        }
-        return makeScalarInt(static_cast<long long>(std::trunc(x)));
-      case BuiltinFunctionId::Round:
-        if (s.hasExactInt()) return makeScalarInt(s.exactInt);
-        if (s.hasExactUInt64() && s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          return makeScalarInt(static_cast<long long>(s.exactUInt64));
-        }
-        return makeScalarInt(static_cast<long long>(std::round(x)));
+      case BuiltinFunctionId::Round: return calcRoundingFn(id, s);
       case BuiltinFunctionId::Sign:
         if (s.hasExactInt()) return makeScalarInt((s.exactInt > 0) ? 1LL : ((s.exactInt < 0) ? -1LL : 0LL));
         if (s.hasExactUInt64()) return makeScalarInt((s.exactUInt64 == 0u) ? 0LL : 1LL);
@@ -4189,11 +4214,11 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
   }
   switch (id) {
     case BuiltinFunctionId::Sin:
-      return mapUnaryFn(args[0], std::sin);
+      return mapUnaryFn(args[0], calcSin);
     case BuiltinFunctionId::Cos:
-      return mapUnaryFn(args[0], std::cos);
+      return mapUnaryFn(args[0], calcCos);
     case BuiltinFunctionId::Tan:
-      return mapUnaryFn(args[0], std::tan);
+      return mapUnaryFn(args[0], calcTan);
     case BuiltinFunctionId::Asin:
     case BuiltinFunctionId::Arcsin:
       return mapUnaryFn(args[0], std::asin);
@@ -4251,14 +4276,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
           if (sItem.hasExactUInt64()) return makeScalarInt((sItem.exactUInt64 == 0u) ? 0LL : 1LL);
           return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
         }
-        if (sItem.hasExactInt()) return makeScalarInt(sItem.exactInt);
-        if (sItem.hasExactUInt64() && sItem.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-          return makeScalarInt(static_cast<long long>(sItem.exactUInt64));
-        }
-        if (id == BuiltinFunctionId::Floor) return makeScalarInt(static_cast<long long>(std::floor(x)));
-        if (id == BuiltinFunctionId::Ceil) return makeScalarInt(static_cast<long long>(std::ceil(x)));
-        if (id == BuiltinFunctionId::Round) return makeScalarInt(static_cast<long long>(std::round(x)));
-        return makeScalarInt(static_cast<long long>(std::trunc(x))); // trunc/int
+        return calcRoundingFn(id, sItem);
       };
       if (args[0].kind == ValueKind::Scalar) {
         return applyIntLikeUnaryToScalar(args[0].scalarValue);

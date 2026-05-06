@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 883) as SmokeCase
+  dim tests(1 to 888) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1126,13 +1126,18 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(876).expr = "nan<=nan": tests(876).expected = "0"
   tests(877).expr = "nan>=nan": tests(877).expected = "0"
 
-  tests(878).expr = "x=-nan; int(x)": tests(878).expectedErrContains = "numeric error"
-  tests(879).expr = "x=nan; int(x)": tests(879).expectedErrContains = "numeric error"
-  tests(880).expr = "x=-inf; int(x)": tests(880).expectedErrContains = "numeric error"
-  tests(881).expr = "x=inf; int(x)": tests(881).expectedErrContains = "numeric error"
+  tests(878).expr = "x=-nan; int(x)": tests(878).expected = "nan"
+  tests(879).expr = "x=nan; int(x)": tests(879).expected = "nan"
+  tests(880).expr = "x=-inf; int(x)": tests(880).expected = "-inf"
+  tests(881).expr = "x=inf; int(x)": tests(881).expected = "inf"
+  tests(882).expr = "x=-nan; ceil(x)": tests(882).expected = "nan"
+  tests(883).expr = "x=nan; floor(x)": tests(883).expected = "nan"
+  tests(884).expr = "x=-inf; round(x)": tests(884).expected = "-inf"
+  tests(885).expr = "x=inf; trunc(x)": tests(885).expected = "inf"
+  tests(886).expr = "ceil((1e14+0.5, 1e30, -1e30))": tests(886).expected = "(100000000000001, 1e+30, -1e+30)"
 
-  tests(882).expr = "(45,60,90); rad": tests(882).expected = "(0.7853981633974483, 1.047197551196598, 1.570796326794897)"
-  tests(883).expr = "(pi/4,pi/3,pi/2); deg": tests(883).expected = "(45, 60, 90)"
+  tests(887).expr = "(45,60,90); rad": tests(887).expected = "(0.7853981633974483, 1.047197551196598, 1.570796326794897)"
+  tests(888).expr = "(pi/4,pi/3,pi/2); deg": tests(888).expected = "(45, 60, 90)"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

@@ -620,4 +620,5 @@ private:
   UserFunction* findUserFunction(const std::string& fnName);
   const UserFunction* findUserFunction(const std::string& fnName) const;
   void upsertUserFunction(UserFunction uf);
+  static EvalValue calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s);
 };

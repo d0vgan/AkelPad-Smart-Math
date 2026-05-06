@@ -1553,25 +1553,45 @@ std::vector<TestCase> buildNanInfCases() {
                  return expectEval(p, "sin(x)", "nan", why);
                }});
 
-  t.push_back({"naninf/int rejects -inf", [kNegInf](std::string& why) {
+  t.push_back({"naninf/int accepts -inf", [kNegInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kNegInf);
-                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+                 return expectEval(p, "int(x)", "-inf", why);
                }});
-  t.push_back({"naninf/int rejects inf", [kPosInf](std::string& why) {
+  t.push_back({"naninf/int accepts inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+                 return expectEval(p, "int(x)", "inf", why);
                }});
-  t.push_back({"naninf/int rejects -nan", [kQNaN](std::string& why) {
+  t.push_back({"naninf/int accepts -nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", -kQNaN);
-                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+                 return expectEval(p, "int(x)", "nan", why);
                }});
-  t.push_back({"naninf/int rejects nan", [kQNaN](std::string& why) {
+  t.push_back({"naninf/int accepts nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEvalErrorContains(p, "int(x)", "numeric error", why);
+                 return expectEval(p, "int(x)", "nan", why);
+               }});
+  t.push_back({"naninf/ceil accepts -inf", [kNegInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kNegInf);
+                 return expectEval(p, "ceil(x)", "-inf", why);
+               }});
+  t.push_back({"naninf/floor accepts inf", [kPosInf](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kPosInf);
+                 return expectEval(p, "floor(x)", "inf", why);
+               }});
+  t.push_back({"naninf/round accepts -nan", [kQNaN](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", -kQNaN);
+                 return expectEval(p, "round(x)", "nan", why);
+               }});
+  t.push_back({"naninf/trunc accepts nan", [kQNaN](std::string& why) {
+                 MathParser p;
+                 addConstTracked(p, "x", kQNaN);
+                 return expectEval(p, "trunc(x)", "nan", why);
                }});
 
   return t;
@@ -2467,6 +2487,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "sin(-77777*pi) // calculates sin(-77777*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "sin(77778*pi) // calculates sin(77778*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "sin(-77778*pi) // calculates sin(-77778*pi)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "sin((-77778*pi, 77778*pi, -77777*pi, 77777*pi, -2*pi, 2*pi, -pi, pi, 0, -77777*pi/2, 77777*pi/2, -pi/2, pi/2))", "(0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 1, -1, 1)"} ,
     {ParityBasicCase::Kind::Expected, "cos(pi/2) // calculates cos(pi/2)", "0"} ,
     {ParityBasicCase::Kind::Expected, "cos(-pi/2) // calculates cos(-pi/2)", "0"} ,
     {ParityBasicCase::Kind::Expected, "cos(77777*pi/2) // calculates cos(77777*pi/2)", "0"} ,
@@ -2480,6 +2501,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "cos(-77777*pi) // calculates cos(-77777*pi)", "-1"} ,
     {ParityBasicCase::Kind::Expected, "cos(77778*pi) // calculates cos(77778*pi)", "1"} ,
     {ParityBasicCase::Kind::Expected, "cos(-77778*pi) // calculates cos(-77778*pi)", "1"} ,
+    {ParityBasicCase::Kind::Expected, "cos((-77778*pi, 77778*pi, -77777*pi, 77777*pi, -2*pi, 2*pi, -pi, pi, 0, -77777*pi/2, 77777*pi/2, -pi/2, pi/2))", "(1, 1, -1, -1, 1, 1, -1, -1, 1, 0, 0, 0, 0)"} ,
     {ParityBasicCase::Kind::Expected, "tan(pi/2) // calculates tan(pi/2)", "Inf"} ,
     {ParityBasicCase::Kind::Expected, "tan(-pi/2) // calculates tan(-pi/2)", "-Inf"} ,
     {ParityBasicCase::Kind::Expected, "tan(77777*pi/2) // calculates tan(77777*pi/2)", "Inf"} ,
@@ -2493,6 +2515,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "tan(-77777*pi) // calculates tan(-77777*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "tan(77778*pi) // calculates tan(77778*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "tan(-77778*pi) // calculates tan(-77778*pi)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "tan((-77778*pi, 77778*pi, -77777*pi, 77777*pi, -2*pi, 2*pi, -pi, pi, 0, -77777*pi/2, 77777*pi/2, -pi/2, pi/2))", "(0, 0, 0, 0, 0, 0, 0, 0, 0, -Inf, Inf, -Inf, Inf)"} ,
     {ParityBasicCase::Kind::ErrorContains, "[]", "unexpected token"} ,
     {ParityBasicCase::Kind::ErrorContains, "b=2; 2b", "unexpected token"} ,
     {ParityBasicCase::Kind::ErrorContains, "(2;2b;3)", "missing closing parenthesis"} ,
@@ -2542,6 +2565,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "atan2(1,1)", "0.7853981633974483"} ,
     {ParityBasicCase::Kind::Expected, "floor(2.9)", "2"} ,
     {ParityBasicCase::Kind::Expected, "ceil(2.1)", "3"} ,
+    {ParityBasicCase::Kind::Expected, "ceil((1e14+0.5, 1e30, -1e30))", "(100000000000001, 1e+30, -1e+30)"},
     {ParityBasicCase::Kind::Expected, "trunc(-2.9)", "-2"} ,
     {ParityBasicCase::Kind::Expected, "round(2.5)", "3"} ,
     {ParityBasicCase::Kind::Expected, "sign(-123)", "-1"} ,
@@ -2972,7 +2996,7 @@ std::vector<TestCase> buildParityBasicFromSmokeCases() {
 
   for (std::size_t i = 0; i < kCount; ++i) {
     const auto& c = kParityBasicFromSmokeCases[i];
-    const std::string name = "parity/basic#" + std::to_string(i);
+    std::string name("parity/basic: "); name += c.expr;
     if (c.kind == ParityBasicCase::Kind::Expected) {
       t.push_back({name, [expr = c.expr, payload = c.payload](std::string& why) {
                      MathParser p;
