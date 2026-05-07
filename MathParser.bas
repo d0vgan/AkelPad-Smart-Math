@@ -1040,6 +1040,24 @@ private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   erase v.arr
 end sub
 
+private function quickMult10(byval x as ULongInt) as ULongInt
+  ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
+  return (x shl 3) + (x shl 1)
+end function
+
+private function quickMult10_i(byval x as Integer) as Integer
+  ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
+  return (x shl 3) + (x shl 1)
+end function
+
+private function mult10_N_times(byval x as ULongInt, byval N as Integer) as ULongInt
+  dim i as Integer
+  for i = 1 to N
+    x = quickMult10(x)
+  next i
+  return x
+end function
+
 private function MakeNaN() as Double
   return 0.0 / 0.0
 end function
@@ -3718,7 +3736,7 @@ private function ParseFactor() as EvalValue
           elseif decIntAcc = U64_MAX_DIV10 andalso digit > U64_MAX_MOD10 then
             decIntOverflow = TRUE
           else
-            decIntAcc = decIntAcc * 10 + CULngInt(digit)
+            decIntAcc = quickMult10(decIntAcc) + CULngInt(digit)
           end if
         end if
         numIntDigits += 1
@@ -3734,7 +3752,7 @@ private function ParseFactor() as EvalValue
           dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
           fract /= 10
           dVal += digit * fract
-          decFracAcc = decFracAcc * 10 + CULngInt(digit)
+          decFracAcc = quickMult10(decFracAcc) + CULngInt(digit)
           numFractionDigits += 1
           pStream += 1
         wend
@@ -3756,15 +3774,14 @@ private function ParseFactor() as EvalValue
           hasExponent = TRUE
           pStream = pExp
           while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
-            expVal = expVal * 10 + (pStream[0] - CHAR_DIGIT_0)
+            expVal = quickMult10_i(expVal) + (pStream[0] - CHAR_DIGIT_0)
             pStream += 1
           wend
-          if (not decIntOverflow) andalso (expSign = 1) andalso (expVal + numIntDigits <= 19) andalso (numFractionDigits + expVal <= 18) then
+          if (not decIntOverflow) andalso (expSign = 1) andalso (expVal + numIntDigits <= 19) andalso (numFractionDigits + numIntDigits < 18) then
             if expVal >= numFractionDigits then
-              dim scale as ULongInt = 10 ^ expVal
-              dim exactInt as ULongInt = decIntAcc * scale
+               dim exactInt as ULongInt = mult10_N_times(decIntAcc, expVal)
               if numFractionDigits > 0 then
-                exactInt += decFracAcc * (10 ^ (expVal - numFractionDigits))
+                exactInt += mult10_N_times(decFracAcc, expVal - numFractionDigits)
               end if
               if exactInt <= FB_U64_MAX then
                 decIntAcc = exactInt

@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 888) as SmokeCase
+  dim tests(1 to 903) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1138,6 +1138,22 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
 
   tests(887).expr = "(45,60,90); rad": tests(887).expected = "(0.7853981633974483, 1.047197551196598, 1.570796326794897)"
   tests(888).expr = "(pi/4,pi/3,pi/2); deg": tests(888).expected = "(45, 60, 90)"
+
+  tests(889).expr = "(2**58, 2**58+123)": tests(889).expected = "(288230376151711744, 288230376151711867)"
+  tests(890).expr = "(2**58, 2**58+123);hex": tests(890).expected = "(0x400000000000000, 0x40000000000007B)"
+  tests(891).expr = "(2**61, 2**61+123)": tests(891).expected = "(2305843009213693952, 2305843009213694075)"
+  tests(892).expr = "(2**61, 2**61+123);hex": tests(892).expected = "(0x2000000000000000, 0x200000000000007B)"
+  tests(893).expr = "2**58+123": tests(893).expected = "288230376151711867"
+  tests(894).expr = "2**61+123": tests(894).expected = "2305843009213694075"
+  tests(895).expr = "2**58+123;hex": tests(895).expected = "0x40000000000007B"
+  tests(896).expr = "2**61+123;hex": tests(896).expected = "0x200000000000007B"
+  tests(897).expr = "9.0*10**18": tests(897).expected = "9000000000000000000"
+  tests(898).expr = "9.2e17": tests(898).expected = "920000000000000000"
+  tests(899).expr = "9e18": tests(899).expected = "9000000000000000000"
+  tests(900).expr = "90.123e15": tests(900).expected = "90123000000000000"
+  tests(901).expr = "1.23456789e18": tests(901).expected = "1234567890000000000"
+  tests(902).expr = "(9.0*10**18,9.2e17,9e18,90.123e15,1.23456789e18)": tests(902).expected = "(9000000000000000000, 920000000000000000, 9000000000000000000, 90123000000000000, 1234567890000000000)"
+  tests(903).expr = "(9.2233e18,9.2234e18,0.123,0.123e3,0.12345e4,0.123e5,0.012345678901234e18,1.234567890123456e18,222.0)": tests(903).expected = "(9223300000000000000, 9.2234e+18, 0.123, 123, 1234.5, 12300, 12345678901234000, 1234567890123456000, 222)"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

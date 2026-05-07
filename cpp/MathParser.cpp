@@ -175,6 +175,23 @@ constexpr const char* STR_UNKNOWN_FUNCTION_COLON = "unknown function: ";
 constexpr const char* STR_INVALID_USER_FUNCTION_EXPRESSION = "invalid user function expression";
 constexpr const char* STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION = "unexpected content after function definition";
 
+inline int quickMult10(int x) {
+  // x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
+  return ((x << 3) + (x << 1));
+}
+
+inline std::uint64_t quickMult10(std::uint64_t x) {
+  // x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
+  return ((x << 3) + (x << 1));
+}
+
+std::uint64_t mult10_N_times(std::uint64_t x, int N) {
+  for (;N > 0; --N) {
+    x = quickMult10(x);
+  }
+  return x;
+}
+
 bool identAsciiEqualsLower(const std::string& body, std::size_t i0, std::size_t len, const std::string& bLower) {
   if (len != bLower.size()) {
     return false;
@@ -277,6 +294,82 @@ bool tryParsePrefixedUIntLiteral(const char* p, char prefixLower, unsigned int r
   outEnd = cur;
   outValue = u;
   return true;
+}
+
+bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std::uint64_t& outValue) {
+  enum eNumState { IntDigits, FracDigits, ExpDigits };
+
+  if (!numStart || !numEnd || numStart >= numEnd) {
+    return false;
+  }
+
+  std::uint64_t intPart = 0;
+  std::uint64_t fracPart = 0;
+  int numIntDigits = 0;
+  int numFracDigits = 0;
+  int numExpDigits = 0;
+  int expValue = 0;
+  eNumState state = IntDigits;
+  bool looksInt = true;
+
+  for (const char* q = numStart; q < numEnd && looksInt; ++q) {
+    if (*q >= '0' && *q <= '9') {
+      if (state == IntDigits) {
+        if (numIntDigits < 20) {
+          const std::uint64_t digit = static_cast<std::uint64_t>(*q - '0');
+          if (intPart <= ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10u) {
+            intPart = quickMult10(intPart) + digit;
+          } else {
+            looksInt = false; // integer overflow for uint64 range
+          }
+        } else {
+          looksInt = false; // integer overflow for int64 range
+        }
+        ++numIntDigits;
+      }
+      else if (state == FracDigits) {
+        if (numFracDigits < 18) {
+          fracPart = quickMult10(fracPart) + static_cast<std::uint64_t>(*q - '0');
+        } else {
+          looksInt = false; // too many fractional digits for int64 range
+        }
+        ++numFracDigits;
+      }
+      else if (state == ExpDigits) {
+        if (numExpDigits < 2) {
+          expValue = quickMult10(expValue) + (*q - '0');
+        } else {
+          looksInt = false; // exponent overflow for int64 range
+        }
+        ++numExpDigits;
+      }
+    }
+    else if (*q == '.' && state == IntDigits) {
+      state = FracDigits;
+    }
+    else if ((*q == 'e' || *q == 'E') && state != ExpDigits) {
+      state = ExpDigits;
+    } else if ((*q == '-') && state == ExpDigits && expValue == 0) {
+      looksInt = false; // negative exponent: not an int
+    }
+  }
+
+  if (looksInt) {
+    if (numExpDigits == 0 && numFracDigits == 0) {
+      outValue = intPart;
+    }
+    else if (expValue + numIntDigits <= 19 && numFracDigits + numIntDigits < 18 && expValue >= numFracDigits) {
+      intPart = mult10_N_times(intPart, expValue);
+      if (numFracDigits != 0) {
+        fracPart = mult10_N_times(fracPart, expValue - numFracDigits);
+      }
+      outValue = intPart + fracPart;
+    }
+    else
+      looksInt = false;
+  }
+
+  return looksInt;
 }
 
 long long gcdInt64(long long a, long long b) {
@@ -748,7 +841,7 @@ bool parseUInt64FromDecimalLiteral(const char* begin, const char* end, std::uint
     if (v > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10u) {
       return false;
     }
-    v = v * 10u + digit;
+    v = quickMult10(v) + digit;
   }
   out = v;
   return true;
@@ -2569,20 +2662,11 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
   auto lit = std::make_unique<Expr>();
   lit->tag = Expr::Tag::Literal;
   lit->literalValue = makeScalar(d);
-  bool looksInt = true;
-  for (const char* q = numStart; q < end; ++q) {
-    if (*q == '.' || *q == 'e' || *q == 'E') {
-      looksInt = false;
-      break;
-    }
-  }
-  if (looksInt) {
-    std::uint64_t uv = 0;
-    if (parseUInt64FromDecimalLiteral(numStart, end, uv)) {
-      lit->literalValue = (uv <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
-          ? makeScalarInt(static_cast<long long>(uv))
-          : makeScalarUInt(uv);
-    }
+
+  if (tryParseInputNumberAsInteger(numStart, end, parsedUInt)) {
+    lit->literalValue = (parsedUInt <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
+      ? makeScalarInt(static_cast<long long>(parsedUInt))
+      : makeScalarUInt(parsedUInt);
   }
   return lit;
 }
