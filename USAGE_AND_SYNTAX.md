@@ -228,6 +228,14 @@ Recommendation: parenthesize when using `not` in complex expressions.
   - Example: `(1,2,3) & 1` -> `(1,0,1)`
   - Example: `(1,2,3) | 1` -> `(1,3,3)`
 
+### Arrays and Comparisons
+
+- Arrays are compared item by item, until the first mismatch or until the end of an array.
+  - Example: `(10,20) > 20` -> `0` because the first item `10` < `20`.
+  - Example: `(1,2,3) < (1,3)` -> `1` because the second item `2` < `3`.
+  - Example: `(1,2,0) >= (1,2)` -> `1` because the values are equal until the end of the 2nd array.
+  - Example: `(1,2) == sort(2,1)` -> `1` because the arrays are equal after sorting.
+
 ### Chained Comparisons Warning
 
 - Chained comparisons are evaluated left-to-right.
