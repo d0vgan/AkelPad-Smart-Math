@@ -759,7 +759,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                }});
   t.push_back({"edge/gcd uint64-above-signed-range accepted", [](std::string& why) {
                 MathParser p;
-                 return expectEval(p, "gcd(18446744073709551615,3)", "1", why);
+                 return expectEval(p, "gcd(18446744073709551615,3)", "3", why);
               }});
   t.push_back({"edge/gcd double const integer-valued", [](std::string& why) {
                  MathParser p;
@@ -768,7 +768,20 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                }});
   t.push_back({"edge/lcm uint64-above-signed-range accepted", [](std::string& why) {
                 MathParser p;
-                 return expectEval(p, "lcm(18446744073709551615,3)", "3", why);
+                 return expectEval(p, "lcm(18446744073709551615,3)", "18446744073709551615", why);
+              }});
+  t.push_back({"edge/sum min max uint64 exact before double", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "sum(18446744073709551614,1)", "18446744073709551615", why)) return false;
+                if (!expectEval(p, "max(3,18446744073709551615)", "18446744073709551615", why)) return false;
+                if (!expectEval(p, "min(18446744073709551615,5)", "5", why)) return false;
+                return true;
+              }});
+  t.push_back({"edge/sum max int64 negative exact before double", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "sum(-9223372036854775807,-1)", "-9223372036854775808", why)) return false;
+                if (!expectEval(p, "max(-9,-1)", "-1", why)) return false;
+                return true;
               }});
   t.push_back({"edge/ncr basic", [](std::string& why) {
                 MathParser p;

@@ -1265,6 +1265,19 @@ private function TryGetExactNonNegativeUInt64Scalar(byref s as ScalarValue, byre
   return FALSE
 end function
 
+'' Exact signed int64, including from uint64 metadata only when value fits LLONG_MAX (no wrap).
+private function TryGetExactSignedInt64NoUIntWrapScalar(byref s as ScalarValue, byref outV as LongInt) as Boolean
+  if s.exactInt64Valid then
+    outV = s.exactInt64
+    return TRUE
+  end if
+  if s.exactUInt64Valid andalso s.exactUInt64 <= FB_I64_MAX_U then
+    outV = CLngInt(s.exactUInt64)
+    return TRUE
+  end if
+  return TryGetExactInt64FromDouble(s.scalar, outV)
+end function
+
 private function UniqueHashKeyFromDouble(byval v as Double) as ULongInt
   if v = 0 then return 0 ' Canonicalize +0/-0.
   dim bits as DoubleBits
@@ -2231,6 +2244,34 @@ private function GcdInt64(byval a as LongInt, byval b as LongInt) as LongInt
   return CLngInt(x)
 end function
 
+private function GcdULong(byval a as ULongInt, byval b as ULongInt) as ULongInt
+  dim x as ULongInt = a
+  dim y as ULongInt = b
+  while y <> 0ull
+    dim t as ULongInt = x mod y
+    x = y
+    y = t
+  wend
+  return x
+end function
+
+private function TryLcmULong(byval a as ULongInt, byval b as ULongInt, byref outL as ULongInt) as Boolean
+  if a = 0ull orelse b = 0ull then
+    outL = 0ull
+    return TRUE
+  end if
+  dim g as ULongInt = GcdULong(a, b)
+  dim a1 as ULongInt = a \ g
+  if a1 > (FB_U64_MAX \ b) then return FALSE
+  outL = a1 * b
+  return TRUE
+end function
+
+private function TryGetExactNonNegativeUInt64Pair(byref aV as EvalValue, byref bV as EvalValue, byref aU as ULongInt, byref bU as ULongInt) as Boolean
+  if aV.kind <> VK_SCALAR orelse bV.kind <> VK_SCALAR then return FALSE
+  return TryGetExactNonNegativeUInt64Scalar(aV.scalarValue, aU) andalso TryGetExactNonNegativeUInt64Scalar(bV.scalarValue, bU)
+end function
+
 private function TryGetScalarInt64Pair(byref aV as EvalValue, byref bV as EvalValue, byref a as LongInt, byref b as LongInt) as Boolean
   if aV.kind <> VK_SCALAR orelse bV.kind <> VK_SCALAR then return FALSE
   if TryGetExactInt64(aV, a) = FALSE then return FALSE
@@ -2238,28 +2279,41 @@ private function TryGetScalarInt64Pair(byref aV as EvalValue, byref bV as EvalVa
   return TRUE
 end function
 
-private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval doLcm as Boolean, byref outV as EvalValue) as Boolean
+' Returns 0 = ok, 1 = operands not exact integers, 2 = lcm overflow (uint64)
+private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval doLcm as Boolean, byref outV as EvalValue) as Integer
   if aV.kind = VK_SCALAR andalso bV.kind = VK_SCALAR then
+    dim aU as ULongInt, bU as ULongInt
+    if TryGetExactNonNegativeUInt64Pair(aV, bV, aU, bU) then
+      dim gU as ULongInt = GcdULong(aU, bU)
+      if doLcm = FALSE then
+        ValueSetUInt64(outV, gU)
+        return 0
+      end if
+      dim lU as ULongInt
+      if TryLcmULong(aU, bU, lU) = FALSE then return 2
+      ValueSetUInt64(outV, lU)
+      return 0
+    end if
     dim a as LongInt, b as LongInt
-    if TryGetScalarInt64Pair(aV, bV, a, b) = FALSE then return FALSE
+    if TryGetScalarInt64Pair(aV, bV, a, b) = FALSE then return 1
     dim g as LongInt = GcdInt64(a, b)
     if doLcm = FALSE then
       ValueSetInt64(outV, g)
-      return TRUE
+      return 0
     end if
     if g = 0 then
       ValueSetInt64(outV, 0)
-      return TRUE
+      return 0
     end if
     dim q as LongInt = a \ g
     dim l as LongInt
-    if TryMulInt64(q, b, l) = FALSE then return FALSE
+    if TryMulInt64(q, b, l) = FALSE then return 2
     if l < 0 then
-      if l = FB_I64_MIN then return FALSE
+      if l = FB_I64_MIN then return 2
       l = -l
     end if
     ValueSetInt64(outV, l)
-    return TRUE
+    return 0
   end if
 
   dim i as Integer
@@ -2268,19 +2322,21 @@ private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval
     for i = lbound(aV.arr) to ubound(aV.arr)
       dim a as EvalValue, r as EvalValue
       ValueGetArrayElemAsScalar(aV, i, a)
-      if ApplyGcdLcm(a, bV, doLcm, r) = FALSE then return FALSE
+      dim rc as Integer = ApplyGcdLcm(a, bV, doLcm, r)
+      if rc <> 0 then return rc
       ValueSetArrayElemFromScalar(outV, i, r)
     next i
-    return TRUE
+    return 0
   end if
   ValueInitArrayLike(outV, lbound(bV.arr), ubound(bV.arr))
   for i = lbound(bV.arr) to ubound(bV.arr)
     dim b as EvalValue, r as EvalValue
     ValueGetArrayElemAsScalar(bV, i, b)
-    if ApplyGcdLcm(aV, b, doLcm, r) = FALSE then return FALSE
+    dim rc as Integer = ApplyGcdLcm(aV, b, doLcm, r)
+    if rc <> 0 then return rc
     ValueSetArrayElemFromScalar(outV, i, r)
   next i
-  return TRUE
+  return 0
 end function
 
 private function TryApplyNcrNpr(byref nV as EvalValue, byref rV as EvalValue, byval doPerm as Boolean, byref outV as EvalValue) as Boolean
@@ -2332,8 +2388,11 @@ private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref
     return TRUE
   end if
   if (fnId = FUNC_GCD) orelse (fnId = FUNC_LCM) then
-    if ApplyGcdLcm(args(0), args(1), (fnId = FUNC_LCM), outV) = FALSE then
+    dim gcdRc as Integer = ApplyGcdLcm(args(0), args(1), (fnId = FUNC_LCM), outV)
+    if gcdRc = 1 then
       SetIntegerValuesError(fnName)
+    elseif gcdRc = 2 then
+      SetNumericErrorInFunction(fnName)
     end if
     return TRUE
   end if
@@ -3222,6 +3281,72 @@ private function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Int
   return TRUE
 end function
 
+'' sum / min / max: exact uint64 when all operands are exact non-negative integers; else exact int64 when all fit signed range; else double path.
+private function TryAggSumMinMaxExactInteger(args() as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim sv as ScalarValue
+  dim allNnU as Boolean = TRUE
+  dim allSwI as Boolean = TRUE
+  dim gotAny as Boolean = FALSE
+  while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+    gotAny = TRUE
+    dim uProbe as ULongInt
+    dim liProbe as LongInt
+    dim nnU as Boolean = TryGetExactNonNegativeUInt64Scalar(sv, uProbe)
+    dim swI as Boolean = TryGetExactSignedInt64NoUIntWrapScalar(sv, liProbe)
+    if (nnU = FALSE) andalso (swI = FALSE) then return FALSE
+    if nnU = FALSE then allNnU = FALSE
+    if swI = FALSE then allSwI = FALSE
+  wend
+  if gotAny = FALSE then return FALSE
+
+  if allNnU then
+    argIdx = lbound(args)
+    elemIdx = -1
+    dim accU as ULongInt = 0
+    dim hasBestU as Boolean = FALSE
+    dim bestU as ULongInt
+    while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+      dim u2 as ULongInt
+      TryGetExactNonNegativeUInt64Scalar(sv, u2)
+      if fnId = FUNC_SUM then
+        dim nextU as ULongInt
+        if TryAddULongChecked(accU, u2, nextU) = FALSE then return FALSE
+        accU = nextU
+      elseif fnId = FUNC_MIN then
+        if (hasBestU = FALSE) orelse (u2 < bestU) then bestU = u2: hasBestU = TRUE
+      else
+        if (hasBestU = FALSE) orelse (u2 > bestU) then bestU = u2: hasBestU = TRUE
+      end if
+    wend
+    if fnId = FUNC_SUM then ValueSetUInt64(outV, accU) else ValueSetUInt64(outV, bestU)
+    return TRUE
+  elseif allSwI then
+    argIdx = lbound(args)
+    elemIdx = -1
+    dim accI as LongInt = 0
+    dim hasBestI as Boolean = FALSE
+    dim bestI as LongInt
+    while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+      dim i2 as LongInt
+      TryGetExactSignedInt64NoUIntWrapScalar(sv, i2)
+      if fnId = FUNC_SUM then
+        dim nextI as LongInt
+        if TryAddInt64(accI, i2, nextI) = FALSE then return FALSE
+        accI = nextI
+      elseif fnId = FUNC_MIN then
+        if (hasBestI = FALSE) orelse (i2 < bestI) then bestI = i2: hasBestI = TRUE
+      else
+        if (hasBestI = FALSE) orelse (i2 > bestI) then bestI = i2: hasBestI = TRUE
+      end if
+    wend
+    if fnId = FUNC_SUM then ValueSetInt64(outV, accI) else ValueSetInt64(outV, bestI)
+    return TRUE
+  end if
+  return FALSE
+end function
+
 private function ExpandUnpackedArgs(argsIn() as EvalValue, argsOut() as EvalValue) as Integer
   dim outCount as Integer = 0
   dim i as Integer, j as Integer
@@ -3503,6 +3628,9 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         aggMode = 4
       else
         aggMode = 1
+      end if
+      if (fnId = FUNC_SUM) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
+        if TryAggSumMinMaxExactInteger(args(), fnId, outV) then return outV
       end if
       dim argIdx as Integer = lbound(args)
       dim elemIdx as Integer = -1

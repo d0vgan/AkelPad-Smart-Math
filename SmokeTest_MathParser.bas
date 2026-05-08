@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 946) as SmokeCase
+  dim tests(1 to 951) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -922,8 +922,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(678).expr = "stddev((1,2),3,4)": tests(678).expected = "1.118033988749894"
   tests(679).expr = "uhex(18446744073709551615)": tests(679).expected = "0xFFFFFFFFFFFFFFFF"
   tests(680).expr = "hex((1,2.5,3))": tests(680).expectedErrContains = "hex() expects integer values"
-  tests(681).expr = "gcd(18446744073709551615,3)": tests(681).expected = "1"
-  tests(682).expr = "lcm(18446744073709551615,3)": tests(682).expected = "3"
+  tests(681).expr = "gcd(18446744073709551615,3)": tests(681).expected = "3"
+  tests(682).expr = "lcm(18446744073709551615,3)": tests(682).expected = "18446744073709551615"
   tests(683).expr = "18446744073709551615%3": tests(683).expected = "0"
   tests(684).expr = "a=100.5; mod(a,3)": tests(684).expectedErrContains = "mod() expects integer values"
   tests(685).expr = "mod(18446744073709551615,3)": tests(685).expected = "0"
@@ -1197,6 +1197,11 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(944).expr = "3.68934881474191e+19/2": tests(944).expected = "1.844674407370955e+019"
   tests(945).expr = "3.68934881474191e+19**0.5": tests(945).expected = "6074000999.952098"
   tests(946).expr = "3.68934881474191e+19%3": tests(946).expectedErrContains = "modulo operands must be integer values"
+  tests(947).expr = "sum(18446744073709551614,1)": tests(947).expected = "18446744073709551615"
+  tests(948).expr = "max(3,18446744073709551615)": tests(948).expected = "18446744073709551615"
+  tests(949).expr = "min(18446744073709551615,5)": tests(949).expected = "5"
+  tests(950).expr = "sum(-9223372036854775807,-1)": tests(950).expected = "-9223372036854775808"
+  tests(951).expr = "max(-9,-1)": tests(951).expected = "-1"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

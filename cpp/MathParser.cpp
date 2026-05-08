@@ -493,6 +493,47 @@ long long gcdInt64(long long a, long long b) {
   return a;
 }
 
+std::uint64_t gcdUInt64(std::uint64_t a, std::uint64_t b) {
+  while (b != 0u) {
+    const std::uint64_t t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+bool tryLcmUInt64(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
+  if (a == 0u || b == 0u) {
+    out = 0u;
+    return true;
+  }
+  const std::uint64_t g = gcdUInt64(a, b);
+  const std::uint64_t a1 = a / g;
+  if (a1 > ((std::numeric_limits<std::uint64_t>::max)() / b)) {
+    return false;
+  }
+  out = a1 * b;
+  return true;
+}
+
+bool tryAddUInt64Checked(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
+  const std::uint64_t s = a + b;
+  if (s < a) {
+    return false;
+  }
+  out = s;
+  return true;
+}
+
+bool tryAddInt64Checked(long long a, long long b, long long& out) {
+  if ((b > 0 && a > (std::numeric_limits<long long>::max)() - b) ||
+      (b < 0 && a < (std::numeric_limits<long long>::min)() - b)) {
+    return false;
+  }
+  out = a + b;
+  return true;
+}
+
 bool tryMulInt64Checked(long long a, long long b, long long& out) {
   if (a == 0 || b == 0) {
     out = 0;
@@ -3997,6 +4038,21 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     return count;
   };
+  const auto forEachArgScalarValue = [&](const auto& fn) -> std::size_t {
+    std::size_t count = 0;
+    for (const auto& a : args) {
+      if (a.kind == ValueKind::Scalar) {
+        fn(a.scalarValue);
+        ++count;
+      } else {
+        for (const auto& item : a.arr) {
+          fn(item);
+          ++count;
+        }
+      }
+    }
+    return count;
+  };
   if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod ||
       id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg ||
       id == BuiltinFunctionId::Mean) {
@@ -4006,6 +4062,85 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
       return args[0];
+    }
+    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max) {
+      bool allNnU = true;
+      bool allSwI = true;
+      bool anyNonInteger = false;
+      const auto classify = [&](const EvalValue::ScalarValue& s) {
+        std::uint64_t u = 0;
+        long long i = 0;
+        const bool nnU = tryGetExactNonNegativeUInt64FromScalar(s, u);
+        const bool swI = tryGetExactSignedInt64NoUIntWrapFromScalar(s, i);
+        if (!nnU && !swI) {
+          anyNonInteger = true;
+          return;
+        }
+        if (!nnU) {
+          allNnU = false;
+        }
+        if (!swI) {
+          allSwI = false;
+        }
+      };
+      const std::size_t nn = forEachArgScalarValue(classify);
+      if (nn == 0U) {
+        setAtLeastOneArgError(ctx, fnName);
+        return makeScalar(0);
+      }
+      if (!anyNonInteger && allNnU) {
+        bool ok = true;
+        std::uint64_t accU = 0;
+        bool hasMm = false;
+        std::uint64_t mmU = 0;
+        const bool wantMin = (id == BuiltinFunctionId::Min);
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          std::uint64_t u = 0;
+          (void)tryGetExactNonNegativeUInt64FromScalar(s, u);
+          if (id == BuiltinFunctionId::Sum) {
+            std::uint64_t next = 0;
+            if (!tryAddUInt64Checked(accU, u, next)) {
+              ok = false;
+            }
+            accU = next;
+          } else if (!hasMm || (wantMin ? u < mmU : u > mmU)) {
+            mmU = u;
+            hasMm = true;
+          }
+        });
+        if (ok) {
+          if (id == BuiltinFunctionId::Sum) {
+            return makeScalarUInt(accU);
+          }
+          return makeScalarUInt(mmU);
+        }
+      } else if (!anyNonInteger && allSwI) {
+        bool ok = true;
+        long long accI = 0;
+        bool hasMm = false;
+        long long mmI = 0;
+        const bool wantMin = (id == BuiltinFunctionId::Min);
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          long long i = 0;
+          (void)tryGetExactSignedInt64NoUIntWrapFromScalar(s, i);
+          if (id == BuiltinFunctionId::Sum) {
+            long long next = 0;
+            if (!tryAddInt64Checked(accI, i, next)) {
+              ok = false;
+            }
+            accI = next;
+          } else if (!hasMm || (wantMin ? i < mmI : i > mmI)) {
+            mmI = i;
+            hasMm = true;
+          }
+        });
+        if (ok) {
+          if (id == BuiltinFunctionId::Sum) {
+            return makeScalarInt(accI);
+          }
+          return makeScalarInt(mmI);
+        }
+      }
     }
     double acc = 0.0;
     bool hasValue = false;
@@ -4321,6 +4456,19 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
               randomUnitScalar());
     case BuiltinFunctionId::Gcd:
     case BuiltinFunctionId::Lcm: {
+      std::uint64_t aU = 0, bU = 0;
+      if (tryGetExactNonNegativeUInt64FromScalar(args[0].scalarValue, aU) &&
+          tryGetExactNonNegativeUInt64FromScalar(args[1].scalarValue, bU)) {
+        if (id == BuiltinFunctionId::Gcd) {
+          return makeScalarUInt(gcdUInt64(aU, bU));
+        }
+        std::uint64_t lU = 0;
+        if (!tryLcmUInt64(aU, bU, lU)) {
+          setNumericErrorInFunction(ctx, fnName);
+          return makeScalar(0);
+        }
+        return makeScalarUInt(lU);
+      }
       long long a = 0, b = 0;
       if (!tryGetSignedInt64FromScalar(args[0].scalarValue, a) ||
           !tryGetSignedInt64FromScalar(args[1].scalarValue, b)) {
