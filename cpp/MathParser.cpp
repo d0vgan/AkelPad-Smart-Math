@@ -296,80 +296,185 @@ bool tryParsePrefixedUIntLiteral(const char* p, char prefixLower, unsigned int r
   return true;
 }
 
+// Helper: Convert a digit array to uint64_t with overflow checking
+inline bool digitsToUint64(const unsigned char* digits, int digitCount, std::uint64_t& outValue) {
+  std::uint64_t value = 0;
+  for (int i = 0; i < digitCount; ++i) {
+    const unsigned char digit = digits[i];
+    if (value > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10u) {
+      return false;
+    }
+    value = value * 10 + digit;
+  }
+  outValue = value;
+  return true;
+}
+
 bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std::uint64_t& outValue) {
-  enum eNumState { IntDigits, FracDigits, ExpDigits };
+  static constexpr std::uint64_t pow10_u64[20] = {
+    1ull,
+    10ull,
+    100ull,
+    1000ull,
+    10000ull,
+    100000ull,
+    1000000ull,
+    10000000ull,
+    100000000ull,
+    1000000000ull,
+    10000000000ull,
+    100000000000ull,
+    1000000000000ull,
+    10000000000000ull,
+    100000000000000ull,
+    1000000000000000ull,
+    10000000000000000ull,
+    100000000000000000ull,
+    1000000000000000000ull,
+    10000000000000000000ull
+  };
 
   if (!numStart || !numEnd || numStart >= numEnd) {
     return false;
   }
 
-  std::uint64_t intPart = 0;
-  std::uint64_t fracPart = 0;
-  int numIntDigits = 0;
-  int numFracDigits = 0;
-  int numExpDigits = 0;
-  int expValue = 0;
-  eNumState state = IntDigits;
-  bool looksInt = true;
+  const char* p = numStart;
+  if (*p == '+') {
+    ++p;
+  }
+  if (p >= numEnd || *p == '-') {
+    return false;
+  }
 
-  for (const char* q = numStart; q < numEnd && looksInt; ++q) {
-    if (*q >= '0' && *q <= '9') {
-      if (state == IntDigits) {
-        if (numIntDigits < 20) {
-          const std::uint64_t digit = static_cast<std::uint64_t>(*q - '0');
-          if (intPart <= ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10u) {
-            intPart = quickMult10(intPart) + digit;
-          } else {
-            looksInt = false; // integer overflow for uint64 range
-          }
-        } else {
-          looksInt = false; // integer overflow for int64 range
-        }
-        ++numIntDigits;
-      }
-      else if (state == FracDigits) {
-        if (numFracDigits < 18) {
-          fracPart = quickMult10(fracPart) + static_cast<std::uint64_t>(*q - '0');
-        } else {
-          looksInt = false; // too many fractional digits for int64 range
-        }
-        ++numFracDigits;
-      }
-      else if (state == ExpDigits) {
-        if (numExpDigits < 2) {
-          expValue = quickMult10(expValue) + (*q - '0');
-        } else {
-          looksInt = false; // exponent overflow for int64 range
-        }
-        ++numExpDigits;
-      }
+  constexpr int MaxDigits = 128;
+  unsigned char digits[MaxDigits];
+  int storedDigitCount = 0;
+  int intDigitCount = 0;
+  int fracDigits = 0;
+  bool intPartStarted = false;
+  bool hasDigit = false;
+
+  while (p < numEnd && *p >= '0' && *p <= '9') {
+    const int digit = *p - '0';
+    hasDigit = true;
+    if (digit != 0) {
+      intPartStarted = true;
     }
-    else if (*q == '.' && state == IntDigits) {
-      state = FracDigits;
+    if (intPartStarted) {
+      if (storedDigitCount < MaxDigits) {
+        digits[storedDigitCount++] = static_cast<unsigned char>(digit);
+      } else {
+        return false;
+      }
+      ++intDigitCount;
     }
-    else if ((*q == 'e' || *q == 'E') && state != ExpDigits) {
-      state = ExpDigits;
-    } else if ((*q == '-') && state == ExpDigits && expValue == 0) {
-      looksInt = false; // negative exponent: not an int
+    ++p;
+  }
+
+  if (p < numEnd && *p == '.') {
+    ++p;
+    intPartStarted = true;
+    while (p < numEnd && *p >= '0' && *p <= '9') {
+      const int digit = *p - '0';
+      hasDigit = true;
+      if (storedDigitCount < MaxDigits) {
+        digits[storedDigitCount++] = static_cast<unsigned char>(digit);
+      } else if (digit != 0) {
+        return false;
+      }
+      ++fracDigits;
+      ++p;
     }
   }
 
-  if (looksInt) {
-    if (numExpDigits == 0 && numFracDigits == 0) {
-      outValue = intPart;
-    }
-    else if (expValue + numIntDigits <= 19 && numFracDigits + numIntDigits < 18 && expValue >= numFracDigits) {
-      intPart = mult10_N_times(intPart, expValue);
-      if (numFracDigits != 0) {
-        fracPart = mult10_N_times(fracPart, expValue - numFracDigits);
-      }
-      outValue = intPart + fracPart;
-    }
-    else
-      looksInt = false;
+  if (!hasDigit) {
+    return false;
   }
 
-  return looksInt;
+  if (storedDigitCount == 0) {
+    outValue = 0;
+    return true;
+  }
+
+  long long exponent = 0;
+  bool exponentNegative = false;
+  if (p < numEnd && (*p == 'e' || *p == 'E')) {
+    ++p;
+    if (p < numEnd && (*p == '+' || *p == '-')) {
+      exponentNegative = (*p == '-');
+      ++p;
+    }
+    if (p >= numEnd || *p < '0' || *p > '9') {
+      return false;
+    }
+
+    int exponentDigits = 0;
+    while (p < numEnd && *p >= '0' && *p <= '9') {
+      const int digit = *p - '0';
+      if (digit != 0 || exponentDigits != 0) {
+        if (++exponentDigits > 2) {
+          return false; // exponent is too large
+        }
+        exponent = exponent * 10 + digit;
+      }
+      ++p;
+    }
+    if (exponentNegative) {
+      exponent = -exponent;
+    }
+  }
+
+  if (p != numEnd) {
+    return false;
+  }
+
+  const int significantDigits = intDigitCount + fracDigits;
+  const long long adjust = exponent - fracDigits;
+
+  if (adjust >= 0) {
+    if (significantDigits + adjust > 20) {
+      return false;
+    }
+
+    std::uint64_t value = 0;
+    if (!digitsToUint64(digits, storedDigitCount, value)) {
+      return false;
+    }
+
+    if (adjust > 0) {
+      if (value > (std::numeric_limits<std::uint64_t>::max)() / pow10_u64[adjust]) {
+        return false;
+      }
+      value *= pow10_u64[adjust];
+    }
+
+    outValue = value;
+    return true;
+  }
+
+  const long long divisor = -adjust;
+  if (divisor > storedDigitCount) {
+    return false;
+  }
+  for (int i = storedDigitCount - divisor; i < storedDigitCount; ++i) {
+    if (digits[i] != 0) {
+      return false;
+    }
+  }
+
+  const int resultDigitCount = storedDigitCount - divisor;
+  if (resultDigitCount == 0) {
+    outValue = 0;
+    return true;
+  }
+
+  std::uint64_t value = 0;
+  if (!digitsToUint64(digits, resultDigitCount, value)) {
+    return false;
+  }
+
+  outValue = value;
+  return true;
 }
 
 long long gcdInt64(long long a, long long b) {

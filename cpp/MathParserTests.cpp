@@ -2564,7 +2564,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "90.123e15", "90123000000000000"} ,
     {ParityBasicCase::Kind::Expected, "1.23456789e18", "1234567890000000000"} ,
     {ParityBasicCase::Kind::Expected, "(9.0*10**18,9.2e17,9e18,90.123e15,1.23456789e18)", "(9000000000000000000, 920000000000000000, 9000000000000000000, 90123000000000000, 1234567890000000000)"} ,
-    {ParityBasicCase::Kind::Expected, "(9.2233e18,9.2234e18,0.123,0.123e3,0.12345e4,0.123e5,0.012345678901234e18,1.234567890123456e18,222.0)", "(9223300000000000000, 9.2234e+18, 0.123, 123, 1234.5, 12300, 12345678901234000, 1234567890123456000, 222)"} ,
+    {ParityBasicCase::Kind::Expected, "(9.2233e18,9.2234e18,0.123,0.123e3,0.12345e4,0.123e5,0.012345678901234e18,1.234567890123456e18,222.0,0)", "(9223300000000000000, 9.2234e+18, 0.123, 123, 1234.5, 12300, 12345678901234000, 1234567890123456000, 222, 0)"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,
     {ParityBasicCase::Kind::ErrorContains, "log(8)", "log() expects 2 argument(s)"} ,
