@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 903) as SmokeCase
+  dim tests(1 to 946) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -272,13 +272,13 @@ sub Main()
   tests(61).expr = "2**10+1":           tests(61).expected = "1025" ' [ok-core]
   tests(62).expr = "2**-1":             tests(62).expected = "0.5" ' [edge]
   tests(63).expr = "9007199254740993&1": tests(63).expected = "1" ' [overflow]
-  tests(64).expr = "9223372036854775807+1": tests(64).expected = "9.223372036854778e+018" ' [overflow]
+  tests(64).expr = "9223372036854775807+1": tests(64).expected = "9223372036854775808" ' [overflow]
   tests(65).expr = "-9223372036854775808-1": tests(65).expected = "-9.223372036854778e+018" ' [overflow]
   tests(66).expr = "3037000500*3037000500": tests(66).expected = "9.223372037000249e+018" ' [overflow]
   tests(67).expr = "2**63":             tests(67).expected = "9.223372036854776e+018" ' [overflow]
   tests(68).expr = "2**64":             tests(68).expected = "1.844674407370955e+019" ' [overflow]
   tests(69).expr = "9223372036854775807+0.5": tests(69).expected = "9.223372036854778e+018" ' [overflow]
-  tests(70).expr = "hex(9223372036854775807+1)": tests(70).expectedErrContains = "hex() expects integer values" ' [overflow]
+  tests(70).expr = "hex(9223372036854775807+1)": tests(70).expected = "0x8000000000000000" ' [overflow]
 
   ' === D) [spec] Built-ins and ans variable baseline behavior ===
   tests(71).expr = "log(8,2)":          tests(71).expected = "3" ' [ok-func]
@@ -480,7 +480,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(257).expr = "oct(1,2)":         tests(257).expected = "(0o1,0o2)" ' [ok-array]
   tests(258).expr = "oct((1,2,3),(4))": tests(258).expected = "(0o1,0o2,0o3,0o4)" ' [ok-array]
   tests(259).expr = "oct(15);ans":      tests(259).expected = "0o17" ' [ok-func]
-  tests(260).expr = "oct(9223372036854775807+1)": tests(260).expectedErrContains = "oct() expects integer values" ' [overflow]
+  tests(260).expr = "oct(9223372036854775807+1)": tests(260).expected = "0o1000000000000000000000" ' [overflow]
   tests(261).expr = "0O77":             tests(261).expected = "63" ' [ok-core]
   tests(262).expr = "0o123 + 1":        tests(262).expected = "84" ' [ok-core]
   tests(263).expr = "0o20 & 0xF":       tests(263).expected = "0" ' [ok-core]
@@ -785,7 +785,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(549).expr = "(1,2,3)[(1,2)]":                          tests(549).expectedErrContains = "array index must be a scalar integer"
   tests(550).expr = "1<<0":                                    tests(550).expected = "1"
   tests(551).expr = "8>>0":                                    tests(551).expected = "8"
-  tests(552).expr = "1<<63":                                   tests(552).expected = "-9223372036854775808"
+  tests(552).expr = "1<<63":                                   tests(552).expected = "9223372036854775808"
   tests(553).expr = "-1>>63":                                  tests(553).expected = "-1"
   tests(554).expr = "a=(1,2)<<0; a":                           tests(554).expected = "(1,2)"
   tests(555).expr = "a=(8,9)>>0; a":                           tests(555).expected = "(8,9)"
@@ -924,9 +924,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(680).expr = "hex((1,2.5,3))": tests(680).expectedErrContains = "hex() expects integer values"
   tests(681).expr = "gcd(18446744073709551615,3)": tests(681).expected = "1"
   tests(682).expr = "lcm(18446744073709551615,3)": tests(682).expected = "3"
-  tests(683).expr = "18446744073709551615%3": tests(683).expected = "-1"
+  tests(683).expr = "18446744073709551615%3": tests(683).expected = "0"
   tests(684).expr = "a=100.5; mod(a,3)": tests(684).expectedErrContains = "mod() expects integer values"
-  tests(685).expr = "mod(18446744073709551615,3)": tests(685).expected = "-1"
+  tests(685).expr = "mod(18446744073709551615,3)": tests(685).expected = "0"
   tests(686).expr = "a=100.5; a&7": tests(686).expectedErrContains = "bitwise operands must be integer values"
   tests(687).expr = "mod(7,(2,3))": tests(687).expected = "(1,1)"
   tests(688).expr = "mod((7,8),3)": tests(688).expected = "(1,2)"
@@ -965,9 +965,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(720).expr = "sum()": tests(720).expectedErrContains = "sum() expects at least 1 argument"
   tests(721).expr = "hex()": tests(721).expectedErrContains = "hex() expects at least 1 argument"
   tests(722).expr = "k=9007199254740992; v=(k+2)-2; hex(int(v))": tests(722).expected = "0x20000000000000"
-  tests(723).expr = "k=18446744073709551615; v=k+1; uhex(v)": tests(723).expected = "0x0"
-  tests(724).expr = "a=(18446744073709551615,1); b=(1,2); c=a+b; uhex(c[0])": tests(724).expected = "0x0"
-  tests(725).expr = "a=(18446744073709551615,3); b=(3,4); c=a*b; uhex(c[0])": tests(725).expected = "0xFFFFFFFFFFFFFFFD"
+  tests(723).expr = "k=18446744073709551615; v=k+1; uhex(v)": tests(723).expectedErrContains = "uhex() expects integer values"
+  tests(724).expr = "a=(18446744073709551615,1); b=(1,2); c=a+b; uhex(c[0])": tests(724).expectedErrContains = "uhex() expects integer values"
+  tests(725).expr = "a=(18446744073709551615,3); b=(3,4); c=a*b; uhex(c[0])": tests(725).expectedErrContains = "uhex() expects integer values"
   tests(726).expr = "a=floor((9007199254740993,2.9)); hex(a[0])": tests(726).expected = "0x20000000000001"
   tests(727).expr = "a=(9007199254740993,2); hex(sum(a[0]))": tests(727).expected = "0x20000000000001"
   tests(728).expr = "a=abs((18446744073709551615,-7)); uhex(a[0])": tests(728).expected = "0xFFFFFFFFFFFFFFFF"
@@ -1154,6 +1154,49 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(901).expr = "1.23456789e18": tests(901).expected = "1234567890000000000"
   tests(902).expr = "(9.0*10**18,9.2e17,9e18,90.123e15,1.23456789e18)": tests(902).expected = "(9000000000000000000, 920000000000000000, 9000000000000000000, 90123000000000000, 1234567890000000000)"
   tests(903).expr = "(9.2233e18,9.2234e18,0.123,0.123e3,0.12345e4,0.123e5,0.012345678901234e18,1.234567890123456e18,222.0,0)": tests(903).expected = "(9223300000000000000, 9.2234e+18, 0.123, 123, 1234.5, 12300, 12345678901234000, 1234567890123456000, 222, 0)"
+  tests(904).expr = "0x10000000000000000": tests(904).expectedErrContains = "invalid hex literal"
+  tests(905).expr = "0b10000000000000000000000000000000000000000000000000000000000000000": tests(905).expectedErrContains = "invalid binary literal"
+  tests(906).expr = "0o2000000000000000000000": tests(906).expectedErrContains = "invalid octal literal"
+  tests(907).expr = "1e": tests(907).expectedErrContains = "unexpected token"
+  tests(908).expr = "1e+": tests(908).expectedErrContains = "unexpected token"
+  tests(909).expr = "1e-": tests(909).expectedErrContains = "unexpected token"
+  tests(910).expr = ".": tests(910).expectedErrContains = "unexpected token"
+  tests(911).expr = ".0": tests(911).expected = "0"
+  tests(912).expr = "0.": tests(912).expected = "0"
+  tests(913).expr = "0.0": tests(913).expected = "0"
+  tests(914).expr = "0xFFFFFFFFFFFFFFFF+2": tests(914).expected = "1.844674407370955e+019"
+  tests(915).expr = "0xFFFFFFFFFFFFFFFF-2": tests(915).expected = "18446744073709551613"
+  tests(916).expr = "0xFFFFFFFFFFFFFFFF*2": tests(916).expected = "3.689348814741911e+019"
+  tests(917).expr = "0xFFFFFFFFFFFFFFFF/2": tests(917).expected = "9.223372036854776e+018"
+  tests(918).expr = "0xFFFFFFFFFFFFFFFF%2": tests(918).expected = "1"
+  tests(919).expr = "0xFFFFFFFFFFFFFFFF>>1": tests(919).expected = "9223372036854775807"
+  tests(920).expr = "0xFFFFFFFFFFFFFFFF<<1": tests(920).expected = "3.689348814741911e+019"
+  tests(921).expr = "0xFFFFFFFFFFFFFFFF**2": tests(921).expected = "3.402823669209385e+038"
+  tests(922).expr = "0x7FFFFFFFFFFFFFFF**2": tests(922).expected = "8.507059173023462e+037"
+  tests(923).expr = "-0xFFFFFFFFFFFFFFFF+2": tests(923).expected = "-1.844674407370955e+019"
+  tests(924).expr = "-0xFFFFFFFFFFFFFFFF-2": tests(924).expected = "-1.844674407370955e+019"
+  tests(925).expr = "(-0xFFFFFFFFFFFFFFFF)%2": tests(925).expectedErrContains = "modulo operands must be integer values"
+  tests(926).expr = "(-0xFFFFFFFFFFFFFFFF)>>1": tests(926).expectedErrContains = "bitwise operands must be integer values"
+  tests(927).expr = "-0x7FFFFFFFFFFFFFFF+2": tests(927).expected = "-9223372036854775805"
+  tests(928).expr = "0x7FFFFFFFFFFFFFFF+2": tests(928).expected = "9223372036854775809"
+  tests(929).expr = "0x7FFFFFFFFFFFFFFF-2": tests(929).expected = "9223372036854775805"
+  tests(930).expr = "0x7FFFFFFFFFFFFFFF<<1": tests(930).expected = "18446744073709551614"
+  tests(931).expr = "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); mod(a,2)": tests(931).expectedErrContains = "mod() expects integer values"
+  tests(932).expr = "a=(-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); a>>1": tests(932).expected = "(-4611686018427387904, 4611686018427387903)"
+  tests(933).expr = "a=(0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2); a+b": tests(933).expected = "(9223372036854775809, 9223372036854775809)"
+  tests(934).expr = "-0x7FFFFFFFFFFFFFFF-2": tests(934).expected = "-9.223372036854776e+018"
+  tests(935).expr = "0x7FFFFFFFFFFFFFFF*2": tests(935).expected = "18446744073709551614"
+  tests(936).expr = "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2,2); a+b": tests(936).expected = "(-1.844674407370955e+019, -9223372036854775805, 9223372036854775809)"
+  tests(937).expr = "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2,2); a*b": tests(937).expected = "(-3.689348814741911e+019, -1.844674407370955e+019, 18446744073709551614)"
+  tests(938).expr = "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); a>>1": tests(938).expectedErrContains = "bitwise operands must be integer values"
+  tests(939).expr = "0x7FFFFFFFFFFFFFFF<<2": tests(939).expected = "3.68934881474191e+019"
+  tests(940).expr = "0x7FFFFFFFFFFFFFFF>>1": tests(940).expected = "4611686018427387903"
+  tests(941).expr = "a=(0xFFFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFF); a>>1": tests(941).expected = "(9223372036854775807, 4611686018427387903, 288230376151711743)"
+  tests(942).expr = "a=(0xFFFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFF); a<<1": tests(942).expected = "(3.68934881474191e+19, 18446744073709551614, 1152921504606846974)"
+  tests(943).expr = "3.68934881474191e+19>>1": tests(943).expectedErrContains = "bitwise operands must be integer values"
+  tests(944).expr = "3.68934881474191e+19/2": tests(944).expected = "1.844674407370955e+019"
+  tests(945).expr = "3.68934881474191e+19**0.5": tests(945).expected = "6074000999.952098"
+  tests(946).expr = "3.68934881474191e+19%3": tests(946).expectedErrContains = "modulo operands must be integer values"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

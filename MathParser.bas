@@ -1045,17 +1045,33 @@ private function quickMult10(byval x as ULongInt) as ULongInt
   return (x shl 3) + (x shl 1)
 end function
 
-private function quickMult10_i(byval x as Integer) as Integer
-  ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
-  return (x shl 3) + (x shl 1)
-end function
-
 private function mult10_N_times(byval x as ULongInt, byval N as Integer) as ULongInt
   dim i as Integer
   for i = 1 to N
     x = quickMult10(x)
   next i
   return x
+end function
+
+private function TryMult10OnceChecked(byval x as ULongInt, byref outV as ULongInt) as Boolean
+  if x > (FB_U64_MAX \ 10ull) then return FALSE
+  outV = quickMult10(x)
+  return TRUE
+end function
+
+private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
+  dim i as Integer
+  outV = x
+  for i = 1 to N
+    if TryMult10OnceChecked(outV, outV) = FALSE then return FALSE
+  next i
+  return TRUE
+end function
+
+private function TryAddULongChecked(byval a as ULongInt, byval b as ULongInt, byref outV as ULongInt) as Boolean
+  if a > (FB_U64_MAX - b) then return FALSE
+  outV = a + b
+  return TRUE
 end function
 
 private function MakeNaN() as Double
@@ -1235,6 +1251,18 @@ private function TryGetExactInt64Scalar(byref s as ScalarValue, byref outV as Lo
     return TRUE
   end if
   return TryGetExactInt64FromDouble(s.scalar, outV)
+end function
+
+private function TryGetExactNonNegativeUInt64Scalar(byref s as ScalarValue, byref outV as ULongInt) as Boolean
+  if s.exactUInt64Valid then
+    outV = s.exactUInt64
+    return TRUE
+  end if
+  if s.exactInt64Valid andalso s.exactInt64 >= 0 then
+    outV = CULngInt(s.exactInt64)
+    return TRUE
+  end if
+  return FALSE
 end function
 
 private function UniqueHashKeyFromDouble(byval v as Double) as ULongInt
@@ -2522,8 +2550,56 @@ end function
 
 private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
   dim li as LongInt, ri as LongInt, ro as LongInt
-  dim hasIntL as Boolean = TryGetExactInt64Scalar(leftS, li)
-  dim hasIntR as Boolean = TryGetExactInt64Scalar(rightS, ri)
+  dim hasUIntL as Boolean = leftS.exactUInt64Valid
+  dim hasUIntR as Boolean = rightS.exactUInt64Valid
+  dim lu as ULongInt, ru as ULongInt
+  if hasUIntL then
+    lu = leftS.exactUInt64
+  elseif leftS.exactInt64Valid andalso leftS.exactInt64 >= 0 then
+    hasUIntL = TRUE
+    lu = CULngInt(leftS.exactInt64)
+  end if
+  if hasUIntR then
+    ru = rightS.exactUInt64
+  elseif rightS.exactInt64Valid andalso rightS.exactInt64 >= 0 then
+    hasUIntR = TRUE
+    ru = CULngInt(rightS.exactInt64)
+  end if
+  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid andalso _
+     ((leftS.exactInt64Valid = FALSE) orelse (rightS.exactInt64Valid = FALSE)) then
+    select case op
+      case CHAR_PLUS
+        if leftS.exactUInt64 <= (FB_U64_MAX - rightS.exactUInt64) then
+          ValueSetUInt64(outV, leftS.exactUInt64 + rightS.exactUInt64)
+          return TRUE
+        end if
+      case CHAR_MINUS
+        if leftS.exactUInt64 >= rightS.exactUInt64 then
+          ValueSetUInt64(outV, leftS.exactUInt64 - rightS.exactUInt64)
+          return TRUE
+        end if
+      case CHAR_ASTERISK
+        if rightS.exactUInt64 = 0ull orelse leftS.exactUInt64 <= (FB_U64_MAX \ rightS.exactUInt64) then
+          ValueSetUInt64(outV, leftS.exactUInt64 * rightS.exactUInt64)
+          return TRUE
+        end if
+    end select
+  end if
+
+  dim hasIntL as Boolean = leftS.exactInt64Valid
+  dim hasIntR as Boolean = rightS.exactInt64Valid
+  if hasIntL then
+    li = leftS.exactInt64
+  elseif leftS.exactUInt64Valid andalso leftS.exactUInt64 <= FB_I64_MAX_U then
+    hasIntL = TRUE
+    li = CLngInt(leftS.exactUInt64)
+  end if
+  if hasIntR then
+    ri = rightS.exactInt64
+  elseif rightS.exactUInt64Valid andalso rightS.exactUInt64 <= FB_I64_MAX_U then
+    hasIntR = TRUE
+    ri = CLngInt(rightS.exactUInt64)
+  end if
   if hasIntL andalso hasIntR then
     select case op
       case CHAR_ASTERISK
@@ -2534,6 +2610,15 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
         if TrySubInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
       case CHAR_CARET
         if TryPowInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+    end select
+  end if
+
+  if hasUIntL andalso hasUIntR then
+    select case op
+      case CHAR_PLUS
+        if lu <= (FB_U64_MAX - ru) then ValueSetUInt64(outV, lu + ru): return TRUE
+      case CHAR_ASTERISK
+        if ru = 0ull orelse lu <= (FB_U64_MAX \ ru) then ValueSetUInt64(outV, lu * ru): return TRUE
     end select
   end if
 
@@ -2640,6 +2725,52 @@ end function
 private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
   dim requiresIntegers as Boolean = (op = OP_BIT_SHL orelse op = OP_BIT_SHR orelse op = OP_BIT_AND orelse op = OP_BIT_XOR orelse op = OP_BIT_OR orelse op = OP_BIT_MOD)
   dim l as LongInt, r as LongInt
+
+  if op = OP_BIT_SHL then
+    dim luShl as ULongInt, ruShl as ULongInt
+    if TryGetExactNonNegativeUInt64Scalar(leftS, luShl) andalso TryGetExactNonNegativeUInt64Scalar(rightS, ruShl) then
+      if ruShl > 63ull then return FALSE
+      if ruShl > 0ull andalso luShl > (FB_U64_MAX shr CInt(ruShl)) then
+        ValueSetScalarPromoteExactInt64(outV, leftS.scalar * pow(2.0, CDbl(ruShl)))
+        return TRUE
+      end if
+      ValueSetUInt64(outV, luShl shl CInt(ruShl))
+      return TRUE
+    end if
+  end if
+
+  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid andalso _
+     ((leftS.exactInt64Valid = FALSE) orelse (rightS.exactInt64Valid = FALSE)) then
+    dim lu as ULongInt = leftS.exactUInt64
+    dim ru as ULongInt = rightS.exactUInt64
+    select case op
+      case OP_BIT_SHL
+        if ru > 63ull then return FALSE
+        if ru > 0ull andalso lu > (FB_U64_MAX shr CInt(ru)) then
+          ValueSetScalarPromoteExactInt64(outV, leftS.scalar * pow(2.0, CDbl(ru)))
+          return TRUE
+        end if
+        ValueSetUInt64(outV, lu shl CInt(ru))
+        return TRUE
+      case OP_BIT_SHR
+        if ru > 63ull then return FALSE
+        ValueSetUInt64(outV, lu shr CInt(ru))
+        return TRUE
+      case OP_BIT_AND
+        ValueSetUInt64(outV, lu and ru)
+        return TRUE
+      case OP_BIT_XOR
+        ValueSetUInt64(outV, lu xor ru)
+        return TRUE
+      case OP_BIT_OR
+        ValueSetUInt64(outV, lu or ru)
+        return TRUE
+      case OP_BIT_MOD
+        if ru = 0ull then return FALSE
+        ValueSetUInt64(outV, lu mod ru)
+        return TRUE
+    end select
+  end if
 
   if requiresIntegers then
     if (TryGetExactInt64Scalar(leftS, l) = FALSE) orelse (TryGetExactInt64Scalar(rightS, r) = FALSE) then
@@ -2938,6 +3069,9 @@ private function TryParsePrefixedUIntLiteral(byval prefixChar as UByte, byval ra
       exit while
     end if
     if d < 0 orelse CULngInt(d) >= radix then exit while
+    if parsed > ((FB_U64_MAX - CULngInt(d)) \ radix) then
+      return FALSE
+    end if
     parsed = parsed * radix + CULngInt(d)
     digits += 1
     p += 1
@@ -3688,46 +3822,36 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
   dim keepInt as LongInt = 0
   dim keepExactUInt as Boolean = FALSE
   dim keepUInt as ULongInt = 0
-  if pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_X orelse pStream[1] = CHAR_X) then
-    dim hexVal as ULongInt = 0
-    if TryParsePrefixedUIntLiteral(CHAR_LC_X, 16, hexVal) = FALSE then
-      SetInvalidPrefixedLiteralError(CHAR_LC_X)
-      return FALSE
+
+  if pStream[0] = CHAR_DIGIT_0 then
+    dim prefixLower as UByte = 0
+    dim radix as ULongInt = 0
+    if pStream[1] = CHAR_LC_X orelse pStream[1] = CHAR_X then
+      prefixLower = CHAR_LC_X
+      radix = 16
+    elseif pStream[1] = CHAR_LC_B orelse pStream[1] = CHAR_B then
+      prefixLower = CHAR_LC_B
+      radix = 2
+    elseif pStream[1] = CHAR_LC_O orelse pStream[1] = CHAR_O then
+      prefixLower = CHAR_LC_O
+      radix = 8
     end if
-    dVal = CDbl(hexVal)
-    if hexVal <= FB_I64_MAX_U then
-      keepExactInt = TRUE
-      keepInt = CLngInt(hexVal)
+    if prefixLower <> 0 then
+      if TryParsePrefixedUIntLiteral(prefixLower, radix, keepUInt) = FALSE then
+        SetInvalidPrefixedLiteralError(prefixLower)
+        return FALSE
+      end if
+
+      dVal = CDbl(keepUInt)
+      keepExactUInt = TRUE
+      if keepUInt <= FB_I64_MAX_U then
+        keepExactInt = TRUE
+        keepInt = CLngInt(keepUInt)
+      end if
     end if
-    keepExactUInt = TRUE
-    keepUInt = hexVal
-  elseif pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_B orelse pStream[1] = CHAR_B) then
-    dim binVal as ULongInt = 0
-    if TryParsePrefixedUIntLiteral(CHAR_LC_B, 2, binVal) = FALSE then
-      SetInvalidPrefixedLiteralError(CHAR_LC_B)
-      return FALSE
-    end if
-    dVal = CDbl(binVal)
-    if binVal <= FB_I64_MAX_U then
-      keepExactInt = TRUE
-      keepInt = CLngInt(binVal)
-    end if
-    keepExactUInt = TRUE
-    keepUInt = binVal
-  elseif pStream[0] = CHAR_DIGIT_0 andalso (pStream[1] = CHAR_LC_O orelse pStream[1] = CHAR_O) then
-    dim octVal as ULongInt = 0
-    if TryParsePrefixedUIntLiteral(CHAR_LC_O, 8, octVal) = FALSE then
-      SetInvalidPrefixedLiteralError(CHAR_LC_O)
-      return FALSE
-    end if
-    dVal = CDbl(octVal)
-    if octVal <= FB_I64_MAX_U then
-      keepExactInt = TRUE
-      keepInt = CLngInt(octVal)
-    end if
-    keepExactUInt = TRUE
-    keepUInt = octVal
-  else
+  end if
+
+  if keepExactUInt = FALSE then
     ' decimal number
     dim fract as Double = 1
     dim decIntAcc as ULongInt = 0
@@ -3772,10 +3896,11 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
         fract /= 10
         dVal += digit * fract
         if not decIntOverflow then
-          decFracAcc = quickMult10(decFracAcc) + CULngInt(digit)
-          if decFracAcc > FB_U64_MAX \ 10 then
+          if (decFracAcc > U64_MAX_DIV10) orelse (decFracAcc = U64_MAX_DIV10 andalso digit > U64_MAX_MOD10) then
             decIntOverflow = TRUE
             decFracAcc = 0
+          else
+            decFracAcc = quickMult10(decFracAcc) + CULngInt(digit)
           end if
         end if
         numFracDigits += 1
@@ -3786,15 +3911,14 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
     ' Check if we have any digits
     if numIntDigits = 0 andalso numFracDigits = 0 then
       if not hasDigit then
+        SetUnexpectedTokenError()
         return FALSE
       end if
       dVal = 0
-      ValueSetScalar(n, dVal)
-      n.exactInt64Valid = TRUE
-      n.exactInt64 = 0
-      n.exactUInt64Valid = TRUE
-      n.exactUInt64 = 0
-      return TRUE
+      keepExactInt = TRUE
+      keepInt = 0
+      keepExactUInt = TRUE
+      keepUInt = 0
     end if
 
     ' Parse exponent
@@ -3811,22 +3935,24 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
       elseif pExp[0] = CHAR_PLUS then
         pExp += 1
       end if
-      if pExp[0] >= CHAR_DIGIT_0 andalso pExp[0] <= CHAR_DIGIT_9 then
-        dim expDigits as Integer = 0
-        pStream = pExp
-        while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
-          dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
-          if digit <> 0 orelse expDigits <> 0 then
-            if expDigits < 4 then
-              expVal = expVal * 10 + digit
-            end if
-            expDigits += 1
+      if pExp[0] < CHAR_DIGIT_0 orelse pExp[0] > CHAR_DIGIT_9 then
+        SetUnexpectedTokenError()
+        return FALSE
+      end if
+      dim expDigits as Integer = 0
+      pStream = pExp
+      while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
+        dim digit as Integer = (pStream[0] - CHAR_DIGIT_0)
+        if digit <> 0 orelse expDigits <> 0 then
+          if expDigits < 4 then
+            expVal = expVal * 10 + digit
           end if
-          pStream += 1
-        wend
-        if expNegative then
-          expVal = -expVal
+          expDigits += 1
         end if
+        pStream += 1
+      wend
+      if expNegative then
+        expVal = -expVal
       end if
     end if
 
@@ -3840,17 +3966,17 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
           ' Result would exceed uint64 range
           decIntOverflow = TRUE
         else
-          ' Combine: intPart * 10^fracDigits + fracPart
+          ' Combine: intPart * 10^fracDigits + fracPart (checked: silent ULongInt wrap must not attach exact uint metadata)
           dim exactInt as ULongInt = decIntAcc
-          exactInt = mult10_N_times(exactInt, numFracDigits)
-          exactInt += decFracAcc
-
-          ' Apply exponent adjustment
-          if adjust > 0 then
-            exactInt = mult10_N_times(exactInt, adjust)
+          if TryMult10_N_TimesChecked(exactInt, numFracDigits, exactInt) = FALSE then
+            decIntOverflow = TRUE
+          elseif TryAddULongChecked(exactInt, decFracAcc, exactInt) = FALSE then
+            decIntOverflow = TRUE
+          elseif adjust > 0 then
+            if TryMult10_N_TimesChecked(exactInt, adjust, exactInt) = FALSE then decIntOverflow = TRUE
           end if
 
-          if exactInt <= FB_U64_MAX then
+          if decIntOverflow = FALSE then
             decIntAcc = exactInt
             numFracDigits = 0
             dVal = CDbl(exactInt)
@@ -3863,28 +3989,34 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
         ' Negative adjustment: check if exactly divisible
         dim divisor as Integer = -adjust
         if divisor <= numFracDigits then
-          ' Check if the last 'divisor' fractional digits are all zero
-          dim fracRemainder as ULongInt = decFracAcc mod (mult10_N_times(1ull, divisor))
-          if fracRemainder = 0ull then
-            ' Divisible: result is exact integer
-            dim resultDigits as Integer = numIntDigits + numFracDigits - divisor
-            exactIntLiteral = TRUE
-            if resultDigits = 0 then
-              decIntAcc = 0
-            elseif resultDigits <= 20 then
-              ' Combine and reduce by divisor
-              dim exactInt as ULongInt = decIntAcc
-              exactInt = mult10_N_times(exactInt, numFracDigits - divisor)
-              exactInt += decFracAcc \ (mult10_N_times(1ull, divisor))
-
-              decIntAcc = exactInt
-            else
-              ' Too many result digits
-              exactIntLiteral = FALSE
-            end if
-            if exactIntLiteral then
-              numFracDigits = 0
-              dVal = CDbl(decIntAcc)
+          dim pow10Divisor as ULongInt
+          if TryMult10_N_TimesChecked(1ull, divisor, pow10Divisor) then
+            ' Check if the last 'divisor' fractional digits are all zero
+            dim fracRemainder as ULongInt = decFracAcc mod pow10Divisor
+            if fracRemainder = 0ull then
+              ' Divisible: result is exact integer
+              dim resultDigits as Integer = numIntDigits + numFracDigits - divisor
+              exactIntLiteral = TRUE
+              if resultDigits = 0 then
+                decIntAcc = 0
+              elseif resultDigits <= 20 then
+                ' Combine and reduce by divisor
+                dim exactInt as ULongInt = decIntAcc
+                if TryMult10_N_TimesChecked(exactInt, numFracDigits - divisor, exactInt) = FALSE then
+                  exactIntLiteral = FALSE
+                elseif TryAddULongChecked(exactInt, decFracAcc \ pow10Divisor, exactInt) = FALSE then
+                  exactIntLiteral = FALSE
+                else
+                  decIntAcc = exactInt
+                end if
+              else
+                ' Too many result digits
+                exactIntLiteral = FALSE
+              end if
+              if exactIntLiteral then
+                numFracDigits = 0
+                dVal = CDbl(decIntAcc)
+              end if
             end if
           end if
         end if
@@ -3900,6 +4032,13 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
       keepUInt = decIntAcc
     elseif hasExponent then
       dVal = dVal * pow(10.0, CDbl(expVal))
+    end if
+  end if
+
+  if keepExactUInt andalso keepUInt <= FB_I64_MAX_U then
+    if keepExactInt = FALSE then
+      keepExactInt = TRUE
+      keepInt = CLngInt(keepUInt)
     end if
   end if
 

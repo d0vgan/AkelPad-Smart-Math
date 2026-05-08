@@ -90,6 +90,8 @@ Apply this rule for **any source-code change** (feature/fix/refactor/cleanup/opt
 - While tuning existing helpers, keep them maximally optimized for their hot-path usage.
 - If no existing helper can be tuned without harming clarity/behavior/performance, introduce a new helper instead.
 - When adding a new helper, keep scope minimal and avoid overlapping responsibilities with existing helpers.
+- Prefer reusing existing local variables/state before introducing new temporary variables; add a new variable only when it is clearly necessary for correctness, readability, or performance.
+- Preserve consistent block indentation when refactoring/optimizing; changed code must keep project indentation style and cleanly aligned nested blocks.
 
 ### Integer Metadata Preservation Rule (Required)
 

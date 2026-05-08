@@ -797,7 +797,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                }});
   t.push_back({"edge/mod operator uint64-above-signed-range accepted", [](std::string& why) {
                 MathParser p;
-                 return expectEval(p, "18446744073709551615%3", "-1", why);
+                return expectEval(p, "18446744073709551615%3", "0", why);
               }});
   t.push_back({"edge/mod double const integer-valued", [](std::string& why) {
                  MathParser p;
@@ -811,7 +811,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                }});
   t.push_back({"edge/mod builtin uint64-above-signed-range accepted", [](std::string& why) {
                 MathParser p;
-                 return expectEval(p, "mod(18446744073709551615,3)", "-1", why);
+                return expectEval(p, "mod(18446744073709551615,3)", "0", why);
               }});
   t.push_back({"edge/uhex decimal uint64 max formats unsigned", [](std::string& why) {
                 MathParser p;
@@ -1110,29 +1110,29 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                 MathParser p;
                 return expectEvalErrorContains(p, "a=(1,2)<<64", "incompatible operands", why);
               }});
-  t.push_back({"edge/array add uint64 max preserves exact int path", [](std::string& why) {
+  t.push_back({"edge/array add uint64 max promotes to floating", [](std::string& why) {
                 MathParser p;
-                return expectEval(p, "a=(18446744073709551615,1); b=(1,2); c=a+b; c[0]&1", "0", why);
+                return expectEvalErrorContains(p, "a=(18446744073709551615,1); b=(1,2); c=a+b; c[0]&1", "bitwise operands must be integer values", why);
               }});
-  t.push_back({"edge/array mul uint64 max preserves exact int path", [](std::string& why) {
+  t.push_back({"edge/array mul uint64 max promotes to floating", [](std::string& why) {
                 MathParser p;
-                return expectEval(p, "a=(18446744073709551615,3); b=(3,4); c=a*b; mod(c[0],5)", "-3", why);
+                return expectEvalErrorContains(p, "a=(18446744073709551615,3); b=(3,4); c=a*b; mod(c[0],5)", "mod() expects integer values", why);
               }});
   t.push_back({"edge/scalar 2^53 float path restores signed exact int", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "k=9007199254740992; v=(k+2)-2; hex(int(v))", "0x20000000000000", why);
               }});
-  t.push_back({"edge/scalar uint64 max plus one wraps in exact int path", [](std::string& why) {
+  t.push_back({"edge/scalar uint64 max plus one promotes to floating", [](std::string& why) {
                 MathParser p;
-                return expectEval(p, "k=18446744073709551615; v=k+1; uhex(v)", "0x0", why);
+                return expectEvalErrorContains(p, "k=18446744073709551615; v=k+1; uhex(v)", "uhex() expects integer values", why);
               }});
-  t.push_back({"edge/array uint64 max plus one wraps per element", [](std::string& why) {
+  t.push_back({"edge/array uint64 max plus one promotes per element", [](std::string& why) {
                 MathParser p;
-                return expectEval(p, "a=(18446744073709551615,1); b=(1,2); c=a+b; uhex(c[0])", "0x0", why);
+                return expectEvalErrorContains(p, "a=(18446744073709551615,1); b=(1,2); c=a+b; uhex(c[0])", "uhex() expects integer values", why);
               }});
-  t.push_back({"edge/array uint64 max times three keeps wrapped exactness", [](std::string& why) {
+  t.push_back({"edge/array uint64 max times three promotes per element", [](std::string& why) {
                 MathParser p;
-                return expectEval(p, "a=(18446744073709551615,3); b=(3,4); c=a*b; uhex(c[0])", "0xFFFFFFFFFFFFFFFD", why);
+                return expectEvalErrorContains(p, "a=(18446744073709551615,3); b=(3,4); c=a*b; uhex(c[0])", "uhex() expects integer values", why);
               }});
   t.push_back({"edge/array near-max stored then int-op preserves exactness", [](std::string& why) {
                  MathParser p;
@@ -2543,13 +2543,13 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "2**10+1", "1025"} ,
     {ParityBasicCase::Kind::Expected, "2**-1", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "9007199254740993&1", "1"} ,
-    {ParityBasicCase::Kind::Expected, "9223372036854775807+1", "9.223372036854778e+018"} ,
+    {ParityBasicCase::Kind::Expected, "9223372036854775807+1", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "-9223372036854775808-1", "-9.223372036854778e+018"} ,
     {ParityBasicCase::Kind::Expected, "3037000500*3037000500", "9.223372037000249e+018"} ,
     {ParityBasicCase::Kind::Expected, "2**63", "9.223372036854776e+018"} ,
     {ParityBasicCase::Kind::Expected, "2**64", "1.844674407370955e+019"} ,
     {ParityBasicCase::Kind::Expected, "9223372036854775807+0.5", "9.223372036854778e+018"} ,
-    {ParityBasicCase::Kind::ErrorContains, "hex(9223372036854775807+1)", "hex() expects integer values"} ,
+    {ParityBasicCase::Kind::Expected, "hex(9223372036854775807+1)", "0x8000000000000000"} ,
     {ParityBasicCase::Kind::Expected, "(2**58, 2**58+123)", "(288230376151711744, 288230376151711867)"} ,
     //{ParityBasicCase::Kind::Expected, "(2**58, 2**58+123);hex", "(0x400000000000000, 0x40000000000007B)"} ,
     {ParityBasicCase::Kind::Expected, "(2**61, 2**61+123)", "(2305843009213693952, 2305843009213694075)"} ,
@@ -2565,6 +2565,49 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "1.23456789e18", "1234567890000000000"} ,
     {ParityBasicCase::Kind::Expected, "(9.0*10**18,9.2e17,9e18,90.123e15,1.23456789e18)", "(9000000000000000000, 920000000000000000, 9000000000000000000, 90123000000000000, 1234567890000000000)"} ,
     {ParityBasicCase::Kind::Expected, "(9.2233e18,9.2234e18,0.123,0.123e3,0.12345e4,0.123e5,0.012345678901234e18,1.234567890123456e18,222.0,0)", "(9223300000000000000, 9.2234e+18, 0.123, 123, 1234.5, 12300, 12345678901234000, 1234567890123456000, 222, 0)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "0x10000000000000000", "invalid hex literal"} ,
+    {ParityBasicCase::Kind::ErrorContains, "0b10000000000000000000000000000000000000000000000000000000000000000", "invalid binary literal"} ,
+    {ParityBasicCase::Kind::ErrorContains, "0o2000000000000000000000", "invalid octal literal"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1e", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1e+", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1e-", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, ".", "unexpected token"} ,
+    {ParityBasicCase::Kind::Expected, ".0", "0"} ,
+    {ParityBasicCase::Kind::Expected, "0.", "0"} ,
+    {ParityBasicCase::Kind::Expected, "0.0", "0"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF+2", "1.844674407370955e+019"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF-2", "18446744073709551613"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF*2", "3.689348814741911e+019"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF/2", "9.223372036854776e+018"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF%2", "1"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF>>1", "9223372036854775807"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF<<1", "3.689348814741911e+019"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF**2", "3.402823669209385e+038"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF**2", "8.507059173023462e+037"} ,
+    {ParityBasicCase::Kind::Expected, "-0xFFFFFFFFFFFFFFFF+2", "-1.844674407370955e+019"} ,
+    {ParityBasicCase::Kind::Expected, "-0xFFFFFFFFFFFFFFFF-2", "-1.844674407370955e+019"} ,
+    {ParityBasicCase::Kind::ErrorContains, "(-0xFFFFFFFFFFFFFFFF)%2", "modulo operands must be integer values"} ,
+    {ParityBasicCase::Kind::ErrorContains, "(-0xFFFFFFFFFFFFFFFF)>>1", "bitwise operands must be integer values"} ,
+    {ParityBasicCase::Kind::Expected, "-0x7FFFFFFFFFFFFFFF+2", "-9223372036854775805"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF+2", "9223372036854775809"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF-2", "9223372036854775805"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF<<1", "18446744073709551614"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF<<2", "3.68934881474191e+019"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF>>1", "4611686018427387903"} ,
+    {ParityBasicCase::Kind::Expected, "a=(-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); a>>1", "(-4611686018427387904, 4611686018427387903)"} ,
+    {ParityBasicCase::Kind::Expected, "a=(0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2); a+b", "(9223372036854775809, 9223372036854775809)"} ,
+    {ParityBasicCase::Kind::Expected, "-0x7FFFFFFFFFFFFFFF-2", "-9.223372036854776e+018"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*2", "18446744073709551614"} ,
+    {ParityBasicCase::Kind::Expected, "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2,2); a+b", "(-1.844674407370955e+019, -9223372036854775805, 9223372036854775809)"} ,
+    {ParityBasicCase::Kind::Expected, "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); b=(2,2,2); a*b", "(-3.689348814741911e+019, -1.844674407370955e+019, 18446744073709551614)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); mod(a,2)", "mod() expects integer values"} ,
+    {ParityBasicCase::Kind::ErrorContains, "a=(-0xFFFFFFFFFFFFFFFF,-0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF); a>>1", "bitwise operands must be integer values"} ,
+    {ParityBasicCase::Kind::Expected, "a=(0xFFFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFF); a>>1", "(9223372036854775807, 4611686018427387903, 288230376151711743)"} ,
+    {ParityBasicCase::Kind::Expected, "a=(0xFFFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFFF,0x7FFFFFFFFFFFFFF); a<<1", "(3.68934881474191e+19, 18446744073709551614, 1152921504606846974)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "3.68934881474191e+19>>1", "bitwise operands must be integer values"} ,
+    {ParityBasicCase::Kind::Expected, "3.68934881474191e+19/2", "1.844674407370955e+019"} ,
+    {ParityBasicCase::Kind::Expected, "3.68934881474191e+19**0.5", "6074000999.952098"} ,
+    {ParityBasicCase::Kind::ErrorContains, "3.68934881474191e+19%3", "modulo operands must be integer values"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,
     {ParityBasicCase::Kind::ErrorContains, "log(8)", "log() expects 2 argument(s)"} ,
@@ -2775,7 +2818,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "oct(1,2)", "(0o1,0o2)"} ,
     {ParityBasicCase::Kind::Expected, "oct((1,2,3),(4))", "(0o1,0o2,0o3,0o4)"} ,
     {ParityBasicCase::Kind::Expected, "oct(15);ans", "0o17"} ,
-    {ParityBasicCase::Kind::ErrorContains, "oct(9223372036854775807+1)", "oct() expects integer values"} ,
+    {ParityBasicCase::Kind::Expected, "oct(9223372036854775807+1)", "0o1000000000000000000000"} ,
     {ParityBasicCase::Kind::Expected, "0O77", "63"} ,
     {ParityBasicCase::Kind::Expected, "0o123 + 1", "84"} ,
     {ParityBasicCase::Kind::Expected, "0o20 & 0xF", "0"} ,
@@ -2981,7 +3024,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "(1,2,3)[(1,2)]", "array index must be a scalar integer"} ,
     {ParityBasicCase::Kind::Expected, "1<<0", "1"} ,
     {ParityBasicCase::Kind::Expected, "8>>0", "8"} ,
-    {ParityBasicCase::Kind::Expected, "1<<63", "-9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "1<<63", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "-1>>63", "-1"} ,
     {ParityBasicCase::Kind::Expected, "a=(1,2)<<0; a", "(1,2)"} ,
     {ParityBasicCase::Kind::Expected, "a=(8,9)>>0; a", "(8,9)"} ,

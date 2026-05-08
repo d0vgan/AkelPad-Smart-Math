@@ -342,6 +342,8 @@ private:
   static bool nearlyInt(double v, long long& out);
   static bool parseUInt64FromDouble(double v, std::uint64_t& out);
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  static bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool argsContainNonFinite(const std::vector<EvalValue>& args);
   static bool isFormatBuiltin(BuiltinFunctionId id);
