@@ -4684,15 +4684,24 @@ MathParser::EvalValue MathParser::calcRoundingFn(BuiltinFunctionId id, const Eva
 
   if (x > K_MAX_EXACT_INT_FROM_DOUBLE || x < -K_MAX_EXACT_INT_FROM_DOUBLE)
   {
-    static const double dblUint64Max = std::pow(2.0, 64.0) - 1.0;
-
     if (x <= (std::numeric_limits<long long>::max)() && x >= (std::numeric_limits<long long>::min)())
       return makeScalarInt(static_cast<long long>(x));
 
-    if (x <= dblUint64Max && x >= 0.0)
-      return makeScalarUInt(static_cast<std::uint64_t>(x));
+    const double p64 = std::ldexp(1.0, 64);
+    if (x >= 0.0 && x < p64 && x == std::trunc(x)) {
+      const std::uint64_t u = static_cast<std::uint64_t>(x);
+      if (static_cast<double>(u) == x)
+        return makeScalarUInt(u);
+    }
 
-    return makeScalar(x);
+    switch (id) {
+      case BuiltinFunctionId::Floor: return makeScalar(std::floor(x));
+      case BuiltinFunctionId::Ceil: return makeScalar(std::ceil(x));
+      case BuiltinFunctionId::Trunc:
+      case BuiltinFunctionId::Int: return makeScalar(std::trunc(x));
+      case BuiltinFunctionId::Round: return makeScalar(std::round(x));
+      default: return makeScalar(x);
+    }
   }
 
   long long rounded = 0;

@@ -157,6 +157,8 @@ const FB_I64_MAX_U as ULongInt = 9223372036854775807
 const FB_I64_MIN_D as Double = -9223372036854775808.0
 const FB_I64_MAX_D as Double = 9223372036854775807.0
 const FB_MAX_EXACT_INT_FROM_DOUBLE as Double = 9007199254740992.0 ' 2^53
+'' IEEE double: 2^64 (next representable above UINT64_MAX).
+const FB_2_POW_64_D as Double = 1.8446744073709551616e+19
 const FB_PI_VAL as Double = 4.0 * atn(1.0) ' pi
 
 ' -----------------------------------------------------------------------------
@@ -2468,6 +2470,30 @@ private function CalcHypot(byval x as Double, byval y as Double) as Double
   return sqr((x * x) + (y * y))
 end function
 
+private sub CalcRoundingFnHugeAsFloat(byval fnId as Integer, byval x as Double, byref outV as EvalValue)
+  '' Fix/Int are not reliable past exact LongInt range; use C floor for full double domain.
+  select case fnId
+  case FUNC_INT, FUNC_TRUNC
+    if x >= 0 then
+      ValueSetScalar(outV, floor(x))
+    else
+      ValueSetScalar(outV, -floor(-x))
+    end if
+  case FUNC_FLOOR
+    ValueSetScalar(outV, floor(x))
+  case FUNC_CEIL
+    ValueSetScalar(outV, -floor(-x))
+  case FUNC_ROUND
+    if x >= 0 then
+      ValueSetScalar(outV, floor(x + 0.5))
+    else
+      ValueSetScalar(outV, -floor(-x + 0.5))
+    end if
+  case else
+    ValueSetScalar(outV, x)
+  end select
+end sub
+
 private sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
   dim x as Double = scalarV.scalar
 
@@ -2480,10 +2506,15 @@ private sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, 
   elseif (x > FB_MAX_EXACT_INT_FROM_DOUBLE) orelse (x < -FB_MAX_EXACT_INT_FROM_DOUBLE) then
     if (x <= FB_I64_MAX_D) andalso (x >= FB_I64_MIN_D) then
       ValueSetInt64(outV, CLngInt(x))
-    elseif (x <= FB_U64_MAX) andalso (x >= 0) then
-      ValueSetUInt64(outV, CULngInt(x))
+    elseif (x >= 0) andalso (x < FB_2_POW_64_D) andalso (x = floor(x)) then
+      dim u as ULongInt = CULngInt(floor(x))
+      if CDbl(u) = x then
+        ValueSetUInt64(outV, u)
+      else
+        CalcRoundingFnHugeAsFloat(fnId, x, outV)
+      end if
     else
-      ValueSetScalar(outV, x)
+      CalcRoundingFnHugeAsFloat(fnId, x, outV)
     end if
   else
     dim rounded as LongInt = 0

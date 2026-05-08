@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 951) as SmokeCase
+  dim tests(1 to 955) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1202,6 +1202,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(949).expr = "min(18446744073709551615,5)": tests(949).expected = "5"
   tests(950).expr = "sum(-9223372036854775807,-1)": tests(950).expected = "-9223372036854775808"
   tests(951).expr = "max(-9,-1)": tests(951).expected = "-1"
+  tests(952).expr = "int(0xFFFFFFFFFFFFFFFF+1)": tests(952).expected = "1.844674407370955e+019"
+  tests(953).expr = "trunc(0xFFFFFFFFFFFFFFFF+1)": tests(953).expected = "1.844674407370955e+019"
+  tests(954).expr = "floor(0xFFFFFFFFFFFFFFFF+1)": tests(954).expected = "1.844674407370955e+019"
+  tests(955).expr = "ceil(0xFFFFFFFFFFFFFFFF+1)": tests(955).expected = "1.844674407370955e+019"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

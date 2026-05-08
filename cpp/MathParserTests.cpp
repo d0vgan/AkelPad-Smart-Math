@@ -783,6 +783,16 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                 if (!expectEval(p, "max(-9,-1)", "-1", why)) return false;
                 return true;
               }});
+  t.push_back({"edge/uint64 max plus one rounds via float like int(1e20)", [](std::string& why) {
+                MathParser p;
+                const char* p64 = "1.844674407370955e+019";
+                if (!expectEval(p, "int(0xFFFFFFFFFFFFFFFF+1)", p64, why)) return false;
+                if (!expectEval(p, "trunc(0xFFFFFFFFFFFFFFFF+1)", p64, why)) return false;
+                if (!expectEval(p, "floor(0xFFFFFFFFFFFFFFFF+1)", p64, why)) return false;
+                if (!expectEval(p, "ceil(0xFFFFFFFFFFFFFFFF+1)", p64, why)) return false;
+                if (!expectEval(p, "0xFFFFFFFFFFFFFFFF+1", p64, why)) return false;
+                return true;
+              }});
   t.push_back({"edge/ncr basic", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "ncr(5,2)", "10", why);
