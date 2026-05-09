@@ -119,6 +119,7 @@ Base-prefixed integer forms:
   - `f((10,20))` -> `(101, 401)`
 - Multiple args:
   - `mix(a,b)=a*2+b*3; mix(2,4)` -> `16`
+  - `f(a,b,c)=a+b*c; f(2,3,4)` -> `14`
   - `f(a,b,c)=a+b*c; v=(2,3,4); f(unpack(v))` -> `14`
 - Recursive functions are not supported.
 
@@ -197,6 +198,13 @@ Recommendation: use `==` for equality checks to avoid confusion.
   - `17%5` -> `2`
 - Postfix percent:
   - `200+15%` -> `230`
+- Percentage math and precedence:
+  - `5 + 2*3%` means `5 + (2*3%)` -> `5 + 0.06` -> `5.06`.
+  - `5 + (2*3)%` means `5 + 6%` -> `5 + (5*0.06)` -> `5.3`.
+- Tricky examples:
+  - `5 % -20` means `(5%) - 20` -> `0.05 - 20` -> `-19.5`.
+  - `-20 + 5%` means `-20 + (-20*0.05)` -> `-21`.
+  - `5 % (-20)` means `mod(5, -20)` -> `5`.
 
 ### Mini Guide: `!` vs `not`
 
@@ -362,6 +370,7 @@ Purpose: power (`**`) and root operations.
 - `hypot(x, y)` - hypotenuse (`sqrt(x*x + y*y)`)
 - Examples:
   - `pow(27,1/3)` -> `3`
+  - `2**63` -> `9223372036854775808`
   - `sqrt(25)` -> `5`
   - `hypot(3,4)` -> `5`
 
@@ -412,8 +421,10 @@ Purpose: aggregate and transform values/lists.
 - `unpack(...)` - expand arrays into positional arguments
 - Examples:
   - `sum((1,2,3),10)` -> `16`
+  - `product(18446744073709551615,1)` -> `18446744073709551615`
   - `avg(1,2,3,4)` -> `2.5`
   - `sort((3,1,2))` -> `(1,2,3)`
+  - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
   - `unique((3,1,3,2,1,2))` -> `(3,1,2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
 
