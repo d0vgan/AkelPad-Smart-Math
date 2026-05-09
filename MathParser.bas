@@ -462,6 +462,18 @@ type FuncEntry
   expr as String
 end type
 
+' __FB_FUNC_VARS_OVERRIDE_GLOBALS__ is not defined by default because:
+'
+'  `f(x)=1%x` would fail during the validation with `x` hardcoded to 0;
+'  `f(x)=1%(x-1)` would fail during the validation with `x` hardcoded to 1.
+'  Instead, `x=1; f(x)=1%x` would work without __FB_FUNC_VARS_OVERRIDE_GLOBALS__.
+'  And `x=2;f(x)=1%(x-1)` would work without __FB_FUNC_VARS_OVERRIDE_GLOBALS__.
+'
+'  Expressions like `x=0.5; f(x)=x<<2` would fail during the validation.
+'  But it can be solved in either way:
+'  `x=0.5; f(x_)=x_<<2` would work.
+'  `x=1; f(x)=x<<2` would work.
+
 dim shared variables() as VarEntry
 dim shared userFunctions() as FuncEntry
 dim shared pStream as ZString ptr
@@ -470,6 +482,10 @@ dim shared wasPercentage as Boolean
 dim shared lastErrorText as String
 dim shared unknownVarsText as String
 dim shared unknownFuncsText as String
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+dim shared functionVariableNames() as String
+dim shared functionVariableCount as Integer
+#endif
 dim shared evalDepth as Integer
 const UDF_CALL_STACK_MAX as Integer = 128
 dim shared udfCallStack(0 to UDF_CALL_STACK_MAX - 1) as String
@@ -1750,7 +1766,23 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
   return TRUE
 end function
 
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+private function TryGetFunctionVariableOverride(byref n as String, byref v as EvalValue) as Boolean
+  dim i as Integer
+  for i = 0 to functionVariableCount - 1
+    if functionVariableNames(i) = n then
+      ValueSetInt64(v, 0)
+      return TRUE
+    end if
+  next i
+  return FALSE
+end function
+#endif
+
 private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+  if TryGetFunctionVariableOverride(n, v) then return TRUE
+#endif
   if lcase(n) = FB_STR_ANS then
     dim j as Integer
     for j = lbound(variables) to ubound(variables)
@@ -1794,6 +1826,19 @@ private sub SetVariable(byref n as String, byref v as EvalValue)
   end if
   variables(ubound(variables)).name = n
   variables(ubound(variables)).value = v
+end sub
+
+private sub RemoveVariableAtIndex(byval vIdx as Integer)
+  if vIdx < lbound(variables) orelse vIdx > ubound(variables) then exit sub
+  if ubound(variables) = lbound(variables) then
+    erase variables
+    exit sub
+  end if
+  dim j as Integer
+  for j = vIdx to ubound(variables) - 1
+    variables(j) = variables(j + 1)
+  next j
+  redim preserve variables(lbound(variables) to ubound(variables) - 1)
 end sub
 
 private sub SetAnsValue(byref v as EvalValue)
@@ -1847,7 +1892,7 @@ private function UdfBodyCallsDefinedFunction(byref bodyText as String, byref fnN
   return FALSE
 end function
 
-declare function TryValidateUserFunctionBodyExpression(byref body as String, byref errText as String) as Boolean
+declare function TryValidateUserFunctionBodyExpression(byref body as String, fnParams() as String, byref errText as String) as Boolean
 
 private function TryValidateUserFunctionDefinition(byref fnName as String, fnParams() as String, byref body as String, byref errText as String) as Boolean
   if TryValidateUserFunctionDefinitionNames(fnName, fnParams(), errText) = FALSE then
@@ -1861,7 +1906,7 @@ private function TryValidateUserFunctionDefinition(byref fnName as String, fnPar
     errText = FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & fnName
     return FALSE
   end if
-  if TryValidateUserFunctionBodyExpression(body, errText) = FALSE then
+  if TryValidateUserFunctionBodyExpression(body, fnParams(), errText) = FALSE then
     return FALSE
   end if
   return TRUE
@@ -2216,17 +2261,7 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
       SetVariable(pName, oldValues(i))
     else
       dim vIdx as Integer = FindVariableIndex(pName)
-      if vIdx >= 0 then
-        if ubound(variables) = lbound(variables) then
-          erase variables
-        else
-          dim j as Integer
-          for j = vIdx to ubound(variables) - 1
-            variables(j) = variables(j + 1)
-          next j
-          redim preserve variables(lbound(variables) to ubound(variables) - 1)
-        end if
-      end if
+      if vIdx >= 0 then RemoveVariableAtIndex(vIdx)
     end if
   next i
 
@@ -4774,7 +4809,7 @@ private function ParseExpression() as EvalValue
   return ParseLogicalOr()
 end function
 
-private function TryValidateUserFunctionBodyExpression(byref body as String, byref errText as String) as Boolean
+private function TryValidateUserFunctionBodyExpression(byref body as String, fnParams() as String, byref errText as String) as Boolean
   dim savedStream as ZString ptr = pStream
   dim savedExprStart as ZString ptr = exprStart
   dim savedParseError as Integer = parseError
@@ -4783,6 +4818,30 @@ private function TryValidateUserFunctionBodyExpression(byref body as String, byr
   dim savedLastErr as String = lastErrorText
   dim savedUnknownVars as String = unknownVarsText
   dim savedUnknownFuncs as String = unknownFuncsText
+
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+  dim savedFunctionVariableCount as Integer = functionVariableCount
+  dim savedFunctionVariableNames() as String
+  if savedFunctionVariableCount > 0 then
+    redim savedFunctionVariableNames(0 to savedFunctionVariableCount - 1)
+    for iSaved as Integer = 0 to savedFunctionVariableCount - 1
+      savedFunctionVariableNames(iSaved) = functionVariableNames(iSaved)
+    next iSaved
+  end if
+
+  dim paramCount as Integer = 0
+  if ubound(fnParams) >= lbound(fnParams) then paramCount = ubound(fnParams) - lbound(fnParams) + 1
+  if paramCount > 0 then
+    redim functionVariableNames(0 to paramCount - 1)
+    for iParam as Integer = 0 to paramCount - 1
+      functionVariableNames(iParam) = fnParams(lbound(fnParams) + iParam)
+    next iParam
+    functionVariableCount = paramCount
+  else
+    erase functionVariableNames
+    functionVariableCount = 0
+  end if
+#endif
 
   lastErrorText = ""
   unknownVarsText = ""
@@ -4814,6 +4873,18 @@ private function TryValidateUserFunctionBodyExpression(byref body as String, byr
   lastErrorText = savedLastErr
   unknownVarsText = savedUnknownVars
   unknownFuncsText = savedUnknownFuncs
+
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+  if savedFunctionVariableCount > 0 then
+    redim functionVariableNames(0 to savedFunctionVariableCount - 1)
+    for iSaved as Integer = 0 to savedFunctionVariableCount - 1
+      functionVariableNames(iSaved) = savedFunctionVariableNames(iSaved)
+    next iSaved
+  else
+    erase functionVariableNames
+  end if
+  functionVariableCount = savedFunctionVariableCount
+#endif
 
   return ok
 end function

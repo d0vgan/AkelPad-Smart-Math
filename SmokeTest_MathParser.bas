@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 966) as SmokeCase
+  dim tests(1 to 969) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1217,6 +1217,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(964).expr = "sort(-5,nan,3,-inf,inf,0)": tests(964).expected = "(nan,-inf,-5,0,3,inf)"
   tests(965).expr = "sort(nan,inf,2,-inf,nan,-2)": tests(965).expected = "(nan,nan,-inf,-2,2,inf)"
   tests(966).expr = "sorted((nan,-3,4,inf,-inf))": tests(966).expected = "(nan,-inf,-3,4,inf)"
+  tests(967).expr = "x=0; f(x)=x<<2; f(3)": tests(967).expected = "12"
+  tests(968).expr = "x=0; f(x)=x<<2; x": tests(968).expected = "0"
+  tests(969).expr = "x=0; f(x)=1/x; f(2)": tests(969).expected = "0.5"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

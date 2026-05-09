@@ -2363,6 +2363,12 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "f(x,y)=x+y; f(2,3)", "5", why);
               }});
+  t.push_back({"regression/UDF parameter shadows global during body validation", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "x=0.5; f(x)=x<<2; f(3)", "12", why)) return false;
+                if (!expectEval(p, "x=0.5; f(x)=x<<2; x", "0.5", why)) return false;
+                return true;
+              }});
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown function", why);
@@ -2665,6 +2671,9 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "sort(-5,nan,3,-inf,inf,0)", "(nan,-inf,-5,0,3,inf)"} ,
     {ParityBasicCase::Kind::Expected, "sort(nan,inf,2,-inf,nan,-2)", "(nan,nan,-inf,-2,2,inf)"} ,
     {ParityBasicCase::Kind::Expected, "sorted((nan,-3,4,inf,-inf))", "(nan,-inf,-3,4,inf)"} ,
+    {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; f(3)", "12"} ,
+    {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; x", "0.5"} ,
+    {ParityBasicCase::Kind::Expected, "x=0; f(x)=1/x; f(2)", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,
     {ParityBasicCase::Kind::ErrorContains, "log(8)", "log() expects 2 argument(s)"} ,
