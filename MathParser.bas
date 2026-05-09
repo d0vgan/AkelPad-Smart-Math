@@ -154,6 +154,7 @@ const FB_U64_MAX as ULongInt = &hFFFFFFFFFFFFFFFFULL
 const FB_I64_MIN as LongInt = -9223372036854775807 - 1 ' -0x8000000000000000
 const FB_I64_MAX as LongInt = 9223372036854775807 ' 0x7FFFFFFFFFFFFFFF
 const FB_I64_MAX_U as ULongInt = 9223372036854775807
+const FB_I64_MIN_MAG_U as ULongInt = &h8000000000000000ULL
 const FB_I64_MIN_D as Double = -9223372036854775808.0
 const FB_I64_MAX_D as Double = 9223372036854775807.0
 const FB_MAX_EXACT_INT_FROM_DOUBLE as Double = 9007199254740992.0 ' 2^53
@@ -1076,6 +1077,12 @@ private function TryAddULongChecked(byval a as ULongInt, byval b as ULongInt, by
   return TRUE
 end function
 
+private function TryMulULongChecked(byval a as ULongInt, byval b as ULongInt, byref outV as ULongInt) as Boolean
+  if b <> 0ull andalso a > (FB_U64_MAX \ b) then return FALSE
+  outV = a * b
+  return TRUE
+end function
+
 private function MakeNaN() as Double
   return 0.0 / 0.0
 end function
@@ -1355,6 +1362,23 @@ private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byre
     e = e shr 1
     if e > 0 then
       if TryMulInt64(b, b, b) = FALSE then return FALSE
+    end if
+  wend
+  outV = r
+  return TRUE
+end function
+
+private function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, byref outV as ULongInt) as Boolean
+  dim r as ULongInt = 1
+  dim b as ULongInt = baseV
+  dim e as ULongInt = expV
+  while e > 0ull
+    if (e and 1ull) <> 0ull then
+      if TryMulULongChecked(r, b, r) = FALSE then return FALSE
+    end if
+    e = e shr 1
+    if e > 0ull then
+      if TryMulULongChecked(b, b, b) = FALSE then return FALSE
     end if
   wend
   outV = r
@@ -2690,6 +2714,34 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
     hasIntR = TRUE
     ri = CLngInt(rightS.exactUInt64)
   end if
+  if op = CHAR_CARET then
+    if hasUIntL andalso hasUIntR then
+      dim powU as ULongInt
+      if TryPowULong(lu, ru, powU) then ValueSetUInt64(outV, powU): return TRUE
+    end if
+    if hasIntL andalso hasUIntR andalso li < 0 then
+      dim baseMag as ULongInt
+      if li = FB_I64_MIN then
+        baseMag = FB_I64_MIN_MAG_U
+      else
+        baseMag = CULngInt(-li)
+      end if
+      dim powMag as ULongInt
+      if TryPowULong(baseMag, ru, powMag) then
+        if (ru and 1ull) = 0ull then
+          ValueSetUInt64(outV, powMag)
+          return TRUE
+        elseif powMag <= FB_I64_MIN_MAG_U then
+          if powMag = FB_I64_MIN_MAG_U then
+            ValueSetInt64(outV, FB_I64_MIN)
+          else
+            ValueSetInt64(outV, -CLngInt(powMag))
+          end if
+          return TRUE
+        end if
+      end if
+    end if
+  end if
   if hasIntL andalso hasIntR then
     select case op
       case CHAR_ASTERISK
@@ -3312,8 +3364,8 @@ private function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Int
   return TRUE
 end function
 
-'' sum / min / max: exact uint64 when all operands are exact non-negative integers; else exact int64 when all fit signed range; else double path.
-private function TryAggSumMinMaxExactInteger(args() as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
+'' sum / product / min / max: preserve exact uint64/int64 metadata when every operand carries exact integer state.
+private function TryAggSimpleExactInteger(args() as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
   dim argIdx as Integer = lbound(args)
   dim elemIdx as Integer = -1
   dim sv as ScalarValue
@@ -3331,6 +3383,47 @@ private function TryAggSumMinMaxExactInteger(args() as EvalValue, byval fnId as 
     if swI = FALSE then allSwI = FALSE
   wend
   if gotAny = FALSE then return FALSE
+
+  if (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) then
+    argIdx = lbound(args)
+    elemIdx = -1
+    dim productMag as ULongInt = 1
+    dim isNegativeProduct as Boolean = FALSE
+    while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+      dim termMag as ULongInt
+      if TryGetExactNonNegativeUInt64Scalar(sv, termMag) then
+        ' termMag already contains the unsigned magnitude.
+      else
+        dim termI as LongInt
+        if TryGetExactSignedInt64NoUIntWrapScalar(sv, termI) = FALSE then return FALSE
+        if termI < 0 then
+          isNegativeProduct = not isNegativeProduct
+          if termI = FB_I64_MIN then
+            termMag = FB_I64_MIN_MAG_U
+          else
+            termMag = CULngInt(-termI)
+          end if
+        else
+          termMag = CULngInt(termI)
+        end if
+      end if
+
+      dim nextMag as ULongInt
+      if TryMulULongChecked(productMag, termMag, nextMag) = FALSE then return FALSE
+      productMag = nextMag
+    wend
+    if isNegativeProduct then
+      if productMag > FB_I64_MIN_MAG_U then return FALSE
+      if productMag = FB_I64_MIN_MAG_U then
+        ValueSetInt64(outV, FB_I64_MIN)
+      else
+        ValueSetInt64(outV, -CLngInt(productMag))
+      end if
+    else
+      ValueSetUInt64(outV, productMag)
+    end if
+    return TRUE
+  end if
 
   if allNnU then
     argIdx = lbound(args)
@@ -3471,6 +3564,22 @@ private function TryParseCallArguments(args() as EvalValue, byref argsCount as I
   return TRUE
 end function
 
+private function ScalarSortLess(byref a as ScalarValue, byref b as ScalarValue) as Boolean
+  dim aNan as Boolean = IsNaNValue(a.scalar)
+  dim bNan as Boolean = IsNaNValue(b.scalar)
+  if aNan then return (bNan = FALSE)
+  if bNan then return FALSE
+  return a.scalar < b.scalar
+end function
+
+private function ScalarSortGreater(byref a as ScalarValue, byref b as ScalarValue) as Boolean
+  dim aNan as Boolean = IsNaNValue(a.scalar)
+  dim bNan as Boolean = IsNaNValue(b.scalar)
+  if bNan then return (aNan = FALSE)
+  if aNan then return FALSE
+  return a.scalar > b.scalar
+end function
+
 private sub SortScalarValueArray(a() as ScalarValue)
   dim lo as Integer = lbound(a)
   dim hi as Integer = ubound(a)
@@ -3486,14 +3595,14 @@ private sub SortScalarValueArray(a() as ScalarValue)
     sp -= 1
     do while (hi - lo) > 16
       dim midIdx as Integer = lo + ((hi - lo) \ 2)
-      dim pivot as Double = a(midIdx).scalar
+      dim pivot as ScalarValue = a(midIdx)
       dim i as Integer = lo
       dim j as Integer = hi
       do
-        while a(i).scalar < pivot
+        while ScalarSortLess(a(i), pivot)
           i += 1
         wend
-        while a(j).scalar > pivot
+        while ScalarSortGreater(a(j), pivot)
           j -= 1
         wend
         if i <= j then
@@ -3524,7 +3633,7 @@ private sub SortScalarValueArray(a() as ScalarValue)
     for x = lo + 1 to hi
       dim v as ScalarValue = a(x)
       dim y as Integer = x - 1
-      while y >= lo andalso a(y).scalar > v.scalar
+      while y >= lo andalso ScalarSortGreater(a(y), v)
         a(y + 1) = a(y)
         y -= 1
       wend
@@ -3660,8 +3769,8 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       else
         aggMode = 1
       end if
-      if (fnId = FUNC_SUM) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
-        if TryAggSumMinMaxExactInteger(args(), fnId, outV) then return outV
+      if (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
+        if TryAggSimpleExactInteger(args(), fnId, outV) then return outV
       end if
       dim argIdx as Integer = lbound(args)
       dim elemIdx as Integer = -1

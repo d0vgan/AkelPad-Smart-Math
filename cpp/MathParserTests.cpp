@@ -783,6 +783,13 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                 if (!expectEval(p, "max(-9,-1)", "-1", why)) return false;
                 return true;
               }});
+  t.push_back({"edge/product uint64 and int64 exact before double", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "uhex(product(18446744073709551615,1))", "0xFFFFFFFFFFFFFFFF", why)) return false;
+                if (!expectEval(p, "prod(-9223372036854775807,1)&1", "1", why)) return false;
+                if (!expectEval(p, "uhex(product(-9223372036854775807-1,-1))", "0x8000000000000000", why)) return false;
+                return true;
+              }});
   t.push_back({"edge/uint64 max plus one rounds via float like int(1e20)", [](std::string& why) {
                 MathParser p;
                 const char* p64 = "1.844674407370955e+019";
@@ -1020,6 +1027,14 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
   t.push_back({"edge/scalar pow exact int keeps metadata for bitwise", [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "pow(3,2)&7", "1", why);
+               }});
+  t.push_back({"edge/power uint64 exact before double", [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "uhex(2**63)", "0x8000000000000000", why)) return false;
+                 if (!expectEval(p, "uhex(pow(2,63))", "0x8000000000000000", why)) return false;
+                 if (!expectEval(p, "uhex(pow((2,3),(63,2)))", "(0x8000000000000000,0x9)", why)) return false;
+                 if (!expectEval(p, "uhex((-2)**63)", "0x8000000000000000", why)) return false;
+                 return true;
                }});
   t.push_back({"edge/scalar div-by-one keeps int metadata for hex", [kPow53](std::string& why) {
                  MathParser p;
@@ -1384,6 +1399,14 @@ std::vector<TestCase> buildNanInfCases() {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
                  return expectEval(p, "sum((x,2,3))", "inf", why);
+               }});
+  t.push_back({"naninf/sort orders NaN before infinities and numbers", [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "sort(0xFFFFFFFFFFFFFFFF,nan,0x7FFFFFFFFFFFFFFF);hex", "(nan,0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF)", why)) return false;
+                 if (!expectEval(p, "sort(-5,nan,3,-inf,inf,0)", "(nan,-inf,-5,0,3,inf)", why)) return false;
+                 if (!expectEval(p, "sort(nan,inf,2,-inf,nan,-2)", "(nan,nan,-inf,-2,2,inf)", why)) return false;
+                 if (!expectEval(p, "sorted((nan,-3,4,inf,-inf))", "(nan,-inf,-3,4,inf)", why)) return false;
+                 return true;
                }});
   t.push_back({"naninf/array arg mod rejects +inf", [kPosInf](std::string& why) {
                  MathParser p;
@@ -2569,7 +2592,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "9223372036854775807+1", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "-9223372036854775808-1", "-9.223372036854778e+018"} ,
     {ParityBasicCase::Kind::Expected, "3037000500*3037000500", "9.223372037000249e+018"} ,
-    {ParityBasicCase::Kind::Expected, "2**63", "9.223372036854776e+018"} ,
+    {ParityBasicCase::Kind::Expected, "2**63", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "2**64", "1.844674407370955e+019"} ,
     {ParityBasicCase::Kind::Expected, "9223372036854775807+0.5", "9.223372036854778e+018"} ,
     {ParityBasicCase::Kind::Expected, "hex(9223372036854775807+1)", "0x8000000000000000"} ,
@@ -2631,6 +2654,17 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "3.68934881474191e+19/2", "1.844674407370955e+019"} ,
     {ParityBasicCase::Kind::Expected, "3.68934881474191e+19**0.5", "6074000999.952098"} ,
     {ParityBasicCase::Kind::ErrorContains, "3.68934881474191e+19%3", "modulo operands must be integer values"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(product(18446744073709551615,1))", "0xFFFFFFFFFFFFFFFF"} ,
+    {ParityBasicCase::Kind::Expected, "prod(-9223372036854775807,1)&1", "1"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(product(-9223372036854775807-1,-1))", "0x8000000000000000"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(2**63)", "0x8000000000000000"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(pow(2,63))", "0x8000000000000000"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(pow((2,3),(63,2)))", "(0x8000000000000000,0x9)"} ,
+    {ParityBasicCase::Kind::Expected, "uhex((-2)**63)", "0x8000000000000000"} ,
+    {ParityBasicCase::Kind::Expected, "sort(0xFFFFFFFFFFFFFFFF,nan,0x7FFFFFFFFFFFFFFF);hex", "(nan,0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF)"} ,
+    {ParityBasicCase::Kind::Expected, "sort(-5,nan,3,-inf,inf,0)", "(nan,-inf,-5,0,3,inf)"} ,
+    {ParityBasicCase::Kind::Expected, "sort(nan,inf,2,-inf,nan,-2)", "(nan,nan,-inf,-2,2,inf)"} ,
+    {ParityBasicCase::Kind::Expected, "sorted((nan,-3,4,inf,-inf))", "(nan,-inf,-3,4,inf)"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,
     {ParityBasicCase::Kind::ErrorContains, "log(8)", "log() expects 2 argument(s)"} ,

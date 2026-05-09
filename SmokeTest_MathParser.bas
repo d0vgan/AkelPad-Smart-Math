@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 955) as SmokeCase
+  dim tests(1 to 966) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -275,7 +275,7 @@ sub Main()
   tests(64).expr = "9223372036854775807+1": tests(64).expected = "9223372036854775808" ' [overflow]
   tests(65).expr = "-9223372036854775808-1": tests(65).expected = "-9.223372036854778e+018" ' [overflow]
   tests(66).expr = "3037000500*3037000500": tests(66).expected = "9.223372037000249e+018" ' [overflow]
-  tests(67).expr = "2**63":             tests(67).expected = "9.223372036854776e+018" ' [overflow]
+  tests(67).expr = "2**63":             tests(67).expected = "9223372036854775808" ' [overflow]
   tests(68).expr = "2**64":             tests(68).expected = "1.844674407370955e+019" ' [overflow]
   tests(69).expr = "9223372036854775807+0.5": tests(69).expected = "9.223372036854778e+018" ' [overflow]
   tests(70).expr = "hex(9223372036854775807+1)": tests(70).expected = "0x8000000000000000" ' [overflow]
@@ -1206,6 +1206,17 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(953).expr = "trunc(0xFFFFFFFFFFFFFFFF+1)": tests(953).expected = "1.844674407370955e+019"
   tests(954).expr = "floor(0xFFFFFFFFFFFFFFFF+1)": tests(954).expected = "1.844674407370955e+019"
   tests(955).expr = "ceil(0xFFFFFFFFFFFFFFFF+1)": tests(955).expected = "1.844674407370955e+019"
+  tests(956).expr = "uhex(product(18446744073709551615,1))": tests(956).expected = "0xFFFFFFFFFFFFFFFF"
+  tests(957).expr = "prod(-9223372036854775807,1)&1": tests(957).expected = "1"
+  tests(958).expr = "uhex(product(-9223372036854775807-1,-1))": tests(958).expected = "0x8000000000000000"
+  tests(959).expr = "uhex(2**63)": tests(959).expected = "0x8000000000000000"
+  tests(960).expr = "uhex(pow(2,63))": tests(960).expected = "0x8000000000000000"
+  tests(961).expr = "uhex(pow((2,3),(63,2)))": tests(961).expected = "(0x8000000000000000,0x9)"
+  tests(962).expr = "uhex((-2)**63)": tests(962).expected = "0x8000000000000000"
+  tests(963).expr = "sort(0xFFFFFFFFFFFFFFFF,nan,0x7FFFFFFFFFFFFFFF);hex": tests(963).expected = "(nan,0x7FFFFFFFFFFFFFFF,0xFFFFFFFFFFFFFFFF)"
+  tests(964).expr = "sort(-5,nan,3,-inf,inf,0)": tests(964).expected = "(nan,-inf,-5,0,3,inf)"
+  tests(965).expr = "sort(nan,inf,2,-inf,nan,-2)": tests(965).expected = "(nan,nan,-inf,-2,2,inf)"
+  tests(966).expr = "sorted((nan,-3,4,inf,-inf))": tests(966).expected = "(nan,-inf,-3,4,inf)"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

@@ -525,6 +525,31 @@ bool tryAddUInt64Checked(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
   return true;
 }
 
+bool tryMulUInt64Checked(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
+  if (b != 0u && a > ((std::numeric_limits<std::uint64_t>::max)() / b)) {
+    return false;
+  }
+  out = a * b;
+  return true;
+}
+
+bool tryPowUInt64Checked(std::uint64_t base, std::uint64_t exp, std::uint64_t& out) {
+  std::uint64_t r = 1;
+  std::uint64_t b = base;
+  std::uint64_t e = exp;
+  while (e > 0u) {
+    if ((e & 1u) != 0u && !tryMulUInt64Checked(r, b, r)) {
+      return false;
+    }
+    e >>= 1;
+    if (e > 0u && !tryMulUInt64Checked(b, b, b)) {
+      return false;
+    }
+  }
+  out = r;
+  return true;
+}
+
 bool tryAddInt64Checked(long long a, long long b, long long& out) {
   if ((b > 0 && a > (std::numeric_limits<long long>::max)() - b) ||
       (b < 0 && a < (std::numeric_limits<long long>::min)() - b)) {
@@ -2623,6 +2648,34 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
     long long ri = 0;
     const bool leftExactInt64 = tryGetExactSignedInt64NoUIntWrapFromScalar(lv, li);
     const bool rightExactInt64 = tryGetExactSignedInt64NoUIntWrapFromScalar(rv, ri);
+    std::uint64_t lu = 0;
+    std::uint64_t ru = 0;
+    if (op == '^' && tryGetExactNonNegativeUInt64FromScalar(lv, lu) &&
+        tryGetExactNonNegativeUInt64FromScalar(rv, ru)) {
+      std::uint64_t outU = 0;
+      if (tryPowUInt64Checked(lu, ru, outU)) {
+        outS = makeScalarUInt(outU);
+        return true;
+      }
+    }
+    if (op == '^' && leftExactInt64 && li < 0 && tryGetExactNonNegativeUInt64FromScalar(rv, ru)) {
+      const std::uint64_t baseMag = (li == (std::numeric_limits<long long>::min)())
+        ? (1ull << 63)
+        : static_cast<std::uint64_t>(-li);
+      std::uint64_t powMag = 0;
+      if (tryPowUInt64Checked(baseMag, ru, powMag)) {
+        if ((ru & 1u) == 0u) {
+          outS = makeScalarUInt(powMag);
+          return true;
+        }
+        if (powMag <= (1ull << 63)) {
+          outS = (powMag == (1ull << 63))
+            ? makeScalarInt((std::numeric_limits<long long>::min)())
+            : makeScalarInt(-static_cast<long long>(powMag));
+          return true;
+        }
+      }
+    }
     if (leftExactInt64 && rightExactInt64) {
       if (op == '-' && li == (std::numeric_limits<long long>::min)() && ri == 1LL) {
         outS = makeNegPow63();
@@ -2658,8 +2711,8 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
       }
     }
 
-    std::uint64_t lu = 0;
-    std::uint64_t ru = 0;
+    lu = 0;
+    ru = 0;
     if (tryGetExactNonNegativeUInt64FromScalar(lv, lu) && tryGetExactNonNegativeUInt64FromScalar(rv, ru)) {
       if (op == '+') {
         if (lu <= ((std::numeric_limits<std::uint64_t>::max)() - ru)) {
@@ -4063,7 +4116,8 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
       return args[0];
     }
-    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max) {
+    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod ||
+        id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max) {
       bool allNnU = true;
       bool allSwI = true;
       bool anyNonInteger = false;
@@ -4088,7 +4142,49 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         setAtLeastOneArgError(ctx, fnName);
         return makeScalar(0);
       }
-      if (!anyNonInteger && allNnU) {
+      if (!anyNonInteger && (id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod)) {
+        bool ok = true;
+        std::uint64_t productMag = 1;
+        bool isNegativeProduct = false;
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          if (!ok) {
+            return;
+          }
+          std::uint64_t termMag = 0;
+          if (!tryGetExactNonNegativeUInt64FromScalar(s, termMag)) {
+            long long termI = 0;
+            if (!tryGetExactSignedInt64NoUIntWrapFromScalar(s, termI)) {
+              ok = false;
+              return;
+            }
+            if (termI < 0) {
+              isNegativeProduct = !isNegativeProduct;
+              termMag = (termI == (std::numeric_limits<long long>::min)())
+                ? (1ull << 63)
+                : static_cast<std::uint64_t>(-termI);
+            } else {
+              termMag = static_cast<std::uint64_t>(termI);
+            }
+          }
+          std::uint64_t next = 0;
+          if (!tryMulUInt64Checked(productMag, termMag, next)) {
+            ok = false;
+            return;
+          }
+          productMag = next;
+        });
+        if (ok) {
+          if (isNegativeProduct) {
+            if (productMag <= (1ull << 63)) {
+              return (productMag == (1ull << 63))
+                ? makeScalarInt((std::numeric_limits<long long>::min)())
+                : makeScalarInt(-static_cast<long long>(productMag));
+            }
+          } else {
+            return makeScalarUInt(productMag);
+          }
+        }
+      } else if (!anyNonInteger && allNnU) {
         bool ok = true;
         std::uint64_t accU = 0;
         bool hasMm = false;
@@ -4282,7 +4378,13 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     std::sort(
         values.begin(),
         values.end(),
-        [](const EvalValue& lhs, const EvalValue& rhs) { return lhs.scalarValue.scalar < rhs.scalarValue.scalar; });
+        [](const EvalValue& lhs, const EvalValue& rhs) {
+          const bool lhsNan = std::isnan(lhs.scalarValue.scalar);
+          const bool rhsNan = std::isnan(rhs.scalarValue.scalar);
+          if (lhsNan) return !rhsNan;
+          if (rhsNan) return false;
+          return lhs.scalarValue.scalar < rhs.scalarValue.scalar;
+        });
   };
   if (args.size() == 1) {
     const EvalValue& a = args[0];
