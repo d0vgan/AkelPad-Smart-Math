@@ -385,13 +385,15 @@ private:
       const Expr& e,
       const std::unordered_map<std::string, EvalValue>* scopedVars,
       EvalValue& out) const;
+  EvalValue snapshotFunctionFormalValidationProbe() const;
   static const char* validateUserFunctionDefinitionNames(
       const std::string& fnName,
       const std::vector<std::string>& fnParams);
   std::string getUserFunctionDefinitionErrorText(
       const std::string& fnName,
       const std::vector<std::string>& fnParams,
-      const std::string& fnExpr);
+      const std::string& fnExpr,
+      bool evaluateBody);
   bool trySetUserFunctionDefinitionError(
       EvalContext& ctx,
       const std::string& fnName,

@@ -25,6 +25,7 @@ constexpr const char* STR_COMMA = ", ";
 constexpr const char* STR_PI = "pi";
 constexpr const char* STR_E = "e";
 constexpr const char* STR_ANS = "ans";
+constexpr const char* STR_FORMAL_VALIDATION_PROBE = "_";
 constexpr const char* STR_RAND = "rand";
 constexpr const char* STR_RANDOM = "random";
 constexpr const char* STR_BIN = "bin";
@@ -1320,6 +1321,14 @@ bool MathParser::tryResolveVariableValue(
   return false;
 }
 
+MathParser::EvalValue MathParser::snapshotFunctionFormalValidationProbe() const {
+  auto it = variables_.find(STR_FORMAL_VALIDATION_PROBE);
+  if (it != variables_.end() && it->second.kind == ValueKind::Scalar) {
+    return it->second;
+  }
+  return makeScalarInt(1);
+}
+
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
   return nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN;
 }
@@ -1346,7 +1355,8 @@ const char* MathParser::validateUserFunctionDefinitionNames(
 std::string MathParser::getUserFunctionDefinitionErrorText(
     const std::string& fnName,
     const std::vector<std::string>& fnParams,
-    const std::string& fnExpr) {
+    const std::string& fnExpr,
+    const bool evaluateBody) {
   if (const char* udfNameErr = validateUserFunctionDefinitionNames(fnName, fnParams)) {
     return udfNameErr;
   }
@@ -1368,6 +1378,33 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   if (*bodyCtx.p != '\0') {
     return STR_UNEXPECTED_INPUT;
   }
+
+  if (!evaluateBody) {
+    return "";
+  }
+
+  const EvalValue formalProbe = snapshotFunctionFormalValidationProbe();
+  std::unordered_map<std::string, EvalValue> formalScoped;
+  formalScoped.reserve(fnParams.size());
+  for (const auto& p : fnParams) {
+    formalScoped.emplace(p, formalProbe);
+  }
+
+  bodyCtx.parseError = false;
+  bodyCtx.errorText.clear();
+  bodyCtx.unknownVarsText.clear();
+  bodyCtx.unknownFuncsText.clear();
+
+  (void)evalExpr(*ex, bodyCtx, &formalScoped);
+
+  if (bodyCtx.parseError) {
+    if (!bodyCtx.errorText.empty()) {
+      return bodyCtx.errorText;
+    }
+    return STR_FAILED_TO_PARSE_USER_FUNCTION_BODY;
+  }
+  // Like Basic TryValidateUserFunctionBodyExpression: do not treat accumulated unknown
+  // identifiers as definition errors (late-bound UDFs may appear only after later statements).
   return "";
 }
 
@@ -1376,7 +1413,10 @@ bool MathParser::trySetUserFunctionDefinitionError(
     const std::string& fnName,
     const std::vector<std::string>& fnParams,
     const std::string& fnExpr) {
-  const std::string err = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr);
+  // Parse-only here: formal-probe evaluation needs variables from earlier statements in the
+  // same program, which are not applied until runCompiledProgram (Basic evaluates top-level
+  // statements sequentially before the next).
+  const std::string err = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr, false);
   if (err.empty()) {
     return false;
   }
@@ -3941,6 +3981,12 @@ MathParser::EvalValue MathParser::runCompiledProgram(
   };
   for (const auto& st : program) {
     if (st.kind == AstStatement::Kind::FunDef) {
+      const std::string udfErr =
+          getUserFunctionDefinitionErrorText(st.fun.name, st.fun.params, st.fun.expr, true);
+      if (!udfErr.empty()) {
+        setError(ctx, udfErr);
+        return out;
+      }
       upsertUserFunction(UserFunction{st.fun.name, st.fun.params, st.fun.expr});
       out = makeScalarInt(0);
       setVariable(STR_ANS, out);
@@ -5309,7 +5355,7 @@ std::string MathParser::addUserFunction(const std::string& mathExpression) {
     return STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION;
   }
 
-  const std::string udfErr = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr);
+  const std::string udfErr = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr, true);
   if (!udfErr.empty()) return udfErr;
 
   upsertUserFunction(UserFunction{fnName, fnParams, fnExpr});

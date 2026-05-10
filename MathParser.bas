@@ -105,6 +105,7 @@ const FB_STR_PREFIX_HEX as string = "0x"
 const FB_STR_PREFIX_OCT as string = "0o"
 const FB_STR_PREFIX_BIN as string = "0b"
 const FB_STR_ANS as string = "ans"
+const FB_STR_FORMAL_VALIDATION_PROBE as string = "_"
 const FB_STR_INDEXING_REQUIRES_AN_ARRAY_VALUE as string = "indexing requires an array value"
 const FB_STR_MISSING_INDEX as string = "missing index"
 const FB_STR_ARRAY_INDEX_MUST_BE_A_SCALAR as string = "array index must be a scalar integer"
@@ -462,13 +463,18 @@ type FuncEntry
   expr as String
 end type
 
-' __FB_FUNC_VARS_OVERRIDE_GLOBALS__ is not defined by default because:
+#define __FB_FUNC_VARS_OVERRIDE_GLOBALS__ 1
 '
-'  `f(x)=1%x` would fail during the validation with `x` hardcoded to 0;
-'  `f(x)=1%(x-1)` would fail during the validation with `x` hardcoded to 1.
-'  Instead, `x=1; f(x)=1%x` would work without __FB_FUNC_VARS_OVERRIDE_GLOBALS__.
-'  And `x=2;f(x)=1%(x-1)` would work without __FB_FUNC_VARS_OVERRIDE_GLOBALS__.
+'  With a fixed formal probe of 0, `f(x)=1%x` fails validation (mod 0).
+'  With 1, `f(x)=1%(x-1)` can fail (again, mode 0).
+'  When this define is enabled, each formal parameter is given the value
+'  of scalar variable `_` during UDF body validation if `_` exists,
+'  otherwise the default probe 1.
+'  Example: `_=10; f(x)=1%(x-1)` passes the validation.
+'  Runtime calls still use real arguments.
 '
+'  Without this define, `x=1; f(x)=1%x` and `x=2; f(x)=1%(x-1)` work by
+'  seeding x.
 '  Expressions like `x=0.5; f(x)=x<<2` would fail during the validation.
 '  But it can be solved in either way:
 '  `x=0.5; f(x_)=x_<<2` would work.
@@ -485,6 +491,7 @@ dim shared unknownFuncsText as String
 #ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
 dim shared functionVariableNames() as String
 dim shared functionVariableCount as Integer
+dim shared functionFormalValidationProbe as EvalValue
 #endif
 dim shared evalDepth as Integer
 const UDF_CALL_STACK_MAX as Integer = 128
@@ -1771,7 +1778,7 @@ private function TryGetFunctionVariableOverride(byref n as String, byref v as Ev
   dim i as Integer
   for i = 0 to functionVariableCount - 1
     if functionVariableNames(i) = n then
-      ValueSetInt64(v, 0)
+      v = functionFormalValidationProbe
       return TRUE
     end if
   next i
@@ -1810,6 +1817,17 @@ private function FindVariableIndex(byref n as String) as Integer
   next i
   return -1
 end function
+
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+private sub SnapshotFunctionFormalValidationProbe()
+  dim idx as Integer = FindVariableIndex(FB_STR_FORMAL_VALIDATION_PROBE)
+  if idx >= 0 andalso variables(idx).value.kind = VK_SCALAR then
+    functionFormalValidationProbe = variables(idx).value
+  else
+    ValueSetInt64(functionFormalValidationProbe, 1)
+  end if
+end sub
+#endif
 
 private sub SetVariable(byref n as String, byref v as EvalValue)
   dim i as Integer
@@ -4828,6 +4846,8 @@ private function TryValidateUserFunctionBodyExpression(byref body as String, fnP
       savedFunctionVariableNames(iSaved) = functionVariableNames(iSaved)
     next iSaved
   end if
+
+  SnapshotFunctionFormalValidationProbe()
 
   dim paramCount as Integer = 0
   if ubound(fnParams) >= lbound(fnParams) then paramCount = ubound(fnParams) - lbound(fnParams) + 1

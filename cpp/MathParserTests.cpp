@@ -2369,6 +2369,28 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "x=0.5; f(x)=x<<2; x", "0.5", why)) return false;
                 return true;
               }});
+  t.push_back({"regression/UDF formal validation probe from _ default 1", [](std::string& why) {
+                MathParser p;
+                if (!p.addUserFunction("f(x)=1%x").empty()) {
+                  why = "expected addUserFunction(f(x)=1%x) to succeed with default probe 1";
+                  return false;
+                }
+                if (!expectEval(p, "f(7)", "1", why)) return false;
+                MathParser p2;
+                if (!expectEval(p2, "_=10", "10", why)) return false;
+                if (!p2.addUserFunction("g(x)=1%(x-1)").empty()) {
+                  why = "expected addUserFunction after _=10 to validate 1%(x-1)";
+                  return false;
+                }
+                if (!expectEval(p2, "g(5)", "1", why)) return false;
+                return true;
+              }});
+  t.push_back({"regression/late binding newfn definition then missing call then define newfn", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "f(x)=x*newfn(x)", "0", why)) return false;
+                if (!expectEvalErrorContains(p, "f(2)", "unknown function: newfn", why)) return false;
+                return expectEval(p, "newfn(x)=x**(1/3); f(8)", "16", why);
+              }});
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown function", why);
@@ -2674,6 +2696,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; f(3)", "12"} ,
     {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; x", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "x=0; f(x)=1/x; f(2)", "0.5"} ,
+    {ParityBasicCase::Kind::Expected, "f(x)=1%x; f(7)", "1"} ,
+    {ParityBasicCase::Kind::Expected, "_=10; g(x)=1%(x-1); g(5)", "1"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,
     {ParityBasicCase::Kind::ErrorContains, "log(8)", "log() expects 2 argument(s)"} ,
