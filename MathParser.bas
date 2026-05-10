@@ -491,7 +491,6 @@ dim shared unknownFuncsText as String
 #ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
 dim shared functionVariableNames() as String
 dim shared functionVariableCount as Integer
-dim shared functionFormalValidationProbe as EvalValue
 #endif
 dim shared evalDepth as Integer
 const UDF_CALL_STACK_MAX as Integer = 128
@@ -1774,16 +1773,7 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
 end function
 
 #ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
-private function TryGetFunctionVariableOverride(byref n as String, byref v as EvalValue) as Boolean
-  dim i as Integer
-  for i = 0 to functionVariableCount - 1
-    if functionVariableNames(i) = n then
-      v = functionFormalValidationProbe
-      return TRUE
-    end if
-  next i
-  return FALSE
-end function
+declare function TryGetFunctionVariableOverride(byref n as String, byref v as EvalValue) as Boolean
 #endif
 
 private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
@@ -1819,14 +1809,21 @@ private function FindVariableIndex(byref n as String) as Integer
 end function
 
 #ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
-private sub SnapshotFunctionFormalValidationProbe()
-  dim idx as Integer = FindVariableIndex(FB_STR_FORMAL_VALIDATION_PROBE)
-  if idx >= 0 andalso variables(idx).value.kind = VK_SCALAR then
-    functionFormalValidationProbe = variables(idx).value
-  else
-    ValueSetInt64(functionFormalValidationProbe, 1)
-  end if
-end sub
+private function TryGetFunctionVariableOverride(byref n as String, byref v as EvalValue) as Boolean
+  dim i as Integer
+  for i = 0 to functionVariableCount - 1
+    if functionVariableNames(i) = n then
+      dim idx as Integer = FindVariableIndex(FB_STR_FORMAL_VALIDATION_PROBE)
+      if idx >= 0 andalso variables(idx).value.kind = VK_SCALAR then
+        v = variables(idx).value
+      else
+        ValueSetInt64(v, 1)
+      end if
+      return TRUE
+    end if
+  next i
+  return FALSE
+end function
 #endif
 
 private sub SetVariable(byref n as String, byref v as EvalValue)
@@ -4847,8 +4844,6 @@ private function TryValidateUserFunctionBodyExpression(byref body as String, fnP
     next iSaved
   end if
 
-  SnapshotFunctionFormalValidationProbe()
-
   dim paramCount as Integer = 0
   if ubound(fnParams) >= lbound(fnParams) then paramCount = ubound(fnParams) - lbound(fnParams) + 1
   if paramCount > 0 then
@@ -4923,6 +4918,9 @@ sub Parser_ClearVariables()
   erase userFunctions
   dim emptyExpr as String = ""
   ResetTopLevelEvaluationState(emptyExpr)
+  dim probeDefault as EvalValue
+  ValueSetInt64(probeDefault, 1)
+  SetVariable(FB_STR_FORMAL_VALIDATION_PROBE, probeDefault)
 end sub
 
 function Parser_TryEvaluate(byref sExpr as String, byref result as Double) as Boolean

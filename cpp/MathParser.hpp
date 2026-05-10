@@ -165,7 +165,7 @@ private:
     AB
   };
 
-  enum class ValueKind { Scalar, Array };
+  enum class ValueKind { Scalar, Array, UdfFormalValidationDummy };
   enum class ScalarKind { FloatingPoint, Int64, UInt64 };
 
   enum class RenderBase { Dec = 10, Hex = 16, Oct = 8, Bin = 2 };
@@ -385,7 +385,7 @@ private:
       const Expr& e,
       const std::unordered_map<std::string, EvalValue>* scopedVars,
       EvalValue& out) const;
-  EvalValue snapshotFunctionFormalValidationProbe() const;
+  static EvalValue makeUdfFormalValidationDummy();
   static const char* validateUserFunctionDefinitionNames(
       const std::string& fnName,
       const std::vector<std::string>& fnParams);

@@ -2369,6 +2369,11 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "x=0.5; f(x)=x<<2; x", "0.5", why)) return false;
                 return true;
               }});
+  t.push_back({"regression/underscore reads as 1 before assignment", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "_", "1", why)) return false;
+                return expectEval(p, "_+5", "6", why);
+              }});
   t.push_back({"regression/UDF formal validation probe from _ default 1", [](std::string& why) {
                 MathParser p;
                 if (!p.addUserFunction("f(x)=1%x").empty()) {
@@ -2697,6 +2702,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; x", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "x=0; f(x)=1/x; f(2)", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "f(x)=1%x; f(7)", "1"} ,
+    {ParityBasicCase::Kind::Expected, "_", "1"} ,
+    {ParityBasicCase::Kind::Expected, "_+5", "6"} ,
     {ParityBasicCase::Kind::Expected, "_=10; g(x)=1%(x-1); g(5)", "1"} ,
     {ParityBasicCase::Kind::Expected, "log(8,2)", "3"} ,
     {ParityBasicCase::Kind::Expected, "log(100,10)", "2"} ,

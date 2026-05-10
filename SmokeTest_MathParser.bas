@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 974) as SmokeCase
+  dim tests(1 to 976) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1221,10 +1221,12 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(968).expr = "x=0.5; f(x)=x<<2; x": tests(968).expected = "0.5"
   tests(969).expr = "x=0; f(x)=1/x; f(2)": tests(969).expected = "0.5"
   tests(970).expr = "f(x)=1%x; f(7)": tests(970).expected = "1"
-  tests(971).expr = "_=10; g(x)=1%(x-1); g(5)": tests(971).expected = "1"
-  tests(972).expr = "f(x)=x*newfn(x)": tests(972).expected = "defined f(x)"
-  tests(973).expr = "f(2)": tests(973).expectedErrContains = "unknown function: newfn"
-  tests(974).expr = "newfn(x)=x**(1/3); f(8)": tests(974).expected = "16"
+  tests(971).expr = "_": tests(971).expected = "1"
+  tests(972).expr = "_+5": tests(972).expected = "6"
+  tests(973).expr = "_=10; g(x)=1%(x-1); g(5)": tests(973).expected = "1"
+  tests(974).expr = "f(x)=x*newfn(x)": tests(974).expected = "defined f(x)"
+  tests(975).expr = "f(2)": tests(975).expectedErrContains = "unknown function: newfn"
+  tests(976).expr = "newfn(x)=x**(1/3); f(8)": tests(976).expected = "16"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

@@ -1077,6 +1077,7 @@ MathParser::MathParser() {
   addConst(STR_INF, std::numeric_limits<double>::infinity());
   addConst(STR_NAN, std::numeric_limits<double>::quiet_NaN());
   setVariable(STR_ANS, makeScalarInt(0));
+  setVariable(STR_FORMAL_VALIDATION_PROBE, makeScalarInt(1));
 }
 
 std::string MathParser::toLower(std::string s) {
@@ -1305,7 +1306,16 @@ bool MathParser::tryResolveVariableValue(
   if (scopedVars) {
     auto it = scopedVars->find(e.name);
     if (it != scopedVars->end()) {
-      out = it->second;
+      if (it->second.kind == ValueKind::UdfFormalValidationDummy) {
+        auto pit = variables_.find(STR_FORMAL_VALIDATION_PROBE);
+        if (pit != variables_.end() && pit->second.kind == ValueKind::Scalar) {
+          out = pit->second;
+        } else {
+          out = makeScalarInt(1);
+        }
+      } else {
+        out = it->second;
+      }
       return true;
     }
   }
@@ -1321,12 +1331,10 @@ bool MathParser::tryResolveVariableValue(
   return false;
 }
 
-MathParser::EvalValue MathParser::snapshotFunctionFormalValidationProbe() const {
-  auto it = variables_.find(STR_FORMAL_VALIDATION_PROBE);
-  if (it != variables_.end() && it->second.kind == ValueKind::Scalar) {
-    return it->second;
-  }
-  return makeScalarInt(1);
+MathParser::EvalValue MathParser::makeUdfFormalValidationDummy() {
+  EvalValue v;
+  v.kind = ValueKind::UdfFormalValidationDummy;
+  return v;
 }
 
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
@@ -1383,11 +1391,10 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
     return "";
   }
 
-  const EvalValue formalProbe = snapshotFunctionFormalValidationProbe();
   std::unordered_map<std::string, EvalValue> formalScoped;
   formalScoped.reserve(fnParams.size());
   for (const auto& p : fnParams) {
-    formalScoped.emplace(p, formalProbe);
+    formalScoped.emplace(p, makeUdfFormalValidationDummy());
   }
 
   bodyCtx.parseError = false;

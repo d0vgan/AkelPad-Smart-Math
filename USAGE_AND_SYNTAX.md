@@ -136,9 +136,9 @@ Base-prefixed integer forms:
 
 #### User-Defined Functions Validation
 
-When you define a function, the body is evaluated once with **dummy** arguments so obvious errors are caught early. Every parameter is replaced by the scalar variable **`_`** if it exists; otherwise the dummy value **`1`** is used. Real calls still use the arguments you pass.
+When you define a function, the body is evaluated once with **dummy** arguments so obvious errors are caught early. Every parameter is replaced by the scalar variable **`_`** with the default value of **`1`**. Real calls still use the arguments you pass.
 
-With the default dummy **`1`**, validation can fail even when the function would work for other inputs:
+With the default **`_` = `1`**, validation can fail even when the function would work for other inputs:
 
 - `f(x)=(x/2)<<2` -> error `bitwise operands must be integer values` (dummy gives `(1/2)<<2`, a float on the left of `<<`).
 - `f(x,y)=x%(y-1)` -> error `incompatible operands` (dummy gives `1%0`).
