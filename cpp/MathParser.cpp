@@ -2912,7 +2912,13 @@ bool MathParser::parseFunctionDefinition(
   }
   ++ctx.p;
   skipSpaces(ctx);
+  // UDF: name(params)=body — single '=' only; do not treat first '=' of '==' as UDF starter.
   if (*ctx.p != '=') {
+    ctx.p = save;
+    return false;
+  }
+  // Safe: *ctx.p is '=' here, so ctx.p[1] is at worst the terminating '\0' on a c_str() buffer.
+  if (ctx.p[1] == '=') {
     ctx.p = save;
     return false;
   }

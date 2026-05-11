@@ -1894,6 +1894,18 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "(3==3)+(3!=4)+(3<>3)", "2", why);
               }});
+  t.push_back({"regression/builtin call then == is comparison not UDF starter", [](std::string& why) {
+                MathParser p;
+                return expectEval(p, "sin(0)==0", "1", why);
+              }});
+  t.push_back({"regression/variable then sin(x)==x compares equality", [](std::string& why) {
+                MathParser p;
+                return expectEval(p, "x=0; sin(x)==x", "1", why);
+              }});
+  t.push_back({"regression/UDF body uses single equals call then ==", [](std::string& why) {
+                MathParser p;
+                return expectEval(p, "f(t)=t*3; f(2)==6", "1", why);
+              }});
   t.push_back({"regression/sum requires at least one argument", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(p, "sum()", "sum() expects at least 1 argument", why);

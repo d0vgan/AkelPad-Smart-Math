@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 976) as SmokeCase
+  dim tests(1 to 979) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1227,6 +1227,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(974).expr = "f(x)=x*newfn(x)": tests(974).expected = "defined f(x)"
   tests(975).expr = "f(2)": tests(975).expectedErrContains = "unknown function: newfn"
   tests(976).expr = "newfn(x)=x**(1/3); f(8)": tests(976).expected = "16"
+  tests(977).expr = "sin(0)==0": tests(977).expected = "1" ' [syntax] builtin call + == not UDF
+  tests(978).expr = "x=0; sin(x)==x": tests(978).expected = "1" ' [syntax] same as user report
+  tests(979).expr = "f(t)=t*3; f(2)==6": tests(979).expected = "1" ' [syntax] UDF then ==
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

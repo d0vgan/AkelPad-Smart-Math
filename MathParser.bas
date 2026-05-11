@@ -5127,7 +5127,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       if parseParamsOk andalso pStream[0] = CHAR_RPAREN then
         pStream += 1
         SkipSpaces()
-        if pStream[0] = CHAR_EQUALS then
+        '' UDF: name(params)=body — single '=' only; do not treat first '=' of '==' as UDF starter.
+        if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
           pStream += 1
           SkipSpaces()
           dim udfValidationErr as String
