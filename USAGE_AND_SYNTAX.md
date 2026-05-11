@@ -23,8 +23,8 @@ Copy/paste examples:
 - `2+3*4` -> `14`
 - `a=10; a*3` -> `30`
 - `(1,2,3)+10` -> `(11,12,13)`
-- `sum((1,2,3),10)` -> `16`
-- `sort((3,1,2))` -> `(1,2,3)`
+- `sum(1,2,3,10)` -> `16`
+- `sort(3,1,2)` -> `(1,2,3)`
 - `hex(255)` -> `0xFF`
 - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
 - `2+3; ans/10` -> `0.5`
@@ -228,7 +228,7 @@ Recommendation: use `==` for equality checks to avoid confusion.
 
 Logical note (scalar vs array):
 - `!x` / `not x` are logical NOT and always return a scalar (`1` or `0`).
-- Non-empty arrays are always treated as truthy in logical operators, so `!(0,0)` / `not (0,0)` evaluates to `0`.
+- Non-empty arrays are always treated as truthy in logical operators, so `!(0,0)`, as well as `not (0,0)`, evaluates to `0`.
 - Precedence contrast (only in mixed expressions):
   - `!2==1` -> `0`
   - `not 2==1` -> `1`
@@ -404,7 +404,7 @@ Purpose: rounding, bounds, integer helpers, factorial.
 - `clamp(value, min, max)` - limit value to `[min, max]`
 - `gcd(a, b)` - greatest common divisor
 - `lcm(a, b)` - least common multiple
-- `mod(value, divisor)` - modulo as a function form of `%`
+- `mod(value, divisor)` - modulo as a function form of `value % divisor`
 - `ncr(n, r)` - combinations (`n` choose `r`)
 - `npr(n, r)` - permutations (`n` permute `r`)
 - `fact(n)`, `factorial(n)` - factorial for non-negative integers
@@ -434,12 +434,12 @@ Purpose: aggregate and transform values/lists.
 - `unique(...)` - first-occurrence unique values
 - `unpack(...)` - expand arrays into positional arguments
 - Examples:
-  - `sum((1,2,3),10)` -> `16`
+  - `sum(1,2,3,10)` -> `16`
   - `product(18446744073709551615,1)` -> `18446744073709551615`
   - `avg(1,2,3,4)` -> `2.5`
-  - `sort((3,1,2))` -> `(1,2,3)`
+  - `sort(3,1,2)` -> `(1,2,3)`
   - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
-  - `unique((3,1,3,2,1,2))` -> `(3,1,2)`
+  - `unique(3,1,3,2,1,2)` -> `(3,1,2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
 
 Notes:
@@ -460,7 +460,7 @@ Purpose: render values in hex/oct/bin.
 - `ubin(...)` - unsigned-style binary formatting
 - Examples:
   - `hex(12)` -> `0xC`
-  - `bin((5,11))` -> `(0b101, 0b1011)`
+  - `bin(5,11)` -> `(0b101, 0b1011)`
   - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
   - `170; hex` -> `0xAA`
   - `(0x5,0x10); oct` -> `(0o5, 0o20)`
