@@ -2714,27 +2714,18 @@ end function
 
 private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
   dim li as LongInt, ri as LongInt, ro as LongInt
-  dim hasUIntL as Boolean = leftS.exactUInt64Valid
-  dim hasUIntR as Boolean = rightS.exactUInt64Valid
+  dim hasUIntL as Boolean
+  dim hasUIntR as Boolean
   dim lu as ULongInt, ru as ULongInt
-  if hasUIntL then
-    lu = leftS.exactUInt64
-  elseif leftS.exactInt64Valid andalso leftS.exactInt64 >= 0 then
-    hasUIntL = TRUE
-    lu = CULngInt(leftS.exactInt64)
-  end if
-  if hasUIntR then
-    ru = rightS.exactUInt64
-  elseif rightS.exactInt64Valid andalso rightS.exactInt64 >= 0 then
-    hasUIntR = TRUE
-    ru = CULngInt(rightS.exactInt64)
-  end if
+  hasUIntL = TryGetExactNonNegativeUInt64Scalar(leftS, lu)
+  hasUIntR = TryGetExactNonNegativeUInt64Scalar(rightS, ru)
   if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid andalso _
      ((leftS.exactInt64Valid = FALSE) orelse (rightS.exactInt64Valid = FALSE)) then
     select case op
       case CHAR_PLUS
-        if leftS.exactUInt64 <= (FB_U64_MAX - rightS.exactUInt64) then
-          ValueSetUInt64(outV, leftS.exactUInt64 + rightS.exactUInt64)
+        dim outU as ULongInt
+        if TryAddULongChecked(leftS.exactUInt64, rightS.exactUInt64, outU) then
+          ValueSetUInt64(outV, outU)
           return TRUE
         end if
       case CHAR_MINUS
@@ -2743,8 +2734,9 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
           return TRUE
         end if
       case CHAR_ASTERISK
-        if rightS.exactUInt64 = 0ull orelse leftS.exactUInt64 <= (FB_U64_MAX \ rightS.exactUInt64) then
-          ValueSetUInt64(outV, leftS.exactUInt64 * rightS.exactUInt64)
+        dim outU as ULongInt
+        if TryMulULongChecked(leftS.exactUInt64, rightS.exactUInt64, outU) then
+          ValueSetUInt64(outV, outU)
           return TRUE
         end if
     end select
@@ -2808,9 +2800,11 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   if hasUIntL andalso hasUIntR then
     select case op
       case CHAR_PLUS
-        if lu <= (FB_U64_MAX - ru) then ValueSetUInt64(outV, lu + ru): return TRUE
+        dim outU as ULongInt
+        if TryAddULongChecked(lu, ru, outU) then ValueSetUInt64(outV, outU): return TRUE
       case CHAR_ASTERISK
-        if ru = 0ull orelse lu <= (FB_U64_MAX \ ru) then ValueSetUInt64(outV, lu * ru): return TRUE
+        dim outU as ULongInt
+        if TryMulULongChecked(lu, ru, outU) then ValueSetUInt64(outV, outU): return TRUE
     end select
   end if
 
@@ -2914,6 +2908,20 @@ private function ApplyScalarBinaryMathFunctionValues(byref leftV as EvalValue, b
   return MapBinaryBroadcastScalars(MAP_BINARY_OP_SCALAR_MATH, leftV, rightV, 0, OP_BIT_NONE, fnId, outV)
 end function
 
+private function TryShiftLeftUInt64MaybeExact( _
+  byref outV as EvalValue, _
+  byval leftU as ULongInt, _
+  byval leftScalar as Double, _
+  byval shiftU as ULongInt) as Boolean
+  if shiftU > 63ull then return FALSE
+  if shiftU > 0ull andalso leftU > (FB_U64_MAX shr CInt(shiftU)) then
+    ValueSetScalarPromoteExactInt64(outV, leftScalar * pow(2.0, CDbl(shiftU)))
+    return TRUE
+  end if
+  ValueSetUInt64(outV, leftU shl CInt(shiftU))
+  return TRUE
+end function
+
 private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
   dim requiresIntegers as Boolean = (op = OP_BIT_SHL orelse op = OP_BIT_SHR orelse op = OP_BIT_AND orelse op = OP_BIT_XOR orelse op = OP_BIT_OR orelse op = OP_BIT_MOD)
   dim l as LongInt, r as LongInt
@@ -2921,13 +2929,7 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
   if op = OP_BIT_SHL then
     dim luShl as ULongInt, ruShl as ULongInt
     if TryGetExactNonNegativeUInt64Scalar(leftS, luShl) andalso TryGetExactNonNegativeUInt64Scalar(rightS, ruShl) then
-      if ruShl > 63ull then return FALSE
-      if ruShl > 0ull andalso luShl > (FB_U64_MAX shr CInt(ruShl)) then
-        ValueSetScalarPromoteExactInt64(outV, leftS.scalar * pow(2.0, CDbl(ruShl)))
-        return TRUE
-      end if
-      ValueSetUInt64(outV, luShl shl CInt(ruShl))
-      return TRUE
+      return TryShiftLeftUInt64MaybeExact(outV, luShl, leftS.scalar, ruShl)
     end if
   end if
 
@@ -2937,13 +2939,7 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
     dim ru as ULongInt = rightS.exactUInt64
     select case op
       case OP_BIT_SHL
-        if ru > 63ull then return FALSE
-        if ru > 0ull andalso lu > (FB_U64_MAX shr CInt(ru)) then
-          ValueSetScalarPromoteExactInt64(outV, leftS.scalar * pow(2.0, CDbl(ru)))
-          return TRUE
-        end if
-        ValueSetUInt64(outV, lu shl CInt(ru))
-        return TRUE
+        return TryShiftLeftUInt64MaybeExact(outV, lu, leftS.scalar, ru)
       case OP_BIT_SHR
         if ru > 63ull then return FALSE
         ValueSetUInt64(outV, lu shr CInt(ru))

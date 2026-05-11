@@ -2132,6 +2132,37 @@ bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarV
   return false;
 }
 
+bool MathParser::tryGetBothExactSignedInt64NoUIntWrapFromScalars(
+    const EvalValue::ScalarValue& a,
+    const EvalValue::ScalarValue& b,
+    long long& outA,
+    long long& outB) {
+  return tryGetExactSignedInt64NoUIntWrapFromScalar(a, outA) &&
+         tryGetExactSignedInt64NoUIntWrapFromScalar(b, outB);
+}
+
+bool MathParser::tryGetBothExactNonNegativeUInt64FromScalars(
+    const EvalValue::ScalarValue& a,
+    const EvalValue::ScalarValue& b,
+    std::uint64_t& outA,
+    std::uint64_t& outB) {
+  return tryGetExactNonNegativeUInt64FromScalar(a, outA) &&
+         tryGetExactNonNegativeUInt64FromScalar(b, outB);
+}
+
+bool MathParser::tryShiftLeftU64ExactOrMaybe(
+    std::uint64_t aU,
+    std::uint64_t bU,
+    EvalValue& outV) {
+  if (bU > 63u) return false;
+  if (bU > 0u && aU > ((std::numeric_limits<std::uint64_t>::max)() >> bU)) {
+    outV = makeScalarMaybeExact(std::ldexp(static_cast<double>(aU), static_cast<int>(bU)));
+    return true;
+  }
+  outV = makeScalarUInt(aU << bU);
+  return true;
+}
+
 bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
   if (tryGetExactSignedInt64FromScalar(s, outI)) {
     return true;
@@ -2673,8 +2704,9 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
 
     if (lv.hasExactUInt64() && rv.hasExactUInt64() && (!lv.hasExactInt() || !rv.hasExactInt())) {
       if (op == '+') {
-        if (lv.exactUInt64 <= ((std::numeric_limits<std::uint64_t>::max)() - rv.exactUInt64)) {
-          outS = makeScalarUInt(lv.exactUInt64 + rv.exactUInt64);
+        std::uint64_t outU = 0;
+        if (tryAddUInt64Checked(lv.exactUInt64, rv.exactUInt64, outU)) {
+          outS = makeScalarUInt(outU);
           return true;
         }
       } else if (op == '-') {
@@ -2683,9 +2715,9 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
           return true;
         }
       } else if (op == '*') {
-        if (rv.exactUInt64 == 0 ||
-            lv.exactUInt64 <= ((std::numeric_limits<std::uint64_t>::max)() / rv.exactUInt64)) {
-          outS = makeScalarUInt(lv.exactUInt64 * rv.exactUInt64);
+        std::uint64_t outU = 0;
+        if (tryMulUInt64Checked(lv.exactUInt64, rv.exactUInt64, outU)) {
+          outS = makeScalarUInt(outU);
           return true;
         }
       }
@@ -2697,8 +2729,7 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
     const bool rightExactInt64 = tryGetExactSignedInt64NoUIntWrapFromScalar(rv, ri);
     std::uint64_t lu = 0;
     std::uint64_t ru = 0;
-    if (op == '^' && tryGetExactNonNegativeUInt64FromScalar(lv, lu) &&
-        tryGetExactNonNegativeUInt64FromScalar(rv, ru)) {
+    if (op == '^' && tryGetBothExactNonNegativeUInt64FromScalars(lv, rv, lu, ru)) {
       std::uint64_t outU = 0;
       if (tryPowUInt64Checked(lu, ru, outU)) {
         outS = makeScalarUInt(outU);
@@ -2745,13 +2776,15 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
         const std::uint64_t lu = static_cast<std::uint64_t>(li);
         const std::uint64_t ru = static_cast<std::uint64_t>(ri);
         if (op == '+') {
-          if (lu <= ((std::numeric_limits<std::uint64_t>::max)() - ru)) {
-            outS = makeScalarUInt(lu + ru);
+          std::uint64_t outU = 0;
+          if (tryAddUInt64Checked(lu, ru, outU)) {
+            outS = makeScalarUInt(outU);
             return true;
           }
         } else if (op == '*') {
-          if (ru == 0u || lu <= ((std::numeric_limits<std::uint64_t>::max)() / ru)) {
-            outS = makeScalarUInt(lu * ru);
+          std::uint64_t outU = 0;
+          if (tryMulUInt64Checked(lu, ru, outU)) {
+            outS = makeScalarUInt(outU);
             return true;
           }
         }
@@ -2760,15 +2793,17 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
 
     lu = 0;
     ru = 0;
-    if (tryGetExactNonNegativeUInt64FromScalar(lv, lu) && tryGetExactNonNegativeUInt64FromScalar(rv, ru)) {
+    if (tryGetBothExactNonNegativeUInt64FromScalars(lv, rv, lu, ru)) {
       if (op == '+') {
-        if (lu <= ((std::numeric_limits<std::uint64_t>::max)() - ru)) {
-          outS = makeScalarUInt(lu + ru);
+        std::uint64_t outU = 0;
+        if (tryAddUInt64Checked(lu, ru, outU)) {
+          outS = makeScalarUInt(outU);
           return true;
         }
       } else if (op == '*') {
-        if (ru == 0u || lu <= ((std::numeric_limits<std::uint64_t>::max)() / ru)) {
-          outS = makeScalarUInt(lu * ru);
+        std::uint64_t outU = 0;
+        if (tryMulUInt64Checked(lu, ru, outU)) {
+          outS = makeScalarUInt(outU);
           return true;
         }
       }
@@ -3454,16 +3489,11 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
     if (op == Expr::BinaryOp::ShiftLeft) {
       std::uint64_t aU = 0;
       std::uint64_t bU = 0;
-      if (tryGetExactNonNegativeUInt64FromScalar(lv, aU) && tryGetExactNonNegativeUInt64FromScalar(rv, bU)) {
-        if (bU > 63u) {
+      if (tryGetBothExactNonNegativeUInt64FromScalars(lv, rv, aU, bU)) {
+        if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
           setIncompatibleOperandsError(ctx);
           return false;
         }
-        if (bU > 0u && aU > ((std::numeric_limits<std::uint64_t>::max)() >> bU)) {
-          outS = makeScalarMaybeExact(std::ldexp(static_cast<double>(aU), static_cast<int>(bU)));
-          return true;
-        }
-        outS = makeScalarUInt(aU << bU);
         return true;
       }
     }
@@ -3484,11 +3514,10 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
         return false;
       }
       if (op == Expr::BinaryOp::ShiftLeft) {
-        if (bU > 0u && aU > ((std::numeric_limits<std::uint64_t>::max)() >> bU)) {
-          outS = makeScalarMaybeExact(std::ldexp(static_cast<double>(aU), static_cast<int>(bU)));
-          return true;
+        if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
+          setIncompatibleOperandsError(ctx);
+          return false;
         }
-        outS = makeScalarUInt(aU << bU);
         return true;
       }
       if (op == Expr::BinaryOp::ShiftRight) {
@@ -3642,16 +3671,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
           if (e.binaryOp == Expr::BinaryOp::ShiftLeft) {
             std::uint64_t aU = 0;
             std::uint64_t bU = 0;
-            if (tryGetExactNonNegativeUInt64FromScalar(l.scalarValue, aU) &&
-                tryGetExactNonNegativeUInt64FromScalar(r.scalarValue, bU)) {
-              if (bU > 63u) {
+            if (tryGetBothExactNonNegativeUInt64FromScalars(l.scalarValue, r.scalarValue, aU, bU)) {
+              EvalValue outS;
+              if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
                 setIncompatibleOperandsError(ctx);
                 return makeScalar(0);
               }
-              if (bU > 0u && aU > ((std::numeric_limits<std::uint64_t>::max)() >> bU)) {
-                return makeScalarMaybeExact(std::ldexp(static_cast<double>(aU), static_cast<int>(bU)));
-              }
-              return makeScalarUInt(aU << bU);
+              return outS;
             }
           }
           if (l.scalarValue.hasExactUInt64() && r.scalarValue.hasExactUInt64() &&
@@ -3666,10 +3692,12 @@ MathParser::EvalValue MathParser::evalExprScalar(
             if (e.binaryOp == Expr::BinaryOp::BitOr) return makeScalarUInt(aU | bU);
             if (e.binaryOp == Expr::BinaryOp::BitXor) return makeScalarUInt(aU ^ bU);
             if (e.binaryOp == Expr::BinaryOp::ShiftLeft) {
-              if (bU > 0u && aU > ((std::numeric_limits<std::uint64_t>::max)() >> bU)) {
-                return makeScalarMaybeExact(std::ldexp(static_cast<double>(aU), static_cast<int>(bU)));
+              EvalValue outS;
+              if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
+                setIncompatibleOperandsError(ctx);
+                return makeScalar(0);
               }
-              return makeScalarUInt(aU << bU);
+              return outS;
             }
             return makeScalarUInt(aU >> bU);
           }
@@ -3717,8 +3745,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
           if ((e.binaryOp == Expr::BinaryOp::Mul || e.binaryOp == Expr::BinaryOp::Add ||
                e.binaryOp == Expr::BinaryOp::Sub)) {
             long long li = 0, ri = 0;
-            if (tryGetExactSignedInt64NoUIntWrapFromScalar(l.scalarValue, li) &&
-                tryGetExactSignedInt64NoUIntWrapFromScalar(r.scalarValue, ri)) {
+            if (tryGetBothExactSignedInt64NoUIntWrapFromScalars(l.scalarValue, r.scalarValue, li, ri)) {
               long long outI = 0;
               const bool okInt =
                   (e.binaryOp == Expr::BinaryOp::Mul) ? checkedMulLL(li, ri, outI) :
@@ -3731,27 +3758,30 @@ MathParser::EvalValue MathParser::evalExprScalar(
                 const std::uint64_t lu = static_cast<std::uint64_t>(li);
                 const std::uint64_t ru = static_cast<std::uint64_t>(ri);
                 if (e.binaryOp == Expr::BinaryOp::Add) {
-                  if (lu <= ((std::numeric_limits<std::uint64_t>::max)() - ru)) {
-                    return makeScalarUInt(lu + ru);
+                  std::uint64_t outU = 0;
+                  if (tryAddUInt64Checked(lu, ru, outU)) {
+                    return makeScalarUInt(outU);
                   }
                 } else if (e.binaryOp == Expr::BinaryOp::Mul) {
-                  if (ru == 0u || lu <= ((std::numeric_limits<std::uint64_t>::max)() / ru)) {
-                    return makeScalarUInt(lu * ru);
+                  std::uint64_t outU = 0;
+                  if (tryMulUInt64Checked(lu, ru, outU)) {
+                    return makeScalarUInt(outU);
                   }
                 }
               }
             }
             std::uint64_t lu = 0;
             std::uint64_t ru = 0;
-            if (tryGetExactNonNegativeUInt64FromScalar(l.scalarValue, lu) &&
-                tryGetExactNonNegativeUInt64FromScalar(r.scalarValue, ru)) {
+            if (tryGetBothExactNonNegativeUInt64FromScalars(l.scalarValue, r.scalarValue, lu, ru)) {
               if (e.binaryOp == Expr::BinaryOp::Add) {
-                if (lu <= ((std::numeric_limits<std::uint64_t>::max)() - ru)) {
-                  return makeScalarUInt(lu + ru);
+                std::uint64_t outU = 0;
+                if (tryAddUInt64Checked(lu, ru, outU)) {
+                  return makeScalarUInt(outU);
                 }
               } else if (e.binaryOp == Expr::BinaryOp::Mul) {
-                if (ru == 0u || lu <= ((std::numeric_limits<std::uint64_t>::max)() / ru)) {
-                  return makeScalarUInt(lu * ru);
+                std::uint64_t outU = 0;
+                if (tryMulUInt64Checked(lu, ru, outU)) {
+                  return makeScalarUInt(outU);
                 }
               }
             }

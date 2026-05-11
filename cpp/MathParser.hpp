@@ -344,6 +344,20 @@ private:
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
+  static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
+      const EvalValue::ScalarValue& a,
+      const EvalValue::ScalarValue& b,
+      long long& outA,
+      long long& outB);
+  static bool tryGetBothExactNonNegativeUInt64FromScalars(
+      const EvalValue::ScalarValue& a,
+      const EvalValue::ScalarValue& b,
+      std::uint64_t& outA,
+      std::uint64_t& outB);
+  static bool tryShiftLeftU64ExactOrMaybe(
+      std::uint64_t aU,
+      std::uint64_t bU,
+      EvalValue& outV);
   static bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool argsContainNonFinite(const std::vector<EvalValue>& args);
   static bool isFormatBuiltin(BuiltinFunctionId id);
