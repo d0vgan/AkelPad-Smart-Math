@@ -402,7 +402,7 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std:
     return true;
   }
 
-  long long exponent = 0;
+  int exponent = 0;
   bool exponentNegative = false;
   if (p < numEnd && (*p == 'e' || *p == 'E')) {
     ++p;
@@ -435,7 +435,7 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std:
   }
 
   const int significantDigits = intDigitCount + fracDigits;
-  const long long adjust = exponent - fracDigits;
+  const int adjust = exponent - fracDigits;
 
   if (adjust >= 0) {
     if (significantDigits + adjust > 20) {
@@ -458,7 +458,7 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std:
     return true;
   }
 
-  const long long divisor = -adjust;
+  const int divisor = -adjust;
   if (divisor > storedDigitCount) {
     return false;
   }
