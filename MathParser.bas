@@ -4283,6 +4283,12 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
         if significantDigits + adjust > 20 then
           ' Result would exceed uint64 range
           decIntOverflow = TRUE
+        elseif numFracDigits = 0 andalso adjust = 0 then
+          ' Pure decimal integer without exponent: mantissa already in decIntAcc (skip mult/add no-ops)
+          dVal = CDbl(decIntAcc)
+          keepExactUInt = TRUE
+          keepUInt = decIntAcc
+          exactIntLiteral = TRUE
         else
           ' Combine: intPart * 10^fracDigits + fracPart (checked: silent ULongInt wrap must not attach exact uint metadata)
           dim exactInt as ULongInt = decIntAcc
