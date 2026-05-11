@@ -192,7 +192,8 @@ private function IsSpaceOrTabAfterHash(byval ch as String) as BOOL
   end select
 end function
 
-'' First line: '#' then only spaces/tabs, then exactly SmartMath | smartmath | SMARTMATH; rest of line ignored.
+'' First line: '#' then only spaces/tabs, then exactly SmartMath | smartmath | SMARTMATH (case-sensitive);
+'' after that only spaces, tabs, CR, LF, or end of line/string.
 private function FirstLineHasSmartMathMarker(byref sLine0 as String) as BOOL
   if Len(sLine0) = 0 then return FALSE
   if Left(sLine0, 1) <> "#" then return FALSE
@@ -207,11 +208,22 @@ private function FirstLineHasSmartMathMarker(byref sLine0 as String) as BOOL
   const MARKER_LEN as Integer = 9  '' Len("SmartMath") etc.
   if Len(rest) < MARKER_LEN then return FALSE
   dim head as String = Left(rest, MARKER_LEN)
-  return (head = "SmartMath") orelse (head = "smartmath") orelse (head = "SMARTMATH")
+  if (head <> "SmartMath") andalso (head <> "smartmath") andalso (head <> "SMARTMATH") then return FALSE
+
+  dim tail as String = Mid(rest, MARKER_LEN + 1)
+  dim j as Integer
+  for j = 1 to Len(tail)
+    select case Asc(Mid(tail, j, 1))
+      case 9, 10, 13, 32  '' TAB, LF, CR, space
+      case else
+        return FALSE
+    end select
+  next j
+  return TRUE
 end function
 
 private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
-  ' First line: "#" ... optional spaces/tabs ... SmartMath | smartmath | SMARTMATH.
+  ' First line: "#" ... optional spaces/tabs ... SmartMath | smartmath | SMARTMATH; tail only space/tab/CR/LF.
   if hWndEdit = 0 then return FALSE
   if IsWindow(hWndEdit) = FALSE then return FALSE
   dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
