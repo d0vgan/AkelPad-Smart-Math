@@ -94,9 +94,9 @@ Examples:
 
 Other combinations of time with time:
 
-- `+` / `-` -> duration
+- `+`, `-` -> duration
 - `*` with two durations is not allowed (use a unitless factor: `0:25 * 6`); duration `*` plain or plain `*` duration -> scaled duration
-- two durations with `/` -> plain ratio; duration `/` plain -> duration; **plain `/` duration is not allowed** (use converters if you need a numeric length first)
+- two durations with `/` -> plain ratio; duration `/` plain -> duration; plain `/` duration is not allowed (use converters if you need a numeric length first)
 
 Unary `-` on a duration flips its sign (same as for ordinary numbers).
 
@@ -454,30 +454,6 @@ Purpose: power (`**`) and root operations.
   - `sqrt(25)` -> `5`
   - `hypot(3,4)` -> `5`
 
-### Time conversion
-
-Purpose: turn a **duration** into a plain numeric length.
-
-- Key functions:
-- `milliseconds(t)` - length in whole milliseconds (integer scalar, or integer array when `t` is a duration array)
-- `seconds(t)` - length in seconds (floating-point scalar or array)
-- `minutes(t)` - length in minutes (floating-point scalar or array)
-- `hours(t)` - length in hours (floating-point scalar or array)
-- `days(t)` - length in days (floating-point scalar or array)
-- Notes:
-- `t` must be a duration (literal, `second` / `minute` / etc., or an expression that evaluates to a duration), or an array of durations of any length, in which case the converter applies **element-wise** and returns an array of the same shape. A plain number such as `5` is not accepted, and an array may not mix durations with non-durations.
-- Examples:
-  - `seconds(1:00)` -> `60`
-  - `minutes(0:90)` -> `1.5`
-  - `minutes(0:45)` -> `0.75`
-  - `hours(12:00:00)` -> `12`
-  - `days(12:00:00)` -> `0.5`
-  - `milliseconds((0:01:00,0:02:00))` -> `(60000, 120000)`
-  - `seconds((0:30,1:00))` -> `(30, 60)`
-  - `hours((1:00:00,0:30:00))` -> `(1, 0.5)`
-
-For concepts and mixed-operator rules, see **Time values** under Common Tasks.
-
 ### Numeric Utilities
 
 Purpose: rounding, bounds, integer helpers, factorial.
@@ -560,6 +536,29 @@ Notes:
 
 - Formatting functions require integer values.
 - `uhex/uoct/ubin` show unsigned 64-bit style for negatives.
+
+### Time Conversion
+
+Purpose: turn a **duration** into a plain numeric length.
+
+- Key functions:
+- `milliseconds(t)` - length in whole milliseconds (integer scalar, or integer array when `t` is a duration array)
+- `seconds(t)` - length in seconds (floating-point scalar or array)
+- `minutes(t)` - length in minutes (floating-point scalar or array)
+- `hours(t)` - length in hours (floating-point scalar or array)
+- `days(t)` - length in days (floating-point scalar or array)
+- Notes:
+- `t` must be a duration (literal, `second` / `minute` / etc., or an expression that evaluates to a duration), or an array of durations of any length, in which case the converter applies **element-wise** and returns an array of the same shape. A plain number such as `5` is not accepted, and an array may not mix durations with non-durations.
+- Examples:
+  - `seconds(1:00)` -> `60`
+  - `minutes(0:45)` -> `0.75`
+  - `hours(12:00:00)` -> `12`
+  - `days(12:00:00)` -> `0.5`
+  - `milliseconds((0:01:00,0:02:00))` -> `(60000, 120000)`
+  - `seconds((0:30,1:00))` -> `(30, 60)`
+  - `hours((1:00,0:30)*60)` -> `(1, 0.5)`
+
+For concepts and mixed-operator rules, see **Time values** under Common Tasks.
 
 ### Random
 
