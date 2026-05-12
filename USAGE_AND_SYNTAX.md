@@ -11,7 +11,7 @@ SmartMath evaluates math expressions inside AkelPad.
 
 ### Mini Glossary
 
-- `scalar`: a single number, for example `42` or `3.5`.
+- `scalar`: a single value - either a **plain number** (`42`, `3.5`) or a **duration** written like `1:30` (see **Time values**).
 - `array`: a list of numbers in parentheses, for example `(1,2,3)`.
 - `expression`: any calculable input, for example `2+3` or `sin(pi/2)`.
 - `statement`: one top-level unit. Multiple statements can be separated with `;`.
@@ -30,6 +30,8 @@ Copy/paste examples:
 - `2+3; ans/10` -> `0.5`
 - `f(x)=x*x+1; f(5)` -> `26`
 - `clamp((1,9),0,7)` -> `(1,7)`
+- `1:30 + 2:45` -> `04:15`
+- `seconds(2:00)` -> `120`
 
 ## Common Tasks
 
@@ -53,6 +55,64 @@ Base-prefixed integer forms:
 - Use postfix percent for percentage math:
   - `200 + 15%` -> `230`
   - `200 - 15%` -> `170`
+
+### Time values
+
+SmartMath can treat clock-like literals and unit constants as **durations** (time values). They are kept in a precise internal form so sums, differences, and comparisons match stopwatch-style expectations. Results are shown with colons, using as many fields as needed (minutes and seconds, or hours, or days), and a fractional part on the seconds (milliseconds) field when it matters:
+
+- `0:60` -> `01:00`
+- `1:30 + 2:45` -> `04:15`
+- `1:30.5` -> `01:30.500`
+
+**Literals** use colons between segments. Allowed shapes:
+
+- `MM:SS` - minutes, then seconds (with optional milliseconds after `.`): `0:60.5` -> `01:00.500`
+- `HH:MM:SS` - hours, minutes, seconds (with optional milliseconds): `1:30 + 2:45.111` -> `04:15.111`
+- `DD:HH:MM:SS` - **days : hours : minutes : seconds** (four groups). Example: `1:12:00:00` is one day and twelve hours, the same as `36:00:00` (36 hours).
+
+Each colon-separated part contains digits only (no sign inside the part). A double colon leaves an empty part and errors (`1::0` -> `time literal: empty segment between colons`).
+
+**Unit constants** (each is one fixed span; reserved names like `pi`, so you cannot assign to them):
+
+- `millisecond` (the same as `00:00.001`)
+- `second` (the same as `00:01`)
+- `minute` (the same as `01:00`)
+- `hour` (the same as `01:00:00`)
+- `day` (the same as `1:00:00:00`)
+
+Examples:
+
+- `second + 5` -> `00:06` (one second plus five **seconds** counted as a plain number)
+- `1:00 + 5` -> `01:05` (one minute plus five **seconds**, same rule as above)
+- `minute - second` -> `00:59`
+- `1:00 == 0:60` -> `1` (same duration, different literal)
+
+**Plain numbers next to a duration** - meaning depends on the operator:
+
+- **`+`, `-`, and comparisons** (`=`, `<>`, `<`, etc.): a plain number counts as **seconds**. Example: `0:30 > 20` -> `1` (30 seconds vs 20 seconds).
+- **`*` and `/`**: a plain number is a **unitless** factor or divisor: `0:25 * 6` -> `02:30`; `1:30 / 0:30` -> `3` (ratio of two durations).
+
+Other combinations of time with time:
+
+- `+` / `-` -> duration
+- `*` with two durations is not allowed (use a unitless factor: `0:25 * 6`); duration `*` plain or plain `*` duration -> scaled duration
+- two durations with `/` -> plain ratio; duration `/` plain -> duration; **plain `/` duration is not allowed** (use converters if you need a numeric length first)
+
+Unary `-` on a duration flips its sign (same as for ordinary numbers).
+
+**Converters** - see **Time conversion** under [Function Reference](#function-reference) for `milliseconds`, `seconds`, `minutes`, `hours`, `days`. Quick examples: `seconds(2:00)` -> `120`; `milliseconds(minute + 30*second)` -> `90000`; `seconds((0:30,1:00))` -> `(30, 60)` (element-wise on a duration array).
+
+**Arrays**: do not mix durations and plain numbers in one literal. `(0:30, 1:00)` is fine; `sum(0:30,1:00)` -> `01:30`.
+
+**Rounding**: fractional seconds in literals are rounded to the nearest millisecond. Converter `milliseconds` returns an integer (or an array of integers when given a duration array); `seconds` / `minutes` / `hours` / `days` return floating-point lengths (or element-wise arrays of the same shape).
+
+**Not supported with time** (typical errors: `incompatible operands`, or text containing `expects a time value`):
+
+- Postfix `%` on a duration
+- Trig, logs, most powers/roots, combinatorics, and display helpers (for example `sin`, `hex`, `pow` with a duration)
+- Multiplying two durations (`1:00*1:00`)
+- `product` if any argument is a duration
+- `milliseconds(5)` - converters need a duration, not a plain number (each array element must be a duration too)
 
 ### Arrays
 
@@ -81,7 +141,7 @@ Base-prefixed integer forms:
   - `a = 10`
 - Reserved names cannot be assignment targets:
   - function names (for example `hex`, `random`, `sin`)
-  - built-in constants (`pi`, `e`, `inf`, `nan`)
+  - built-in constants (`pi`, `e`, `inf`, `nan`, and time units `second`, `minute`, `hour`, `day`)
 - Reuse values:
   - `a*3` -> `30`
 - `ans` is the last successful result:
@@ -113,6 +173,7 @@ Base-prefixed integer forms:
 - Reserved names cannot be used for function names:
   - `hex(x)=x` -> error (`reserved function name`)
   - `e(x)=x` -> error (`reserved constant name`)
+  - `ans(x)=x` or `_(x)=x` -> error (`reserved built-in variable name`) - these names are reserved for the last-result variable `ans` and the formal-validation probe variable `_` (see below)
   - `nan=1` -> error (`reserved constant name`)
 - Call:
   - `f(5)` -> `26`
@@ -286,6 +347,7 @@ Quick index (alphabetical):
 | `clamp(value, min, max)` | numeric utility |
 | `cos(angle)` | trigonometric |
 | `cosh(value)` | trigonometric/hyperbolic |
+| `days(t)` | time conversion |
 | `deg(...)` | trigonometric conversion |
 | `exp(value)` | logarithmic/exponential |
 | `fact/factorial(n)` | numeric utility |
@@ -293,6 +355,7 @@ Quick index (alphabetical):
 | `frac/fract(value)` | numeric utility |
 | `gcd(a, b)` | numeric utility |
 | `hex(...)` | output formatting |
+| `hours(t)` | time conversion |
 | `hypot(x, y)` | power/root |
 | `int(value)` | numeric utility |
 | `lcm(a, b)` | numeric utility |
@@ -301,7 +364,9 @@ Quick index (alphabetical):
 | `log10(value)` | logarithmic/exponential |
 | `max(...)` | aggregation |
 | `median(...)` | aggregation |
+| `milliseconds(t)` | time conversion |
 | `min(...)` | aggregation |
+| `minutes(t)` | time conversion |
 | `mod(value, divisor)` | numeric utility |
 | `ncr(n, r)` | numeric utility |
 | `npr(n, r)` | numeric utility |
@@ -313,6 +378,7 @@ Quick index (alphabetical):
 | `random(min, max)` | random |
 | `reverse/reversed(...)` | array utility |
 | `round(value)` | numeric utility |
+| `seconds(t)` | time conversion |
 | `sign(value)` | numeric utility |
 | `sin(angle)` | trigonometric |
 | `sinh(value)` | trigonometric/hyperbolic |
@@ -387,6 +453,30 @@ Purpose: power (`**`) and root operations.
   - `2**63` -> `9223372036854775808`
   - `sqrt(25)` -> `5`
   - `hypot(3,4)` -> `5`
+
+### Time conversion
+
+Purpose: turn a **duration** into a plain numeric length.
+
+- Key functions:
+- `milliseconds(t)` - length in whole milliseconds (integer scalar, or integer array when `t` is a duration array)
+- `seconds(t)` - length in seconds (floating-point scalar or array)
+- `minutes(t)` - length in minutes (floating-point scalar or array)
+- `hours(t)` - length in hours (floating-point scalar or array)
+- `days(t)` - length in days (floating-point scalar or array)
+- Notes:
+- `t` must be a duration (literal, `second` / `minute` / etc., or an expression that evaluates to a duration), or an array of durations of any length, in which case the converter applies **element-wise** and returns an array of the same shape. A plain number such as `5` is not accepted, and an array may not mix durations with non-durations.
+- Examples:
+  - `seconds(1:00)` -> `60`
+  - `minutes(0:90)` -> `1.5`
+  - `minutes(0:45)` -> `0.75`
+  - `hours(12:00:00)` -> `12`
+  - `days(12:00:00)` -> `0.5`
+  - `milliseconds((0:01:00,0:02:00))` -> `(60000, 120000)`
+  - `seconds((0:30,1:00))` -> `(30, 60)`
+  - `hours((1:00:00,0:30:00))` -> `(1, 0.5)`
+
+For concepts and mixed-operator rules, see **Time values** under Common Tasks.
 
 ### Numeric Utilities
 
@@ -521,6 +611,7 @@ These behaviors may differ from other tools/languages.
 - Binary: `0b1011`
 - Octal: `0o64`
 - Invalid prefixes alone are errors (for example `0x`, `0b`, `0o`).
+- Time (clock-like): `MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS`; optional fraction on the **last** segment only. See **Time values** under Common Tasks.
 
 ## Errors and Troubleshooting
 
@@ -551,6 +642,16 @@ These behaviors may differ from other tools/languages.
 - `array index is out of range`
   - Example: `(10,20)[5]`
   - Fix: use a valid index (`0..len-1` or negative within bounds).
+
+- `time literal: empty segment between colons` / `time literal: invalid segment`
+  - Example: `1::0` (empty segment)
+  - Fix: use a valid colon pattern (`MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS`).
+
+- `array literal: time values cannot be mixed with non-time values`
+  - Fix: keep an array all-time or all non-time.
+
+- `... expects a time value` (for example on `milliseconds(...)`)
+  - Fix: pass a time value, not a plain number.
 
 ### Diagnostics Format
 

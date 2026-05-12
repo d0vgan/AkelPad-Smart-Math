@@ -424,6 +424,15 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
+private function IsParserTimeResultDisplay(byref s as String) as Boolean
+  dim t as String = trim(s)
+  if len(t) < 3 then return FALSE
+  if instr(t, ":") <= 0 then return FALSE
+  dim tl as String = lcase(t)
+  if left(tl, 3) = "inf" orelse left(tl, 4) = "-inf" orelse left(tl, 3) = "nan" then return FALSE
+  return TRUE
+end function
+
 private sub BuildRenderedResultText(byref sLine as String, byref sRes as String, byref bIsError as Boolean, byval lineIdx as Integer = -1)
   sRes = ""
   bIsError = FALSE
@@ -464,7 +473,9 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
       if Len(sNf) > 0 then
         sRes = SMARTMATH_RESULT_PREFIX & sNf
       else
-        if IsDecIntStr(sResult) then
+        if IsParserTimeResultDisplay(sResult) then
+          sRes = SMARTMATH_RESULT_PREFIX & sResult
+        elseif IsDecIntStr(sResult) then
           ' preserving the exact integer result
           sRes = SMARTMATH_RESULT_PREFIX & AddThousandsSeparator(sResult)
         else

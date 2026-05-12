@@ -419,6 +419,25 @@ function FormatResult(byval d as Double) as String
   return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
 end function
 
+function IsTimeValueStr(byref s as String) as Boolean
+  dim n as Integer = len(s)
+  if n = 0 then return FALSE
+
+  dim p as ZString ptr = strptr(s)
+  dim i as Integer = 0
+  dim ch as UByte = p[i]
+  if (ch = asc("-")) orelse (ch = asc("+")) then
+    if n = 1 then return FALSE
+    i += 1
+  end if
+
+  while i < n
+    if p[i] = asc(":") then return TRUE
+    i += 1
+  wend
+  return FALSE
+end function
+
 function IsDecIntStr(byref s as String) as Boolean
   dim n as Integer = len(s)
   if n = 0 then return FALSE
@@ -452,7 +471,9 @@ private sub AppendTupleBodyFromElems(byref outText as String, elems() as String,
       outText &= elems(j)
     else
       dim elem as String = Trim(elems(j))
-      if IsDecIntStr(elem) then
+      if IsTimeValueStr(elem) then
+        outText &= elem
+      elseif IsDecIntStr(elem) then
         outText &= AddThousandsSeparator(elem)
       else
         outText &= FormatNumericValue(Val(elem))

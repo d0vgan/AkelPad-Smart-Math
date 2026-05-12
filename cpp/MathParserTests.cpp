@@ -295,6 +295,24 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+  t.push_back({"unit/addUserFunction rejects ans as function name", [](std::string& why) {
+                 MathParser p;
+                 const std::string err = p.addUserFunction("ans(x)=x*x");
+                 if (err != "reserved built-in variable name") {
+                   why = "expected reserved built-in variable name, got: " + err;
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"unit/addUserFunction rejects formal probe as function name", [](std::string& why) {
+                 MathParser p;
+                 const std::string err = p.addUserFunction("_(x)=x*x");
+                 if (err != "reserved built-in variable name") {
+                   why = "expected reserved built-in variable name, got: " + err;
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"unit/addUserFunction rejects trailing junk in body", [](std::string& why) {
                  MathParser p;
                  const std::string err = p.addUserFunction("bad1(x)=x)");
@@ -3012,6 +3030,9 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "sin(x)=x", "reserved function name"} ,
     {ParityBasicCase::Kind::ErrorContains, "oct(x)=x", "reserved function name"} ,
     {ParityBasicCase::Kind::ErrorContains, "not(x)=x", "reserved function name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "ans(x)=x", "reserved built-in variable name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "_(x)=x", "reserved built-in variable name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "ANS(x)=x", "reserved built-in variable name"} ,
     {ParityBasicCase::Kind::Expected, "f(x,y)=x*y; a=(2,3); f(unpack(a))", "6"} ,
     {ParityBasicCase::Kind::Expected, "f(x,y,z)=x+y+z; f(unpack((1,2,3)))", "6"} ,
     {ParityBasicCase::Kind::Expected, "unpack((1,2,3))", "(1,2,3)"} ,
@@ -3156,6 +3177,39 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
 };
 
+static const ParityBasicCase kParityTimeFromSmokeCases[] = {
+    {ParityBasicCase::Kind::Expected, "0:60", "01:00"} ,
+    {ParityBasicCase::Kind::Expected, "1:30 + 2:45.111", "04:15.111"} ,
+    {ParityBasicCase::Kind::Expected, "second + 5", "00:06"} ,
+    {ParityBasicCase::Kind::Expected, "minute - second", "00:59"} ,
+    {ParityBasicCase::Kind::Expected, "1:00 == 0:60", "1"} ,
+    {ParityBasicCase::Kind::Expected, "0:30 > 20", "1"} ,
+    {ParityBasicCase::Kind::Expected, "milliseconds(minute + 30*second)", "90000"} ,
+    {ParityBasicCase::Kind::Expected, "seconds(2:00)", "120"} ,
+    {ParityBasicCase::Kind::Expected, "minutes(0:45)", "0.75"} ,
+    {ParityBasicCase::Kind::Expected, "hours(12:00:00)", "12"} ,
+    {ParityBasicCase::Kind::Expected, "days(12:00:00)", "0.5"} ,
+    {ParityBasicCase::Kind::Expected, "0:25 * 6", "02:30"} ,
+    {ParityBasicCase::Kind::Expected, "1:30 / 0:30", "3"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1::0", "empty segment"} ,
+    {ParityBasicCase::Kind::ErrorContains, "second=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "minute=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "hour=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "day=1", "reserved constant name"} ,
+    {ParityBasicCase::Kind::ErrorContains, "sin(minute)", "incompatible operands"} ,
+    {ParityBasicCase::Kind::Expected, "milliseconds((0:01:00,0:02:00))", "(60000, 120000)"} ,
+    {ParityBasicCase::Kind::Expected, "seconds((0:30,1:00))", "(30, 60)"} ,
+    {ParityBasicCase::Kind::Expected, "hours((1:00:00,0:30:00))", "(1, 0.5)"} ,
+    {ParityBasicCase::Kind::Expected, "minutes((0:30,1:00))", "(0.5, 1)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "milliseconds((0:30,5))", "time value"} ,
+    {ParityBasicCase::Kind::ErrorContains, "milliseconds(5)", "time value"} ,
+    {ParityBasicCase::Kind::Expected, "sum(0:30,1:00)", "01:30"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1:00*1:00", "incompatible operands"} ,
+    {ParityBasicCase::Kind::ErrorContains, "product(1:00,0:30)", "incompatible operands"} ,
+    {ParityBasicCase::Kind::ErrorContains, "prod(1:00)", "incompatible operands"} ,
+    {ParityBasicCase::Kind::ErrorContains, "product(1:00)", "incompatible operands"} ,
+};
+
 std::vector<TestCase> buildParityBasicFromSmokeCases() {
   std::vector<TestCase> t;
   constexpr std::size_t kCount = sizeof(kParityBasicFromSmokeCases) / sizeof(kParityBasicFromSmokeCases[0]);
@@ -3164,6 +3218,29 @@ std::vector<TestCase> buildParityBasicFromSmokeCases() {
   for (std::size_t i = 0; i < kCount; ++i) {
     const auto& c = kParityBasicFromSmokeCases[i];
     std::string name("parity/basic: "); name += c.expr;
+    if (c.kind == ParityBasicCase::Kind::Expected) {
+      t.push_back({name, [expr = c.expr, payload = c.payload](std::string& why) {
+                     MathParser p;
+                     return expectEval(p, expr, payload, why);
+                   }});
+    } else {
+      t.push_back({name, [expr = c.expr, payload = c.payload](std::string& why) {
+                     MathParser p;
+                     return expectEvalErrorContains(p, expr, payload, why);
+                   }});
+    }
+  }
+  return t;
+}
+
+std::vector<TestCase> buildParityTimeFromSmokeCases() {
+  std::vector<TestCase> t;
+  constexpr std::size_t kCount = sizeof(kParityTimeFromSmokeCases) / sizeof(kParityTimeFromSmokeCases[0]);
+  t.reserve(kCount);
+  for (std::size_t i = 0; i < kCount; ++i) {
+    const auto& c = kParityTimeFromSmokeCases[i];
+    std::string name("parity/time: ");
+    name += c.expr;
     if (c.kind == ParityBasicCase::Kind::Expected) {
       t.push_back({name, [expr = c.expr, payload = c.payload](std::string& why) {
                      MathParser p;
@@ -3230,12 +3307,14 @@ int main() {
   const auto nanInf = buildNanInfCases();
   const auto regression = buildRegressionCases();
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
+  const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
   runSuite("NaN/Inf", nanInf, s);
   runSuite("Regression", regression, s);
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
+  runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

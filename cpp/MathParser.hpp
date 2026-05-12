@@ -82,11 +82,8 @@ private:
     Cos,
     Tan,
     Asin,
-    Arcsin,
     Acos,
-    Arccos,
     Atan,
-    Arctan,
     Sinh,
     Cosh,
     Tanh,
@@ -101,7 +98,6 @@ private:
     Sqr,
     Int,
     Frac,
-    Fract,
     Abs,
     Floor,
     Ceil,
@@ -115,13 +111,10 @@ private:
     Variance,
     Stddev,
     Sort,
-    Sorted,
     Reverse,
-    Reversed,
     Unique,
     Unpack,
     Fact,
-    Factorial,
     Avg,
     Mean,
     Mod,
@@ -132,12 +125,16 @@ private:
     Ncr,
     Npr,
     Product,
-    Prod,
     Min,
     Max,
     Uhex,
     Uoct,
     Ubin,
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
     Count
   };
 
@@ -166,7 +163,7 @@ private:
   };
 
   enum class ValueKind { Scalar, Array, UdfFormalValidationDummy };
-  enum class ScalarKind { FloatingPoint, Int64, UInt64 };
+  enum class ScalarKind { FloatingPoint, Int64, UInt64, Time };
 
   enum class RenderBase { Dec = 10, Hex = 16, Oct = 8, Bin = 2 };
 
@@ -336,6 +333,7 @@ private:
       std::vector<std::unique_ptr<Expr>>& outValues);
   std::unique_ptr<Expr> parsePrimaryParenthesized(EvalContext& ctx);
   std::unique_ptr<Expr> parsePrimaryNumericLiteral(EvalContext& ctx);
+  bool tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const;
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
@@ -386,7 +384,6 @@ private:
   static const std::string& opName(OperatorNameId id);
   static bool tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFunctionId& outId);
   static BuiltinHintKind getBuiltinHintKind(BuiltinFunctionId id);
-  static BuiltinFunctionId getBuiltinHintDisplayId(BuiltinFunctionId id);
   static std::string getBuiltinFunctionMissingCallHint(BuiltinFunctionId id);
   static bool isOpKeyword(const std::string& nameText, OperatorNameId id);
   static bool isLogicalBinaryOperatorKeyword(const std::string& nameText);
@@ -617,6 +614,10 @@ private:
   static EvalValue makeScalarMaybeExact(double v);
   static EvalValue makeScalarInt(long long v);
   static EvalValue makeScalarUInt(std::uint64_t v);
+  static EvalValue makeScalarTimeMs(long long totalMs);
+  static bool scalarValueIsTime(const EvalValue::ScalarValue& s);
+  static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
+  static bool evalValueInvolvesTime(const EvalValue& v);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);
@@ -634,7 +635,13 @@ private:
       bool& ok) const;
   /** Unary minus with exact int/uint preservation; LLONG_MIN -> double. */
   static EvalValue negateEvalValue(const EvalValue& v);
-  EvalValue mapBinary(const EvalValue& a, const EvalValue& b, char op, bool& ok) const;
+  bool tryApplyTimeBinaryScalars(
+      EvalContext& ctx,
+      const EvalValue::ScalarValue& lv,
+      const EvalValue::ScalarValue& rv,
+      char op,
+      EvalValue& outS) const;
+  EvalValue mapBinary(EvalContext& ctx, const EvalValue& a, const EvalValue& b, char op, bool& ok) const;
   UserFunction* findUserFunction(const std::string& fnName);
   const UserFunction* findUserFunction(const std::string& fnName) const;
   void upsertUserFunction(UserFunction uf);

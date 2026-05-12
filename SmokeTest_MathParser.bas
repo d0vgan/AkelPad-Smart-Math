@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 979) as SmokeCase
+  dim tests(1 to 1012) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1230,6 +1230,39 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(977).expr = "sin(0)==0": tests(977).expected = "1" ' [syntax] builtin call + == not UDF
   tests(978).expr = "x=0; sin(x)==x": tests(978).expected = "1" ' [syntax] same as user report
   tests(979).expr = "f(t)=t*3; f(2)==6": tests(979).expected = "1" ' [syntax] UDF then ==
+  tests(980).expr = "0:60": tests(980).expected = "01:00" ' [time] MM:SS carry
+  tests(981).expr = "1:30 + 2:45.111": tests(981).expected = "04:15.111" ' [time] add with fractional seconds
+  tests(982).expr = "second + 5": tests(982).expected = "00:06" ' [time] constant + seconds
+  tests(983).expr = "minute - second": tests(983).expected = "00:59" ' [time] constants
+  tests(984).expr = "1:00 == 0:60": tests(984).expected = "1" ' [time] compare equal durations
+  tests(985).expr = "0:30 > 20": tests(985).expected = "1" ' [time] compare scalar seconds
+  tests(986).expr = "milliseconds(minute + 30*second)": tests(986).expected = "90000" ' [time] converter
+  tests(987).expr = "seconds(2:00)": tests(987).expected = "120" ' [time] HH:MM as two-seg is invalid... 2:00 is MM:SS = 2 min = 120000 ms -> seconds 120. Good
+  tests(988).expr = "minutes(0:45)": tests(988).expected = "0.75" ' [time]
+  tests(989).expr = "hours(12:00:00)": tests(989).expected = "12" ' [time] 12 hours literal
+  tests(990).expr = "days(12:00:00)": tests(990).expected = "0.5" ' [time]
+  tests(991).expr = "0:25 * 6": tests(991).expected = "02:30" ' [time] multiply unitless
+  tests(992).expr = "1:30 / 0:30": tests(992).expected = "3" ' [time] ratio
+  tests(993).expr = "1::0": tests(993).expectedErrContains = "empty segment" ' [time] error
+  tests(994).expr = "second=1": tests(994).expectedErrContains = "reserved constant name" ' [time] reserved
+  tests(995).expr = "minute=1": tests(995).expectedErrContains = "reserved constant name"
+  tests(996).expr = "hour=1": tests(996).expectedErrContains = "reserved constant name"
+  tests(997).expr = "day=1": tests(997).expectedErrContains = "reserved constant name"
+  tests(998).expr = "sin(minute)": tests(998).expectedErrContains = "incompatible operands" ' [time] reject
+  tests(999).expr = "milliseconds(5)": tests(999).expectedErrContains = "time value" ' [time] converter non-time
+  tests(1000).expr = "sum(0:30,1:00)": tests(1000).expected = "01:30" ' [time] aggregate
+  tests(1001).expr = "1:00*1:00": tests(1001).expectedErrContains = "incompatible operands" ' [time] no duration*duration
+  tests(1002).expr = "product(1:00,0:30)": tests(1002).expectedErrContains = "incompatible operands" ' [time] product needs unitless factors
+  tests(1003).expr = "prod(1:00)": tests(1003).expectedErrContains = "incompatible operands" ' [time] prod disallowed with duration
+  tests(1004).expr = "product(1:00)": tests(1004).expectedErrContains = "incompatible operands" ' [time] product disallowed with duration
+  tests(1005).expr = "ans(x)=x*x": tests(1005).expectedErrContains = "reserved built-in variable name" ' [syntax] UDF name collides with ans
+  tests(1006).expr = "_(x)=x*x": tests(1006).expectedErrContains = "reserved built-in variable name" ' [syntax] UDF name collides with formal probe _
+  tests(1007).expr = "ANS(x)=x": tests(1007).expectedErrContains = "reserved built-in variable name" ' [syntax] ans reserved case-insensitively for UDF
+  tests(1008).expr = "milliseconds((0:01:00,0:02:00))": tests(1008).expected = "(60000, 120000)" ' [time] converter element-wise int array
+  tests(1009).expr = "seconds((0:30,1:00))": tests(1009).expected = "(30, 60)" ' [time] converter element-wise float tuple
+  tests(1010).expr = "hours((1:00:00,0:30:00))": tests(1010).expected = "(1, 0.5)" ' [time] hours array
+  tests(1011).expr = "minutes((0:30,1:00))": tests(1011).expected = "(0.5, 1)" ' [time] minutes array
+  tests(1012).expr = "milliseconds((0:30,5))": tests(1012).expectedErrContains = "time value" ' [time] array element must be duration
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

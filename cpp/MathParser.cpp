@@ -93,6 +93,16 @@ constexpr const char* STR_MAX = "max";
 constexpr const char* STR_UHEX = "uhex";
 constexpr const char* STR_UOCT = "uoct";
 constexpr const char* STR_UBIN = "ubin";
+constexpr const char* STR_MILLISECONDS = "milliseconds";
+constexpr const char* STR_SECONDS = "seconds";
+constexpr const char* STR_MINUTES = "minutes";
+constexpr const char* STR_HOURS = "hours";
+constexpr const char* STR_DAYS = "days";
+constexpr const char* STR_MILLISECOND = "millisecond";
+constexpr const char* STR_SECOND = "second";
+constexpr const char* STR_MINUTE = "minute";
+constexpr const char* STR_HOUR = "hour";
+constexpr const char* STR_DAY = "day";
 constexpr const char* STR_NOT = "not";
 constexpr const char* STR_AND = "and";
 constexpr const char* STR_OR = "or";
@@ -135,6 +145,7 @@ constexpr const char* STR_LT_GT = "<>";
 constexpr const char* STR_DUPLICATE_PARAMETER_NAME = "duplicate parameter name";
 constexpr const char* STR_RESERVED_CONSTANT_NAME = "reserved constant name";
 constexpr const char* STR_RESERVED_FUNCTION_NAME = "reserved function name";
+constexpr const char* STR_RESERVED_BUILTIN_VARIABLE_NAME = "reserved built-in variable name";
 constexpr const char* STR_RECURSIVE_USER_FUNCTION_CALL_COLON = "recursive function call: ";
 constexpr const char* STR_UNEXPECTED_TOKEN_AFTER_EXPRESSION = "unexpected token after expression";
 constexpr const char* STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON = "scalar-only expression encountered non-scalar value";
@@ -147,6 +158,12 @@ constexpr const char* STR_INTERNAL_BINARY_OP = "internal binary op";
 constexpr const char* STR_INTERNAL_EVAL_ERROR = "internal eval error";
 constexpr const char* STR_PERCENTAGE_REQUIRES_SCALAR_VALUE = "percentage requires scalar value";
 constexpr const char* STR_FAILED_TO_BUILD_ARRAY_LITERAL = "failed to build array literal";
+constexpr const char* STR_TIME_LITERAL_EMPTY_SEGMENT = "time literal: empty segment between colons";
+constexpr const char* STR_TIME_LITERAL_INVALID_SEGMENT = "time literal: invalid segment";
+constexpr const char* STR_TIME_LITERAL_NEGATIVE_SEGMENT = "time literal: negative segment";
+constexpr const char* STR_TIME_NON_FINITE = "time value: non-finite operand";
+constexpr const char* STR_TIME_ARRAY_MIXED = "array literal: time values cannot be mixed with non-time values";
+constexpr const char* STR_TIME_EXPECTS_TIME_ARG = "() expects a time value";
 constexpr const char* STR_INDEXING_REQUIRES_AN_ARRAY_VALUE = "indexing requires an array value";
 constexpr const char* STR_ARRAY_INDEX_MUST_BE_A_SCALAR = "array index must be a scalar integer";
 constexpr const char* STR_ARRAY_INDEX_MUST_BE_AN_INTEGER = "array index must be an integer";
@@ -1067,6 +1084,240 @@ void mergeUnknownNameList(std::string& dest, const std::string& src) {
     i = j;
   }
 }
+
+long long roundHalfUpDoubleToLongLong(double x) {
+  if (!std::isfinite(x)) {
+    return 0;
+  }
+  if (x >= 0.0) {
+    return static_cast<long long>(std::floor(x + 0.5));
+  }
+  return -static_cast<long long>(std::floor(-x + 0.5));
+}
+
+long long secondsFieldToMsRounded(long long wholeSec, const std::string& fracDigits) {
+  double d = static_cast<double>(wholeSec);
+  if (!fracDigits.empty()) {
+    const std::string s = std::string("0.") + fracDigits;
+    char* end = nullptr;
+    const double fd = std::strtod(s.c_str(), &end);
+    if (end == s.c_str() || !std::isfinite(fd)) {
+      return 0;
+    }
+    d += fd;
+  }
+  return roundHalfUpDoubleToLongLong(d * 1000.0);
+}
+
+bool tryAddTimeMsChecked(long long a, long long b, long long& outMs) {
+  const double t = static_cast<double>(a) + static_cast<double>(b);
+  const double kMin = static_cast<double>((std::numeric_limits<long long>::min)());
+  const double kMax = static_cast<double>((std::numeric_limits<long long>::max)());
+  if (t < kMin || t > kMax) {
+    return false;
+  }
+  outMs = roundHalfUpDoubleToLongLong(t);
+  return true;
+}
+
+bool trySubTimeMsChecked(long long a, long long b, long long& outMs) {
+  const double t = static_cast<double>(a) - static_cast<double>(b);
+  const double kMin = static_cast<double>((std::numeric_limits<long long>::min)());
+  const double kMax = static_cast<double>((std::numeric_limits<long long>::max)());
+  if (t < kMin || t > kMax) {
+    return false;
+  }
+  outMs = roundHalfUpDoubleToLongLong(t);
+  return true;
+}
+
+/** Parse `lit` as MM:SS, HH:MM:SS, or DD:HH:MM:SS (optional fractional last field). Returns false and `err` message on failure. */
+bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const char*& err) {
+  err = nullptr;
+  const int n = static_cast<int>(lit.size());
+  if (n <= 0) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
+  std::vector<int> colonPos;
+  colonPos.reserve(8);
+  for (int i = 0; i < n; ++i) {
+    if (lit[static_cast<std::size_t>(i)] == ':') {
+      if (colonPos.size() > 6U) {
+        err = STR_TIME_LITERAL_INVALID_SEGMENT;
+        return false;
+      }
+      colonPos.push_back(i);
+    }
+  }
+  const int segCount = static_cast<int>(colonPos.size()) + 1;
+  if (segCount < 2 || segCount > 4) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
+
+  long long d = 0, h = 0, m = 0;
+  long long lastWhole = 0;
+  std::string fracPart;
+  int getSegStart = 0;
+  for (int si = 0; si < segCount; ++si) {
+    const int segEnd =
+        (si < static_cast<int>(colonPos.size())) ? (colonPos[static_cast<std::size_t>(si)] - 1) : (n - 1);
+    if (segEnd < getSegStart) {
+      err = STR_TIME_LITERAL_EMPTY_SEGMENT;
+      return false;
+    }
+    std::string segStr = lit.substr(static_cast<std::size_t>(getSegStart), static_cast<std::size_t>(segEnd - getSegStart + 1));
+    if (segStr.empty()) {
+      err = STR_TIME_LITERAL_EMPTY_SEGMENT;
+      return false;
+    }
+    if (si == segCount - 1) {
+      const std::size_t dotPos = segStr.find('.');
+      if (dotPos != std::string::npos) {
+        fracPart = segStr.substr(dotPos + 1);
+        segStr = segStr.substr(0, dotPos);
+        if (segStr.empty()) {
+          err = STR_TIME_LITERAL_EMPTY_SEGMENT;
+          return false;
+        }
+      } else {
+        fracPart.clear();
+      }
+    } else {
+      fracPart.clear();
+    }
+    for (char ch : segStr) {
+      if (ch < '0' || ch > '9') {
+        err = STR_TIME_LITERAL_INVALID_SEGMENT;
+        return false;
+      }
+    }
+    for (char ch : fracPart) {
+      if (ch < '0' || ch > '9') {
+        err = STR_TIME_LITERAL_INVALID_SEGMENT;
+        return false;
+      }
+    }
+    std::uint64_t uv = 0;
+    for (char ch : segStr) {
+      const int dig = ch - '0';
+      if (uv > ((std::numeric_limits<std::uint64_t>::max)() - static_cast<std::uint64_t>(dig)) / 10u) {
+        err = STR_TIME_LITERAL_INVALID_SEGMENT;
+        return false;
+      }
+      uv = uv * 10u + static_cast<std::uint64_t>(dig);
+    }
+    if (uv > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      err = STR_TIME_LITERAL_INVALID_SEGMENT;
+      return false;
+    }
+    lastWhole = static_cast<long long>(uv);
+    if (si < segCount - 1) {
+      switch (segCount) {
+        case 2:
+          if (si == 0) m = lastWhole;
+          break;
+        case 3:
+          if (si == 0) h = lastWhole;
+          if (si == 1) m = lastWhole;
+          break;
+        case 4:
+          if (si == 0) d = lastWhole;
+          if (si == 1) h = lastWhole;
+          if (si == 2) m = lastWhole;
+          break;
+        default: break;
+      }
+    }
+    getSegStart = segEnd + 2;
+  }
+
+  const long long secMs = secondsFieldToMsRounded(lastWhole, fracPart);
+  double t = 0.0;
+  switch (segCount) {
+    case 2:
+      t = static_cast<double>(m) * 60000.0 + static_cast<double>(secMs);
+      break;
+    case 3:
+      t = (static_cast<double>(h) * 3600.0 + static_cast<double>(m) * 60.0) * 1000.0 + static_cast<double>(secMs);
+      break;
+    case 4:
+      t = ((static_cast<double>(d) * 24.0 + static_cast<double>(h)) * 3600.0 + static_cast<double>(m) * 60.0) * 1000.0 +
+          static_cast<double>(secMs);
+      break;
+    default:
+      err = STR_TIME_LITERAL_INVALID_SEGMENT;
+      return false;
+  }
+  if (!std::isfinite(t)) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
+  const double kMin = static_cast<double>((std::numeric_limits<long long>::min)());
+  const double kMax = static_cast<double>((std::numeric_limits<long long>::max)());
+  if (t < kMin || t > kMax) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
+  outMs = roundHalfUpDoubleToLongLong(t);
+  return true;
+}
+
+std::string pad2DigitsLl(long long n) {
+  if (n < 0) {
+    n = 0;
+  }
+  if (n >= 100) {
+    return std::to_string(n);
+  }
+  if (n >= 10) {
+    return std::string(1, static_cast<char>('0' + (n / 10))) + std::string(1, static_cast<char>('0' + (n % 10)));
+  }
+  return std::string("0") + std::string(1, static_cast<char>('0' + (n % 10)));
+}
+
+std::string formatTimeCanonicalFromMs(long long totalMs) {
+  const bool neg = (totalMs < 0);
+  std::uint64_t rU = 0;
+  if (neg) {
+    if (totalMs == (std::numeric_limits<long long>::min)()) {
+      rU = static_cast<std::uint64_t>(1ull << 63);
+    } else {
+      rU = static_cast<std::uint64_t>(-totalMs);
+    }
+  } else {
+    rU = static_cast<std::uint64_t>(totalMs);
+  }
+  long long msPart = static_cast<long long>(rU % 1000ull);
+  rU /= 1000ull;
+  long long sPart = static_cast<long long>(rU % 60ull);
+  rU /= 60ull;
+  long long mPart = static_cast<long long>(rU % 60ull);
+  rU /= 60ull;
+  long long hPart = static_cast<long long>(rU % 24ull);
+  rU /= 24ull;
+  const std::uint64_t dPart = rU;
+  std::string body;
+  if (dPart > 0ull) {
+    body = std::to_string(dPart) + ":" + pad2DigitsLl(hPart) + ":" + pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+  } else if (hPart > 0) {
+    body = pad2DigitsLl(hPart) + ":" + pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+  } else {
+    body = pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+  }
+  if (msPart != 0) {
+    body.push_back('.');
+    body.push_back(static_cast<char>('0' + (msPart / 100)));
+    body.push_back(static_cast<char>('0' + ((msPart / 10) % 10)));
+    body.push_back(static_cast<char>('0' + (msPart % 10)));
+  }
+  if (neg) {
+    return std::string("-") + body;
+  }
+  return body;
+}
+
 }  // namespace
 
 MathParser::MathParser() {
@@ -1076,6 +1327,11 @@ MathParser::MathParser() {
   addConst(STR_E, std::exp(1.0));
   addConst(STR_INF, std::numeric_limits<double>::infinity());
   addConst(STR_NAN, std::numeric_limits<double>::quiet_NaN());
+  setVariable(STR_MILLISECOND, makeScalarTimeMs(1LL));
+  setVariable(STR_SECOND, makeScalarTimeMs(1000LL));
+  setVariable(STR_MINUTE, makeScalarTimeMs(60000LL));
+  setVariable(STR_HOUR, makeScalarTimeMs(3600000LL));
+  setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
   setVariable(STR_ANS, makeScalarInt(0));
   setVariable(STR_FORMAL_VALIDATION_PROBE, makeScalarInt(1));
 }
@@ -1088,22 +1344,30 @@ std::string MathParser::toLower(std::string s) {
 const std::vector<std::string>& MathParser::functionNames() {
   static const std::vector<std::string> kNames = {
       STR_RAND,   STR_RANDOM, STR_BIN,   STR_HEX,    STR_OCT,      STR_POW,  STR_ATAN2, STR_SIN,      STR_COS,  STR_TAN,
-      STR_ASIN,   STR_ARCSIN, STR_ACOS,  STR_ARCCOS, STR_ATAN,     STR_ARCTAN, STR_SINH, STR_COSH,     STR_TANH, STR_ACOSH, STR_ASINH, STR_ATANH, STR_EXP,
-      STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,  STR_FRACT,    STR_ABS,  STR_FLOOR,
+      STR_ASIN,   STR_ACOS, STR_ATAN, STR_SINH, STR_COSH,     STR_TANH, STR_ACOSH, STR_ASINH, STR_ATANH, STR_EXP,
+      STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,    STR_ABS,  STR_FLOOR,
       STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
-      STR_SORT,   STR_SORTED, STR_REVERSE, STR_REVERSED, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_FACTORIAL, STR_AVG, STR_MEAN,
-      STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_NCR, STR_NPR, STR_PRODUCT, STR_PROD, STR_MIN, STR_MAX,
-      STR_UHEX,   STR_UOCT,   STR_UBIN};
+      STR_SORT,   STR_REVERSE, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_AVG, STR_MEAN,
+      STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_NCR, STR_NPR, STR_PRODUCT, STR_MIN, STR_MAX,
+      STR_UHEX,   STR_UOCT,   STR_UBIN, STR_MILLISECONDS, STR_SECONDS, STR_MINUTES, STR_HOURS, STR_DAYS};
   return kNames;
 }
 
 const std::unordered_map<std::string, MathParser::BuiltinFunctionId>& MathParser::functionNameToId() {
   static const std::unordered_map<std::string, BuiltinFunctionId> kByName = [] {
     std::unordered_map<std::string, BuiltinFunctionId> m;
-    m.reserve(functionNames().size());
+    m.reserve(functionNames().size() + 8u);
     for (std::size_t i = 0; i < functionNames().size(); ++i) {
       m.emplace(functionNames()[i], static_cast<BuiltinFunctionId>(i));
     }
+    m.emplace(STR_ARCSIN, BuiltinFunctionId::Asin);
+    m.emplace(STR_ARCCOS, BuiltinFunctionId::Acos);
+    m.emplace(STR_ARCTAN, BuiltinFunctionId::Atan);
+    m.emplace(STR_FRACT, BuiltinFunctionId::Frac);
+    m.emplace(STR_SORTED, BuiltinFunctionId::Sort);
+    m.emplace(STR_REVERSED, BuiltinFunctionId::Reverse);
+    m.emplace(STR_FACTORIAL, BuiltinFunctionId::Fact);
+    m.emplace(STR_PROD, BuiltinFunctionId::Product);
     return m;
   }();
   return kByName;
@@ -1148,11 +1412,8 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Cos:
     case BuiltinFunctionId::Tan: return BuiltinHintKind::Angle;
     case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Arcsin:
     case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Arccos:
     case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Arctan:
     case BuiltinFunctionId::Sinh:
     case BuiltinFunctionId::Cosh:
     case BuiltinFunctionId::Tanh:
@@ -1171,8 +1432,7 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Trunc:
     case BuiltinFunctionId::Round:
     case BuiltinFunctionId::Sign:
-    case BuiltinFunctionId::Frac:
-    case BuiltinFunctionId::Fract: return BuiltinHintKind::Value;
+    case BuiltinFunctionId::Frac: return BuiltinHintKind::Value;
     case BuiltinFunctionId::Log: return BuiltinHintKind::ValueBase;
     case BuiltinFunctionId::Deg:
     case BuiltinFunctionId::Rad:
@@ -1185,15 +1445,11 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Avg:
     case BuiltinFunctionId::Mean:
     case BuiltinFunctionId::Product:
-    case BuiltinFunctionId::Prod:
     case BuiltinFunctionId::Min:
     case BuiltinFunctionId::Max:
     case BuiltinFunctionId::Sort:
-    case BuiltinFunctionId::Sorted:
-    case BuiltinFunctionId::Reverse:
-    case BuiltinFunctionId::Reversed: return BuiltinHintKind::DotDotDot;
-    case BuiltinFunctionId::Fact:
-    case BuiltinFunctionId::Factorial: return BuiltinHintKind::N;
+    case BuiltinFunctionId::Reverse: return BuiltinHintKind::DotDotDot;
+    case BuiltinFunctionId::Fact: return BuiltinHintKind::N;
     case BuiltinFunctionId::Mod: return BuiltinHintKind::ValueDivisor;
     case BuiltinFunctionId::Clamp: return BuiltinHintKind::ValueMinMax;
     case BuiltinFunctionId::Hypot: return BuiltinHintKind::XY;
@@ -1201,26 +1457,19 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Lcm: return BuiltinHintKind::AB;
     case BuiltinFunctionId::Ncr:
     case BuiltinFunctionId::Npr: return BuiltinHintKind::AB;
+    case BuiltinFunctionId::Milliseconds:
+    case BuiltinFunctionId::Seconds:
+    case BuiltinFunctionId::Minutes:
+    case BuiltinFunctionId::Hours:
+    case BuiltinFunctionId::Days: return BuiltinHintKind::Value;
     default: return BuiltinHintKind::None;
-  }
-}
-
-MathParser::BuiltinFunctionId MathParser::getBuiltinHintDisplayId(BuiltinFunctionId id) {
-  switch (id) {
-    case BuiltinFunctionId::Arcsin: return BuiltinFunctionId::Asin;
-    case BuiltinFunctionId::Arccos: return BuiltinFunctionId::Acos;
-    case BuiltinFunctionId::Arctan: return BuiltinFunctionId::Atan;
-    case BuiltinFunctionId::Fract: return BuiltinFunctionId::Frac;
-    case BuiltinFunctionId::Sorted: return BuiltinFunctionId::Sort;
-    case BuiltinFunctionId::Reversed: return BuiltinFunctionId::Reverse;
-    default: return id;
   }
 }
 
 std::string MathParser::getBuiltinFunctionMissingCallHint(BuiltinFunctionId id) {
   const MathParser::BuiltinHintKind kind = getBuiltinHintKind(id);
   if (kind == BuiltinHintKind::None) return "";
-  const std::string& fnName = getFunctionName(getBuiltinHintDisplayId(id));
+  const std::string& fnName = getFunctionName(id);
   switch (kind) {
     case BuiltinHintKind::EmptyPar: return fnName + STR_PAR_EMPTY;
     case BuiltinHintKind::MinMax: return fnName + STR_PAR_MIN_COMMA_MAX;
@@ -1260,7 +1509,9 @@ const char* MathParser::getReservedIdentifierError(const std::string& ident) {
   if (isReservedFunctionName(ident)) {
     return STR_RESERVED_FUNCTION_NAME;
   }
-  if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN) {
+  if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN ||
+      ident == STR_MILLISECOND || ident == STR_SECOND || ident == STR_MINUTE ||
+      ident == STR_HOUR || ident == STR_DAY) {
     return STR_RESERVED_CONSTANT_NAME;
   }
   return nullptr;
@@ -1338,12 +1589,31 @@ MathParser::EvalValue MathParser::makeUdfFormalValidationDummy() {
 }
 
 static bool isReservedBuiltinConstantName(const std::string& nameText) {
-  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN;
+  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN ||
+      nameText == STR_MILLISECOND || nameText == STR_SECOND || nameText == STR_MINUTE ||
+      nameText == STR_HOUR || nameText == STR_DAY;
+}
+
+static bool isReservedBuiltinVariableNameForUserFunctionDefinition(const std::string& fnName) {
+  std::string lowered = fnName;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (lowered == STR_ANS) {
+    return true;
+  }
+  if (fnName == STR_FORMAL_VALIDATION_PROBE) {
+    return true;
+  }
+  return false;
 }
 
 const char* MathParser::validateUserFunctionDefinitionNames(
     const std::string& fnName,
     const std::vector<std::string>& fnParams) {
+  if (isReservedBuiltinVariableNameForUserFunctionDefinition(fnName)) {
+    return STR_RESERVED_BUILTIN_VARIABLE_NAME;
+  }
   if (const char* reservedErr = getReservedIdentifierError(fnName)) {
     return reservedErr;
   }
@@ -2094,6 +2364,9 @@ bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
 }
 
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
+  if (s.scalarKind == ScalarKind::Time) {
+    return false;
+  }
   if (s.hasExactInt()) {
     outI = s.exactInt;
     return true;
@@ -2108,6 +2381,9 @@ bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& 
 }
 
 bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI) {
+  if (s.scalarKind == ScalarKind::Time) {
+    return false;
+  }
   if (s.hasExactInt()) {
     outI = s.exactInt;
     return true;
@@ -2121,6 +2397,9 @@ bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::Sca
 }
 
 bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU) {
+  if (s.scalarKind == ScalarKind::Time) {
+    return false;
+  }
   if (s.hasExactUInt64()) {
     outU = s.exactUInt64;
     return true;
@@ -2164,6 +2443,9 @@ bool MathParser::tryShiftLeftU64ExactOrMaybe(
 }
 
 bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
+  if (s.scalarKind == ScalarKind::Time) {
+    return false;
+  }
   if (tryGetExactSignedInt64FromScalar(s, outI)) {
     return true;
   }
@@ -2172,7 +2454,8 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
 
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
   return (a.scalarKind == ScalarKind::FloatingPoint) && (b.scalarKind == ScalarKind::FloatingPoint) &&
-      !a.hasExactInt() && !a.hasExactUInt64() && !b.hasExactInt() && !b.hasExactUInt64();
+      !MathParser::scalarValueIsTime(a) && !MathParser::scalarValueIsTime(b) && !a.hasExactInt() && !a.hasExactUInt64() && !b.hasExactInt() &&
+      !b.hasExactUInt64();
 }
 
 bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
@@ -2193,6 +2476,9 @@ bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
 std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
   const int baseCode = static_cast<int>(base);
   const double dval = v.scalarValue.scalar;
+  if (v.scalarValue.scalarKind == ScalarKind::Time) {
+    return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
+  }
   if (base == RenderBase::Dec) {
     if (v.scalarValue.hasExactInt()) {
       return std::to_string(v.scalarValue.exactInt);
@@ -2371,6 +2657,38 @@ MathParser::EvalValue MathParser::makeScalarUInt(std::uint64_t v) {
   return out;
 }
 
+MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
+  EvalValue out;
+  out.kind = ValueKind::Scalar;
+  out.scalarValue.scalarKind = ScalarKind::Time;
+  out.scalarValue.scalar = static_cast<double>(totalMs) / 1000.0;
+  out.scalarValue.exactInt = totalMs;
+  out.scalarValue.setExactIntValid(false);
+  out.scalarValue.setExactUInt64Valid(false);
+  out.scalarValue.setDecScientificPow63High(false);
+  return out;
+}
+
+bool MathParser::scalarValueIsTime(const EvalValue::ScalarValue& s) {
+  return s.scalarKind == ScalarKind::Time;
+}
+
+long long MathParser::timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s) {
+  return s.exactInt;
+}
+
+bool MathParser::evalValueInvolvesTime(const EvalValue& v) {
+  if (v.kind != ValueKind::Scalar) {
+    for (const auto& item : v.arr) {
+      if (MathParser::scalarValueIsTime(item)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return MathParser::scalarValueIsTime(v.scalarValue);
+}
+
 MathParser::EvalValue MathParser::makeArray(const std::vector<double>& v) {
   EvalValue out;
   out.kind = ValueKind::Array;
@@ -2402,6 +2720,11 @@ MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalVal
 
 MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarValue& v) {
   RawResult::Scalar out;
+  if (v.scalarKind == ScalarKind::Time) {
+    out.kind = RawResult::ScalarKind::FloatingPoint;
+    out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
+    return out;
+  }
   if (v.scalarKind == ScalarKind::Int64) {
     out.kind = RawResult::ScalarKind::Int64;
     out.intValue = v.exactInt;
@@ -2584,6 +2907,13 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     }
     return makeArrayFromScalars(elems);
   }
+  if (v.scalarValue.scalarKind == ScalarKind::Time) {
+    const long long ms = timeTotalMsFromScalarValue(v.scalarValue);
+    if (ms == (std::numeric_limits<long long>::min)()) {
+      return makeScalarTimeMs((std::numeric_limits<long long>::max)());
+    }
+    return makeScalarTimeMs(-ms);
+  }
   if (v.scalarValue.hasDecScientificPow63High()) {
     const double p63 = std::ldexp(1.0, 63);
     if (v.scalarValue.scalar == p63) {
@@ -2679,7 +3009,113 @@ MathParser::EvalValue MathParser::mapBinaryBroadcast(
   return ret;
 }
 
-MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue& b, char op, bool& ok) const {
+bool MathParser::tryApplyTimeBinaryScalars(
+    EvalContext& ctx,
+    const EvalValue::ScalarValue& lv,
+    const EvalValue::ScalarValue& rv,
+    char op,
+    EvalValue& outS) const {
+  const bool lt = MathParser::scalarValueIsTime(lv);
+  const bool rt = MathParser::scalarValueIsTime(rv);
+  if (!lt && !rt) {
+    return false;
+  }
+  if (op != '+' && op != '-' && op != '*' && op != '/') {
+    setIncompatibleOperandsError(ctx);
+    return true;
+  }
+  if ((!lt && !std::isfinite(lv.scalar)) || (!rt && !std::isfinite(rv.scalar))) {
+    setValidationError(ctx, STR_TIME_NON_FINITE);
+    return true;
+  }
+  long long lms = 0;
+  long long rms = 0;
+  if (lt) {
+    lms = timeTotalMsFromScalarValue(lv);
+  } else {
+    lms = roundHalfUpDoubleToLongLong(lv.scalar * 1000.0);
+  }
+  if (rt) {
+    rms = timeTotalMsFromScalarValue(rv);
+  } else {
+    rms = roundHalfUpDoubleToLongLong(rv.scalar * 1000.0);
+  }
+  if (op == '+') {
+    long long o = 0;
+    if (!tryAddTimeMsChecked(lms, rms, o)) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    outS = makeScalarTimeMs(o);
+    return true;
+  }
+  if (op == '-') {
+    long long o = 0;
+    if (!trySubTimeMsChecked(lms, rms, o)) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    outS = makeScalarTimeMs(o);
+    return true;
+  }
+  if (op == '*') {
+    if (lt && rt) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    const long long baseMs = lt ? lms : rms;
+    const double mult = lt ? rv.scalar : lv.scalar;
+    if (!std::isfinite(mult)) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    const double tMul = static_cast<double>(baseMs) * mult;
+    const double kMin = static_cast<double>((std::numeric_limits<long long>::min)());
+    const double kMax = static_cast<double>((std::numeric_limits<long long>::max)());
+    if (tMul < kMin || tMul > kMax) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    outS = makeScalarTimeMs(roundHalfUpDoubleToLongLong(tMul));
+    return true;
+  }
+  if (lt && rt) {
+    if (rms == 0) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    const double ratio = (static_cast<double>(lms) / 1000.0) / (static_cast<double>(rms) / 1000.0);
+    if (!std::isfinite(ratio)) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    outS = makeScalarMaybeExact(ratio);
+    return true;
+  }
+  if (lt && !rt) {
+    if (std::fabs(rv.scalar) < 1e-15) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    const double td = (static_cast<double>(lms) / 1000.0) / rv.scalar;
+    if (!std::isfinite(td)) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    const double kMin = static_cast<double>((std::numeric_limits<long long>::min)());
+    const double kMax = static_cast<double>((std::numeric_limits<long long>::max)());
+    if (td < kMin || td > kMax) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
+    outS = makeScalarTimeMs(roundHalfUpDoubleToLongLong(td * 1000.0));
+    return true;
+  }
+  setIncompatibleOperandsError(ctx);
+  return true;
+}
+
+MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a, const EvalValue& b, char op, bool& ok) const {
   ok = true;
   auto makePow63 = [&]() -> EvalValue {
     EvalValue ov = makeScalar(std::ldexp(1.0, 63));
@@ -2693,6 +3129,14 @@ MathParser::EvalValue MathParser::mapBinary(const EvalValue& a, const EvalValue&
   };
   auto tryCombineScalarValues = [&](const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, EvalValue& outS)
       -> bool {
+    EvalValue outTime;
+    if (tryApplyTimeBinaryScalars(ctx, lv, rv, op, outTime)) {
+      if (ctx.parseError) {
+        return false;
+      }
+      outS = std::move(outTime);
+      return true;
+    }
     if (isPureFloatingScalarPair(lv, rv)) {
       double outD = 0.0;
       if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
@@ -2979,6 +3423,42 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalCont
   return arr;
 }
 
+bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const {
+  const char* p0 = ctx.p;
+  if (*p0 < '0' || *p0 > '9') {
+    return false;
+  }
+  if (*p0 == '0') {
+    const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(p0[1])));
+    if (px == 'x' || px == 'b' || px == 'o') {
+      return false;
+    }
+  }
+  const char* q = p0;
+  bool hasColon = false;
+  while ((*q >= '0' && *q <= '9') || *q == ':' || *q == '.') {
+    if (*q == ':') {
+      hasColon = true;
+    }
+    ++q;
+  }
+  if (!hasColon) {
+    return false;
+  }
+  const std::string lit(p0, q);
+  const char* timeErr = nullptr;
+  long long ms = 0;
+  if (!parseTimeLiteralStringToMs(lit, ms, timeErr)) {
+    if (timeErr != nullptr) {
+      setValidationError(ctx, timeErr);
+    }
+    return false;
+  }
+  ctx.p = q;
+  out = makeScalarTimeMs(ms);
+  return true;
+}
+
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
   const char* parsedEnd = nullptr;
   std::uint64_t parsedUInt = 0;
@@ -3002,6 +3482,18 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       lit->tag = Expr::Tag::Literal;
       lit->literalValue = makeScalarUInt(parsedUInt);
       return lit;
+    }
+  }
+  {
+    EvalValue timeLit;
+    if (tryParseScalarTimeLiteral(ctx, timeLit)) {
+      auto lit = std::make_unique<Expr>();
+      lit->tag = Expr::Tag::Literal;
+      lit->literalValue = std::move(timeLit);
+      return lit;
+    }
+    if (ctx.parseError) {
+      return nullptr;
     }
   }
   const char* numStart = ctx.p;
@@ -3465,10 +3957,18 @@ MathParser::EvalValue MathParser::evalMappedBinaryOp(
                       (op == Expr::BinaryOp::Mul) ? '*' :
                       (op == Expr::BinaryOp::Div) ? '/' :
                       (op == Expr::BinaryOp::Add) ? '+' : '-';
+  if (op == Expr::BinaryOp::Pow && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
   bool ok = false;
-  EvalValue out = mapBinary(left, right, opChar, ok);
+  EvalValue out = mapBinary(ctx, left, right, opChar, ok);
   if (ok) {
     return out;
+  }
+
+  if (ctx.parseError) {
+    return makeScalar(0);
   }
 
   if (op == Expr::BinaryOp::Pow) {
@@ -3486,6 +3986,10 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
     const EvalValue& left,
     const EvalValue& right,
     Expr::BinaryOp op) const {
+  if (evalValueInvolvesTime(left) || evalValueInvolvesTime(right)) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
   const bool isModulo = (op == Expr::BinaryOp::Modulo);
   const auto setIntegerOperandError = [&]() {
     if (isModulo) setModuloIntegerOperandsError(ctx);
@@ -3632,6 +4136,10 @@ MathParser::EvalValue MathParser::evalExprScalar(
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExprScalar(*e.child, ctx, scopedVars);
       if (ctx.parseError) return v;
+      if (MathParser::scalarValueIsTime(v.scalarValue)) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactIntValid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -3729,12 +4237,22 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::CmpGe:
         case Expr::BinaryOp::CmpEq:
         case Expr::BinaryOp::CmpNe: {
-          const double ls = l.scalarValue.scalar;
-          const double rs = r.scalarValue.scalar;
-          if (std::isnan(ls) || std::isnan(rs)) {
-            return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+          const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
+          const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
+          if (!lTime && !rTime) {
+            const double ls = l.scalarValue.scalar;
+            const double rs = r.scalarValue.scalar;
+            if (std::isnan(ls) || std::isnan(rs)) {
+              return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+            }
+            const int cmp = (ls < rs) ? -1 : (ls > rs) ? 1 : 0;
+            return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
           }
-          const int cmp = (ls < rs) ? -1 : (ls > rs) ? 1 : 0;
+          const long long lms =
+              lTime ? timeTotalMsFromScalarValue(l.scalarValue) : roundHalfUpDoubleToLongLong(l.scalarValue.scalar * 1000.0);
+          const long long rms =
+              rTime ? timeTotalMsFromScalarValue(r.scalarValue) : roundHalfUpDoubleToLongLong(r.scalarValue.scalar * 1000.0);
+          const int cmp = (lms < rms) ? -1 : (lms > rms) ? 1 : 0;
           return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
         }
         case Expr::BinaryOp::Pow:
@@ -3834,6 +4352,10 @@ MathParser::EvalValue MathParser::evalExpr(
         setPercentageRequiresScalarValueError(ctx);
         return makeScalar(0);
       }
+      if (MathParser::scalarValueIsTime(v.scalarValue)) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactIntValid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -3862,6 +4384,22 @@ MathParser::EvalValue MathParser::evalExpr(
       }
       if (flatVals.empty()) {
         setFailedToBuildArrayLiteralError(ctx);
+        return makeScalar(0);
+      }
+      bool anyTimeArr = false;
+      bool anyNonTimeArr = false;
+      for (const auto& fv : flatVals) {
+        if (fv.kind != ValueKind::Scalar) {
+          continue;
+        }
+        if (MathParser::scalarValueIsTime(fv.scalarValue)) {
+          anyTimeArr = true;
+        } else {
+          anyNonTimeArr = true;
+        }
+      }
+      if (anyTimeArr && anyNonTimeArr) {
+        setValidationError(ctx, STR_TIME_ARRAY_MIXED);
         return makeScalar(0);
       }
       return makeArrayFromScalars(flatVals);
@@ -3905,25 +4443,51 @@ MathParser::EvalValue MathParser::evalExpr(
     }
     case Expr::Tag::Binary: {
       auto compareValues = [](const EvalValue& a, const EvalValue& b) -> int {
-        if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
-          if (a.scalarValue.scalar < b.scalarValue.scalar) return -1;
-          if (a.scalarValue.scalar > b.scalarValue.scalar) return 1;
+        auto cmpScalarPair = [](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
+          const bool ta = MathParser::scalarValueIsTime(sa);
+          const bool tb = MathParser::scalarValueIsTime(sb);
+          if (ta || tb) {
+            const long long ams =
+                ta ? timeTotalMsFromScalarValue(sa) : roundHalfUpDoubleToLongLong(sa.scalar * 1000.0);
+            const long long bms =
+                tb ? timeTotalMsFromScalarValue(sb) : roundHalfUpDoubleToLongLong(sb.scalar * 1000.0);
+            if (ams < bms) {
+              return -1;
+            }
+            if (ams > bms) {
+              return 1;
+            }
+            return 0;
+          }
+          if (sa.scalar < sb.scalar) {
+            return -1;
+          }
+          if (sa.scalar > sb.scalar) {
+            return 1;
+          }
           return 0;
+        };
+        if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
+          return cmpScalarPair(a.scalarValue, b.scalarValue);
         }
-        auto valAt = [](const EvalValue& v, std::size_t i) -> double {
-          return (v.kind == ValueKind::Scalar) ? v.scalarValue.scalar : v.arr[i].scalar;
+        auto refAt = [](const EvalValue& v, std::size_t i) -> const EvalValue::ScalarValue& {
+          return (v.kind == ValueKind::Scalar) ? v.scalarValue : v.arr[i];
         };
         const std::size_t na = (a.kind == ValueKind::Scalar) ? 1U : a.arr.size();
         const std::size_t nb = (b.kind == ValueKind::Scalar) ? 1U : b.arr.size();
         const std::size_t n = (na < nb) ? na : nb;
         for (std::size_t i = 0; i < n; ++i) {
-          const double va = valAt(a, i);
-          const double vb = valAt(b, i);
-          if (va < vb) return -1;
-          if (va > vb) return 1;
+          const int c = cmpScalarPair(refAt(a, i), refAt(b, i));
+          if (c != 0) {
+            return c;
+          }
         }
-        if (na < nb) return -1;
-        if (na > nb) return 1;
+        if (na < nb) {
+          return -1;
+        }
+        if (na > nb) {
+          return 1;
+        }
         return 0;
       };
       const auto returnIntegerOperandError = [&](const char* msg) -> EvalValue {
@@ -3974,10 +4538,14 @@ MathParser::EvalValue MathParser::evalExpr(
         EvalValue r = evalExpr(*e.right, ctx, scopedVars);
         if (ctx.parseError) return makeScalar(0);
         if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
-          const double ls = l.scalarValue.scalar;
-          const double rs = r.scalarValue.scalar;
-          if (std::isnan(ls) || std::isnan(rs)) {
-            return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+          const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
+          const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
+          if (!lTime && !rTime) {
+            const double ls = l.scalarValue.scalar;
+            const double rs = r.scalarValue.scalar;
+            if (std::isnan(ls) || std::isnan(rs)) {
+              return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+            }
           }
         }
         const int cmp = compareValues(l, r);
@@ -4072,12 +4640,12 @@ bool MathParser::isFormatBuiltin(BuiltinFunctionId id) {
 bool MathParser::isIntegerOnlyBuiltin(BuiltinFunctionId id) {
   return id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Ncr ||
       id == BuiltinFunctionId::Npr || id == BuiltinFunctionId::Mod ||
-      id == BuiltinFunctionId::Fact || id == BuiltinFunctionId::Factorial;
+      id == BuiltinFunctionId::Fact;
 }
 
 bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Unpack || id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted ||
-      id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed || id == BuiltinFunctionId::Unique ||
+  return id == BuiltinFunctionId::Unpack || id == BuiltinFunctionId::Sort ||
+      id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Unique ||
       id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
 }
 
@@ -4195,18 +4763,78 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     return count;
   };
-  if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod ||
-      id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg ||
-      id == BuiltinFunctionId::Mean) {
+  if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
+      id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
     if (args.empty()) {
       setAtLeastOneArgError(ctx, fnName);
+      return makeScalar(0);
+    }
+    const bool anyTimeAgg =
+        std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); });
+    if (anyTimeAgg && id == BuiltinFunctionId::Product) {
+      setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
       return args[0];
     }
-    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod ||
-        id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max) {
+    if (anyTimeAgg) {
+      long long accMs = 0;
+      bool accInit = false;
+      int aggMode = 1;
+      if (id == BuiltinFunctionId::Min) {
+        aggMode = 3;
+      } else if (id == BuiltinFunctionId::Max) {
+        aggMode = 4;
+      }
+      std::size_t itemCount = 0;
+      bool okAgg = true;
+      forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+        if (!okAgg) {
+          return;
+        }
+        if (!MathParser::scalarValueIsTime(s)) {
+          setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+          okAgg = false;
+          return;
+        }
+        const long long curMs = timeTotalMsFromScalarValue(s);
+        if (aggMode == 1) {
+          long long nacc = 0;
+          if (!tryAddTimeMsChecked(accMs, curMs, nacc)) {
+            setIncompatibleOperandsError(ctx);
+            okAgg = false;
+            return;
+          }
+          accMs = nacc;
+        } else if (aggMode == 3) {
+          if (!accInit || curMs < accMs) {
+            accMs = curMs;
+          }
+          accInit = true;
+        } else {
+          if (!accInit || curMs > accMs) {
+            accMs = curMs;
+          }
+          accInit = true;
+        }
+        itemCount += 1;
+      });
+      if (!okAgg) {
+        return makeScalar(0);
+      }
+      if (itemCount == 0) {
+        setAtLeastOneArgError(ctx, fnName);
+        return makeScalar(0);
+      }
+      if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
+        const double avgD = static_cast<double>(accMs) / static_cast<double>(itemCount);
+        return makeScalarTimeMs(roundHalfUpDoubleToLongLong(avgD));
+      }
+      return makeScalarTimeMs(accMs);
+    }
+    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
+        id == BuiltinFunctionId::Max) {
       bool allNnU = true;
       bool allSwI = true;
       bool anyNonInteger = false;
@@ -4231,7 +4859,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         setAtLeastOneArgError(ctx, fnName);
         return makeScalar(0);
       }
-      if (!anyNonInteger && (id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod)) {
+      if (!anyNonInteger && id == BuiltinFunctionId::Product) {
         bool ok = true;
         std::uint64_t productMag = 1;
         bool isNegativeProduct = false;
@@ -4330,7 +4958,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     double acc = 0.0;
     bool hasValue = false;
     std::size_t n = 0;
-    if (id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Prod) {
+    if (id == BuiltinFunctionId::Product) {
       acc = 1.0;
       n = forEachArgScalar([&](double v) { acc *= v; });
     } else if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
@@ -4369,6 +4997,39 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
           return scalarFromArrayAt(single, 0);
         }
       }
+      const bool anyTimeMed =
+          std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); });
+      if (anyTimeMed) {
+        std::vector<double> flatMs;
+        bool okM = true;
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          if (!okM) {
+            return;
+          }
+          if (!MathParser::scalarValueIsTime(s)) {
+            setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+            okM = false;
+            return;
+          }
+          flatMs.push_back(static_cast<double>(timeTotalMsFromScalarValue(s)));
+        });
+        if (!okM) {
+          return makeScalar(0);
+        }
+        if (flatMs.empty()) {
+          setAtLeastOneArgError(ctx, fnName);
+          return makeScalar(0);
+        }
+        const std::size_t n = flatMs.size();
+        const std::size_t mid = n / 2U;
+        std::nth_element(flatMs.begin(), flatMs.begin() + static_cast<std::ptrdiff_t>(mid), flatMs.end());
+        const double upper = flatMs[mid];
+        if (n % 2U == 1U) {
+          return makeScalarTimeMs(roundHalfUpDoubleToLongLong(upper));
+        }
+        const double lower = *std::max_element(flatMs.begin(), flatMs.begin() + static_cast<std::ptrdiff_t>(mid));
+        return makeScalarTimeMs(roundHalfUpDoubleToLongLong((lower + upper) / 2.0));
+      }
       std::vector<double> flat;
       if (!flattenArgs(args, flat)) {
         setAtLeastOneArgError(ctx, fnName);
@@ -4386,6 +5047,10 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     case BuiltinFunctionId::Variance:
     case BuiltinFunctionId::Stddev: {
+      if (std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); })) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
       // Welford single-pass accumulation for better stability and fewer passes.
       double mean = 0.0;
       double m2 = 0.0;
@@ -4468,6 +5133,13 @@ MathParser::EvalValue MathParser::builtinSortFamily(
         values.begin(),
         values.end(),
         [](const EvalValue& lhs, const EvalValue& rhs) {
+          const bool lTime = MathParser::scalarValueIsTime(lhs.scalarValue);
+          const bool rTime = MathParser::scalarValueIsTime(rhs.scalarValue);
+          if (lTime && rTime) {
+            const long long a = timeTotalMsFromScalarValue(lhs.scalarValue);
+            const long long b = timeTotalMsFromScalarValue(rhs.scalarValue);
+            return a < b;
+          }
           const bool lhsNan = std::isnan(lhs.scalarValue.scalar);
           const bool rhsNan = std::isnan(rhs.scalarValue.scalar);
           if (lhsNan) return !rhsNan;
@@ -4486,11 +5158,11 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       setAtLeastOneArgError(ctx, fnName);
       return makeScalar(0);
     }
-    if (id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted) {
+    if (id == BuiltinFunctionId::Sort) {
       sortScalarsInPlace(out);
       return makeArrayFromScalars(out);
     }
-    if (id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed) {
+    if (id == BuiltinFunctionId::Reverse) {
       std::reverse(out.begin(), out.end());
       return makeArrayFromScalars(out);
     }
@@ -4505,9 +5177,22 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
-  if (id == BuiltinFunctionId::Sort || id == BuiltinFunctionId::Sorted) {
+  bool seenTimeSort = false;
+  bool seenNonTimeSort = false;
+  for (const auto& ev : flat) {
+    if (MathParser::scalarValueIsTime(ev.scalarValue)) {
+      seenTimeSort = true;
+    } else {
+      seenNonTimeSort = true;
+    }
+  }
+  if (seenTimeSort && seenNonTimeSort) {
+    setValidationError(ctx, STR_TIME_ARRAY_MIXED);
+    return makeScalar(0);
+  }
+  if (id == BuiltinFunctionId::Sort) {
     sortScalarsInPlace(flat);
-  } else if (id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Reversed) {
+  } else if (id == BuiltinFunctionId::Reverse) {
     std::reverse(flat.begin(), flat.end());
   } else {
     dedupUniqueInPlace(flat);
@@ -4559,6 +5244,10 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
     setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
+  if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
   if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
     const EvalValue::ScalarValue& a = args[0].scalarValue;
     const EvalValue::ScalarValue& b = args[1].scalarValue;
@@ -4572,9 +5261,11 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
     }
   }
   bool ok = false;
-  EvalValue out = mapBinary(args[0], args[1], '^', ok);
+  EvalValue out = mapBinary(ctx, args[0], args[1], '^', ok);
   if (!ok) {
-    setNumericErrorInFunction(ctx, fnName);
+    if (!ctx.parseError) {
+      setNumericErrorInFunction(ctx, fnName);
+    }
     return makeScalar(0);
   }
   return out;
@@ -4590,6 +5281,10 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       setExactArgCountError(ctx, fnName, 2);
       return makeScalar(0);
     }
+    if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
     bool ok = false;
     EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
     if (!ok) {
@@ -4602,6 +5297,10 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
   if (id == BuiltinFunctionId::Hypot) {
     if (args.size() != 2) {
       setExactArgCountError(ctx, fnName, 2);
+      return makeScalar(0);
+    }
+    if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
+      setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
     bool ok = false;
@@ -4925,6 +5624,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     setExactArgCountError(ctx, fnName, 1);
     return makeScalar(0);
   }
+  if (evalValueInvolvesTime(args[0])) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
   if (args[0].kind == ValueKind::Scalar) {
     const EvalValue::ScalarValue& s = args[0].scalarValue;
     const double x = s.scalar;
@@ -4932,12 +5635,9 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
       case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
       case BuiltinFunctionId::Tan: return makeScalarMaybeExact(calcTan(x));
-      case BuiltinFunctionId::Asin:
-      case BuiltinFunctionId::Arcsin: return makeScalarMaybeExact(std::asin(x));
-      case BuiltinFunctionId::Acos:
-      case BuiltinFunctionId::Arccos: return makeScalarMaybeExact(std::acos(x));
-      case BuiltinFunctionId::Atan:
-      case BuiltinFunctionId::Arctan: return makeScalarMaybeExact(std::atan(x));
+      case BuiltinFunctionId::Asin: return makeScalarMaybeExact(std::asin(x));
+      case BuiltinFunctionId::Acos: return makeScalarMaybeExact(std::acos(x));
+      case BuiltinFunctionId::Atan: return makeScalarMaybeExact(std::atan(x));
       case BuiltinFunctionId::Sinh: return makeScalarMaybeExact(std::sinh(x));
       case BuiltinFunctionId::Cosh: return makeScalarMaybeExact(std::cosh(x));
       case BuiltinFunctionId::Tanh: return makeScalarMaybeExact(std::tanh(x));
@@ -4959,8 +5659,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         if (s.hasExactInt()) return makeScalarInt((s.exactInt > 0) ? 1LL : ((s.exactInt < 0) ? -1LL : 0LL));
         if (s.hasExactUInt64()) return makeScalarInt((s.exactUInt64 == 0u) ? 0LL : 1LL);
         return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
-      case BuiltinFunctionId::Frac:
-      case BuiltinFunctionId::Fract: return makeScalarMaybeExact(x - std::trunc(x));
+      case BuiltinFunctionId::Frac: return makeScalarMaybeExact(x - std::trunc(x));
       default: break;
     }
   }
@@ -4972,13 +5671,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     case BuiltinFunctionId::Tan:
       return mapUnaryFn(args[0], calcTan);
     case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Arcsin:
       return mapUnaryFn(args[0], std::asin);
     case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Arccos:
       return mapUnaryFn(args[0], std::acos);
     case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Arctan:
       return mapUnaryFn(args[0], std::atan);
     case BuiltinFunctionId::Sinh:
       return mapUnaryFn(args[0], std::sinh);
@@ -5041,7 +5737,6 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       return makeArrayFromScalars(outVals);
     }
     case BuiltinFunctionId::Frac:
-    case BuiltinFunctionId::Fract:
       return mapUnaryFn(args[0], fracScalar);
     default:
       break;
@@ -5057,6 +5752,10 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     const EvalValue& maxV) const {
   if (minV.kind != ValueKind::Scalar || maxV.kind != ValueKind::Scalar) {
     setScalarMinMaxError(ctx, getFunctionName(BuiltinFunctionId::Clamp));
+    return makeScalar(0);
+  }
+  if (evalValueInvolvesTime(valueV) || MathParser::scalarValueIsTime(minV.scalarValue) || MathParser::scalarValueIsTime(maxV.scalarValue)) {
+    setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
   if (valueV.kind == ValueKind::Scalar) {
@@ -5082,6 +5781,10 @@ MathParser::EvalValue MathParser::builtinLog(EvalContext& ctx, const std::vector
   const std::string fnName = getFunctionName(BuiltinFunctionId::Log);
   if (args.size() != 2) {
     setExactArgCountError(ctx, fnName, 2);
+    return makeScalar(0);
+  }
+  if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
+    setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
   bool ok = false;
@@ -5182,12 +5885,56 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     return makeScalar(0);
   }
 
+  if (id == BuiltinFunctionId::Milliseconds || id == BuiltinFunctionId::Seconds || id == BuiltinFunctionId::Minutes ||
+      id == BuiltinFunctionId::Hours || id == BuiltinFunctionId::Days) {
+    if (args.size() != 1U) {
+      setExactArgCountError(ctx, fnName, 1);
+      return makeScalar(0);
+    }
+    const EvalValue& a0 = args[0];
+    const auto convertMsToValue = [&](long long ms) -> EvalValue {
+      if (id == BuiltinFunctionId::Milliseconds) {
+        return makeScalarInt(ms);
+      }
+      if (id == BuiltinFunctionId::Seconds) {
+        return makeScalarMaybeExact(static_cast<double>(ms) / 1000.0);
+      }
+      if (id == BuiltinFunctionId::Minutes) {
+        return makeScalarMaybeExact(static_cast<double>(ms) / 60000.0);
+      }
+      if (id == BuiltinFunctionId::Hours) {
+        return makeScalarMaybeExact(static_cast<double>(ms) / 3600000.0);
+      }
+      return makeScalarMaybeExact(static_cast<double>(ms) / 86400000.0);
+    };
+    if (a0.kind == ValueKind::Scalar) {
+      if (!MathParser::scalarValueIsTime(a0.scalarValue)) {
+        setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+        return makeScalar(0);
+      }
+      return convertMsToValue(timeTotalMsFromScalarValue(a0.scalarValue));
+    }
+    if (a0.kind == ValueKind::Array) {
+      std::vector<EvalValue> outs;
+      outs.reserve(a0.arr.size());
+      for (const auto& item : a0.arr) {
+        if (!MathParser::scalarValueIsTime(item)) {
+          setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+          return makeScalar(0);
+        }
+        outs.push_back(convertMsToValue(timeTotalMsFromScalarValue(item)));
+      }
+      return makeArrayFromScalars(outs);
+    }
+    setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+    return makeScalar(0);
+  }
+
   switch (id) {
     case BuiltinFunctionId::Unpack:
       return builtinUnpack(ctx, args);
     case BuiltinFunctionId::Sum:
     case BuiltinFunctionId::Product:
-    case BuiltinFunctionId::Prod:
     case BuiltinFunctionId::Min:
     case BuiltinFunctionId::Max:
     case BuiltinFunctionId::Avg:
@@ -5197,9 +5944,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Stddev:
       return builtinAggregateFamily(ctx, fnName, id, args);
     case BuiltinFunctionId::Sort:
-    case BuiltinFunctionId::Sorted:
     case BuiltinFunctionId::Reverse:
-    case BuiltinFunctionId::Reversed:
     case BuiltinFunctionId::Unique:
       return builtinSortFamily(ctx, fnName, id, args);
     case BuiltinFunctionId::Hex:
@@ -5225,7 +5970,6 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Mod:
       return builtinModCall(ctx, args);
     case BuiltinFunctionId::Fact:
-    case BuiltinFunctionId::Factorial:
       return builtinFactorial(ctx, fnName, args);
     case BuiltinFunctionId::Deg:
     case BuiltinFunctionId::Rad:
@@ -5236,11 +5980,8 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Cos:
     case BuiltinFunctionId::Tan:
     case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Arcsin:
     case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Arccos:
     case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Arctan:
     case BuiltinFunctionId::Sinh:
     case BuiltinFunctionId::Cosh:
     case BuiltinFunctionId::Tanh:
@@ -5258,7 +5999,6 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Trunc:
     case BuiltinFunctionId::Int:
     case BuiltinFunctionId::Frac:
-    case BuiltinFunctionId::Fract:
     case BuiltinFunctionId::Round:
     case BuiltinFunctionId::Sign:
       return builtinUnaryMath(ctx, fnName, id, args);

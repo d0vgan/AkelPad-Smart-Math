@@ -122,6 +122,22 @@ const FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW as string = "function call stack 
 const FB_STR_MODULO_OPERANDS_MUST_BE_INTEGER_VALUES as string = "modulo operands must be integer values"
 const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operands must be integer values"
 const FB_STR_INCOMPATIBLE_OPERANDS as string = "incompatible operands"
+const FB_STR_TIME_EMPTY_SEGMENT as string = "time literal: empty segment between colons"
+const FB_STR_TIME_INVALID_SEGMENT as string = "time literal: invalid segment"
+const FB_STR_TIME_NEGATIVE_SEGMENT as string = "time literal: negative segment"
+const FB_STR_TIME_NON_FINITE as string = "time value: non-finite operand"
+const FB_STR_TIME_ARRAY_MIXED as string = "array literal: time values cannot be mixed with non-time values"
+const FB_STR_TIME_EXPECTS_TIME_ARG as string = "() expects a time value"
+const FB_STR_MILLISECOND as string = "millisecond"
+const FB_STR_SECOND as string = "second"
+const FB_STR_MINUTE as string = "minute"
+const FB_STR_HOUR as string = "hour"
+const FB_STR_DAY as string = "day"
+const FB_STR_MILLISECONDS as string = "milliseconds"
+const FB_STR_SECONDS as string = "seconds"
+const FB_STR_MINUTES as string = "minutes"
+const FB_STR_HOURS as string = "hours"
+const FB_STR_DAYS as string = "days"
 const FB_STR_PAR_EXPECTS_AT_LEAST_1 as string = "() expects at least 1 argument"
 const FB_STR_MISSING_OPENING_BRACKET as string = "missing opening bracket"
 const FB_STR_UNEXPECTED_COMMA as string = "unexpected comma"
@@ -142,6 +158,7 @@ const FB_STR_EXPRESSION_IS_TOO_LONG as string = "expression is too long"
 const FB_STR_EMPTY_STATEMENT as string = "empty statement"
 const FB_STR_RESERVED_FUNCTION_NAME_COLON as string = "reserved function name: "
 const FB_STR_RESERVED_CONSTANT_NAME_COLON as string = "reserved constant name: "
+const FB_STR_RESERVED_BUILTIN_VARIABLE_NAME_COLON as string = "reserved built-in variable name: "
 const FB_STR_DUPLICATE_PARAMETER_NAME_COLON as string = "duplicate parameter name: "
 const FB_STR_FUNCTION_BODY_IS_EMPTY as string = "function body is empty"
 const FB_STR_FAILED_TO_PARSE_USER_FUNCTION_BODY as string = "failed to parse user function body"
@@ -271,6 +288,7 @@ enum ScalarStorageKind
   SSK_FLOATINGPOINT = 0
   SSK_INT64 = 1
   SSK_UINT64 = 2
+  SSK_TIME = 3
 end enum
 
 enum ScalarFlags
@@ -452,6 +470,12 @@ property EvalValue.renderUnsigned(byval v as Boolean)
   end if
 end property
 
+declare function ScalarIsTime(byref sv as ScalarValue) as Boolean
+declare function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
+declare function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
+declare sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
+declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+
 type VarEntry
   name as String
   value as EvalValue
@@ -560,11 +584,8 @@ enum BuiltinFunctionId
   FUNC_COS
   FUNC_TAN
   FUNC_ASIN
-  FUNC_ARCSIN
   FUNC_ACOS
-  FUNC_ARCCOS
   FUNC_ATAN
-  FUNC_ARCTAN
   FUNC_SINH
   FUNC_COSH
   FUNC_TANH
@@ -579,7 +600,6 @@ enum BuiltinFunctionId
   FUNC_SQR
   FUNC_INT
   FUNC_FRAC
-  FUNC_FRACT
   FUNC_ABS
   FUNC_FLOOR
   FUNC_CEIL
@@ -593,13 +613,10 @@ enum BuiltinFunctionId
   FUNC_VARIANCE
   FUNC_STDDEV
   FUNC_SORT
-  FUNC_SORTED
   FUNC_REVERSE
-  FUNC_REVERSED
   FUNC_UNIQUE
   FUNC_UNPACK
   FUNC_FACT
-  FUNC_FACTORIAL
   FUNC_AVG
   FUNC_MEAN
   FUNC_MOD
@@ -610,12 +627,16 @@ enum BuiltinFunctionId
   FUNC_NCR
   FUNC_NPR
   FUNC_PRODUCT
-  FUNC_PROD
   FUNC_MIN
   FUNC_MAX
   FUNC_UHEX
   FUNC_UOCT
   FUNC_UBIN
+  FUNC_MILLISECONDS
+  FUNC_SECONDS
+  FUNC_MINUTES
+  FUNC_HOURS
+  FUNC_DAYS
   FUNC__COUNT
 end enum
 
@@ -654,6 +675,11 @@ enum BuiltinConstId
   CONST_E
   CONST_INF
   CONST_NAN
+  CONST_MILLISECOND
+  CONST_SECOND
+  CONST_MINUTE
+  CONST_HOUR
+  CONST_DAY
   CONST__COUNT
 end enum
 
@@ -667,7 +693,7 @@ const BUILTIN_FN_LOOKUP_CAPACITY as Integer = 127
 dim shared BuiltinFnLookupKeys(0 to BUILTIN_FN_LOOKUP_CAPACITY - 1) as String
 dim shared BuiltinFnLookupIds(0 to BUILTIN_FN_LOOKUP_CAPACITY - 1) as Integer
 dim shared BuiltinFnLookupInitialized as Boolean = FALSE
-const BUILTIN_CONST_LOOKUP_CAPACITY as Integer = 17
+const BUILTIN_CONST_LOOKUP_CAPACITY as Integer = 32
 dim shared BuiltinConstLookupKeys(0 to BUILTIN_CONST_LOOKUP_CAPACITY - 1) as String
 dim shared BuiltinConstLookupIds(0 to BUILTIN_CONST_LOOKUP_CAPACITY - 1) as Integer
 dim shared BuiltinConstLookupInitialized as Boolean = FALSE
@@ -685,11 +711,8 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_COS) = FB_STR_COS
   FunctionNames(FUNC_TAN) = FB_STR_TAN
   FunctionNames(FUNC_ASIN) = FB_STR_ASIN
-  FunctionNames(FUNC_ARCSIN) = FB_STR_ARCSIN
   FunctionNames(FUNC_ACOS) = FB_STR_ACOS
-  FunctionNames(FUNC_ARCCOS) = FB_STR_ARCCOS
   FunctionNames(FUNC_ATAN) = FB_STR_ATAN
-  FunctionNames(FUNC_ARCTAN) = FB_STR_ARCTAN
   FunctionNames(FUNC_SINH) = FB_STR_SINH
   FunctionNames(FUNC_COSH) = FB_STR_COSH
   FunctionNames(FUNC_TANH) = FB_STR_TANH
@@ -704,7 +727,6 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_SQR) = FB_STR_SQR
   FunctionNames(FUNC_INT) = FB_STR_INT
   FunctionNames(FUNC_FRAC) = FB_STR_FRAC
-  FunctionNames(FUNC_FRACT) = FB_STR_FRACT
   FunctionNames(FUNC_ABS) = FB_STR_ABS
   FunctionNames(FUNC_FLOOR) = FB_STR_FLOOR
   FunctionNames(FUNC_CEIL) = FB_STR_CEIL
@@ -718,13 +740,10 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_VARIANCE) = FB_STR_VARIANCE
   FunctionNames(FUNC_STDDEV) = FB_STR_STDDEV
   FunctionNames(FUNC_SORT) = FB_STR_SORT
-  FunctionNames(FUNC_SORTED) = FB_STR_SORTED
   FunctionNames(FUNC_REVERSE) = FB_STR_REVERSE
-  FunctionNames(FUNC_REVERSED) = FB_STR_REVERSED
   FunctionNames(FUNC_UNIQUE) = FB_STR_UNIQUE
   FunctionNames(FUNC_UNPACK) = FB_STR_UNPACK
   FunctionNames(FUNC_FACT) = FB_STR_FACT
-  FunctionNames(FUNC_FACTORIAL) = FB_STR_FACTORIAL
   FunctionNames(FUNC_AVG) = FB_STR_AVG
   FunctionNames(FUNC_MEAN) = FB_STR_MEAN
   FunctionNames(FUNC_MOD) = FB_STR_MOD
@@ -735,12 +754,16 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_NCR) = FB_STR_NCR
   FunctionNames(FUNC_NPR) = FB_STR_NPR
   FunctionNames(FUNC_PRODUCT) = FB_STR_PRODUCT
-  FunctionNames(FUNC_PROD) = FB_STR_PROD
   FunctionNames(FUNC_MIN) = FB_STR_MIN
   FunctionNames(FUNC_MAX) = FB_STR_MAX
   FunctionNames(FUNC_UHEX) = FB_STR_UHEX
   FunctionNames(FUNC_UOCT) = FB_STR_UOCT
   FunctionNames(FUNC_UBIN) = FB_STR_UBIN
+  FunctionNames(FUNC_MILLISECONDS) = FB_STR_MILLISECONDS
+  FunctionNames(FUNC_SECONDS) = FB_STR_SECONDS
+  FunctionNames(FUNC_MINUTES) = FB_STR_MINUTES
+  FunctionNames(FUNC_HOURS) = FB_STR_HOURS
+  FunctionNames(FUNC_DAYS) = FB_STR_DAYS
   FunctionNamesInitialized = TRUE
 end sub
 
@@ -753,6 +776,21 @@ private function HashLowerIdent(byref s as String) as UInteger
   next i
   return h
 end function
+
+private sub InsertBuiltinFnAliasLookup(byref aliasKey as String, byval id as Integer)
+  dim slot as Integer = CInt(HashLowerIdent(aliasKey) mod BUILTIN_FN_LOOKUP_CAPACITY)
+  dim probed as Integer
+  for probed = 0 to BUILTIN_FN_LOOKUP_CAPACITY - 1
+    if BuiltinFnLookupKeys(slot) = "" then
+      BuiltinFnLookupKeys(slot) = aliasKey
+      BuiltinFnLookupIds(slot) = id
+      exit sub
+    elseif BuiltinFnLookupKeys(slot) = aliasKey then
+      exit sub
+    end if
+    slot = (slot + 1) mod BUILTIN_FN_LOOKUP_CAPACITY
+  next probed
+end sub
 
 private sub EnsureBuiltinFunctionLookup()
   if BuiltinFnLookupInitialized then exit sub
@@ -771,6 +809,14 @@ private sub EnsureBuiltinFunctionLookup()
     BuiltinFnLookupKeys(slot) = key
     BuiltinFnLookupIds(slot) = i
   next i
+  InsertBuiltinFnAliasLookup FB_STR_ARCSIN, FUNC_ASIN
+  InsertBuiltinFnAliasLookup FB_STR_ARCCOS, FUNC_ACOS
+  InsertBuiltinFnAliasLookup FB_STR_ARCTAN, FUNC_ATAN
+  InsertBuiltinFnAliasLookup FB_STR_FRACT, FUNC_FRAC
+  InsertBuiltinFnAliasLookup FB_STR_SORTED, FUNC_SORT
+  InsertBuiltinFnAliasLookup FB_STR_REVERSED, FUNC_REVERSE
+  InsertBuiltinFnAliasLookup FB_STR_FACTORIAL, FUNC_FACT
+  InsertBuiltinFnAliasLookup FB_STR_PROD, FUNC_PRODUCT
   BuiltinFnLookupInitialized = TRUE
 end sub
 
@@ -790,6 +836,11 @@ private sub EnsureConstNames()
   ConstNames(CONST_E) = FB_STR_E
   ConstNames(CONST_INF) = FB_STR_INF
   ConstNames(CONST_NAN) = FB_STR_NAN
+  ConstNames(CONST_MILLISECOND) = FB_STR_MILLISECOND
+  ConstNames(CONST_SECOND) = FB_STR_SECOND
+  ConstNames(CONST_MINUTE) = FB_STR_MINUTE
+  ConstNames(CONST_HOUR) = FB_STR_HOUR
+  ConstNames(CONST_DAY) = FB_STR_DAY
   ConstNamesInitialized = TRUE
 end sub
 
@@ -851,17 +902,17 @@ private const BUILTIN_FLAG_TRAILING_FORMATTER as UInteger = 1u shl 5
 
 private function GetBuiltinFlags(byval id as Integer) as UInteger
   select case id
-    case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ARCSIN, FUNC_ACOS, FUNC_ARCCOS, FUNC_ATAN, FUNC_ARCTAN, _
+    case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ACOS, FUNC_ATAN, _
          FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, _
-         FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_FRAC, FUNC_FRACT, FUNC_ABS, FUNC_SIGN
+         FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_FRAC, FUNC_ABS, FUNC_SIGN
       return BUILTIN_FLAG_UNARY
     case FUNC_DEG, FUNC_RAD
       return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_TRAILING_FORMATTER
     case FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
       return BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER
-    case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD, FUNC_FACT, FUNC_FACTORIAL
+    case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD, FUNC_FACT
       return BUILTIN_FLAG_INTEGER_ONLY
-    case FUNC_UNPACK, FUNC_SORT, FUNC_SORTED, FUNC_REVERSE, FUNC_REVERSED, FUNC_UNIQUE, FUNC_RAND
+    case FUNC_UNPACK, FUNC_SORT, FUNC_REVERSE, FUNC_UNIQUE, FUNC_RAND
       return BUILTIN_FLAG_NON_CALCULATING
     case FUNC_RANDOM
       return BUILTIN_FLAG_FINITE_REQUIRED
@@ -904,17 +955,16 @@ private function GetBuiltinHintKind(byval id as Integer) as BuiltinHintKind
     case FUNC_POW: return BHK_VALUE_POWER
     case FUNC_ATAN2: return BHK_Y_X
     case FUNC_SIN, FUNC_COS, FUNC_TAN: return BHK_ANGLE
-    case FUNC_ASIN, FUNC_ARCSIN, FUNC_ACOS, FUNC_ARCCOS, FUNC_ATAN, FUNC_ARCTAN
+    case FUNC_ASIN, FUNC_ACOS, FUNC_ATAN
       return BHK_VALUE
     case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
       return BHK_VALUE
-    case FUNC_FRAC, FUNC_FRACT: return BHK_VALUE
+    case FUNC_FRAC: return BHK_VALUE
     case FUNC_LOG: return BHK_VALUE_BASE
-    case FUNC_DEG, FUNC_RAD, FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_UNIQUE, FUNC_UNPACK, FUNC_AVG, FUNC_MEAN, FUNC_PRODUCT, FUNC_PROD, FUNC_MIN, FUNC_MAX
+    case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS: return BHK_VALUE
+    case FUNC_DEG, FUNC_RAD, FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_UNIQUE, FUNC_UNPACK, FUNC_AVG, FUNC_MEAN, FUNC_PRODUCT, FUNC_MIN, FUNC_MAX, FUNC_SORT, FUNC_REVERSE
       return BHK_DOTDOTDOT
-    case FUNC_SORT, FUNC_SORTED, FUNC_REVERSE, FUNC_REVERSED
-      return BHK_DOTDOTDOT
-    case FUNC_FACT, FUNC_FACTORIAL: return BHK_N
+    case FUNC_FACT: return BHK_N
     case FUNC_MOD: return BHK_VALUE_DIVISOR
     case FUNC_CLAMP: return BHK_VALUE_MIN_MAX
     case FUNC_HYPOT: return BHK_X_Y
@@ -926,12 +976,22 @@ end function
 
 private function GetBuiltinHintDisplayName(byval id as Integer, byref lowFn as String) as String
   select case id
-    case FUNC_ARCSIN: return GetFunctionName(FUNC_ASIN)
-    case FUNC_ARCCOS: return GetFunctionName(FUNC_ACOS)
-    case FUNC_ARCTAN: return GetFunctionName(FUNC_ATAN)
-    case FUNC_FRACT: return GetFunctionName(FUNC_FRAC)
-    case FUNC_SORTED: return GetFunctionName(FUNC_SORT)
-    case FUNC_REVERSED: return GetFunctionName(FUNC_REVERSE)
+    case FUNC_ASIN
+      if lowFn = FB_STR_ARCSIN then return GetFunctionName(FUNC_ASIN)
+    case FUNC_ACOS
+      if lowFn = FB_STR_ARCCOS then return GetFunctionName(FUNC_ACOS)
+    case FUNC_ATAN
+      if lowFn = FB_STR_ARCTAN then return GetFunctionName(FUNC_ATAN)
+    case FUNC_FRAC
+      if lowFn = FB_STR_FRACT then return GetFunctionName(FUNC_FRAC)
+    case FUNC_SORT
+      if lowFn = FB_STR_SORTED then return GetFunctionName(FUNC_SORT)
+    case FUNC_REVERSE
+      if lowFn = FB_STR_REVERSED then return GetFunctionName(FUNC_REVERSE)
+    case FUNC_FACT
+      if lowFn = FB_STR_FACTORIAL then return GetFunctionName(FUNC_FACT)
+    case FUNC_PRODUCT
+      if lowFn = FB_STR_PROD then return GetFunctionName(FUNC_PRODUCT)
   end select
   return lowFn
 end function
@@ -990,6 +1050,12 @@ end function
 private function IsReservedUserFunctionName(byref nameText as String) as Boolean
   if IsBuiltinFunctionName(nameText) then return TRUE
   if IsReservedOperatorKeyword(nameText) then return TRUE
+  return FALSE
+end function
+
+private function IsReservedBuiltinVariableNameForUserFunction(byref nameText as String) as Boolean
+  if lcase(nameText) = FB_STR_ANS then return TRUE
+  if nameText = FB_STR_FORMAL_VALIDATION_PROBE then return TRUE
   return FALSE
 end function
 
@@ -1525,6 +1591,9 @@ private function ValueToString(byref v as EvalValue) as String
       if v.scalar < 0 then return "-inf"
       return "inf"
     end if
+    if v.scalarStorageKind = SSK_TIME then
+      return FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(v.scalarValue))
+    end if
     dim fmtText as String
     if TryFormatScalarByRenderBase(v.scalarValue, v.renderBase, v.renderUnsigned, fmtText) then
       return fmtText
@@ -1555,6 +1624,10 @@ private function ValueToString(byref v as EvalValue) as String
         end if
         continue for
       end if
+      if ScalarIsTime(sv) then
+        s &= FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(sv))
+        continue for
+      end if
       if sv.exactUInt64Valid then
         s &= ltrim(str(sv.exactUInt64))
       elseif sv.exactInt64Valid then
@@ -1571,6 +1644,8 @@ private function ValueToString(byref v as EvalValue) as String
         else
           s &= "inf"
         end if
+      elseif ScalarIsTime(sv) then
+        s &= FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(sv))
       else
         if sv.exactUInt64Valid then
           s &= ltrim(ULongIntToString(sv.exactUInt64))
@@ -1734,6 +1809,10 @@ private function TryValidateIdentifierIsNotReserved(byref ident as String, byref
 end function
 
 private function TryValidateUserFunctionDefinitionNames(byref fnName as String, fnParams() as String, byref errText as String) as Boolean
+  if IsReservedBuiltinVariableNameForUserFunction(fnName) then
+    errText = FB_STR_RESERVED_BUILTIN_VARIABLE_NAME_COLON & fnName
+    return FALSE
+  end if
   if TryValidateIdentifierIsNotReserved(fnName, errText) = FALSE then
     return FALSE
   end if
@@ -1766,6 +1845,16 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
       ValueSetScalar(v, 1.0 / 0.0)
     case CONST_NAN
       ValueSetScalar(v, MakeNaN())
+    case CONST_MILLISECOND
+      ValueSetTimeMs(v, 1)
+    case CONST_SECOND
+      ValueSetTimeMs(v, 1000)
+    case CONST_MINUTE
+      ValueSetTimeMs(v, 60000)
+    case CONST_HOUR
+      ValueSetTimeMs(v, 3600000)
+    case CONST_DAY
+      ValueSetTimeMs(v, 86400000)
     case else
       return FALSE
   end select
@@ -2057,6 +2146,313 @@ end sub
 private sub SetIncompatibleOperandsError()
   SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
 end sub
+
+private sub SetTimeLiteralEmptySegmentError()
+  SetParseError(FB_STR_TIME_EMPTY_SEGMENT)
+end sub
+
+private sub SetTimeLiteralInvalidSegmentError()
+  SetParseError(FB_STR_TIME_INVALID_SEGMENT)
+end sub
+
+private sub SetTimeLiteralNegativeSegmentError()
+  SetParseError(FB_STR_TIME_NEGATIVE_SEGMENT)
+end sub
+
+private sub SetTimeNonFiniteError()
+  SetParseError(FB_STR_TIME_NON_FINITE)
+end sub
+
+private sub SetTimeArrayMixedError()
+  SetParseError(FB_STR_TIME_ARRAY_MIXED)
+end sub
+
+private function ScalarIsTime(byref sv as ScalarValue) as Boolean
+  return (sv.scalarStorageKind = SSK_TIME)
+end function
+
+private function EvalValueInvolvesTime(byref v as EvalValue) as Boolean
+  if v.kind <> VK_SCALAR then
+    if ValueArrayLen(v) <= 0 then return FALSE
+    dim i as Integer
+    for i = lbound(v.arr) to ubound(v.arr)
+      if ScalarIsTime(v.arr(i)) then return TRUE
+    next i
+    return FALSE
+  end if
+  return ScalarIsTime(v.scalarValue)
+end function
+
+private function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
+  return sv.exactInt64
+end function
+
+private sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
+  v.kind = VK_SCALAR
+  v.scalarStorageKind = SSK_TIME
+  v.scalar = CDbl(totalMs) / 1000.0
+  v.exactInt64Valid = FALSE
+  v.exactInt64 = totalMs
+  v.exactUInt64Valid = FALSE
+  v.exactUInt64 = 0
+  v.expandArgs = FALSE
+  v.renderBase = 10
+  v.renderUnsigned = FALSE
+  erase v.arr
+end sub
+
+private function RoundHalfUpDoubleToLongInt(byval x as Double) as LongInt
+  if IsNonFiniteValue(x) then return 0
+  if x >= 0 then
+    return CLngInt(Int(x + 0.5))
+  end if
+  return -CLngInt(Int(-x + 0.5))
+end function
+
+private function SecondsFieldToMsRounded(byval wholeSec as LongInt, byref fracDigits as String) as LongInt
+  dim d as Double = CDbl(wholeSec)
+  if len(fracDigits) > 0 then
+    dim fd as Double = val("0." & fracDigits)
+    if IsNonFiniteValue(fd) then return 0
+    d += fd
+  end if
+  return RoundHalfUpDoubleToLongInt(d * 1000.0)
+end function
+
+private function ParseTimeLiteralStringToMs(byref lit as String, byref outMs as LongInt) as Boolean
+  dim n as Integer = len(lit)
+  if n <= 0 then return FALSE
+  dim colonPos() as Integer
+  redim colonPos(0 to 7)
+  dim colonCount as Integer = 0
+  dim i as Integer
+  for i = 1 to n
+    if mid(lit, i, 1) = ":" then
+      if colonCount > 6 then
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+      colonCount += 1
+      colonPos(colonCount) = i
+    end if
+  next i
+  dim segCount as Integer = colonCount + 1
+  if segCount < 2 orelse segCount > 4 then
+    SetTimeLiteralInvalidSegmentError()
+    return FALSE
+  end if
+
+  dim getSegStart as Integer = 1
+  dim si as Integer
+  dim d as LongInt, h as LongInt, m as LongInt
+  dim lastWhole as LongInt
+  dim fracPart as String = ""
+  dim dotPos as Integer = 0
+  dim segStr as String
+
+  for si = 1 to segCount
+    dim segEnd as Integer
+    if si <= colonCount then
+      segEnd = colonPos(si) - 1
+    else
+      segEnd = n
+    end if
+    if segEnd < getSegStart then
+      SetTimeLiteralEmptySegmentError()
+      return FALSE
+    end if
+    segStr = mid(lit, getSegStart, segEnd - getSegStart + 1)
+    if len(segStr) <= 0 then
+      SetTimeLiteralEmptySegmentError()
+      return FALSE
+    end if
+    if si = segCount then
+      dotPos = instr(1, segStr, ".")
+      if dotPos > 0 then
+        fracPart = mid(segStr, dotPos + 1)
+        segStr = left(segStr, dotPos - 1)
+        if len(segStr) <= 0 then
+          SetTimeLiteralEmptySegmentError()
+          return FALSE
+        end if
+      else
+        fracPart = ""
+      end if
+    end if
+    dim j as Integer
+    for j = 1 to len(segStr)
+      dim ch as Integer = asc(mid(segStr, j, 1))
+      if ch < CHAR_DIGIT_0 orelse ch > CHAR_DIGIT_9 then
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+    next j
+    dim uv as ULongInt = 0
+    for j = 1 to len(segStr)
+      dim dig as Integer = asc(mid(segStr, j, 1)) - CHAR_DIGIT_0
+      if TryMult10OnceChecked(uv, uv) = FALSE then
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+      if TryAddULongChecked(uv, CULngInt(dig), uv) = FALSE then
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+    next j
+    if uv > 9223372036854775807ull then
+      SetTimeLiteralInvalidSegmentError()
+      return FALSE
+    end if
+    lastWhole = CLngInt(uv)
+    if si < segCount then
+      select case segCount
+        case 2
+          if si = 1 then m = lastWhole
+        case 3
+          if si = 1 then h = lastWhole
+          if si = 2 then m = lastWhole
+        case 4
+          if si = 1 then d = lastWhole
+          if si = 2 then h = lastWhole
+          if si = 3 then m = lastWhole
+      end select
+    end if
+    getSegStart = segEnd + 2
+  next si
+
+  if len(fracPart) > 0 then
+    for i = 1 to len(fracPart)
+      dim ch2 as Integer = asc(mid(fracPart, i, 1))
+      if ch2 < CHAR_DIGIT_0 orelse ch2 > CHAR_DIGIT_9 then
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+    next i
+  end if
+
+  dim secMs as LongInt = SecondsFieldToMsRounded(lastWhole, fracPart)
+  dim t as Double
+  select case segCount
+    case 2
+      t = CDbl(m) * 60000.0 + CDbl(secMs)
+    case 3
+      t = (CDbl(h) * 3600.0 + CDbl(m) * 60.0) * 1000.0 + CDbl(secMs)
+    case 4
+      t = ((CDbl(d) * 24.0 + CDbl(h)) * 3600.0 + CDbl(m) * 60.0) * 1000.0 + CDbl(secMs)
+    case else
+      SetTimeLiteralInvalidSegmentError()
+      return FALSE
+  end select
+  if IsNonFiniteValue(t) then
+    SetTimeLiteralInvalidSegmentError()
+    return FALSE
+  end if
+  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then
+    SetTimeLiteralInvalidSegmentError()
+    return FALSE
+  end if
+  outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function TryParseScalarTimeLiteral(byref outV as EvalValue) as Boolean
+  dim p0 as ZString ptr = pStream
+  if p0[0] < CHAR_DIGIT_0 orelse p0[0] > CHAR_DIGIT_9 then return FALSE
+  if p0[0] = CHAR_DIGIT_0 then
+    if p0[1] = CHAR_LC_X orelse p0[1] = CHAR_X orelse p0[1] = CHAR_LC_B orelse p0[1] = CHAR_B orelse p0[1] = CHAR_LC_O orelse p0[1] = CHAR_O then
+      return FALSE
+    end if
+  end if
+  dim q as ZString ptr = p0
+  dim hasColon as Boolean = FALSE
+  while (q[0] >= CHAR_DIGIT_0 andalso q[0] <= CHAR_DIGIT_9) orelse q[0] = CHAR_COLON orelse q[0] = CHAR_DOT
+    if q[0] = CHAR_COLON then hasColon = TRUE
+    q += 1
+  wend
+  if hasColon = FALSE then return FALSE
+  dim litLen as Integer = CInt(q - p0)
+  if litLen <= 0 then return FALSE
+  dim lit as String = left(*p0, litLen)
+  dim ms as LongInt = 0
+  if ParseTimeLiteralStringToMs(lit, ms) = FALSE then
+    return FALSE
+  end if
+  pStream = q
+  ValueSetTimeMs(outV, ms)
+  return TRUE
+end function
+
+private function Pad2Digits(byval n as LongInt) as String
+  if n < 0 then n = 0
+  if n >= 100 then return ltrim(str(n))
+  if n >= 10 then return chr(48 + n \ 10) & chr(48 + n mod 10)
+  return "0" & chr(48 + n mod 10)
+end function
+
+private function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
+  dim neg as Boolean = (totalMs < 0)
+  dim rU as ULongInt
+  if neg then
+    if totalMs = FB_I64_MIN then
+      rU = CULngInt(FB_I64_MIN_MAG_U)
+    else
+      rU = CULngInt(-totalMs)
+    end if
+  else
+    rU = CULngInt(totalMs)
+  end if
+  dim msPart as LongInt = CLngInt(rU mod 1000ull)
+  rU = rU \ 1000ull
+  dim sPart as LongInt = CLngInt(rU mod 60ull)
+  rU = rU \ 60ull
+  dim mPart as LongInt = CLngInt(rU mod 60ull)
+  rU = rU \ 60ull
+  dim hPart as LongInt = CLngInt(rU mod 24ull)
+  rU = rU \ 24ull
+  dim dPart as ULongInt = rU
+  dim body as String
+  if dPart > 0ull then
+    body = ULongIntToString(dPart) & ":" & Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  elseif hPart > 0 then
+    body = Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  else
+    body = Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  end if
+  if msPart <> 0 then
+    body &= "." & chr(48 + (msPart \ 100)) & chr(48 + ((msPart \ 10) mod 10)) & chr(48 + (msPart mod 10))
+  end if
+  if neg then return "-" & body
+  return body
+end function
+
+private function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
+  dim t as Double = CDbl(a) + CDbl(b)
+  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
+  outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function TrySubTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
+  dim t as Double = CDbl(a) - CDbl(b)
+  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
+  outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function ScalarToSecondsMsForTimeOp(byref sv as ScalarValue, byref outMs as LongInt) as Boolean
+  if ScalarIsTime(sv) then
+    outMs = TimeTotalMsFromScalarValue(sv)
+    return TRUE
+  end if
+  if IsNonFiniteValue(sv.scalar) then return FALSE
+  outMs = RoundHalfUpDoubleToLongInt(sv.scalar * 1000.0)
+  return TRUE
+end function
+
+private function ScalarIsNonFiniteOrTimeMixInvalid(byref sv as ScalarValue) as Boolean
+  if ScalarIsTime(sv) then return FALSE
+  return IsNonFiniteValue(sv.scalar)
+end function
 
 private sub SetUserFunctionCallStackOverflowError()
   SetParseError(FB_STR_USER_FUNCTION_CALL_STACK_OVERFLOW)
@@ -2618,11 +3014,11 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
     ValueSetScalarPromoteExactInt64(outV, CalcCos(x))
   elseif fnId = FUNC_TAN then
     ValueSetScalarPromoteExactInt64(outV, CalcTan(x))
-  elseif (fnId = FUNC_ASIN) orelse (fnId = FUNC_ARCSIN) then
+  elseif fnId = FUNC_ASIN then
     ValueSetScalarPromoteExactInt64(outV, asin(x))
-  elseif (fnId = FUNC_ACOS) orelse (fnId = FUNC_ARCCOS) then
+  elseif fnId = FUNC_ACOS then
     ValueSetScalarPromoteExactInt64(outV, acos(x))
-  elseif (fnId = FUNC_ATAN) orelse (fnId = FUNC_ARCTAN) then
+  elseif fnId = FUNC_ATAN then
     ValueSetScalarPromoteExactInt64(outV, atn(x))
   elseif fnId = FUNC_SINH then
     ValueSetScalarPromoteExactInt64(outV, sinh(x))
@@ -2650,7 +3046,7 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
          (fnId = FUNC_FLOOR) orelse (fnId = FUNC_CEIL) orelse _
          (fnId = FUNC_ROUND) then
     calcRoundingFn(fnId, scalarV, outV)
-  elseif (fnId = FUNC_FRAC) orelse (fnId = FUNC_FRACT) then
+  elseif fnId = FUNC_FRAC then
     ValueSetScalarPromoteExactInt64(outV, x - Fix(x))
   elseif fnId = FUNC_ABS then
     if IsNaNValue(x) then
@@ -2883,6 +3279,133 @@ private function MapBinaryBroadcastScalars(byval mode as Integer, byref leftV as
   return TRUE
 end function
 
+private function MapTimeBinaryBroadcastScalars(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  dim i as Integer
+  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    return ApplyTimeBinaryScalars(leftV.scalarValue, rightV.scalarValue, op, outV)
+  end if
+
+  dim lb as Integer, ub as Integer
+  if leftV.kind = VK_ARRAY andalso rightV.kind = VK_ARRAY then
+    if ValueArrayLen(leftV) <> ValueArrayLen(rightV) then return FALSE
+    lb = lbound(leftV.arr): ub = ubound(leftV.arr)
+    ValueInitArrayLike(outV, lb, ub)
+    dim rAA as EvalValue
+    for i = lb to ub
+      if ApplyTimeBinaryScalars(leftV.arr(i), rightV.arr(i), op, rAA) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, rAA)
+    next i
+    return TRUE
+  end if
+
+  if leftV.kind = VK_ARRAY then
+    lb = lbound(leftV.arr): ub = ubound(leftV.arr)
+    ValueInitArrayLike(outV, lb, ub)
+    dim rAS as EvalValue
+    for i = lb to ub
+      if ApplyTimeBinaryScalars(leftV.arr(i), rightV.scalarValue, op, rAS) = FALSE then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, rAS)
+    next i
+    return TRUE
+  end if
+
+  lb = lbound(rightV.arr): ub = ubound(rightV.arr)
+  ValueInitArrayLike(outV, lb, ub)
+  dim rSA as EvalValue
+  for i = lb to ub
+    if ApplyTimeBinaryScalars(leftV.scalarValue, rightV.arr(i), op, rSA) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, rSA)
+  next i
+  return TRUE
+end function
+
+private function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  dim lt as Boolean = ScalarIsTime(leftS)
+  dim rt as Boolean = ScalarIsTime(rightS)
+  if lt = FALSE andalso rt = FALSE then return FALSE
+
+  if (lt = FALSE andalso IsNonFiniteValue(leftS.scalar)) orelse (rt = FALSE andalso IsNonFiniteValue(rightS.scalar)) then
+    SetTimeNonFiniteError()
+    return FALSE
+  end if
+
+  dim lms as LongInt
+  dim rms as LongInt
+  dim outMs as LongInt
+
+  if lt then
+    lms = TimeTotalMsFromScalarValue(leftS)
+  else
+    lms = RoundHalfUpDoubleToLongInt(leftS.scalar * 1000.0)
+  end if
+  if rt then
+    rms = TimeTotalMsFromScalarValue(rightS)
+  else
+    rms = RoundHalfUpDoubleToLongInt(rightS.scalar * 1000.0)
+  end if
+
+  select case op
+    case CHAR_PLUS
+      if TryAddTimeMsChecked(lms, rms, outMs) = FALSE then return FALSE
+      ValueSetTimeMs(outV, outMs)
+      return TRUE
+    case CHAR_MINUS
+      if TrySubTimeMsChecked(lms, rms, outMs) = FALSE then return FALSE
+      ValueSetTimeMs(outV, outMs)
+      return TRUE
+    case CHAR_ASTERISK
+      if lt andalso rt then
+        return FALSE
+      else
+        dim mult as Double
+        dim baseMs as LongInt
+        if lt then
+          baseMs = lms
+          mult = rightS.scalar
+        else
+          baseMs = rms
+          mult = leftS.scalar
+        end if
+        if IsNonFiniteValue(mult) then return FALSE
+        dim tMul as Double = CDbl(baseMs) * mult
+        if tMul < CDbl(FB_I64_MIN) orelse tMul > CDbl(FB_I64_MAX) then return FALSE
+        ValueSetTimeMs(outV, RoundHalfUpDoubleToLongInt(tMul))
+        return TRUE
+      end if
+    case CHAR_DIVIDE
+      if lt andalso rt then
+        if rms = 0 then return FALSE
+        dim ratio as Double = (CDbl(lms) / 1000.0) / (CDbl(rms) / 1000.0)
+        if IsNonFiniteValue(ratio) then return FALSE
+        ValueSetScalar(outV, ratio)
+        return TRUE
+      elseif lt andalso rt = FALSE then
+        if rightS.scalar = 0.0 then return FALSE
+        dim td as Double = (CDbl(lms) / 1000.0) / rightS.scalar
+        if IsNonFiniteValue(td) then return FALSE
+        if td < CDbl(FB_I64_MIN) orelse td > CDbl(FB_I64_MAX) then return FALSE
+        ValueSetTimeMs(outV, RoundHalfUpDoubleToLongInt(td * 1000.0))
+        return TRUE
+      else
+        return FALSE
+      end if
+  end select
+  return FALSE
+end function
+
+private function ValueApplyBinaryTimeAware(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if EvalValueInvolvesTime(leftV) = FALSE andalso EvalValueInvolvesTime(rightV) = FALSE then return FALSE
+  if op <> CHAR_PLUS andalso op <> CHAR_MINUS andalso op <> CHAR_ASTERISK andalso op <> CHAR_DIVIDE then
+    SetIncompatibleOperandsError()
+    return TRUE
+  end if
+  if MapTimeBinaryBroadcastScalars(leftV, rightV, op, outV) = FALSE then
+    if parseError = 0 then SetIncompatibleOperandsError()
+    return TRUE
+  end if
+  return TRUE
+end function
+
 private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
   return MapBinaryBroadcastScalars(MAP_BINARY_OP_NUMERIC, leftV, rightV, op, OP_BIT_NONE, -1, outV)
 end function
@@ -3000,15 +3523,44 @@ end function
 private function CompareScalarArrayLex(byval scalarV as Double, byref arrV as EvalValue) as Integer
   dim arrLen as Integer = ValueArrayLen(arrV)
   if arrLen <= 0 then return 1
-  dim firstVal as Double = arrV.arr(lbound(arrV.arr)).scalar
-  if scalarV < firstVal then return -1
-  if scalarV > firstVal then return 1
+  dim firstSv as ScalarValue = arrV.arr(lbound(arrV.arr))
+  dim sm as LongInt = RoundHalfUpDoubleToLongInt(scalarV * 1000.0)
+  dim fm as LongInt
+  if ScalarIsTime(firstSv) then
+    fm = TimeTotalMsFromScalarValue(firstSv)
+  else
+    fm = RoundHalfUpDoubleToLongInt(firstSv.scalar * 1000.0)
+  end if
+  if sm < fm then return -1
+  if sm > fm then return 1
   if arrLen = 1 then return 0
   return -1
 end function
 
 private function CompareEvalValues(byref leftV as EvalValue, byref rightV as EvalValue, byref cmp as Integer) as Boolean
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    if ScalarIsTime(leftV.scalarValue) orelse ScalarIsTime(rightV.scalarValue) then
+      dim lm as LongInt
+      dim rm as LongInt
+      if ScalarIsTime(leftV.scalarValue) then
+        lm = TimeTotalMsFromScalarValue(leftV.scalarValue)
+      else
+        lm = RoundHalfUpDoubleToLongInt(leftV.scalar * 1000.0)
+      end if
+      if ScalarIsTime(rightV.scalarValue) then
+        rm = TimeTotalMsFromScalarValue(rightV.scalarValue)
+      else
+        rm = RoundHalfUpDoubleToLongInt(rightV.scalar * 1000.0)
+      end if
+      if lm < rm then
+        cmp = -1
+      elseif lm > rm then
+        cmp = 1
+      else
+        cmp = 0
+      end if
+      return TRUE
+    end if
     if leftV.scalar < rightV.scalar then
       cmp = -1
     elseif leftV.scalar > rightV.scalar then
@@ -3034,15 +3586,40 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
   dim leftLb as Integer = lbound(leftV.arr)
   dim rightLb as Integer = lbound(rightV.arr)
   dim i as Integer
+  dim useMsLex as Boolean = (EvalValueInvolvesTime(leftV) orelse EvalValueInvolvesTime(rightV))
   for i = 0 to minLen - 1
-    dim lv as Double = leftV.arr(leftLb + i).scalar
-    dim rv as Double = rightV.arr(rightLb + i).scalar
-    if lv < rv then
-      cmp = -1
-      return TRUE
-    elseif lv > rv then
-      cmp = 1
-      return TRUE
+    dim lsv as ScalarValue = leftV.arr(leftLb + i)
+    dim rsv as ScalarValue = rightV.arr(rightLb + i)
+    if useMsLex then
+      dim lvMs as LongInt
+      dim rvMs as LongInt
+      if ScalarIsTime(lsv) then
+        lvMs = TimeTotalMsFromScalarValue(lsv)
+      else
+        lvMs = RoundHalfUpDoubleToLongInt(lsv.scalar * 1000.0)
+      end if
+      if ScalarIsTime(rsv) then
+        rvMs = TimeTotalMsFromScalarValue(rsv)
+      else
+        rvMs = RoundHalfUpDoubleToLongInt(rsv.scalar * 1000.0)
+      end if
+      if lvMs < rvMs then
+        cmp = -1
+        return TRUE
+      elseif lvMs > rvMs then
+        cmp = 1
+        return TRUE
+      end if
+    else
+      dim lv as Double = lsv.scalar
+      dim rv as Double = rsv.scalar
+      if lv < rv then
+        cmp = -1
+        return TRUE
+      elseif lv > rv then
+        cmp = 1
+        return TRUE
+      end if
     end if
   next i
   if leftLen < rightLen then
@@ -3056,6 +3633,15 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
 end function
 
 private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorCmpNameId, byref outV as EvalValue) as Boolean
+  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    if ScalarIsTime(leftV.scalarValue) orelse ScalarIsTime(rightV.scalarValue) then
+      if (ScalarIsTime(leftV.scalarValue) = FALSE andalso IsNonFiniteValue(leftV.scalar)) orelse _
+         (ScalarIsTime(rightV.scalarValue) = FALSE andalso IsNonFiniteValue(rightV.scalar)) then
+        SetIncompatibleOperandsError()
+        return FALSE
+      end if
+    end if
+  end if
   '' IEEE: any scalar NaN makes comparisons unordered — only ``!=`` / ``<>`` is true.
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
     if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
@@ -3115,6 +3701,10 @@ private sub ValueSetBoolResult(byval b as Boolean, byref outV as EvalValue)
 end sub
 
 private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
+  if EvalValueInvolvesTime(leftV) orelse EvalValueInvolvesTime(rightV) then
+    SetIncompatibleOperandsError()
+    return FALSE
+  end if
   if ValueApplyBinaryInt64(leftV, rightV, op, outV) = FALSE then
     SetIncompatibleOperandsError()
     return FALSE
@@ -3123,6 +3713,9 @@ private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as Ev
 end function
 
 private function ApplyBinaryParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if ValueApplyBinaryTimeAware(leftV, rightV, op, outV) then
+    return (parseError = 0)
+  end if
   if ValueApplyBinary(leftV, rightV, op, outV) = FALSE then
     SetIncompatibleOperandsError()
     return FALSE
@@ -3430,7 +4023,7 @@ private function TryAggSimpleExactInteger(args() as EvalValue, byval fnId as Int
   wend
   if gotAny = FALSE then return FALSE
 
-  if (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) then
+  if fnId = FUNC_PRODUCT then
     argIdx = lbound(args)
     elemIdx = -1
     dim productMag as ULongInt = 1
@@ -3611,6 +4204,21 @@ private function TryParseCallArguments(args() as EvalValue, byref argsCount as I
 end function
 
 private function ScalarSortLess(byref a as ScalarValue, byref b as ScalarValue) as Boolean
+  if ScalarIsTime(a) orelse ScalarIsTime(b) then
+    dim am as LongInt
+    dim bm as LongInt
+    if ScalarIsTime(a) then
+      am = TimeTotalMsFromScalarValue(a)
+    else
+      am = RoundHalfUpDoubleToLongInt(a.scalar * 1000.0)
+    end if
+    if ScalarIsTime(b) then
+      bm = TimeTotalMsFromScalarValue(b)
+    else
+      bm = RoundHalfUpDoubleToLongInt(b.scalar * 1000.0)
+    end if
+    return am < bm
+  end if
   dim aNan as Boolean = IsNaNValue(a.scalar)
   dim bNan as Boolean = IsNaNValue(b.scalar)
   if aNan then return (bNan = FALSE)
@@ -3619,6 +4227,21 @@ private function ScalarSortLess(byref a as ScalarValue, byref b as ScalarValue) 
 end function
 
 private function ScalarSortGreater(byref a as ScalarValue, byref b as ScalarValue) as Boolean
+  if ScalarIsTime(a) orelse ScalarIsTime(b) then
+    dim am as LongInt
+    dim bm as LongInt
+    if ScalarIsTime(a) then
+      am = TimeTotalMsFromScalarValue(a)
+    else
+      am = RoundHalfUpDoubleToLongInt(a.scalar * 1000.0)
+    end if
+    if ScalarIsTime(b) then
+      bm = TimeTotalMsFromScalarValue(b)
+    else
+      bm = RoundHalfUpDoubleToLongInt(b.scalar * 1000.0)
+    end if
+    return am > bm
+  end if
   dim aNan as Boolean = IsNaNValue(a.scalar)
   dim bNan as Boolean = IsNaNValue(b.scalar)
   if bNan then return (aNan = FALSE)
@@ -3763,6 +4386,211 @@ private function TrySingleArgPassthroughOrCollect( _
   return 0
 end function
 
+private function CallArgsInvolveTime(args() as EvalValue) as Boolean
+  dim i as Integer
+  if ubound(args) < lbound(args) then return FALSE
+  for i = lbound(args) to ubound(args)
+    if EvalValueInvolvesTime(args(i)) then return TRUE
+  next i
+  return FALSE
+end function
+
+private function CollectRequiredArgsAsFlatTimeMs(args() as EvalValue, flat() as Double, byref fnName as String) as Integer
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim count as Integer = 0
+  dim sv as ScalarValue
+  while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+    if ScalarIsTime(sv) = FALSE then
+      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      return -1
+    end if
+    if count = 0 then
+      redim flat(0 to 0)
+    else
+      redim preserve flat(0 to count)
+    end if
+    flat(count) = CDbl(TimeTotalMsFromScalarValue(sv))
+    count += 1
+  wend
+  if count <= 0 then
+    SetAtLeastOneArgError(fnName)
+    return -1
+  end if
+  return count
+end function
+
+private function MedianFromDoubleFlatInPlace(a() as Double, byval c as Integer) as Double
+  dim midIdx as Integer = c \ 2
+  dim leftIdx as Integer = 0
+  dim rightIdx as Integer = c - 1
+  dim kIdx as Integer = midIdx
+  dim i as Integer
+  do while leftIdx < rightIdx
+    dim pivot as Double = a((leftIdx + rightIdx) \ 2)
+    i = leftIdx
+    dim j as Integer = rightIdx
+    do
+      while a(i) < pivot
+        i += 1
+      wend
+      while a(j) > pivot
+        j -= 1
+      wend
+      if i <= j then
+        SwapDouble(a(i), a(j))
+        i += 1
+        j -= 1
+      end if
+    loop while i <= j
+    if kIdx <= j then
+      rightIdx = j
+    elseif kIdx >= i then
+      leftIdx = i
+    else
+      exit do
+    end if
+  loop
+  dim upper as Double = a(kIdx)
+  if (c and 1) = 1 then
+    return upper
+  end if
+  dim lower as Double = a(0)
+  for i = 1 to midIdx - 1
+    if a(i) > lower then lower = a(i)
+  next i
+  return (lower + upper) / 2.0
+end function
+
+private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+  if (fnId = FUNC_MILLISECONDS) orelse (fnId = FUNC_SECONDS) orelse (fnId = FUNC_MINUTES) orelse (fnId = FUNC_HOURS) orelse (fnId = FUNC_DAYS) then
+    if EnsureExactArgCount(args(), 1, fnName) = FALSE then return TRUE
+    if args(0).kind = VK_SCALAR then
+      if ScalarIsTime(args(0).scalarValue) = FALSE then
+        SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+        return TRUE
+      end if
+      dim msArg as LongInt = TimeTotalMsFromScalarValue(args(0).scalarValue)
+      select case fnId
+        case FUNC_MILLISECONDS
+          ValueSetInt64(outV, msArg)
+        case FUNC_SECONDS
+          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 1000.0)
+        case FUNC_MINUTES
+          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 60000.0)
+        case FUNC_HOURS
+          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 3600000.0)
+        case FUNC_DAYS
+          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 86400000.0)
+      end select
+      return TRUE
+    elseif args(0).kind = VK_ARRAY then
+      dim lbA as Integer = lbound(args(0).arr)
+      dim ubA as Integer = ubound(args(0).arr)
+      ValueInitArrayLike(outV, lbA, ubA)
+      dim iA as Integer
+      for iA = lbA to ubA
+        if ScalarIsTime(args(0).arr(iA)) = FALSE then
+          SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+          return TRUE
+        end if
+        dim msElem as LongInt = TimeTotalMsFromScalarValue(args(0).arr(iA))
+        dim rConv as EvalValue
+        select case fnId
+          case FUNC_MILLISECONDS
+            ValueSetInt64(rConv, msElem)
+          case FUNC_SECONDS
+            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 1000.0)
+          case FUNC_MINUTES
+            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 60000.0)
+          case FUNC_HOURS
+            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 3600000.0)
+          case FUNC_DAYS
+            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 86400000.0)
+        end select
+        ValueSetArrayElemFromScalar(outV, iA, rConv)
+      next iA
+      return TRUE
+    else
+      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      return TRUE
+    end if
+  end if
+
+  if CallArgsInvolveTime(args()) = FALSE then return FALSE
+
+  if fnId = FUNC_PRODUCT then
+    SetIncompatibleOperandsError()
+    return TRUE
+  end if
+
+  select case fnId
+    case FUNC_SORT, FUNC_REVERSE, FUNC_UNPACK
+      return FALSE
+    case FUNC_VARIANCE, FUNC_STDDEV
+      SetIncompatibleOperandsError()
+      return TRUE
+    case FUNC_SUM, FUNC_MIN, FUNC_MAX, FUNC_AVG, FUNC_MEAN
+      dim argIdx as Integer = lbound(args)
+      dim elemIdx as Integer = -1
+      dim sv as ScalarValue
+      dim aggMode as Integer = 1
+      dim accMs as LongInt = 0
+      dim accInit as Boolean = FALSE
+      dim itemCount as Integer = 0
+      if fnId = FUNC_MIN then
+        aggMode = 3
+      elseif fnId = FUNC_MAX then
+        aggMode = 4
+      end if
+      while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+        if ScalarIsTime(sv) = FALSE then
+          SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+          return TRUE
+        end if
+        dim curMs as LongInt = TimeTotalMsFromScalarValue(sv)
+        if aggMode = 1 then
+          if TryAddTimeMsChecked(accMs, curMs, accMs) = FALSE then
+            SetIncompatibleOperandsError()
+            return TRUE
+          end if
+        elseif aggMode = 3 then
+          if accInit = FALSE orelse curMs < accMs then accMs = curMs
+          accInit = TRUE
+        else
+          if accInit = FALSE orelse curMs > accMs then accMs = curMs
+          accInit = TRUE
+        end if
+        itemCount += 1
+      wend
+      if itemCount <= 0 then
+        SetAtLeastOneArgError(fnName)
+        return TRUE
+      end if
+      if (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN) then
+        dim avgD as Double = CDbl(accMs) / CDbl(itemCount)
+        ValueSetTimeMs(outV, RoundHalfUpDoubleToLongInt(avgD))
+        return TRUE
+      end if
+      ValueSetTimeMs(outV, accMs)
+      return TRUE
+    case FUNC_MEDIAN
+      dim flatMed() as Double
+      dim cM as Integer = CollectRequiredArgsAsFlatTimeMs(args(), flatMed(), fnName)
+      if cM < 0 then return TRUE
+      if cM = 1 then
+        ValueSetTimeMs(outV, RoundHalfUpDoubleToLongInt(flatMed(0)))
+        return TRUE
+      end if
+      dim med as Double = MedianFromDoubleFlatInPlace(flatMed(), cM)
+      ValueSetTimeMs(outV, RoundHalfUpDoubleToLongInt(med))
+      return TRUE
+    case else
+      SetIncompatibleOperandsError()
+      return TRUE
+  end select
+end function
+
 private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim outV as EvalValue
   if pStream[0] <> CHAR_LPAREN then SetMissingOpeningBracketError(): return outV
@@ -3789,8 +4617,9 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim c as Integer = 0
   NormalizeCallArgs(args())
   if ValidateBuiltinCallArgs(fnId, fnName, args()) = FALSE then return outV
+  if TryBuiltinDispatchWithTime(fnId, fnName, args(), outV) then return outV
 
-  dim isAggSimple as Boolean = (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) orelse (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN)
+  dim isAggSimple as Boolean = (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) orelse (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN)
   if isAggSimple orelse (fnId = FUNC_MEDIAN) orelse (fnId = FUNC_VARIANCE) orelse (fnId = FUNC_STDDEV) then
     if ubound(args) = -1 then SetAtLeastOneArgError(fnName): return outV
     if ubound(args) = 0 andalso args(0).kind = VK_SCALAR then
@@ -3805,7 +4634,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       dim itemCount as Integer = 0
       dim hasValue as Boolean = FALSE
       dim aggMode as Integer = 0 '1=sum/avg/mean, 2=product, 3=min, 4=max
-      if (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) then
+      if fnId = FUNC_PRODUCT then
         aggMode = 2
         acc = 1
       elseif fnId = FUNC_MIN then
@@ -3815,7 +4644,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       else
         aggMode = 1
       end if
-      if (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_PROD) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
+      if (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
         if TryAggSimpleExactInteger(args(), fnId, outV) then return outV
       end if
       dim argIdx as Integer = lbound(args)
@@ -3914,7 +4743,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if (fnId = FUNC_SORT) orelse (fnId = FUNC_SORTED) then
+  if fnId = FUNC_SORT then
     dim sortVals() as ScalarValue
     dim prepSort as Integer = TrySingleArgPassthroughOrCollect(args(), fnName, FALSE, outV, sortVals(), c)
     if prepSort = -1 then return outV
@@ -3924,7 +4753,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if (fnId = FUNC_REVERSE) orelse (fnId = FUNC_REVERSED) then
+  if fnId = FUNC_REVERSE then
     dim reverseVals() as ScalarValue
     dim prepReverse as Integer = TrySingleArgPassthroughOrCollect(args(), fnName, FALSE, outV, reverseVals(), c)
     if prepReverse = -1 then return outV
@@ -3972,7 +4801,12 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
         outCount += 1
         continue for
       end if
-      dim key as ULongInt = UniqueHashKeyFromDouble(v)
+      dim key as ULongInt
+      if ScalarIsTime(uniqueVals(i)) then
+        key = UniqueHashKeyFromDouble(CDbl(TimeTotalMsFromScalarValue(uniqueVals(i))))
+      else
+        key = UniqueHashKeyFromDouble(v)
+      end if
       dim idx as Integer = CInt(key and CULngInt(cap - 1))
       do
         if used(idx) = 0 then exit do
@@ -4023,7 +4857,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if (fnId = FUNC_FACT) orelse (fnId = FUNC_FACTORIAL) then
+  if fnId = FUNC_FACT then
     if EnsureExactArgCount(args(), 1, fnName) = FALSE then return outV
     if TryApplyFactorial(args(0), outV) = FALSE then
       SetNonNegativeIntegerError(fnName)
@@ -4377,7 +5211,24 @@ private function ParseFactor() as EvalValue
 
   SkipSpaces()
   if IsNumericLiteralStartChar(asc(pStream[0])) then
-    if not ParseScalarNumericValue(n) then return n
+    dim pNum as ZString ptr = pStream
+    dim hasColonPeek as Boolean = FALSE
+    if pNum[0] >= CHAR_DIGIT_0 andalso pNum[0] <= CHAR_DIGIT_9 then
+      if pNum[0] = CHAR_DIGIT_0 andalso (pNum[1] = CHAR_LC_X orelse pNum[1] = CHAR_X orelse pNum[1] = CHAR_LC_B orelse pNum[1] = CHAR_B orelse pNum[1] = CHAR_LC_O orelse pNum[1] = CHAR_O) then
+        hasColonPeek = FALSE
+      else
+        dim qq as ZString ptr = pNum
+        while (qq[0] >= CHAR_DIGIT_0 andalso qq[0] <= CHAR_DIGIT_9) orelse qq[0] = CHAR_COLON orelse qq[0] = CHAR_DOT
+          if qq[0] = CHAR_COLON then hasColonPeek = TRUE
+          qq += 1
+        wend
+      end if
+    end if
+    if hasColonPeek then
+      if TryParseScalarTimeLiteral(n) = FALSE then return n
+    else
+      if not ParseScalarNumericValue(n) then return n
+    end if
   elseif IsIdentStartChar(asc(pStream[0])) then
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
@@ -4414,6 +5265,7 @@ private function ParseFactor() as EvalValue
       redim vals(0)
       if firstVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
       vals(0) = firstVal
+      dim firstIsT as Boolean = ScalarIsTime(firstVal.scalarValue)
       dim hasComma as Boolean = TRUE
       do
         if TryConsumeCommaArgSeparator(hasComma) = FALSE then return n
@@ -4421,6 +5273,10 @@ private function ParseFactor() as EvalValue
         dim nextVal as EvalValue = ParseExpression()
         if parseError then return n
         if nextVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
+        if ScalarIsTime(nextVal.scalarValue) <> firstIsT then
+          SetTimeArrayMixedError()
+          return n
+        end if
         redim preserve vals(0 to ubound(vals) + 1)
         vals(ubound(vals)) = nextVal
         SkipSpaces()
