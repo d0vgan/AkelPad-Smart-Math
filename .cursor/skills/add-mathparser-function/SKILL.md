@@ -1,6 +1,6 @@
 ---
 name: add-mathparser-function
-description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, or update USAGE_AND_SYNTAX documentation with consistent style and logic.
+description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, or update USAGE_AND_SYNTAX documentation with consistent style, ASCII-friendly typography, and logic.
 ---
 
 # Add MathParser Function or Builtin Constant
@@ -328,6 +328,8 @@ When in doubt, classify conservatively: if a file plausibly affects parser/test 
   - edge/interesting case,
   - array example when supported.
 - Keep terminology, tone, wording density, and explanation logic consistent with existing document sections.
+- **Match the surrounding section, not a generic style guide:** before writing, scan the nearest headings, bullets, and examples; reuse the same terms the file already uses (for example how it names durations, time values, scalars, and errors), mirror list depth and example shape (`expr` -> `result` vs inline prose) so the new block reads like a sibling of its neighbors.
+- **Prefer ASCII in new or changed doc lines:** use `-` (ASCII hyphen) for dash-like punctuation, not Unicode en/em dashes; use `->` for "evaluates to" / result arrows in examples, not Unicode arrows (for example U+2192); stick to straight ASCII quotes in new prose unless the surrounding paragraph already uses a different convention you are extending in place.
 - Do not introduce a new writing style for one function; this file should read as if written by one author.
 - Run a quick typo pass on changed doc lines before finishing (especially split words from accidental edits, e.g. `implemen ted`).
 
@@ -376,7 +378,7 @@ Update **every** place that documents builtin constants and reserved names so th
 - Sections that explain **reserved** names, assignment restrictions, and UDF/parameter restrictions.
 - Examples that say constants resolve **before** variables (extend or add an example if it helps, same tone as `(e=3)` style notes).
 
-Match the existing document’s structure, terminology, and density; do not document the new constant in only one section while older constants are described in several.
+Match the existing document’s structure, terminology, and density; reuse wording patterns from adjacent constant bullets; prefer ASCII punctuation as in **step 6** above. Do not document the new constant in only one section while older constants are described in several.
 
 ### Build and smoke
 
@@ -390,7 +392,7 @@ Before finishing, verify:
 - Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (Basic implementation or formatter/copy test sources — step 3.1), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
 - Cross-language porting/parity is complete for **all** relevant code/test change types: Basic <-> C++ implementations and tests are mirrored, with no mismatches (skip only allowed when `cpp/MathParser.cpp` is missing, and it must be explicitly noted).
 - Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.
-- Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, and style/structure match surrounding sections.
+- Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, style/structure and wording match surrounding sections, and new or edited USAGE lines use ASCII-friendly typography per **step 6** (hyphen dashes, `->` for results, no gratuitous Unicode punctuation).
 - Tests cover both success and failure paths; if adding a new builtin constant, extend the Basic constant table + mirror reserved-name behavior into C++ (when present) and add/reflect constant-specific smoke tests + docs.
 - Integer metadata preservation/restoration was verified in both languages:
   - context-preserving paths do not silently drop `exactInt64` / `exactUInt64`,

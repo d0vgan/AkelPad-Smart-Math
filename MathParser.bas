@@ -124,6 +124,9 @@ const FB_STR_BITWISE_OPERANDS_MUST_BE_INTEGER_VALUES as string = "bitwise operan
 const FB_STR_INCOMPATIBLE_OPERANDS as string = "incompatible operands"
 const FB_STR_TIME_EMPTY_SEGMENT as string = "time literal: empty segment between colons"
 const FB_STR_TIME_INVALID_SEGMENT as string = "time literal: invalid segment"
+const FB_STR_TIME_COMPACT_EXPECTED_UNIT as string = "compact time literal: expected unit suffix"
+const FB_STR_TIME_COMPACT_UNIT_ORDER as string = "compact time literal: unit order or duplicate unit"
+const FB_STR_TIME_COMPACT_INVALID_SUFFIX as string = "compact time literal: invalid suffix"
 const FB_STR_TIME_NEGATIVE_SEGMENT as string = "time literal: negative segment"
 const FB_STR_TIME_NON_FINITE as string = "time value: non-finite operand"
 const FB_STR_TIME_ARRAY_MIXED as string = "array literal: time values cannot be mixed with non-time values"
@@ -474,6 +477,7 @@ declare function ScalarIsTime(byref sv as ScalarValue) as Boolean
 declare function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
 declare function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
 declare sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
+declare function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
 declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
 
 type VarEntry
@@ -2352,6 +2356,117 @@ private function ParseTimeLiteralStringToMs(byref lit as String, byref outMs as 
     return FALSE
   end if
   outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function TryProductCoeffUnitMs(byval coeff as LongInt, byval factor as LongInt, byref outDelta as LongInt) as Boolean
+  if coeff = 0 orelse factor = 0 then
+    outDelta = 0
+    return TRUE
+  end if
+  if coeff > (FB_I64_MAX \ factor) then return FALSE
+  outDelta = coeff * factor
+  return TRUE
+end function
+
+private function TryParseCompactSuffixTimeLiteral(byref outV as EvalValue) as Boolean
+  dim pSave as ZString ptr = pStream
+  if pStream[0] < CHAR_DIGIT_0 orelse pStream[0] > CHAR_DIGIT_9 then return FALSE
+  if pStream[0] = CHAR_DIGIT_0 then
+    if pStream[1] = CHAR_LC_X orelse pStream[1] = CHAR_X orelse pStream[1] = CHAR_LC_B orelse pStream[1] = CHAR_B orelse pStream[1] = CHAR_LC_O orelse pStream[1] = CHAR_O then
+      return FALSE
+    end if
+  end if
+  dim totalMs as LongInt = 0
+  dim lastUnitRank as Integer = -1
+  dim comps as Integer = 0
+  do
+    if pStream[0] < CHAR_DIGIT_0 orelse pStream[0] > CHAR_DIGIT_9 then exit do
+    dim uv as ULongInt = 0
+    while pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9
+      dim dg as Integer = pStream[0] - CHAR_DIGIT_0
+      if TryMult10OnceChecked(uv, uv) = FALSE then
+        pStream = pSave
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+      if TryAddULongChecked(uv, CULngInt(dg), uv) = FALSE then
+        pStream = pSave
+        SetTimeLiteralInvalidSegmentError()
+        return FALSE
+      end if
+      pStream += 1
+    wend
+    SkipSpaces()
+    dim ur as Integer = -1
+    dim fac as LongInt = 0
+    if pStream[0] = CHAR_LC_M andalso pStream[1] = CHAR_LC_S then
+      ur = 4
+      fac = 1
+      pStream += 2
+    elseif pStream[0] = CHAR_LC_D then
+      ur = 0
+      fac = 86400000
+      pStream += 1
+    elseif pStream[0] = CHAR_LC_H then
+      ur = 1
+      fac = 3600000
+      pStream += 1
+    elseif pStream[0] = CHAR_LC_M then
+      ur = 2
+      fac = 60000
+      pStream += 1
+    elseif pStream[0] = CHAR_LC_S then
+      ur = 3
+      fac = 1000
+      pStream += 1
+    else
+      if comps = 0 then
+        pStream = pSave
+        return FALSE
+      end if
+      pStream = pSave
+      SetParseError(FB_STR_TIME_COMPACT_EXPECTED_UNIT)
+      return FALSE
+    end if
+    if ur <= lastUnitRank then
+      pStream = pSave
+      SetParseError(FB_STR_TIME_COMPACT_UNIT_ORDER)
+      return FALSE
+    end if
+    lastUnitRank = ur
+    if uv > FB_I64_MAX_U then
+      pStream = pSave
+      SetTimeLiteralInvalidSegmentError()
+      return FALSE
+    end if
+    dim cf as LongInt = CLngInt(uv)
+    dim dlt as LongInt
+    if TryProductCoeffUnitMs(cf, fac, dlt) = FALSE then
+      pStream = pSave
+      SetTimeLiteralInvalidSegmentError()
+      return FALSE
+    end if
+    if TryAddTimeMsChecked(totalMs, dlt, totalMs) = FALSE then
+      pStream = pSave
+      SetTimeLiteralInvalidSegmentError()
+      return FALSE
+    end if
+    comps += 1
+    SkipSpaces()
+  loop while (pStream[0] >= CHAR_DIGIT_0 andalso pStream[0] <= CHAR_DIGIT_9)
+  if comps <= 0 then
+    pStream = pSave
+    return FALSE
+  end if
+  SkipSpaces()
+  dim c2 as UByte = pStream[0]
+  if c2 >= CHAR_LC_A andalso c2 <= CHAR_LC_Z then
+    pStream = pSave
+    SetParseError(FB_STR_TIME_COMPACT_INVALID_SUFFIX)
+    return FALSE
+  end if
+  ValueSetTimeMs(outV, totalMs)
   return TRUE
 end function
 
@@ -5227,7 +5342,10 @@ private function ParseFactor() as EvalValue
     if hasColonPeek then
       if TryParseScalarTimeLiteral(n) = FALSE then return n
     else
-      if not ParseScalarNumericValue(n) then return n
+      if TryParseCompactSuffixTimeLiteral(n) = FALSE then
+        if parseError then return n
+        if not ParseScalarNumericValue(n) then return n
+      end if
     end if
   elseif IsIdentStartChar(asc(pStream[0])) then
     dim nam as String = ConsumeIdentTokenFromStream()

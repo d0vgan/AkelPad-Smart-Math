@@ -56,63 +56,67 @@ Base-prefixed integer forms:
   - `200 + 15%` -> `230`
   - `200 - 15%` -> `170`
 
-### Time values
+### Time Values
 
-SmartMath can treat clock-like literals and unit constants as **durations** (time values). They are kept in a precise internal form so sums, differences, and comparisons match stopwatch-style expectations. Results are shown with colons, using as many fields as needed (minutes and seconds, or hours, or days), and a fractional part on the seconds (milliseconds) field when it matters:
+A **duration** (time value) is kept in whole milliseconds. Results print with colons (`MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS` as needed) and milliseconds on the last field only when the fractional part is nonzero.
 
-- `0:60` -> `01:00`
+**Colon literals** - 2, 3, or 4 groups separated by `:`; digits only in each group; optional milliseconds only on the **last** group (`1:30.5` -> `01:30.500`). The count of groups fixes the meaning: **`MM:SS`**, **`HH:MM:SS`**, **`DD:HH:MM:SS`** (coarse to fine). So `1:30` is one minute thirty seconds, not ninety minutes; ninety minutes is `1:30:00` or a suffix form below. An empty group is an error (`1::0` -> `time literal: empty segment between colons`).
+
+**Suffix literals** - non-negative integers with unit letters `d`, `h`, `m`, `s`, or `ms` (type `ms` so it is not read as `m` then `s`). Chain or space fields: `1d2h3m4s5ms` equals `1d 2h 3m 4s 5ms` (the same as `1:02:03:04.005`). Each unit at most once, in order **d**, **h**, **m**, **s**, **ms** (repeats or wrong order are errors). Values add and normalize like colon literals (`5000ms` -> `00:05`, `2h90m` -> `03:30:00`, `23h3600s` -> `1:00:00:00`). Fractions are not written inside suffix counts; use a factor (`1.5*day`, `1.5*1ms` etc.).
+
+**Same span, either form**
+
+| Colon | Suffix (examples) |
+|-------|-------------------|
+| `0:60` | `1m`, `60s` |
+| `1:30:00` | `90m`, `1h30m` |
+| `1:00:00:00` | `1d`, `24h` |
+| `1:02:03:04.005` | `1d2h3m4s5ms` |
+
 - `1:30 + 2:45` -> `04:15`
 - `1:30.5` -> `01:30.500`
+- `1:00 == 0:60` -> `1`
+- `2*minute - 5*second` -> `01:55` (the same as `2m - 5s`)
+- `1.5*minute - 0.5*second` -> `01:29.500` (the same as `1.5*1m - 0.5*1s`)
+- `1d3m + 2h5ms + 4s` (with `+`) matches the span `1:02:03:04.005`
 
-**Literals** use colons between segments. Allowed shapes:
+**Unit constants** (reserved like `pi`; cannot assign):
+- `millisecond` (`00:00.001`, `1ms`)
+- `second` (`00:01`, `1s`)
+- `minute` (`01:00`, `1m`)
+- `hour` (`01:00:00`, `1h`)
+- `day` (`1:00:00:00`, `1d`)
 
-- `MM:SS` - minutes, then seconds (with optional milliseconds after `.`): `0:60.5` -> `01:00.500`
-- `HH:MM:SS` - hours, minutes, seconds (with optional milliseconds): `1:30 + 2:45.111` -> `04:15.111`
-- `DD:HH:MM:SS` - **days : hours : minutes : seconds** (four groups). Example: `1:12:00:00` is one day and twelve hours, the same as `36:00:00` (36 hours).
+**Plain number beside a duration**:
+- with `+`, `-`, or comparisons the number is **seconds** (`second + 5` -> `00:06`, `1:00 + 5` -> `01:05`, `0:30 > 20` -> `1`).
+- with `*` or `/` the number is **unitless** (`0:25 * 6` -> `02:30`, `1:30 / 0:30` -> `3`).
 
-Each colon-separated part contains digits only (no sign inside the part). A double colon leaves an empty part and errors (`1::0` -> `time literal: empty segment between colons`).
+**Operators**:
+- two durations: `+`, `-` -> duration; `/` -> numeric ratio.
+- duration `*` duration is not allowed (`1:00*1:00`); use a plain factor (`0:25 * 6`).
+- duration `*` plain or plain `*` duration -> scaled duration.
+- plain `/` duration is not allowed.
+- unary `-` flips sign (`-0:30`, `-1m 5s` is `-(1m5s)`).
 
-**Unit constants** (each is one fixed span; reserved names like `pi`, so you cannot assign to them):
+**Converters** (see **Time Conversion** under [Function Reference](#function-reference); argument must be a duration):
+- `seconds(2:00)` -> `120`, `seconds(2m)` -> `120`
+- `milliseconds(minute + 30*second)` -> `90000`
+- `seconds((0:30,1:00))` -> `(30, 60)` (here `1:00` is `MM:SS`).
 
-- `millisecond` (the same as `00:00.001`)
-- `second` (the same as `00:01`)
-- `minute` (the same as `01:00`)
-- `hour` (the same as `01:00:00`)
-- `day` (the same as `1:00:00:00`)
+**Rounding** - fractional seconds in a colon literal round to the nearest millisecond. `milliseconds` returns integers (or an int array); `seconds`, `minutes`, `hours` and `days` return floats (or same-shape arrays).
 
-Examples:
+**Arrays** - do not mix durations and plain numbers in one literal:
+- `(0:30, 1:00)` and `(30s, 1m)` are fine;
+- `sum(0:30,1:00)` -> `01:30`;
+- `(1:45, 2)` -> `time values cannot be mixed with non-time values`.
 
-- `second + 5` -> `00:06` (one second plus five **seconds** counted as a plain number)
-- `1:00 + 5` -> `01:05` (one minute plus five **seconds**, same rule as above)
-- `minute - second` -> `00:59`
-- `1:00 == 0:60` -> `1` (same duration, different literal)
-
-**Plain numbers next to a duration** - meaning depends on the operator:
-
-- **`+`, `-`, and comparisons** (`=`, `<>`, `<`, etc.): a plain number counts as **seconds**. Example: `0:30 > 20` -> `1` (30 seconds vs 20 seconds).
-- **`*` and `/`**: a plain number is a **unitless** factor or divisor: `0:25 * 6` -> `02:30`; `1:30 / 0:30` -> `3` (ratio of two durations).
-
-Other combinations of time with time:
-
-- `+`, `-` -> duration
-- `*` with two durations is not allowed (use a unitless factor: `0:25 * 6`); duration `*` plain or plain `*` duration -> scaled duration
-- two durations with `/` -> plain ratio; duration `/` plain -> duration; plain `/` duration is not allowed (use converters if you need a numeric length first)
-
-Unary `-` on a duration flips its sign (same as for ordinary numbers).
-
-**Converters** - see **Time conversion** under [Function Reference](#function-reference) for `milliseconds`, `seconds`, `minutes`, `hours`, `days`. Quick examples: `seconds(2:00)` -> `120`; `milliseconds(minute + 30*second)` -> `90000`; `seconds((0:30,1:00))` -> `(30, 60)` (element-wise on a duration array).
-
-**Arrays**: do not mix durations and plain numbers in one literal. `(0:30, 1:00)` is fine; `sum(0:30,1:00)` -> `01:30`.
-
-**Rounding**: fractional seconds in literals are rounded to the nearest millisecond. Converter `milliseconds` returns an integer (or an array of integers when given a duration array); `seconds` / `minutes` / `hours` / `days` return floating-point lengths (or element-wise arrays of the same shape).
-
-**Not supported with time** (typical errors: `incompatible operands`, or text containing `expects a time value`):
-
-- Postfix `%` on a duration
-- Trig, logs, most powers/roots, combinatorics, and display helpers (for example `sin`, `hex`, `pow` with a duration)
-- Multiplying two durations (`1:00*1:00`)
-- `product` if any argument is a duration
-- `milliseconds(5)` - converters need a duration, not a plain number (each array element must be a duration too)
+**Not allowed with durations** (typical errors: `incompatible operands`, or text with `expects a time value`):
+- postfix `%`;
+- `sin`, `hex`, `pow`, and similar on a duration;
+- `1:00*1:00` (a duration multiplied by a duration);
+- `1/1:00` (a number divided by a duration);
+- `product` with a duration;
+- `milliseconds(5)` (converter needs a duration; in case of an array, each array element must be a duration too).
 
 ### Arrays
 
@@ -548,7 +552,8 @@ Purpose: turn a **duration** into a plain numeric length.
 - `hours(t)` - length in hours (floating-point scalar or array)
 - `days(t)` - length in days (floating-point scalar or array)
 - Notes:
-- `t` must be a duration (literal, `second` / `minute` / etc., or an expression that evaluates to a duration), or an array of durations of any length, in which case the converter applies **element-wise** and returns an array of the same shape. A plain number such as `5` is not accepted, and an array may not mix durations with non-durations.
+  - `t` must be a duration (literal, `second` / `minute` / etc., or an expression that evaluates to a duration), or an array of durations of any length, in which case the converter applies **element-wise** and returns an array of the same shape.
+  - a plain number such as `5` is not accepted, and an array may not mix durations with non-durations.
 - Examples:
   - `seconds(1:00)` -> `60`
   - `minutes(0:45)` -> `0.75`

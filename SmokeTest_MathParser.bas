@@ -194,7 +194,7 @@ sub RunCase(byref c as SmokeCase)
 end sub
 
 sub Main()
-  dim tests(1 to 1012) as SmokeCase
+  dim tests(1 to 1030) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1263,6 +1263,24 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1010).expr = "hours((1:00:00,0:30:00))": tests(1010).expected = "(1, 0.5)" ' [time] hours array
   tests(1011).expr = "minutes((0:30,1:00))": tests(1011).expected = "(0.5, 1)" ' [time] minutes array
   tests(1012).expr = "milliseconds((0:30,5))": tests(1012).expectedErrContains = "time value" ' [time] array element must be duration
+  tests(1013).expr = "1d2h3m4s5ms": tests(1013).expected = "1:02:03:04.005" ' [time] compact suffix literal
+  tests(1014).expr = "1d 2h 3m 4s 5ms": tests(1014).expected = "1:02:03:04.005" ' [time] compact with spaces between fields
+  tests(1015).expr = "1d3m + 2h5ms + 4s == 1:02:03:04.005": tests(1015).expected = "1" ' [time] compact reorder with +
+  tests(1016).expr = "5000ms": tests(1016).expected = "00:05" ' [time] compact ms carry
+  tests(1017).expr = "2h90m": tests(1017).expected = "03:30:00" ' [time] compact field overflow
+  tests(1018).expr = "23h3600s": tests(1018).expected = "1:00:00:00" ' [time] compact to day
+  tests(1019).expr = "-1m 1s": tests(1019).expected = "-01:01" ' [time] unary minus on compact literal
+  tests(1020).expr = "1d2d": tests(1020).expectedErrContains = "compact time literal: unit order or duplicate unit"
+  tests(1021).expr = "1h9d": tests(1021).expectedErrContains = "compact time literal: unit order or duplicate unit"
+  tests(1022).expr = "45s37m": tests(1022).expectedErrContains = "compact time literal: unit order or duplicate unit"
+  tests(1023).expr = "1day": tests(1023).expectedErrContains = "compact time literal: invalid suffix"
+  tests(1024).expr = "1e2": tests(1024).expected = "100" ' [time] scientific e not compact ms
+  tests(1025).expr = "milliseconds(1.5*1ms)": tests(1025).expected = "2" ' [time] fractional scale matches colon literal
+  tests(1026).expr = "milliseconds(1.5*00:00.001)": tests(1026).expected = "2"
+  tests(1027).expr = "seconds(-1s-1m)": tests(1027).expected = "-61" ' [time] unary vs binary minus
+  tests(1028).expr = "1d == 1:00:00:00": tests(1028).expected = "1" ' [time] compact equals colon form
+  tests(1029).expr = "1d2": tests(1029).expectedErrContains = "compact time literal: expected unit suffix"
+  tests(1030).expr = "1ms1m": tests(1030).expectedErrContains = "compact time literal: unit order or duplicate unit" ' [time] ms must follow s
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

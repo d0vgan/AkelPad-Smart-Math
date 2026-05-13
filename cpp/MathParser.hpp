@@ -334,6 +334,7 @@ private:
   std::unique_ptr<Expr> parsePrimaryParenthesized(EvalContext& ctx);
   std::unique_ptr<Expr> parsePrimaryNumericLiteral(EvalContext& ctx);
   bool tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const;
+  bool tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const;
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);

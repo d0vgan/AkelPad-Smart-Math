@@ -160,6 +160,9 @@ constexpr const char* STR_PERCENTAGE_REQUIRES_SCALAR_VALUE = "percentage require
 constexpr const char* STR_FAILED_TO_BUILD_ARRAY_LITERAL = "failed to build array literal";
 constexpr const char* STR_TIME_LITERAL_EMPTY_SEGMENT = "time literal: empty segment between colons";
 constexpr const char* STR_TIME_LITERAL_INVALID_SEGMENT = "time literal: invalid segment";
+constexpr const char* STR_TIME_COMPACT_EXPECTED_UNIT = "compact time literal: expected unit suffix";
+constexpr const char* STR_TIME_COMPACT_UNIT_ORDER = "compact time literal: unit order or duplicate unit";
+constexpr const char* STR_TIME_COMPACT_INVALID_SUFFIX = "compact time literal: invalid suffix";
 constexpr const char* STR_TIME_LITERAL_NEGATIVE_SEGMENT = "time literal: negative segment";
 constexpr const char* STR_TIME_NON_FINITE = "time value: non-finite operand";
 constexpr const char* STR_TIME_ARRAY_MIXED = "array literal: time values cannot be mixed with non-time values";
@@ -1128,6 +1131,22 @@ bool trySubTimeMsChecked(long long a, long long b, long long& outMs) {
     return false;
   }
   outMs = roundHalfUpDoubleToLongLong(t);
+  return true;
+}
+
+bool tryProductCoeffUnitMs(long long coeff, long long factor, long long& outDelta) {
+  if (coeff == 0 || factor == 0) {
+    outDelta = 0;
+    return true;
+  }
+  if (coeff > 0 && factor > 0) {
+    if (coeff > (std::numeric_limits<long long>::max)() / factor) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  outDelta = coeff * factor;
   return true;
 }
 
@@ -3459,6 +3478,108 @@ bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) con
   return true;
 }
 
+bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const {
+  const char* const pSave = ctx.p;
+  if (*ctx.p < '0' || *ctx.p > '9') {
+    return false;
+  }
+  if (*ctx.p == '0') {
+    const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(ctx.p[1])));
+    if (px == 'x' || px == 'b' || px == 'o') {
+      return false;
+    }
+  }
+  long long totalMs = 0;
+  int lastUnitRank = -1;
+  int comps = 0;
+  while (true) {
+    if (*ctx.p < '0' || *ctx.p > '9') {
+      break;
+    }
+    std::uint64_t uv = 0;
+    while (*ctx.p >= '0' && *ctx.p <= '9') {
+      const int dig = *ctx.p - '0';
+      if (uv > ((std::numeric_limits<std::uint64_t>::max)() - static_cast<std::uint64_t>(dig)) / 10u) {
+        ctx.p = pSave;
+        setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+        return false;
+      }
+      uv = uv * 10u + static_cast<std::uint64_t>(dig);
+      ++ctx.p;
+    }
+    skipSpaces(ctx);
+    int ur = -1;
+    long long fac = 0;
+    if (ctx.p[0] == 'm' && ctx.p[1] == 's') {
+      ur = 4;
+      fac = 1;
+      ctx.p += 2;
+    } else if (ctx.p[0] == 'd') {
+      ur = 0;
+      fac = 86400000;
+      ++ctx.p;
+    } else if (ctx.p[0] == 'h') {
+      ur = 1;
+      fac = 3600000;
+      ++ctx.p;
+    } else if (ctx.p[0] == 'm') {
+      ur = 2;
+      fac = 60000;
+      ++ctx.p;
+    } else if (ctx.p[0] == 's') {
+      ur = 3;
+      fac = 1000;
+      ++ctx.p;
+    } else {
+      if (comps == 0) {
+        ctx.p = pSave;
+        return false;
+      }
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_COMPACT_EXPECTED_UNIT);
+      return false;
+    }
+    if (ur <= lastUnitRank) {
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_COMPACT_UNIT_ORDER);
+      return false;
+    }
+    lastUnitRank = ur;
+    if (uv > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+      return false;
+    }
+    const long long cf = static_cast<long long>(uv);
+    long long dlt = 0;
+    if (!tryProductCoeffUnitMs(cf, fac, dlt)) {
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+      return false;
+    }
+    if (!tryAddTimeMsChecked(totalMs, dlt, totalMs)) {
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+      return false;
+    }
+    ++comps;
+    skipSpaces(ctx);
+  }
+  if (comps <= 0) {
+    ctx.p = pSave;
+    return false;
+  }
+  skipSpaces(ctx);
+  const unsigned char c2 = static_cast<unsigned char>(*ctx.p);
+  if (c2 >= static_cast<unsigned char>('a') && c2 <= static_cast<unsigned char>('z')) {
+    ctx.p = pSave;
+    setValidationError(ctx, STR_TIME_COMPACT_INVALID_SUFFIX);
+    return false;
+  }
+  out = makeScalarTimeMs(totalMs);
+  return true;
+}
+
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
   const char* parsedEnd = nullptr;
   std::uint64_t parsedUInt = 0;
@@ -3490,6 +3611,18 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       auto lit = std::make_unique<Expr>();
       lit->tag = Expr::Tag::Literal;
       lit->literalValue = std::move(timeLit);
+      return lit;
+    }
+    if (ctx.parseError) {
+      return nullptr;
+    }
+  }
+  {
+    EvalValue compactLit;
+    if (tryParseCompactSuffixTimeLiteral(ctx, compactLit)) {
+      auto lit = std::make_unique<Expr>();
+      lit->tag = Expr::Tag::Literal;
+      lit->literalValue = std::move(compactLit);
       return lit;
     }
     if (ctx.parseError) {
