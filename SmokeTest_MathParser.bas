@@ -296,6 +296,49 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next pwi
 
+  dim cxExpLnCases(1 to 10) as String
+  dim cxExpLnExpect(1 to 10) as String
+  cxExpLnCases(1) = "ln(-1)": cxExpLnExpect(1) = "3.141592653589793i"
+  cxExpLnCases(2) = "ln(-2)": cxExpLnExpect(2) = "0.6931471805599453+3.141592653589793i"
+  cxExpLnCases(3) = "log10(-10)": cxExpLnExpect(3) = "0.9999999999999999+1.364376353841841i"
+  cxExpLnCases(4) = "exp(i)": cxExpLnExpect(4) = "0.5403023058681398+0.8414709848078965i"
+  cxExpLnCases(5) = "exp(pi*i)": cxExpLnExpect(5) = "-1"
+  cxExpLnCases(6) = "ln((-1, -4))": cxExpLnExpect(6) = "(3.141592653589793i, 1.386294361119891+3.141592653589793i)"
+  cxExpLnCases(7) = "exp((0, pi*i))": cxExpLnExpect(7) = "(1, -1)"
+  cxExpLnCases(8) = "log10((-10, -100))": cxExpLnExpect(8) = "(0.9999999999999999+1.364376353841841i, 2+1.364376353841841i)"
+  cxExpLnCases(9) = "ln(2)": cxExpLnExpect(9) = "0.6931471805599453"
+  cxExpLnCases(10) = "ln(0)": cxExpLnExpect(10) = "-inf"
+
+  dim exi as Integer
+  for exi = 1 to 10
+    if Parser_TryEvaluateEx(cxExpLnCases(exi), r, rt, ia) = FALSE orelse rt <> cxExpLnExpect(exi) then
+      print "[complex-opt] FAIL: """ & cxExpLnCases(exi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxExpLnCases(exi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next exi
+
+  dim cxLogBaseCases(1 to 5) as String
+  dim cxLogBaseExpect(1 to 5) as String
+  cxLogBaseCases(1) = "log(8,2)": cxLogBaseExpect(1) = "3"
+  cxLogBaseCases(2) = "log(-9,7)": cxLogBaseExpect(2) = "1.129150068107159+1.614459257080781i"
+  cxLogBaseCases(3) = "log((-9, 16), (7, 2))": cxLogBaseExpect(3) = "(1.129150068107159+1.614459257080781i, 4)"
+  cxLogBaseCases(4) = "log(1+i, 2)": cxLogBaseExpect(4) = "0.5000000000000001+1.133090035456799i"
+  cxLogBaseCases(5) = "log((8, 16), (2, 4))": cxLogBaseExpect(5) = "(3, 2)"
+
+  dim lgbi as Integer
+  for lgbi = 1 to 5
+    if Parser_TryEvaluateEx(cxLogBaseCases(lgbi), r, rt, ia) = FALSE orelse rt <> cxLogBaseExpect(lgbi) then
+      print "[complex-opt] FAIL: """ & cxLogBaseCases(lgbi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxLogBaseCases(lgbi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next lgbi
+
   ' Comparisons: `=`/`==` and `<>`/`!=` are defined for complex scalars and arrays (including mixed real/complex);
   ' ordering comparisons (`<` `<=` `>` `>=`) are errors when any operand has a nonzero imaginary part;
   ' complex mixed with time in `=`/`==`/`<>`/`!=` is an error.
@@ -348,21 +391,21 @@ private sub RunComplexNumberSupportOptionTests()
   next cei
 
   ' `~`, `%` / `mod`, bitwise ops: error on non-zero imaginary (scalar or array element); `!` / `not` truthiness on both Cartesian parts.
-  dim cxLogCases(1 to 5) as String
-  dim cxLogExpect(1 to 5) as String
-  cxLogCases(1) = "!(5+5i)": cxLogExpect(1) = "0"
-  cxLogCases(2) = "!(-3*i)": cxLogExpect(2) = "0"
-  cxLogCases(3) = "!(0+0*i)": cxLogExpect(3) = "1"
-  cxLogCases(4) = "not (1+1i)": cxLogExpect(4) = "0"
-  cxLogCases(5) = "not (0)": cxLogExpect(5) = "1"
+  dim cxNotTruthCases(1 to 5) as String
+  dim cxNotTruthExpect(1 to 5) as String
+  cxNotTruthCases(1) = "!(5+5i)": cxNotTruthExpect(1) = "0"
+  cxNotTruthCases(2) = "!(-3*i)": cxNotTruthExpect(2) = "0"
+  cxNotTruthCases(3) = "!(0+0*i)": cxNotTruthExpect(3) = "1"
+  cxNotTruthCases(4) = "not (1+1i)": cxNotTruthExpect(4) = "0"
+  cxNotTruthCases(5) = "not (0)": cxNotTruthExpect(5) = "1"
 
   dim li as Integer
   for li = 1 to 5
-    if Parser_TryEvaluateEx(cxLogCases(li), r, rt, ia) = FALSE orelse rt <> cxLogExpect(li) then
-      print "[complex-opt] FAIL: """ & cxLogCases(li) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+    if Parser_TryEvaluateEx(cxNotTruthCases(li), r, rt, ia) = FALSE orelse rt <> cxNotTruthExpect(li) then
+      print "[complex-opt] FAIL: """ & cxNotTruthCases(li) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
     else
-      print "[complex-opt] PASS: """ & cxLogCases(li) & """ -> """ & rt & """"
+      print "[complex-opt] PASS: """ & cxNotTruthCases(li) & """ -> """ & rt & """"
       subPass += 1
     end if
   next li

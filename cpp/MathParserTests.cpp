@@ -3531,6 +3531,43 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: exp / ln / log10 / log(value,base) (principal branch; parity with Basic)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"ln(-1)", "3.141592653589793i"},
+                     {"ln(-2)", "0.6931471805599452+3.141592653589793i"},
+                     {"log10(-10)", "1+1.364376353841841i"},
+                     {"exp(i)", "0.5403023058681397+0.8414709848078963i"},
+                     {"exp(pi*i)", "-1"},
+                     {"ln((-1,-4))", "(3.141592653589793i,1.38629436111989+3.141592653589793i)"},
+                     {"exp((0,pi*i))", "(1,-1)"},
+                     {"log10((-10,-100))", "(1+1.364376353841841i,2+1.364376353841841i)"},
+                     {"ln(2)", "0.6931471805599452"},
+                     {"ln(0)", "-inf"},
+                     {"log(8,2)", "3"},
+                     {"log(-9,7)", "1.129150068107159+1.614459257080781i"},
+                     {"log((-9,16),(7,2))", "(1.129150068107159+1.614459257080781i,4)"},
+                     {"log(1+i,2)", "0.5+1.133090035456798i"},
+                     {"log((8,16),(2,4))", "(3,2)"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   return t;
 }
 

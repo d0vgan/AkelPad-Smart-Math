@@ -28,6 +28,31 @@ void snapComplexNearZeroAxis(double& zr, double& zi) {
   }
 }
 
+void scalarPrincipalLnCartesian(double ar, double ai, double& outRe, double& outIm) {
+  const double nanv = std::numeric_limits<double>::quiet_NaN();
+  if (!std::isfinite(ar) || !std::isfinite(ai)) {
+    outRe = nanv;
+    outIm = nanv;
+    return;
+  }
+  const double mag = std::hypot(ar, ai);
+  if (mag == 0.0) {
+    outRe = -std::numeric_limits<double>::infinity();
+    outIm = 0.0;
+    return;
+  }
+  constexpr double kAxisEps = 1e-15;
+  if (std::fabs(ai) <= kAxisEps * std::fmax(1.0, std::fabs(ar)) && ar < 0.0) {
+    outRe = std::log(-ar);
+    outIm = kPi;
+    snapComplexNearZeroAxis(outRe, outIm);
+    return;
+  }
+  outRe = std::log(mag);
+  outIm = std::atan2(ai, ar);
+  snapComplexNearZeroAxis(outRe, outIm);
+}
+
 void complexPowPrincipal(double ar, double ai, double br, double bi, double& outRe, double& outIm) {
   const double nanv = std::numeric_limits<double>::quiet_NaN();
   if (!std::isfinite(ar) || !std::isfinite(ai) || !std::isfinite(br) || !std::isfinite(bi)) {
@@ -3729,13 +3754,51 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
     }
     double outD = 0.0;
     if (isLog) {
-      if (l.scalar <= 0.0 || r.scalar <= 0.0 || r.scalar == 1.0) {
-        return false;
+      if (!supportComplexNumbers_) {
+        if (l.scalar <= 0.0 || r.scalar <= 0.0 || r.scalar == 1.0) {
+          return false;
+        }
+        outD = std::log(l.scalar) / std::log(r.scalar);
+        outS = makeScalarMaybeExact(outD);
+        return true;
       }
-      outD = std::log(l.scalar) / std::log(r.scalar);
-    } else {
-      outD = binaryFn(l.scalar, r.scalar);
+      double ar = 0.0;
+      double ai = 0.0;
+      double br = 0.0;
+      double bi = 0.0;
+      scalarLoadCartesian(l, ar, ai);
+      scalarLoadCartesian(r, br, bi);
+      const bool pureReal =
+          !scalarHasNonzeroImaginaryPart(l) && !scalarHasNonzeroImaginaryPart(r) && ai == 0.0 && bi == 0.0;
+      if (pureReal && ar > 0.0 && br > 0.0 && br != 1.0) {
+        outD = std::log(ar) / std::log(br);
+        outS = makeScalarMaybeExact(outD);
+        return true;
+      }
+      if (!std::isfinite(ar) || !std::isfinite(ai) || !std::isfinite(br) || !std::isfinite(bi)) {
+        outS = makeScalarComplexFromDoubles(
+            std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        return true;
+      }
+      double lnr = 0.0;
+      double lni = 0.0;
+      double rnr = 0.0;
+      double rni = 0.0;
+      scalarPrincipalLnCartesian(ar, ai, lnr, lni);
+      scalarPrincipalLnCartesian(br, bi, rnr, rni);
+      const double den = rnr * rnr + rni * rni;
+      if (den == 0.0) {
+        outS = makeScalarComplexFromDoubles(
+            std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+        return true;
+      }
+      double outRe = (lnr * rnr + lni * rni) / den;
+      double outIm = (lni * rnr - lnr * rni) / den;
+      snapComplexNearZeroAxis(outRe, outIm);
+      outS = makeScalarComplexFromDoubles(outRe, outIm);
+      return true;
     }
+    outD = binaryFn(l.scalar, r.scalar);
     outS = makeScalarMaybeExact(outD);
     return true;
   };
@@ -6338,6 +6401,57 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+  const double nanv = std::numeric_limits<double>::quiet_NaN();
+  const auto unaryExpLnLog10ForScalarValue = [&](const EvalValue::ScalarValue& sv) -> EvalValue {
+    const double xv = sv.scalar;
+    if (supportComplexNumbers_ && id == BuiltinFunctionId::Exp && scalarHasNonzeroImaginaryPart(sv)) {
+      double ar = 0.0;
+      double ai = 0.0;
+      scalarLoadCartesian(sv, ar, ai);
+      if (!std::isfinite(ar) || !std::isfinite(ai)) {
+        return makeScalarComplexFromDoubles(nanv, nanv);
+      }
+      const double ea = std::exp(ar);
+      double pr = ea * std::cos(ai);
+      double pi = ea * std::sin(ai);
+      snapComplexNearZeroAxis(pr, pi);
+      return makeScalarComplexFromDoubles(pr, pi);
+    }
+    if (supportComplexNumbers_ && (id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) &&
+        (scalarHasNonzeroImaginaryPart(sv) || (std::isfinite(xv) && xv <= 0.0))) {
+      if (!scalarHasNonzeroImaginaryPart(sv) && std::isfinite(xv) && xv < 0.0) {
+        if (id == BuiltinFunctionId::Ln) {
+          double loR = std::log(-xv);
+          double loI = kPi;
+          snapComplexNearZeroAxis(loR, loI);
+          return makeScalarComplexFromDoubles(loR, loI);
+        }
+        const double invLn10 = 1.0 / std::log(10.0);
+        double loR = std::log10(-xv);
+        double loI = kPi * invLn10;
+        snapComplexNearZeroAxis(loR, loI);
+        return makeScalarComplexFromDoubles(loR, loI);
+      }
+      double ar = 0.0;
+      double ai = 0.0;
+      scalarLoadCartesian(sv, ar, ai);
+      double loR = 0.0;
+      double loI = 0.0;
+      scalarPrincipalLnCartesian(ar, ai, loR, loI);
+      if (id == BuiltinFunctionId::Ln) {
+        return makeScalarComplexFromDoubles(loR, loI);
+      }
+      const double invLn10 = 1.0 / std::log(10.0);
+      return makeScalarComplexFromDoubles(loR * invLn10, loI * invLn10);
+    }
+    if (id == BuiltinFunctionId::Exp) {
+      return makeScalarMaybeExact(std::exp(xv));
+    }
+    if (id == BuiltinFunctionId::Ln) {
+      return makeScalarMaybeExact(std::log(xv));
+    }
+    return makeScalarMaybeExact(std::log10(xv));
+  };
   if (args[0].kind == ValueKind::Scalar) {
     const EvalValue::ScalarValue& s = args[0].scalarValue;
     if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s) &&
@@ -6360,6 +6474,9 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       const double rm = std::sqrt(mag);
       return makeScalarComplexFromDoubles(rm * std::cos(halfAng), rm * std::sin(halfAng));
     }
+    if (id == BuiltinFunctionId::Exp || id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) {
+      return unaryExpLnLog10ForScalarValue(s);
+    }
     const double x = s.scalar;
     switch (id) {
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
@@ -6374,9 +6491,6 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Acosh: return makeScalarMaybeExact(std::acosh(x));
       case BuiltinFunctionId::Asinh: return makeScalarMaybeExact(std::asinh(x));
       case BuiltinFunctionId::Atanh: return makeScalarMaybeExact(std::atanh(x));
-      case BuiltinFunctionId::Exp: return makeScalarMaybeExact(std::exp(x));
-      case BuiltinFunctionId::Log10: return makeScalarMaybeExact(std::log10(x));
-      case BuiltinFunctionId::Ln: return makeScalarMaybeExact(std::log(x));
       case BuiltinFunctionId::Sqrt:
         if (supportComplexNumbers_ && !scalarHasNonzeroImaginaryPart(s) && std::isfinite(x) && x < 0.0) {
           return makeScalarComplexFromDoubles(0.0, std::sqrt(-x));
@@ -6423,11 +6537,18 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     case BuiltinFunctionId::Atanh:
       return mapUnaryFn(args[0], std::atanh);
     case BuiltinFunctionId::Exp:
-      return mapUnaryFn(args[0], std::exp);
-    case BuiltinFunctionId::Log10:
-      return mapUnaryFn(args[0], std::log10);
     case BuiltinFunctionId::Ln:
-      return mapUnaryFn(args[0], std::log);
+    case BuiltinFunctionId::Log10: {
+      if (args[0].kind == ValueKind::Scalar) {
+        return unaryExpLnLog10ForScalarValue(args[0].scalarValue);
+      }
+      std::vector<EvalValue> outVals;
+      outVals.reserve(args[0].arr.size());
+      for (const auto& e : args[0].arr) {
+        outVals.emplace_back(unaryExpLnLog10ForScalarValue(e));
+      }
+      return makeArrayFromScalars(outVals);
+    }
     case BuiltinFunctionId::Sqrt:
     case BuiltinFunctionId::Sqr: {
       if (!supportComplexNumbers_) {

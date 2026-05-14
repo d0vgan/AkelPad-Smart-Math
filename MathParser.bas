@@ -3337,6 +3337,9 @@ private sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, 
   end if
 end sub
 
+declare sub ScalarSnapComplexNearZeroAxis(byref zr as Double, byref zi as Double)
+declare sub ScalarPrincipalLnCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
+
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   dim x as Double = scalarV.scalar
   if Parser_SupportComplexNumbers then
@@ -3361,8 +3364,61 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
         dim rm as Double = sqr(mag)
         ValueSetScalarComplexFromDoubles(outV, rm * cos(halfAng), rm * sin(halfAng))
         return TRUE
+      elseif fnId = FUNC_EXP then
+        dim er as Double, ei as Double
+        ScalarLoadCartesian(scalarV, er, ei)
+        if IsNaNValue(er) orelse IsNaNValue(ei) then
+          ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
+          return TRUE
+        end if
+        dim ea as Double = exp(er)
+        dim prE as Double = ea * cos(ei)
+        dim piE as Double = ea * sin(ei)
+        ScalarSnapComplexNearZeroAxis(prE, piE)
+        ValueSetScalarComplexFromDoubles(outV, prE, piE)
+        return TRUE
+      elseif fnId = FUNC_LN orelse fnId = FUNC_LOG10 then
+        dim lr as Double, li as Double
+        dim arL as Double, aiL as Double
+        ScalarLoadCartesian(scalarV, arL, aiL)
+        ScalarPrincipalLnCartesian(arL, aiL, lr, li)
+        if fnId = FUNC_LN then
+          ValueSetScalarComplexFromDoubles(outV, lr, li)
+        else
+          dim invL10 as Double = 1.0 / log(10.0)
+          ValueSetScalarComplexFromDoubles(outV, lr * invL10, li * invL10)
+        end if
+        return TRUE
       end if
       return FALSE
+    end if
+    if (fnId = FUNC_LN orelse fnId = FUNC_LOG10) then
+      if IsNonFiniteValue(x) = FALSE then
+        if x < 0.0 then
+          dim lr0 as Double
+          dim li0 as Double
+          if fnId = FUNC_LN then
+            lr0 = log(-x)
+            li0 = FB_PI_VAL
+          else
+            lr0 = log(-x) / log(10.0)
+            li0 = FB_PI_VAL / log(10.0)
+          end if
+          ScalarSnapComplexNearZeroAxis(lr0, li0)
+          ValueSetScalarComplexFromDoubles(outV, lr0, li0)
+          return TRUE
+        elseif x = 0.0 then
+          dim lrZ as Double, liZ as Double
+          ScalarPrincipalLnCartesian(0.0, 0.0, lrZ, liZ)
+          if fnId = FUNC_LN then
+            ValueSetScalarComplexFromDoubles(outV, lrZ, liZ)
+          else
+            dim invL10z as Double = 1.0 / log(10.0)
+            ValueSetScalarComplexFromDoubles(outV, lrZ * invL10z, liZ * invL10z)
+          end if
+          return TRUE
+        end if
+      end if
     end if
   end if
   if fnId = FUNC_SIN then
@@ -3497,6 +3553,33 @@ private sub ScalarSnapComplexNearZeroAxis(byref zr as Double, byref zi as Double
   dim scaleR as Double = abs(zr)
   if scaleR < 1.0 then scaleR = 1.0
   if abs(zi) <= relEps * scaleR then zi = 0.0
+end sub
+
+'' Principal branch: ln(z) = ln|z| + i*arg(z); ln(0) -> (-inf, 0).
+private sub ScalarPrincipalLnCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
+  if IsNaNValue(ar) orelse IsNaNValue(ai) then
+    outR = MakeNaN()
+    outI = MakeNaN()
+    exit sub
+  end if
+  dim mag as Double = CalcHypot(ar, ai)
+  if mag = 0.0 then
+    outR = -1.0 / 0.0
+    outI = 0.0
+    exit sub
+  end if
+  const axisEps as Double = 1e-15
+  dim axScale as Double = abs(ar)
+  if axScale < 1.0 then axScale = 1.0
+  if abs(ai) <= axisEps * axScale andalso ar < 0.0 then
+    outR = log(-ar)
+    outI = FB_PI_VAL
+    ScalarSnapComplexNearZeroAxis(outR, outI)
+    exit sub
+  end if
+  outR = log(mag)
+  outI = CalcAtan2(ai, ar)
+  ScalarSnapComplexNearZeroAxis(outR, outI)
 end sub
 
 private sub ScalarComplexPowPrincipal(byval ar as Double, byval ai as Double, byval br as Double, byval bi as Double, byref outR as Double, byref outI as Double)
@@ -3977,8 +4060,36 @@ end function
 
 private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
   if fnId = FUNC_LOG then
-    if leftS.scalar <= 0 orelse rightS.scalar <= 0 orelse rightS.scalar = 1 then return FALSE
-    ValueSetScalarPromoteExactInt64(outV, log(leftS.scalar) / log(rightS.scalar))
+    if Parser_SupportComplexNumbers = FALSE then
+      if leftS.scalar <= 0 orelse rightS.scalar <= 0 orelse rightS.scalar = 1 then return FALSE
+      ValueSetScalarPromoteExactInt64(outV, log(leftS.scalar) / log(rightS.scalar))
+      return TRUE
+    end if
+    dim ar as Double, ai as Double, br as Double, bi as Double
+    ScalarLoadCartesian(leftS, ar, ai)
+    ScalarLoadCartesian(rightS, br, bi)
+    dim pureReal as Boolean
+    pureReal = (ScalarHasNonzeroImaginaryPart(leftS) = FALSE andalso ScalarHasNonzeroImaginaryPart(rightS) = FALSE andalso ai = 0.0 andalso bi = 0.0)
+    if pureReal andalso ar > 0.0 andalso br > 0.0 andalso br <> 1.0 then
+      ValueSetScalarPromoteExactInt64(outV, log(ar) / log(br))
+      return TRUE
+    end if
+    if IsNaNValue(ar) orelse IsNaNValue(ai) orelse IsNaNValue(br) orelse IsNaNValue(bi) then
+      ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
+      return TRUE
+    end if
+    dim lnr as Double, lni as Double, rnr as Double, rni as Double
+    ScalarPrincipalLnCartesian ar, ai, lnr, lni
+    ScalarPrincipalLnCartesian br, bi, rnr, rni
+    dim den as Double = rnr * rnr + rni * rni
+    if den = 0.0 then
+      ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
+      return TRUE
+    end if
+    dim outR as Double = (lnr * rnr + lni * rni) / den
+    dim outI as Double = (lni * rnr - lnr * rni) / den
+    ScalarSnapComplexNearZeroAxis(outR, outI)
+    ValueSetScalarComplexFromDoubles(outV, outR, outI)
     return TRUE
   end if
   if fnId = FUNC_ATAN2 then

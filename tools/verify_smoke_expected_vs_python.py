@@ -12,8 +12,12 @@ switch to a dedicated reference path:
     ``complex`` arithmetic, then compare after normalizing ``j`` <-> ``i`` spelling.
     Tuple + scalar / tuple * scalar / element-wise tuple/tuple uses the same
     broadcast lowering as the ``RunComplexNumberSupportOptionTests`` block in
-    ``SmokeTest_MathParser.bas`` (``complexCases`` / ``arrCases``), which this
-    tool parses in addition to ``tests(N)``.
+    ``SmokeTest_MathParser.bas``. That sub's table rows are discovered with a
+    generic regex ``StemCases(n) = "expr": stemExpect(n) = "expect"`` (same
+    ``Stem`` for both arrays) over the sub body only, so new tables like
+    ``powCases`` / ``powExpect`` or ``cxExpLnCases`` / ``cxExpLnExpect`` are picked
+    up automatically. Some rows are still skipped or may not evaluate in the Python
+    stub (principal ``**``, ``ln``/``log10`` on negatives, DSL ``=``, ``!``, …).
   * **Time:** colon literals (MM:SS / HH:MM:SS / DD:HH:MM:SS), named duration
     constants (``second`` … ``day``), compact suffix forms (``1d2h3m4s5ms``),
     converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
@@ -733,45 +737,54 @@ def parse_smoke_cases(path: str) -> list[dict]:
     return [cases[k] for k in sorted(cases)]
 
 
-_RE_COMPLEX_OPT_PAIR = re.compile(
-    r'complexCases\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
-    r'complexExpect\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+_RE_RUN_COMPLEX_SUB = re.compile(
+    r"(?is)private\s+sub\s+RunComplexNumberSupportOptionTests\s*\([^)]*\)\s*(.*?)(?:^\s*end\s+sub\s*$)",
+    re.MULTILINE,
+)
+
+# Same-line paired table row: fooCases(3) = "expr": fooExpect(3) = "expect"
+# Stem must match for Cases and Expect (e.g. powCases / powExpect, cxExpLnCases / cxExpLnExpect).
+_RE_COMPLEX_OPT_PAIRED_ROW = re.compile(
+    r'([A-Za-z_][A-Za-z0-9_]*)Cases\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
+    r'\1Expect\s*\(\s*\2\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
     re.I,
 )
-_RE_COMPLEX_OPT_ARR_PAIR = re.compile(
-    r'arrCases\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
-    r'arrExpect\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
-    re.I,
-)
+
+
+def _extract_run_complex_number_support_sub_body(text: str) -> Optional[str]:
+    """Return the body of ``RunComplexNumberSupportOptionTests`` only (no outer subs)."""
+    m = _RE_RUN_COMPLEX_SUB.search(text)
+    return m.group(1) if m else None
 
 
 def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
     """
-    Parse ``complexCases`` / ``complexExpect`` and ``arrCases`` / ``arrExpect`` pairs
-    from ``RunComplexNumberSupportOptionTests`` in ``SmokeTest_MathParser.bas``.
+    Parse all ``StemCases`` / ``stemExpect`` same-index pairs from
+    ``RunComplexNumberSupportOptionTests`` in ``SmokeTest_MathParser.bas``.
+
+    Convention (enforced by regex): ``fooCases(n)`` shares the stem ``foo`` with
+    ``fooExpect(n)`` on the same source line. New complex tables following that
+    pattern are picked up without updating this tool. Rows that only assign an
+    error probe expression (no paired ``*Expect`` on the same line, e.g. some
+    ``cmpErrExpr`` / ``cxIntErr`` entries) are not captured.
     """
     text = open(path, encoding="utf-8", errors="replace").read()
+    block = _extract_run_complex_number_support_sub_body(text)
+    if not block:
+        return []
+
     out: list[dict] = []
-    for m in _RE_COMPLEX_OPT_PAIR.finditer(text):
-        n = int(m.group(1))
-        expr = m.group(2).replace('""', '"')
-        expected = m.group(3).replace('""', '"')
+    stem_first_pos: dict[str, int] = {}
+    for m in _RE_COMPLEX_OPT_PAIRED_ROW.finditer(block):
+        stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
+        stem_key = stem.lower()
+        stem_first_pos.setdefault(stem_key, m.start())
+        n = int(n_s)
+        expr = expr_s.replace('""', '"')
+        expected = exp_s.replace('""', '"')
         out.append(
             {
-                "idx": f"complexCases({n})",
-                "expr": expr,
-                "expected": expected,
-                "ref_mode": "complex",
-                "source": "complex_opt",
-            }
-        )
-    for m in _RE_COMPLEX_OPT_ARR_PAIR.finditer(text):
-        n = int(m.group(1))
-        expr = m.group(2).replace('""', '"')
-        expected = m.group(3).replace('""', '"')
-        out.append(
-            {
-                "idx": f"arrCases({n})",
+                "idx": f"{stem}Cases({n})",
                 "expr": expr,
                 "expected": expected,
                 "ref_mode": "complex",
@@ -781,9 +794,9 @@ def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
 
     def _key(c: dict) -> tuple[int, int]:
         lab = c["idx"]
-        if lab.startswith("complexCases"):
-            return (0, int(lab.split("(")[1].rstrip(")")))
-        return (1, int(lab.split("(")[1].rstrip(")")))
+        stem = lab[: lab.index("Cases(")].lower()
+        n = int(lab.split("(")[1].rstrip(")"))
+        return (stem_first_pos.get(stem, 0), n)
 
     out.sort(key=_key)
     return out
@@ -1333,7 +1346,10 @@ def main() -> int:
     skipped: list[str] = []
     ok = 0
     n_complex = 0
-    n_complex_opt = 0
+    n_complex_opt_compared_ok = 0
+    n_complex_opt_parsed = sum(1 for c in cases if c.get("source") == "complex_opt")
+    n_complex_opt_skip_should = 0
+    n_complex_opt_skip_eval = 0
     n_time = 0
 
     for case in cases:
@@ -1343,11 +1359,12 @@ def main() -> int:
         reason = should_skip_case(case)
         if reason:
             skipped.append(f"#{idx}: {reason}")
+            if case.get("source") == "complex_opt":
+                n_complex_opt_skip_should += 1
             continue
         exp = case["expected"].strip()
         mode = case.get("ref_mode") or infer_ref_mode(case["expr"], exp)
-        if case.get("source") == "complex_opt":
-            n_complex_opt += 1
+        is_co = case.get("source") == "complex_opt"
         if mode == "complex":
             n_complex += 1
         elif mode == "time":
@@ -1355,21 +1372,32 @@ def main() -> int:
         val, err = try_reference(case["expr"], mode=mode)
         if err:
             skipped.append(f"#{idx}: eval failed ({err[:80]})")
+            if is_co:
+                n_complex_opt_skip_eval += 1
             continue
         got = ref_format(val, mode=mode).strip()
         if results_match(exp, got, mode=mode):
             ok += 1
+            if is_co:
+                n_complex_opt_compared_ok += 1
             continue
         mismatches.append(
             f"#{idx} expr={case['expr']!r}\n  expected(smoke)={exp!r}\n  ref_python  ={got!r}\n"
         )
 
     print("=== Smoke expected vs Python reference ===")
-    print(f"Cases with numeric expected: {sum(1 for c in cases if 'expected' in c)}")
+    n_exp = sum(1 for c in cases if "expected" in c)
+    print(f"Cases with numeric expected: {n_exp}")
+    co_tried = n_complex_opt_parsed - n_complex_opt_skip_should
+    print(
+        f"RunComplexNumberSupportOptionTests: parsed {n_complex_opt_parsed} paired "
+        f"*Cases/*Expect rows; {n_complex_opt_skip_should} skipped (DSL/heuristic), "
+        f"{n_complex_opt_skip_eval} eval-failed in Python stub, "
+        f"{n_complex_opt_compared_ok} compared OK."
+    )
     print(
         f"Compared OK (real/complex/time reference, tol rules): {ok}  "
-        f"(complex-mode rows: {n_complex} incl. complex-opt block {n_complex_opt}, "
-        f"time-mode: {n_time})"
+        f"(complex-mode eval rows: {n_complex}, time-mode: {n_time})"
     )
     print(f"Skipped (DSL-only / non-comparable / eval failed): {len(skipped)}")
     print(f"MISMATCH vs plain Python math: {len(mismatches)}")
