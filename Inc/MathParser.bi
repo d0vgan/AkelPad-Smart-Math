@@ -7,5 +7,7 @@ declare function Parser_TryEvaluateEx(byref sExpr as String, byref result as Dou
 declare function Parser_GetLastError() as String
 declare sub Parser_SetShowErrorLine(byval showLine as Boolean)
 declare function Parser_GetShowErrorLine() as Boolean
+declare sub Parser_SetSupportComplexNumbers(byval enabled as Boolean)
+declare function Parser_GetSupportComplexNumbers() as Boolean
 
 #endif

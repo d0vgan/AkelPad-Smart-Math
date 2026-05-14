@@ -65,6 +65,11 @@ public:
   std::string getResultAsBin() const;
   RawResult getRawResult() const;
 
+  /// When false (default), the parser keeps real-only scalar semantics for non-finite or non-real outcomes.
+  /// When true, future releases may evaluate complex-valued builtins and accept complex literals/arrays.
+  void setSupportComplexNumbers(bool enabled);
+  bool getSupportComplexNumbers() const;
+
   void addConst(const std::string& constName, long long intValue);
   void addConst(const std::string& constName, double dblValue);
   std::string addUserFunction(const std::string& mathExpression);
@@ -172,13 +177,18 @@ private:
       enum : unsigned int {
         fExactIntValid = 0x01u,
         fExactUInt64Valid = 0x02u,
-        fDecScientificPow63High = 0x10u
+        fDecScientificPow63High = 0x10u,
+        fImagExactIntValid = 0x20u,
+        fImagExactUInt64Valid = 0x40u
       };
       ScalarKind scalarKind = ScalarKind::FloatingPoint;
       unsigned int flags = 0;
       double scalar = 0.0;
       long long exactInt = 0;
       std::uint64_t exactUInt64 = 0;
+      double imag = 0.0;
+      long long imagExactInt = 0;
+      std::uint64_t imagExactUInt64 = 0;
 
       bool hasExactInt() const { return (flags & fExactIntValid) != 0; }
       void setExactIntValid(bool v) { flags = v ? (flags | fExactIntValid) : (flags & ~fExactIntValid); }
@@ -187,6 +197,12 @@ private:
       bool hasDecScientificPow63High() const { return (flags & fDecScientificPow63High) != 0; }
       void setDecScientificPow63High(bool v) {
         flags = v ? (flags | fDecScientificPow63High) : (flags & ~fDecScientificPow63High);
+      }
+      bool hasImagExactInt() const { return (flags & fImagExactIntValid) != 0; }
+      void setImagExactIntValid(bool v) { flags = v ? (flags | fImagExactIntValid) : (flags & ~fImagExactIntValid); }
+      bool hasImagExactUInt64() const { return (flags & fImagExactUInt64Valid) != 0; }
+      void setImagExactUInt64Valid(bool v) {
+        flags = v ? (flags | fImagExactUInt64Valid) : (flags & ~fImagExactUInt64Valid);
       }
     };
 
@@ -310,6 +326,7 @@ private:
   bool compiledHasAssignments_ = false;
   bool hasCompiledProgram_ = false;
   bool compiledScalarOnly_ = false;
+  bool supportComplexNumbers_ = false;
 
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
@@ -375,9 +392,9 @@ private:
       const std::vector<EvalValue>& args) const;
   static bool isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b);
 
-  static std::string formatScalar(const EvalValue& v, RenderBase base);
-  static std::string valueToString(const EvalValue& v, RenderBase forcedBase);
-  static std::string valueToString(const EvalValue& v);
+  std::string formatScalar(const EvalValue& v, RenderBase base) const;
+  std::string valueToString(const EvalValue& v, RenderBase forcedBase) const;
+  std::string valueToString(const EvalValue& v) const;
   static const std::vector<std::string>& functionNames();
   static const std::unordered_map<std::string, BuiltinFunctionId>& functionNameToId();
   static const std::vector<std::string>& operatorNames();
@@ -389,7 +406,7 @@ private:
   static bool isOpKeyword(const std::string& nameText, OperatorNameId id);
   static bool isLogicalBinaryOperatorKeyword(const std::string& nameText);
   static bool isReservedFunctionName(const std::string& nameText);
-  static const char* getReservedIdentifierError(const std::string& ident);
+  const char* getReservedIdentifierError(const std::string& ident) const;
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
   bool trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const;
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
@@ -398,9 +415,9 @@ private:
       const std::unordered_map<std::string, EvalValue>* scopedVars,
       EvalValue& out) const;
   static EvalValue makeUdfFormalValidationDummy();
-  static const char* validateUserFunctionDefinitionNames(
+  const char* validateUserFunctionDefinitionNames(
       const std::string& fnName,
-      const std::vector<std::string>& fnParams);
+      const std::vector<std::string>& fnParams) const;
   std::string getUserFunctionDefinitionErrorText(
       const std::string& fnName,
       const std::vector<std::string>& fnParams,
@@ -411,7 +428,7 @@ private:
       const std::string& fnName,
       const std::vector<std::string>& fnParams,
       const std::string& fnExpr);
-  static const char* validateAssignmentTargetName(const std::string& ident);
+  const char* validateAssignmentTargetName(const std::string& ident) const;
   static std::string buildUnknownVariableErrorText(const std::string& unknownVarsText);
   static std::string buildUnknownFunctionErrorText(const std::string& unknownFuncsText);
   static void appendUnknownFunctionErrorText(std::string& errorText, const std::string& unknownFuncsText);
@@ -616,9 +633,17 @@ private:
   static EvalValue makeScalarInt(long long v);
   static EvalValue makeScalarUInt(std::uint64_t v);
   static EvalValue makeScalarTimeMs(long long totalMs);
+  static bool scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s);
+  static void scalarClearImaginary(EvalValue::ScalarValue& s);
+  static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
+  static EvalValue makeImaginaryUnit();
+  static EvalValue makeScalarComplexFromDoubles(double re, double im);
+  bool tryApplyComplexBinaryScalars(const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const;
+  std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
   static bool scalarValueIsTime(const EvalValue::ScalarValue& s);
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
   static bool evalValueInvolvesTime(const EvalValue& v);
+  static bool evalValueHasNonzeroImaginary(const EvalValue& v);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);

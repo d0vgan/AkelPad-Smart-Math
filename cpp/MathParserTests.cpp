@@ -2629,6 +2629,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "b=2; 2b", "unexpected token"} ,
     {ParityBasicCase::Kind::ErrorContains, "(2;2b;3)", "missing closing parenthesis"} ,
     {ParityBasicCase::Kind::ErrorContains, "(2,2b,3)", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "(2+3x)", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "(2+3t)", "unexpected token"} ,
     {ParityBasicCase::Kind::Expected, "hex(12)", "0xC"} ,
     {ParityBasicCase::Kind::Expected, "hex((12,255))", "(0xC,0xFF)"} ,
     {ParityBasicCase::Kind::Expected, "10 + hex(12) + 14", "36"} ,
@@ -3214,6 +3216,9 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "5000ms", "00:05"} ,
     {ParityBasicCase::Kind::Expected, "2h90m", "03:30:00"} ,
     {ParityBasicCase::Kind::Expected, "23h3600s", "1:00:00:00"} ,
+    {ParityBasicCase::Kind::Expected, "20m or 10h", "1"} ,
+    {ParityBasicCase::Kind::Expected, "20m10s and 10h5m", "1"} ,
+    {ParityBasicCase::Kind::Expected, "1h and not 0", "1"} ,
     {ParityBasicCase::Kind::Expected, "-1m 1s", "-01:01"} ,
     {ParityBasicCase::Kind::ErrorContains, "1d2d", "compact time literal: unit order or duplicate unit"} ,
     {ParityBasicCase::Kind::ErrorContains, "1h9d", "compact time literal: unit order or duplicate unit"} ,
@@ -3274,6 +3279,261 @@ std::vector<TestCase> buildParityTimeFromSmokeCases() {
   return t;
 }
 
+std::vector<TestCase> buildComplexNumberSupportOptionCases() {
+  std::vector<TestCase> t;
+  t.push_back({"complex-opt: flag and basic eval under enabled mode",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 if (!p.getSupportComplexNumbers()) {
+                   why = "expected true after setSupportComplexNumbers(true)";
+                   return false;
+                 }
+                 p.parseAndEvaluate("1+1");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "2") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 p.setSupportComplexNumbers(false);
+                 if (p.getSupportComplexNumbers()) {
+                   why = "expected false after setSupportComplexNumbers(false)";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: fresh parser defaults to off",
+               [](std::string& why) {
+                 MathParser p;
+                 if (p.getSupportComplexNumbers()) {
+                   why = "expected default false";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: literals and arithmetic (parity with Basic RunComplexNumberSupportOptionTests)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"10+5i", "10+5i"},
+                     {"-1+3i", "-1+3i"},
+                     {"2-3*i", "2-3i"},
+                     {"-i+5", "5-i"},
+                     {"(1+2i)*(3+4i)", "-5+10i"},
+                     {"10+5i-10-5i", "0"},
+                     {"(1+2i)/i", "2-i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 p.setSupportComplexNumbers(false);
+                 p.parseAndEvaluate("10+5i");
+                 if (p.getError().empty()) {
+                   why = "expected evaluation failure for 10+5i with complex support off";
+                   return false;
+                 }
+                 std::string el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 const bool okUnknown = el.find("unknown variable") != std::string::npos && el.find("i") != std::string::npos;
+                 const bool okUnexpected = el.find("unexpected token") != std::string::npos;
+                 if (!okUnknown && !okUnexpected) {
+                   why = std::string("unexpected error text: ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: comparisons (= == <> !=), ordering and complex-vs-time errors",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kOk[] = {
+                     {"1+2i == 1+2i", "1"},
+                     {"1+2i == 3+4i", "0"},
+                     {"3 <> 1+2i", "1"},
+                     {"1+0*i == 1", "1"},
+                     {"(1+1i, 2) == (1+1i, 2)", "1"},
+                     {"(1+1i, 2) <> (1+1i, 3)", "1"},
+                     {"(1+1i, 2) == (1, 2)", "0"},
+                     {"(1, 2+1i) != (1, 2+1i)", "0"},
+                     {"2 == 1+1i", "0"},
+                     {"(2, 0) == (1+1i, 0)", "0"},
+                 };
+                 for (const auto& row : kOk) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 static const char* kErr[] = {
+                     "1+2i > 0",
+                     "1+2i >= 1+2i",
+                     "(1, 2+1i) < (1, 3)",
+                     "1+2i == 1s",
+                     "1+2i <> 0:01",
+                 };
+                 for (const char* expr : kErr) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string("expected error for: ") + expr;
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find("incompatible operands") == std::string::npos) {
+                     why = std::string(expr) + ": want incompatible operands, got: " + p.getError();
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: logical not, bitwise complement, mod and bitwise ops on complex",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kOk[] = {
+                     {"!(5+5*i)", "0"},
+                     {"!(-3*i)", "0"},
+                     {"!(0+0*i)", "1"},
+                     {"not (1+1*i)", "0"},
+                     {"not (0)", "1"},
+                 };
+                 for (const auto& row : kOk) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 static const char* kErr[] = {
+                     "~(1+2*i)",
+                     "~(1,2+1*i)",
+                     "(1+2*i) % 2",
+                     "mod(1+2*i, 3)",
+                     "(1+2*i) & 1",
+                     "(1+2*i) | 1",
+                     "(1+2*i) ^ 1",
+                     "(1+2*i) << 1",
+                     "(1+2*i) >> 1",
+                 };
+                 for (const char* expr : kErr) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string("expected error for: ") + expr;
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   const bool okErr = el.find("incompatible operands") != std::string::npos ||
+                                        el.find("modulo operands must be integer values") != std::string::npos ||
+                                        el.find("bitwise operands must be integer values") != std::string::npos;
+                   if (!okErr) {
+                     why = std::string(expr) + ": want int/mod/bit error, got: " + p.getError();
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: mixed real/complex array broadcast (+ - * /)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"(1,1+2*i)+10", "(11,11+2i)"},
+                     {"10+(1,1+2*i)", "(11,11+2i)"},
+                     {"(5,1+2*i)-(1,i)", "(4,1+i)"},
+                     {"(1,2)-i", "(1-i,2-i)"},
+                     {"(2,1+2*i)*3", "(6,3+6i)"},
+                     {"3*(2,1+2*i)", "(6,3+6i)"},
+                     {"(3,4)*(1,i)", "(3,4i)"},
+                     {"(1,2)*(1+i,0)", "(1+i,0)"},
+                     {"(8,6+8*i)/2", "(4,3+4i)"},
+                     {"(8,6)/(2,3)", "(4,2)"},
+                     {"(4+2*i,6)/(2,3)", "(2+i,2)"},
+                     {"i+(1,2)", "(1+i,2+i)"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: ** / pow / sqrt / sqr / hypot on complex (parity with Basic powCases)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"(1+i)**2", "2i"},
+                     {"(3+4*i)**0.5", "2+i"},
+                     {"pow(1+i,2)", "2i"},
+                     {"(1+i,2)**(2,2)", "(2i,4)"},
+                     {"sqr(1+2*i)", "-3+4i"},
+                     {"sqrt(3+4*i)", "2+i"},
+                     {"hypot(3*i,4)", "5"},
+                     {"hypot(1+i,1-i)", "2"},
+                     {"sqrt(-4)", "2i"},
+                     {"(-2)**(1/2)", "1.414213562373095i"},
+                     {"(-7)**(3/2)", "-18.52025917745212i"},
+                     {"(-5)**(1/3)", "0.8549879733383486+1.480882609682364i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  return t;
+}
+
 void runSuite(const std::string& title, const std::vector<TestCase>& cases, TestState& s) {
   std::cout << "=== " << title << " ===\n";
   std::unordered_set<std::string> seen;
@@ -3326,6 +3586,7 @@ int main() {
   const auto regression = buildRegressionCases();
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
+  const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -3333,6 +3594,7 @@ int main() {
   runSuite("Regression", regression, s);
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
+  runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

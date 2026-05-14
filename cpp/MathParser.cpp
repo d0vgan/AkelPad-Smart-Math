@@ -15,6 +15,105 @@ namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr int kMaxEvalDepth = 128;
 
+void snapComplexNearZeroAxis(double& zr, double& zi) {
+  if (!std::isfinite(zr) || !std::isfinite(zi)) {
+    return;
+  }
+  constexpr double kRel = 1e-13;
+  if (std::fabs(zr) <= kRel * std::fmax(1.0, std::fabs(zi))) {
+    zr = 0.0;
+  }
+  if (std::fabs(zi) <= kRel * std::fmax(1.0, std::fabs(zr))) {
+    zi = 0.0;
+  }
+}
+
+void complexPowPrincipal(double ar, double ai, double br, double bi, double& outRe, double& outIm) {
+  const double nanv = std::numeric_limits<double>::quiet_NaN();
+  if (!std::isfinite(ar) || !std::isfinite(ai) || !std::isfinite(br) || !std::isfinite(bi)) {
+    outRe = nanv;
+    outIm = nanv;
+    return;
+  }
+  const double mag = std::hypot(ar, ai);
+  if (mag == 0.0) {
+    if (br == 0.0 && bi == 0.0) {
+      outRe = 1.0;
+      outIm = 0.0;
+    } else if (br > 0.0) {
+      outRe = 0.0;
+      outIm = 0.0;
+    } else if (br == 0.0 && bi != 0.0) {
+      outRe = 0.0;
+      outIm = 0.0;
+    } else {
+      outRe = nanv;
+      outIm = nanv;
+    }
+    return;
+  }
+  constexpr double kEps = 1e-14;
+  if (std::fabs(bi) < kEps) {
+    if (std::fabs(br - 0.5) < kEps) {
+      const double halfAng = std::atan2(ai, ar) * 0.5;
+      const double rm = std::sqrt(mag);
+      outRe = rm * std::cos(halfAng);
+      outIm = rm * std::sin(halfAng);
+      snapComplexNearZeroAxis(outRe, outIm);
+      return;
+    }
+    if (std::fabs(br - std::trunc(br)) < 1e-12) {
+      const long long n = static_cast<long long>(std::trunc(br));
+      if (n >= -256 && n <= 256) {
+        if (n >= 0) {
+          double cr = 1.0;
+          double ci = 0.0;
+          for (long long k = 0; k < n; ++k) {
+            const double nr = cr * ar - ci * ai;
+            const double ni = cr * ai + ci * ar;
+            cr = nr;
+            ci = ni;
+          }
+          outRe = cr;
+          outIm = ci;
+        } else {
+          double pr = 0.0;
+          double pi = 0.0;
+          double cr = 1.0;
+          double ci = 0.0;
+          for (long long k = 0; k < -n; ++k) {
+            const double nr = cr * ar - ci * ai;
+            const double ni = cr * ai + ci * ar;
+            cr = nr;
+            ci = ni;
+          }
+          pr = cr;
+          pi = ci;
+          const double den = pr * pr + pi * pi;
+          if (den == 0.0) {
+            outRe = nanv;
+            outIm = nanv;
+          } else {
+            outRe = pr / den;
+            outIm = (-pi) / den;
+          }
+        }
+        if (std::isfinite(outRe) && std::isfinite(outIm)) {
+          snapComplexNearZeroAxis(outRe, outIm);
+        }
+        return;
+      }
+    }
+  }
+  const double loR = std::log(mag);
+  const double loI = std::atan2(ai, ar);
+  const double powRe = br * loR - bi * loI;
+  const double powIm = br * loI + bi * loR;
+  outRe = std::exp(powRe) * std::cos(powIm);
+  outIm = std::exp(powRe) * std::sin(powIm);
+  snapComplexNearZeroAxis(outRe, outIm);
+}
+
 constexpr const char* STR_NAN = "nan";
 constexpr const char* STR_NEG_INF = "-inf";
 constexpr const char* STR_INF = "inf";
@@ -24,6 +123,7 @@ constexpr const char* STR_HEX_DIGITS_UPPER = "0123456789ABCDEF";
 constexpr const char* STR_COMMA = ", ";
 constexpr const char* STR_PI = "pi";
 constexpr const char* STR_E = "e";
+constexpr const char* STR_I = "i";
 constexpr const char* STR_ANS = "ans";
 constexpr const char* STR_FORMAL_VALIDATION_PROBE = "_";
 constexpr const char* STR_RAND = "rand";
@@ -1524,9 +1624,16 @@ bool MathParser::isReservedFunctionName(const std::string& nameText) {
       || isLogicalBinaryOperatorKeyword(nameText);
 }
 
-const char* MathParser::getReservedIdentifierError(const std::string& ident) {
+const char* MathParser::getReservedIdentifierError(const std::string& ident) const {
   if (isReservedFunctionName(ident)) {
     return STR_RESERVED_FUNCTION_NAME;
+  }
+  if (supportComplexNumbers_) {
+    std::string low = ident;
+    std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (low == STR_I) {
+      return STR_RESERVED_CONSTANT_NAME;
+    }
   }
   if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN ||
       ident == STR_MILLISECOND || ident == STR_SECOND || ident == STR_MINUTE ||
@@ -1629,7 +1736,7 @@ static bool isReservedBuiltinVariableNameForUserFunctionDefinition(const std::st
 
 const char* MathParser::validateUserFunctionDefinitionNames(
     const std::string& fnName,
-    const std::vector<std::string>& fnParams) {
+    const std::vector<std::string>& fnParams) const {
   if (isReservedBuiltinVariableNameForUserFunctionDefinition(fnName)) {
     return STR_RESERVED_BUILTIN_VARIABLE_NAME;
   }
@@ -1643,6 +1750,13 @@ const char* MathParser::validateUserFunctionDefinitionNames(
     }
     if (isReservedBuiltinConstantName(p)) {
       return STR_RESERVED_CONSTANT_NAME;
+    }
+    {
+      std::string low = p;
+      std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (supportComplexNumbers_ && low == STR_I) {
+        return STR_RESERVED_CONSTANT_NAME;
+      }
     }
     seen[p] = true;
   }
@@ -1720,7 +1834,7 @@ bool MathParser::trySetUserFunctionDefinitionError(
   return true;
 }
 
-const char* MathParser::validateAssignmentTargetName(const std::string& ident) {
+const char* MathParser::validateAssignmentTargetName(const std::string& ident) const {
   return getReservedIdentifierError(ident);
 }
 
@@ -2259,6 +2373,10 @@ bool MathParser::tryConsumeMulDivModOp(EvalContext& ctx, Expr::BinaryOp& outOp) 
     outOp = Expr::BinaryOp::Mul;
     return true;
   }
+  if (supportComplexNumbers_ && *ctx.p == 'i' && !isIdentChar(ctx.p[1])) {
+    outOp = Expr::BinaryOp::Mul;
+    return true;
+  }
   return false;
 }
 
@@ -2322,11 +2440,14 @@ bool MathParser::isTruthy(const EvalValue& v) {
   if (v.kind == ValueKind::Array) {
     return !v.arr.empty();
   }
-  const double s = v.scalarValue.scalar;
-  if (std::isnan(s)) {
+  const EvalValue::ScalarValue& sv = v.scalarValue;
+  double re = 0.0;
+  double im = 0.0;
+  scalarLoadCartesian(sv, re, im);
+  if (std::isnan(re) || std::isnan(im)) {
     return false;
   }
-  return std::fabs(s) > 0.0;
+  return std::fabs(re) > 0.0 || std::fabs(im) > 0.0;
 }
 
 std::string MathParser::trim(const std::string& s) {
@@ -2386,6 +2507,9 @@ bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& 
   if (s.scalarKind == ScalarKind::Time) {
     return false;
   }
+  if (scalarHasNonzeroImaginaryPart(s)) {
+    return false;
+  }
   if (s.hasExactInt()) {
     outI = s.exactInt;
     return true;
@@ -2403,6 +2527,9 @@ bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::Sca
   if (s.scalarKind == ScalarKind::Time) {
     return false;
   }
+  if (scalarHasNonzeroImaginaryPart(s)) {
+    return false;
+  }
   if (s.hasExactInt()) {
     outI = s.exactInt;
     return true;
@@ -2417,6 +2544,9 @@ bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::Sca
 
 bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU) {
   if (s.scalarKind == ScalarKind::Time) {
+    return false;
+  }
+  if (scalarHasNonzeroImaginaryPart(s)) {
     return false;
   }
   if (s.hasExactUInt64()) {
@@ -2474,7 +2604,7 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
   return (a.scalarKind == ScalarKind::FloatingPoint) && (b.scalarKind == ScalarKind::FloatingPoint) &&
       !MathParser::scalarValueIsTime(a) && !MathParser::scalarValueIsTime(b) && !a.hasExactInt() && !a.hasExactUInt64() && !b.hasExactInt() &&
-      !b.hasExactUInt64();
+      !b.hasExactUInt64() && !scalarHasNonzeroImaginaryPart(a) && !scalarHasNonzeroImaginaryPart(b);
 }
 
 bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
@@ -2492,11 +2622,14 @@ bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
   return true;
 }
 
-std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
+std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const {
   const int baseCode = static_cast<int>(base);
   const double dval = v.scalarValue.scalar;
   if (v.scalarValue.scalarKind == ScalarKind::Time) {
     return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
+  }
+  if (supportComplexNumbers_ && base == RenderBase::Dec && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    return formatComplexScalarValue(v.scalarValue);
   }
   if (base == RenderBase::Dec) {
     if (v.scalarValue.hasExactInt()) {
@@ -2536,7 +2669,7 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) {
   return formatUnsignedForRenderBase(u, baseCode);
 }
 
-std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) {
+std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) const {
   if (v.kind == ValueKind::Scalar) {
     return formatScalar(v, forcedBase);
   }
@@ -2550,6 +2683,11 @@ std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase)
     e.scalarValue.setExactUInt64Valid(v.arr[i].hasExactUInt64());
     e.scalarValue.exactUInt64 = v.arr[i].exactUInt64;
     e.scalarValue.setDecScientificPow63High(v.arr[i].hasDecScientificPow63High());
+    e.scalarValue.imag = v.arr[i].imag;
+    e.scalarValue.imagExactInt = v.arr[i].imagExactInt;
+    e.scalarValue.imagExactUInt64 = v.arr[i].imagExactUInt64;
+    e.scalarValue.setImagExactIntValid(v.arr[i].hasImagExactInt());
+    e.scalarValue.setImagExactUInt64Valid(v.arr[i].hasImagExactUInt64());
     e.setRenderUnsigned(v.hasRenderUnsigned());
     out += formatScalar(e, forcedBase);
   }
@@ -2557,7 +2695,7 @@ std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase)
   return out;
 }
 
-std::string MathParser::valueToString(const EvalValue& v) {
+std::string MathParser::valueToString(const EvalValue& v) const {
   return valueToString(v, v.getRenderBase());
 }
 
@@ -2607,6 +2745,22 @@ MathParser::RawResult MathParser::getRawResult() const {
   return toRawResult(lastResult_);
 }
 
+void MathParser::setSupportComplexNumbers(bool enabled) {
+  if (supportComplexNumbers_ == enabled) {
+    return;
+  }
+  supportComplexNumbers_ = enabled;
+  if (enabled) {
+    setVariable(STR_I, makeImaginaryUnit());
+  } else {
+    variables_.erase(STR_I);
+  }
+}
+
+bool MathParser::getSupportComplexNumbers() const {
+  return supportComplexNumbers_;
+}
+
 void MathParser::addConst(const std::string& constName, long long intValue) {
   EvalValue v = makeScalarInt(intValue);
   setVariable(toLower(constName), v);
@@ -2627,7 +2781,186 @@ MathParser::EvalValue MathParser::makeScalar(double v) {
   out.scalarValue.setExactUInt64Valid(false);
   out.scalarValue.exactUInt64 = 0;
   out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.imag = 0.0;
+  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactUInt64 = 0;
+  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactUInt64Valid(false);
   return out;
+}
+
+bool MathParser::scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s) {
+  if (s.imag != 0.0) {
+    return true;
+  }
+  return s.hasImagExactInt() && s.imagExactInt != 0;
+}
+
+void MathParser::scalarClearImaginary(EvalValue::ScalarValue& s) {
+  s.imag = 0.0;
+  s.imagExactInt = 0;
+  s.imagExactUInt64 = 0;
+  s.setImagExactIntValid(false);
+  s.setImagExactUInt64Valid(false);
+}
+
+void MathParser::scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im) {
+  re = s.hasExactInt() ? static_cast<double>(s.exactInt) : s.scalar;
+  im = s.hasImagExactInt() ? static_cast<double>(s.imagExactInt) : s.imag;
+}
+
+MathParser::EvalValue MathParser::makeImaginaryUnit() {
+  EvalValue out = makeScalarComplexFromDoubles(0.0, 1.0);
+  out.scalarValue.scalarKind = ScalarKind::Int64;
+  out.scalarValue.setExactIntValid(true);
+  out.scalarValue.exactInt = 0;
+  out.scalarValue.setExactUInt64Valid(true);
+  out.scalarValue.exactUInt64 = 0;
+  out.scalarValue.setImagExactIntValid(true);
+  out.scalarValue.imagExactInt = 1;
+  out.scalarValue.setImagExactUInt64Valid(true);
+  out.scalarValue.imagExactUInt64 = 1u;
+  out.scalarValue.scalar = 0.0;
+  out.scalarValue.imag = 1.0;
+  return out;
+}
+
+MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double im) {
+  EvalValue out = makeScalar(re);
+  out.scalarValue.imag = im;
+  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactUInt64Valid(false);
+  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactUInt64 = 0;
+  long long tri = 0;
+  long long tii = 0;
+  if (tryExtractExactInt64FromDoubleStrict(re, tri) && tryExtractExactInt64FromDoubleStrict(im, tii)) {
+    out.scalarValue.scalarKind = ScalarKind::Int64;
+    out.scalarValue.setExactIntValid(true);
+    out.scalarValue.exactInt = tri;
+    if (tri >= 0) {
+      out.scalarValue.setExactUInt64Valid(true);
+      out.scalarValue.exactUInt64 = static_cast<std::uint64_t>(tri);
+    }
+    out.scalarValue.setImagExactIntValid(true);
+    out.scalarValue.imagExactInt = tii;
+    if (tii >= 0) {
+      out.scalarValue.setImagExactUInt64Valid(true);
+      out.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(tii);
+    }
+  }
+  if (!scalarHasNonzeroImaginaryPart(out.scalarValue)) {
+    scalarClearImaginary(out.scalarValue);
+  }
+  return out;
+}
+
+bool MathParser::tryApplyComplexBinaryScalars(
+    const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const {
+  if (!supportComplexNumbers_) {
+    return false;
+  }
+  if (op != '+' && op != '-' && op != '*' && op != '/' && op != '^') {
+    return false;
+  }
+  double ar = 0.0;
+  double ai = 0.0;
+  double br = 0.0;
+  double bi = 0.0;
+  scalarLoadCartesian(lv, ar, ai);
+  scalarLoadCartesian(rv, br, bi);
+  const bool lIm = scalarHasNonzeroImaginaryPart(lv);
+  const bool rIm = scalarHasNonzeroImaginaryPart(rv);
+  if (op == '^') {
+    const bool principalNegRealPow =
+        std::isfinite(ar) && std::isfinite(br) && ai == 0.0 && bi == 0.0 && ar < 0.0 &&
+        std::fabs(br - std::trunc(br)) >= 1e-12;
+    if (lIm || rIm || principalNegRealPow) {
+      double powR = 0.0;
+      double powI = 0.0;
+      complexPowPrincipal(ar, ai, br, bi, powR, powI);
+      outS = makeScalarComplexFromDoubles(powR, powI);
+      return true;
+    }
+  }
+  if (!lIm && !rIm) {
+    return false;
+  }
+  if (op == '+') {
+    outS = makeScalarComplexFromDoubles(ar + br, ai + bi);
+    return true;
+  }
+  if (op == '-') {
+    outS = makeScalarComplexFromDoubles(ar - br, ai - bi);
+    return true;
+  }
+  if (op == '*') {
+    long long lar = 0;
+    long long lbr = 0;
+    if (tryGetExactSignedInt64NoUIntWrapFromScalar(lv, lar) && tryGetExactSignedInt64NoUIntWrapFromScalar(rv, lbr) &&
+        lv.hasImagExactInt() && rv.hasImagExactInt()) {
+      const long long lai = lv.imagExactInt;
+      const long long lbi = rv.imagExactInt;
+      long long p1 = 0;
+      long long p2 = 0;
+      long long p3 = 0;
+      long long p4 = 0;
+      long long ore = 0;
+      long long oim = 0;
+      if (checkedMulLL(lar, lbr, p1) && checkedMulLL(lai, lbi, p2) && checkedMulLL(lar, lbi, p3) &&
+          checkedMulLL(lai, lbr, p4) && checkedSubLL(p1, p2, ore) && checkedAddLL(p3, p4, oim)) {
+        outS = makeScalarComplexFromDoubles(static_cast<double>(ore), static_cast<double>(oim));
+        return true;
+      }
+    }
+    outS = makeScalarComplexFromDoubles(ar * br - ai * bi, ar * bi + ai * br);
+    return true;
+  }
+  const double denom = br * br + bi * bi;
+  if (denom == 0.0) {
+    const double nanv = std::numeric_limits<double>::quiet_NaN();
+    outS = makeScalarComplexFromDoubles(nanv, nanv);
+  } else {
+    outS = makeScalarComplexFromDoubles((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom);
+  }
+  return true;
+}
+
+std::string MathParser::formatComplexScalarValue(const EvalValue::ScalarValue& sv) const {
+  double ar = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(sv, ar, ai);
+  EvalValue tmp = makeScalar(ar);
+  tmp.scalarValue.scalarKind = sv.scalarKind;
+  tmp.scalarValue.setExactIntValid(sv.hasExactInt());
+  tmp.scalarValue.exactInt = sv.exactInt;
+  tmp.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
+  tmp.scalarValue.exactUInt64 = sv.exactUInt64;
+  tmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  const std::string rePart = formatScalar(tmp, RenderBase::Dec);
+  const double coeffAbs = std::fabs(ai);
+  const bool negI = sv.hasImagExactInt() ? (sv.imagExactInt < 0) : (ai < 0.0);
+  std::string tail;
+  if (sv.hasImagExactInt()) {
+    const long long ii = sv.imagExactInt;
+    const long long ac = ii >= 0 ? ii : -ii;
+    tail = (ac == 1LL) ? std::string(STR_I) : (std::to_string(ac) + STR_I);
+  } else {
+    long long nearlyI = 0;
+    if (nearlyInt(ai, nearlyI) && nearlyI != 0) {
+      const long long ac = nearlyI >= 0 ? nearlyI : -nearlyI;
+      tail = (ac == 1LL) ? std::string(STR_I) : (std::to_string(ac) + STR_I);
+    } else if (coeffAbs == 1.0) {
+      tail = STR_I;
+    } else {
+      tail = formatDoubleFast(coeffAbs) + STR_I;
+    }
+  }
+  const bool reZero = (sv.hasExactInt() && sv.exactInt == 0) || (!sv.hasExactInt() && ar == 0.0);
+  if (reZero) {
+    return negI ? (std::string("-") + tail) : tail;
+  }
+  return negI ? (rePart + "-" + tail) : (rePart + "+" + tail);
 }
 
 MathParser::EvalValue MathParser::makeScalarMaybeExact(double v) {
@@ -2655,6 +2988,11 @@ MathParser::EvalValue MathParser::makeScalarInt(long long v) {
   out.scalarValue.setExactUInt64Valid(v >= 0);
   out.scalarValue.exactUInt64 = (v >= 0) ? static_cast<std::uint64_t>(v) : 0;
   out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.imag = 0.0;
+  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactUInt64 = 0;
+  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
 
@@ -2673,6 +3011,11 @@ MathParser::EvalValue MathParser::makeScalarUInt(std::uint64_t v) {
     out.scalarValue.exactInt = 0;
   }
   out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.imag = 0.0;
+  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactUInt64 = 0;
+  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
 
@@ -2685,6 +3028,11 @@ MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
   out.scalarValue.setExactIntValid(false);
   out.scalarValue.setExactUInt64Valid(false);
   out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.imag = 0.0;
+  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactUInt64 = 0;
+  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
 
@@ -2708,6 +3056,18 @@ bool MathParser::evalValueInvolvesTime(const EvalValue& v) {
   return MathParser::scalarValueIsTime(v.scalarValue);
 }
 
+bool MathParser::evalValueHasNonzeroImaginary(const EvalValue& v) {
+  if (v.kind == ValueKind::Scalar) {
+    return scalarHasNonzeroImaginaryPart(v.scalarValue);
+  }
+  for (const auto& el : v.arr) {
+    if (scalarHasNonzeroImaginaryPart(el)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 MathParser::EvalValue MathParser::makeArray(const std::vector<double>& v) {
   EvalValue out;
   out.kind = ValueKind::Array;
@@ -2716,6 +3076,7 @@ MathParser::EvalValue MathParser::makeArray(const std::vector<double>& v) {
   for (std::size_t i = 0; i < v.size(); ++i) {
     out.arr[i].scalarKind = ScalarKind::FloatingPoint;
     out.arr[i].scalar = v[i];
+    scalarClearImaginary(out.arr[i]);
   }
   return out;
 }
@@ -2733,6 +3094,11 @@ MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalVal
     out.arr[i].setExactUInt64Valid(v[i].scalarValue.hasExactUInt64());
     out.arr[i].exactUInt64 = v[i].scalarValue.exactUInt64;
     out.arr[i].setDecScientificPow63High(v[i].scalarValue.hasDecScientificPow63High());
+    out.arr[i].imag = v[i].scalarValue.imag;
+    out.arr[i].imagExactInt = v[i].scalarValue.imagExactInt;
+    out.arr[i].imagExactUInt64 = v[i].scalarValue.imagExactUInt64;
+    out.arr[i].setImagExactIntValid(v[i].scalarValue.hasImagExactInt());
+    out.arr[i].setImagExactUInt64Valid(v[i].scalarValue.hasImagExactUInt64());
   }
   return out;
 }
@@ -2742,6 +3108,11 @@ MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarVal
   if (v.scalarKind == ScalarKind::Time) {
     out.kind = RawResult::ScalarKind::FloatingPoint;
     out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
+    return out;
+  }
+  if (scalarHasNonzeroImaginaryPart(v)) {
+    out.kind = RawResult::ScalarKind::FloatingPoint;
+    out.floatingPoint = std::numeric_limits<double>::quiet_NaN();
     return out;
   }
   if (v.scalarKind == ScalarKind::Int64) {
@@ -2783,6 +3154,11 @@ MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarV
   out.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
   out.scalarValue.exactUInt64 = sv.exactUInt64;
   out.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  out.scalarValue.imag = sv.imag;
+  out.scalarValue.imagExactInt = sv.imagExactInt;
+  out.scalarValue.imagExactUInt64 = sv.imagExactUInt64;
+  out.scalarValue.setImagExactIntValid(sv.hasImagExactInt());
+  out.scalarValue.setImagExactUInt64Valid(sv.hasImagExactUInt64());
   return out;
 }
 
@@ -2933,6 +3309,12 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     }
     return makeScalarTimeMs(-ms);
   }
+  if (scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    double re = 0.0;
+    double im = 0.0;
+    scalarLoadCartesian(v.scalarValue, re, im);
+    return makeScalarComplexFromDoubles(-re, -im);
+  }
   if (v.scalarValue.hasDecScientificPow63High()) {
     const double p63 = std::ldexp(1.0, 63);
     if (v.scalarValue.scalar == p63) {
@@ -3038,6 +3420,12 @@ bool MathParser::tryApplyTimeBinaryScalars(
   const bool rt = MathParser::scalarValueIsTime(rv);
   if (!lt && !rt) {
     return false;
+  }
+  if (supportComplexNumbers_) {
+    if ((!lt && scalarHasNonzeroImaginaryPart(lv)) || (!rt && scalarHasNonzeroImaginaryPart(rv))) {
+      setIncompatibleOperandsError(ctx);
+      return true;
+    }
   }
   if (op != '+' && op != '-' && op != '*' && op != '/') {
     setIncompatibleOperandsError(ctx);
@@ -3154,6 +3542,11 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
         return false;
       }
       outS = std::move(outTime);
+      return true;
+    }
+    EvalValue outComplex;
+    if (tryApplyComplexBinaryScalars(lv, rv, op, outComplex)) {
+      outS = std::move(outComplex);
       return true;
     }
     if (isPureFloatingScalarPair(lv, rv)) {
@@ -3281,6 +3674,9 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
       outS = makePow63();
       return true;
     }
+    if (supportComplexNumbers_ && (scalarHasNonzeroImaginaryPart(lv) || scalarHasNonzeroImaginaryPart(rv))) {
+      return false;
+    }
     double outD = 0;
     if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
       return false;
@@ -3314,6 +3710,23 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
   }
 
   auto applyScalarValue = [&](const EvalValue::ScalarValue& l, const EvalValue::ScalarValue& r, EvalValue& outS) -> bool {
+    if (supportComplexNumbers_ && id == BuiltinFunctionId::Hypot &&
+        (scalarHasNonzeroImaginaryPart(l) || scalarHasNonzeroImaginaryPart(r))) {
+      double ar = 0.0;
+      double ai = 0.0;
+      double br = 0.0;
+      double bi = 0.0;
+      scalarLoadCartesian(l, ar, ai);
+      scalarLoadCartesian(r, br, bi);
+      if (!std::isfinite(ar) || !std::isfinite(ai) || !std::isfinite(br) || !std::isfinite(bi)) {
+        outS = makeScalar(std::numeric_limits<double>::quiet_NaN());
+        return true;
+      }
+      const double ml = std::hypot(ar, ai);
+      const double mr = std::hypot(br, bi);
+      outS = makeScalarMaybeExact(std::hypot(ml, mr));
+      return true;
+    }
     double outD = 0.0;
     if (isLog) {
       if (l.scalar <= 0.0 || r.scalar <= 0.0 || r.scalar == 1.0) {
@@ -3572,9 +3985,26 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
   skipSpaces(ctx);
   const unsigned char c2 = static_cast<unsigned char>(*ctx.p);
   if (c2 >= static_cast<unsigned char>('a') && c2 <= static_cast<unsigned char>('z')) {
-    ctx.p = pSave;
-    setValidationError(ctx, STR_TIME_COMPACT_INVALID_SUFFIX);
-    return false;
+    const auto peekKeywordNoConsume = [](const char* p, const char* kw) -> bool {
+      std::size_t n = 0;
+      while (kw[n] != '\0') {
+        const unsigned char a = static_cast<unsigned char>(p[n]);
+        const unsigned char b = static_cast<unsigned char>(kw[n]);
+        if (a == '\0' || std::tolower(a) != std::tolower(b)) {
+          return false;
+        }
+        ++n;
+      }
+      const char t = p[n];
+      return !(std::isalnum(static_cast<unsigned char>(t)) || t == '_');
+    };
+    const bool kwOk = peekKeywordNoConsume(ctx.p, STR_AND) || peekKeywordNoConsume(ctx.p, STR_OR) ||
+        peekKeywordNoConsume(ctx.p, STR_NOT);
+    if (!kwOk) {
+      ctx.p = pSave;
+      setValidationError(ctx, STR_TIME_COMPACT_INVALID_SUFFIX);
+      return false;
+    }
   }
   out = makeScalarTimeMs(totalMs);
   return true;
@@ -4065,6 +4495,10 @@ MathParser::EvalValue MathParser::evalUnaryExpr(
     return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
   }
   if (e.unaryOp == '~') {
+    if (supportComplexNumbers_ && MathParser::evalValueHasNonzeroImaginary(v)) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
     if (!scalarOnlyMode && v.kind != ValueKind::Scalar) {
       setBitwiseIntegerOperandsError(ctx);
       return makeScalar(0);
@@ -4120,6 +4554,11 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
     const EvalValue& right,
     Expr::BinaryOp op) const {
   if (evalValueInvolvesTime(left) || evalValueInvolvesTime(right)) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
+  if (supportComplexNumbers_ &&
+      (MathParser::evalValueHasNonzeroImaginary(left) || MathParser::evalValueHasNonzeroImaginary(right))) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
@@ -4273,6 +4712,10 @@ MathParser::EvalValue MathParser::evalExprScalar(
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactIntValid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -4291,6 +4734,11 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::LogicalAnd:
           return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1LL : 0LL);
         case Expr::BinaryOp::Modulo: {
+          if (supportComplexNumbers_ &&
+              (MathParser::evalValueHasNonzeroImaginary(l) || MathParser::evalValueHasNonzeroImaginary(r))) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
           if (l.scalarValue.hasExactUInt64() && r.scalarValue.hasExactUInt64() &&
               (!l.scalarValue.hasExactInt() || !r.scalarValue.hasExactInt())) {
             if (r.scalarValue.exactUInt64 == 0u) {
@@ -4315,6 +4763,11 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::BitXor:
         case Expr::BinaryOp::ShiftLeft:
         case Expr::BinaryOp::ShiftRight: {
+          if (supportComplexNumbers_ &&
+              (MathParser::evalValueHasNonzeroImaginary(l) || MathParser::evalValueHasNonzeroImaginary(r))) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
           if (e.binaryOp == Expr::BinaryOp::ShiftLeft) {
             std::uint64_t aU = 0;
             std::uint64_t bU = 0;
@@ -4372,7 +4825,33 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::CmpNe: {
           const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
           const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
+          const bool lIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(l.scalarValue);
+          const bool rIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(r.scalarValue);
+          const bool orderingOp = e.binaryOp == Expr::BinaryOp::CmpLt || e.binaryOp == Expr::BinaryOp::CmpLe ||
+                                  e.binaryOp == Expr::BinaryOp::CmpGt || e.binaryOp == Expr::BinaryOp::CmpGe;
+          if (orderingOp && (lIm || rIm)) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
+          if ((lIm || rIm) && (lTime || rTime)) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
           if (!lTime && !rTime) {
+            if (supportComplexNumbers_ && (lIm || rIm)) {
+              double lr = 0.0;
+              double li = 0.0;
+              double rr = 0.0;
+              double ri = 0.0;
+              scalarLoadCartesian(l.scalarValue, lr, li);
+              scalarLoadCartesian(r.scalarValue, rr, ri);
+              if (std::isnan(lr) || std::isnan(li) || std::isnan(rr) || std::isnan(ri)) {
+                return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+              }
+              const int cmp =
+                  (lr < rr) ? -1 : (lr > rr) ? 1 : (li < ri) ? -1 : (li > ri) ? 1 : 0;
+              return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
+            }
             const double ls = l.scalarValue.scalar;
             const double rs = r.scalarValue.scalar;
             if (std::isnan(ls) || std::isnan(rs)) {
@@ -4489,6 +4968,10 @@ MathParser::EvalValue MathParser::evalExpr(
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactIntValid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -4575,10 +5058,33 @@ MathParser::EvalValue MathParser::evalExpr(
       return scalarFromArrayAt(base, static_cast<std::size_t>(realIdx));
     }
     case Expr::Tag::Binary: {
-      auto compareValues = [](const EvalValue& a, const EvalValue& b) -> int {
-        auto cmpScalarPair = [](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
+      auto compareValues = [this, &ctx](const EvalValue& a, const EvalValue& b) -> int {
+        const auto evalValueHasNonzeroImaginary = [](const EvalValue& vv) -> bool {
+          if (vv.kind == ValueKind::Scalar) {
+            return scalarHasNonzeroImaginaryPart(vv.scalarValue);
+          }
+          for (const auto& el : vv.arr) {
+            if (scalarHasNonzeroImaginaryPart(el)) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (!supportComplexNumbers_) {
+          if (evalValueHasNonzeroImaginary(a) || evalValueHasNonzeroImaginary(b)) {
+            setIncompatibleOperandsError(ctx);
+            return 0;
+          }
+        }
+        auto cmpScalarPair = [this, &ctx](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
           const bool ta = MathParser::scalarValueIsTime(sa);
           const bool tb = MathParser::scalarValueIsTime(sb);
+          const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
+          const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
+          if ((ha || hb) && (ta || tb)) {
+            setIncompatibleOperandsError(ctx);
+            return 0;
+          }
           if (ta || tb) {
             const long long ams =
                 ta ? timeTotalMsFromScalarValue(sa) : roundHalfUpDoubleToLongLong(sa.scalar * 1000.0);
@@ -4588,6 +5094,30 @@ MathParser::EvalValue MathParser::evalExpr(
               return -1;
             }
             if (ams > bms) {
+              return 1;
+            }
+            return 0;
+          }
+          if (ha || hb) {
+            double ar = 0.0;
+            double ai = 0.0;
+            double br = 0.0;
+            double bi = 0.0;
+            scalarLoadCartesian(sa, ar, ai);
+            scalarLoadCartesian(sb, br, bi);
+            if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
+              return 1;
+            }
+            if (ar < br) {
+              return -1;
+            }
+            if (ar > br) {
+              return 1;
+            }
+            if (ai < bi) {
+              return -1;
+            }
+            if (ai > bi) {
               return 1;
             }
             return 0;
@@ -4611,6 +5141,9 @@ MathParser::EvalValue MathParser::evalExpr(
         const std::size_t n = (na < nb) ? na : nb;
         for (std::size_t i = 0; i < n; ++i) {
           const int c = cmpScalarPair(refAt(a, i), refAt(b, i));
+          if (ctx.parseError) {
+            return 0;
+          }
           if (c != 0) {
             return c;
           }
@@ -4670,18 +5203,57 @@ MathParser::EvalValue MathParser::evalExpr(
         if (ctx.parseError) return makeScalar(0);
         EvalValue r = evalExpr(*e.right, ctx, scopedVars);
         if (ctx.parseError) return makeScalar(0);
+        if (supportComplexNumbers_) {
+          const auto valueHasComplex = [](const EvalValue& vv) -> bool {
+            if (vv.kind == ValueKind::Scalar) {
+              return scalarHasNonzeroImaginaryPart(vv.scalarValue);
+            }
+            for (const auto& el : vv.arr) {
+              if (scalarHasNonzeroImaginaryPart(el)) {
+                return true;
+              }
+            }
+            return false;
+          };
+          const bool orderingOp = e.binaryOp == Expr::BinaryOp::CmpLt || e.binaryOp == Expr::BinaryOp::CmpLe ||
+                                  e.binaryOp == Expr::BinaryOp::CmpGt || e.binaryOp == Expr::BinaryOp::CmpGe;
+          if (orderingOp && (valueHasComplex(l) || valueHasComplex(r))) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
+          if ((valueHasComplex(l) || valueHasComplex(r)) &&
+              (MathParser::evalValueInvolvesTime(l) || MathParser::evalValueInvolvesTime(r))) {
+            setIncompatibleOperandsError(ctx);
+            return makeScalar(0);
+          }
+        }
         if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
           const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
           const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
           if (!lTime && !rTime) {
-            const double ls = l.scalarValue.scalar;
-            const double rs = r.scalarValue.scalar;
-            if (std::isnan(ls) || std::isnan(rs)) {
-              return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+            if (supportComplexNumbers_) {
+              double lr = 0.0;
+              double li = 0.0;
+              double rr = 0.0;
+              double ri = 0.0;
+              scalarLoadCartesian(l.scalarValue, lr, li);
+              scalarLoadCartesian(r.scalarValue, rr, ri);
+              if (std::isnan(lr) || std::isnan(li) || std::isnan(rr) || std::isnan(ri)) {
+                return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+              }
+            } else {
+              const double ls = l.scalarValue.scalar;
+              const double rs = r.scalarValue.scalar;
+              if (std::isnan(ls) || std::isnan(rs)) {
+                return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
+              }
             }
           }
         }
         const int cmp = compareValues(l, r);
+        if (ctx.parseError) {
+          return makeScalar(0);
+        }
         return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
       }
       EvalValue l = evalExpr(*e.left, ctx, scopedVars);
@@ -5557,6 +6129,11 @@ MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::ve
     setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
+  if (supportComplexNumbers_ &&
+      (MathParser::evalValueHasNonzeroImaginary(args[0]) || MathParser::evalValueHasNonzeroImaginary(args[1]))) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
   auto applyModScalar = [&](const EvalValue::ScalarValue& aS, const EvalValue::ScalarValue& bS, EvalValue& outS) -> bool {
     if (aS.hasExactUInt64() && bS.hasExactUInt64() && (!aS.hasExactInt() || !bS.hasExactInt())) {
       if (bS.exactUInt64 == 0u) {
@@ -5763,6 +6340,26 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
   }
   if (args[0].kind == ValueKind::Scalar) {
     const EvalValue::ScalarValue& s = args[0].scalarValue;
+    if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s) &&
+        (id == BuiltinFunctionId::Sqrt || id == BuiltinFunctionId::Sqr)) {
+      double ar = 0.0;
+      double ai = 0.0;
+      scalarLoadCartesian(s, ar, ai);
+      if (!std::isfinite(ar) || !std::isfinite(ai)) {
+        return makeScalarComplexFromDoubles(
+            std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+      }
+      if (id == BuiltinFunctionId::Sqr) {
+        return makeScalarComplexFromDoubles(ar * ar - ai * ai, 2.0 * ar * ai);
+      }
+      const double mag = std::hypot(ar, ai);
+      if (mag == 0.0) {
+        return makeScalarComplexFromDoubles(0.0, 0.0);
+      }
+      const double halfAng = std::atan2(ai, ar) * 0.5;
+      const double rm = std::sqrt(mag);
+      return makeScalarComplexFromDoubles(rm * std::cos(halfAng), rm * std::sin(halfAng));
+    }
     const double x = s.scalar;
     switch (id) {
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
@@ -5780,7 +6377,11 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Exp: return makeScalarMaybeExact(std::exp(x));
       case BuiltinFunctionId::Log10: return makeScalarMaybeExact(std::log10(x));
       case BuiltinFunctionId::Ln: return makeScalarMaybeExact(std::log(x));
-      case BuiltinFunctionId::Sqrt: return makeScalarMaybeExact(std::sqrt(x));
+      case BuiltinFunctionId::Sqrt:
+        if (supportComplexNumbers_ && !scalarHasNonzeroImaginaryPart(s) && std::isfinite(x) && x < 0.0) {
+          return makeScalarComplexFromDoubles(0.0, std::sqrt(-x));
+        }
+        return makeScalarMaybeExact(std::sqrt(x));
       case BuiltinFunctionId::Sqr: return makeScalarMaybeExact(x * x);
       case BuiltinFunctionId::Abs: return makeScalarMaybeExact(std::fabs(x));
       case BuiltinFunctionId::Floor:
@@ -5828,9 +6429,47 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     case BuiltinFunctionId::Ln:
       return mapUnaryFn(args[0], std::log);
     case BuiltinFunctionId::Sqrt:
-      return mapUnaryFn(args[0], std::sqrt);
-    case BuiltinFunctionId::Sqr:
-      return mapUnaryFn(args[0], squareScalar);
+    case BuiltinFunctionId::Sqr: {
+      if (!supportComplexNumbers_) {
+        return id == BuiltinFunctionId::Sqrt ? mapUnaryFn(args[0], std::sqrt) : mapUnaryFn(args[0], squareScalar);
+      }
+      std::vector<EvalValue> outVals;
+      outVals.reserve(args[0].arr.size());
+      for (const auto& e : args[0].arr) {
+        if (scalarHasNonzeroImaginaryPart(e)) {
+          double ar = 0.0;
+          double ai = 0.0;
+          scalarLoadCartesian(e, ar, ai);
+          if (!std::isfinite(ar) || !std::isfinite(ai)) {
+            outVals.emplace_back(makeScalarComplexFromDoubles(
+                std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()));
+            continue;
+          }
+          if (id == BuiltinFunctionId::Sqr) {
+            outVals.emplace_back(makeScalarComplexFromDoubles(ar * ar - ai * ai, 2.0 * ar * ai));
+          } else {
+            const double mag = std::hypot(ar, ai);
+            if (mag == 0.0) {
+              outVals.emplace_back(makeScalarComplexFromDoubles(0.0, 0.0));
+            } else {
+              const double halfAng = std::atan2(ai, ar) * 0.5;
+              const double rm = std::sqrt(mag);
+              outVals.emplace_back(
+                  makeScalarComplexFromDoubles(rm * std::cos(halfAng), rm * std::sin(halfAng)));
+            }
+          }
+        } else {
+          if (id == BuiltinFunctionId::Sqrt && supportComplexNumbers_ && !scalarHasNonzeroImaginaryPart(e) &&
+              std::isfinite(e.scalar) && e.scalar < 0.0) {
+            outVals.emplace_back(makeScalarComplexFromDoubles(0.0, std::sqrt(-e.scalar)));
+          } else {
+            outVals.emplace_back(id == BuiltinFunctionId::Sqrt ? makeScalarMaybeExact(std::sqrt(e.scalar))
+                                                               : makeScalarMaybeExact(squareScalar(e.scalar)));
+          }
+        }
+      }
+      return makeArrayFromScalars(outVals);
+    }
     case BuiltinFunctionId::Abs:
       {
         std::vector<EvalValue> outVals;

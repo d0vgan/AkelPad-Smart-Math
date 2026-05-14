@@ -40,6 +40,11 @@ sub UpdateMenuChecks()
     dim stThou as UINT
     if g_bUseThousandsSeparator then stThou = MF_CHECKED else stThou = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_THOUSANDS_SEPARATOR, MF_BYCOMMAND or stThou)
+
+    dim stComplex as UINT
+    if g_bSupportComplexNumbers then stComplex = MF_CHECKED else stComplex = MF_UNCHECKED
+    Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
+    CheckMenuItem(hSmartMathMenu, IDM_COMPLEX_NUMBERS, MF_BYCOMMAND or stComplex)
   end if
 end sub
 
@@ -95,6 +100,7 @@ sub InitSmartMathMenu()
   
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_THOUSANDS_SEPARATOR, wstr("Use Thousands Separator"))
+  AppendMenuW(hSmartMathMenu, MF_STRING, IDM_COMPLEX_NUMBERS, wstr("Complex Numbers"))
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_ABOUT, wstr("About..."))
   

@@ -14,6 +14,7 @@ dim shared dwOldAkelOptions as DWORD = 0
 dim shared g_nDecimals as Integer = -1
 dim shared g_crResultColor as COLORREF = 0
 dim shared g_bUseThousandsSeparator as BOOL = FALSE
+dim shared g_bSupportComplexNumbers as BOOL = FALSE
 dim shared g_bLogParsedLines as BOOL = FALSE
 dim shared g_sDecimalSeparator as String
 dim shared g_sThousandsSeparator as String

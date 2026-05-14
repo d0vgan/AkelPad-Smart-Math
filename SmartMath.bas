@@ -18,6 +18,7 @@ dim shared dwOldAkelOptions as DWORD = 0
 dim shared g_nDecimals as Integer = -1
 dim shared g_crResultColor as COLORREF = &H008000
 dim shared g_bUseThousandsSeparator as BOOL = FALSE
+dim shared g_bSupportComplexNumbers as BOOL = FALSE
 dim shared g_bLogParsedLines as BOOL = FALSE
 dim shared g_sDecimalSeparator as String
 dim shared g_sThousandsSeparator as String
@@ -424,15 +425,6 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
-private function IsParserTimeResultDisplay(byref s as String) as Boolean
-  dim t as String = trim(s)
-  if len(t) < 3 then return FALSE
-  if instr(t, ":") <= 0 then return FALSE
-  dim tl as String = lcase(t)
-  if left(tl, 3) = "inf" orelse left(tl, 4) = "-inf" orelse left(tl, 3) = "nan" then return FALSE
-  return TRUE
-end function
-
 private sub BuildRenderedResultText(byref sLine as String, byref sRes as String, byref bIsError as Boolean, byval lineIdx as Integer = -1)
   sRes = ""
   bIsError = FALSE
@@ -473,8 +465,10 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
       if Len(sNf) > 0 then
         sRes = SMARTMATH_RESULT_PREFIX & sNf
       else
-        if IsParserTimeResultDisplay(sResult) then
-          sRes = SMARTMATH_RESULT_PREFIX & sResult
+        if IsTimeValueStr(sResult) then
+          sRes = SMARTMATH_RESULT_PREFIX & FormatTimeValueScalar(sResult)
+        elseif IsComplexNumberStr(sResult) then
+          sRes = SMARTMATH_RESULT_PREFIX & FormatComplexNumberScalar(sResult)
         elseif IsDecIntStr(sResult) then
           ' preserving the exact integer result
           sRes = SMARTMATH_RESULT_PREFIX & AddThousandsSeparator(sResult)
@@ -818,12 +812,28 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
         InvalidateRect(g_hWndEdit, 0, TRUE)
       end if
       return 0
-      
+
     elseif nCmd = IDM_THOUSANDS_SEPARATOR then
       if g_bUseThousandsSeparator then
         g_bUseThousandsSeparator = FALSE
       else
         g_bUseThousandsSeparator = TRUE
+      end if
+      InvalidateRenderCache()
+      SaveSettings()
+      UpdateMenuChecks()
+      if g_hWndEdit then
+        dim bVis as BOOL
+        UpdateInternalState(g_hWndEdit, bVis)
+        InvalidateRect(g_hWndEdit, 0, TRUE)
+      end if
+      return 0
+
+    elseif nCmd = IDM_COMPLEX_NUMBERS then
+      if g_bSupportComplexNumbers then
+        g_bSupportComplexNumbers = FALSE
+      else
+        g_bSupportComplexNumbers = TRUE
       end if
       InvalidateRenderCache()
       SaveSettings()

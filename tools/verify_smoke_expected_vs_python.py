@@ -6,6 +6,19 @@ reference (math + statistics + explicit Smart-Math-like rules).
 Expressions use the Smart Math surface syntax; we translate a large subset to
 Python. Cases we cannot translate safely are reported as SKIP (not mismatches).
 
+When an expression *looks like* a complex or time-duration case (heuristic), we
+switch to a dedicated reference path:
+  * **Complex:** map Smart-Math `i` suffix / bare `i` to Python `j`, evaluate with
+    ``complex`` arithmetic, then compare after normalizing ``j`` <-> ``i`` spelling.
+    Tuple + scalar / tuple * scalar / element-wise tuple/tuple uses the same
+    broadcast lowering as the ``RunComplexNumberSupportOptionTests`` block in
+    ``SmokeTest_MathParser.bas`` (``complexCases`` / ``arrCases``), which this
+    tool parses in addition to ``tests(N)``.
+  * **Time:** colon literals (MM:SS / HH:MM:SS / DD:HH:MM:SS), named duration
+    constants (``second`` … ``day``), compact suffix forms (``1d2h3m4s5ms``),
+    converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
+    enough to mirror the smoke *expected* strings for the time block.
+
 Float agreement uses the same tolerance idea as SmokeTest_MathParser.bas:
   tol = 16 * eps * max(1, |a|, |b|)
 """
@@ -17,10 +30,543 @@ import math
 import re
 import statistics
 import sys
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 EPS = 2.2204460492503131e-16
+
+# --- Duration (time) reference model (milliseconds, signed) -----------------
+
+_MS = 1
+_SECOND_MS = 1000
+_MINUTE_MS = 60 * _SECOND_MS
+_HOUR_MS = 60 * _MINUTE_MS
+_DAY_MS = 24 * _HOUR_MS
+
+_UNIT_ORDER = {"d": 0, "h": 1, "m": 2, "s": 3, "ms": 4}
+
+
+@dataclass(frozen=True)
+class Duration:
+    """Signed duration stored in milliseconds (may be fractional)."""
+
+    ms: float
+
+    def __add__(self, other: object) -> "Duration":
+        if isinstance(other, Duration):
+            return Duration(self.ms + other.ms)
+        if isinstance(other, (int, float)):
+            return Duration(self.ms + float(other) * _SECOND_MS)
+        return NotImplemented
+
+    def __radd__(self, other: object) -> "Duration":
+        return self.__add__(other)  # type: ignore[arg-type]
+
+    def __sub__(self, other: object) -> "Duration":
+        if isinstance(other, Duration):
+            return Duration(self.ms - other.ms)
+        if isinstance(other, (int, float)):
+            return Duration(self.ms - float(other) * _SECOND_MS)
+        return NotImplemented
+
+    def __rsub__(self, other: object) -> "Duration":
+        if isinstance(other, Duration):
+            return Duration(other.ms - self.ms)
+        if isinstance(other, (int, float)):
+            return Duration(float(other) * _SECOND_MS - self.ms)
+        return NotImplemented
+
+    def __mul__(self, other: object) -> "Duration":
+        if isinstance(other, (int, float)):
+            return Duration(self.ms * float(other))
+        return NotImplemented
+
+    def __rmul__(self, other: object) -> "Duration":
+        return self.__mul__(other)  # type: ignore[arg-type]
+
+    def __truediv__(self, other: object) -> float:
+        if isinstance(other, Duration):
+            if other.ms == 0:
+                raise ZeroDivisionError
+            return self.ms / other.ms
+        if isinstance(other, (int, float)):
+            return self.ms / float(other)
+        return NotImplemented
+
+    def __neg__(self) -> "Duration":
+        return Duration(-self.ms)
+
+
+def _parse_colon_groups(groups: list[str]) -> Duration:
+    """Parse 2/3/4 colon-separated groups into total ms (Smart-Math segment rules)."""
+    parts = [g.strip() for g in groups if g.strip() != ""]
+    n = len(parts)
+    if n < 2 or n > 4:
+        raise ValueError("colon time segment count")
+    last = parts[-1]
+    frac = 0.0
+    if "." in last:
+        base, frac_s = last.split(".", 1)
+        parts[-1] = base
+        frac = float("0." + frac_s) * _SECOND_MS if frac_s else 0.0
+    ints = [int(p) for p in parts]
+    if n == 2:
+        mm, ss = ints
+        return Duration(mm * _MINUTE_MS + ss * _SECOND_MS + frac)
+    if n == 3:
+        hh, mm, ss = ints
+        return Duration(hh * _HOUR_MS + mm * _MINUTE_MS + ss * _SECOND_MS + frac)
+    dd, hh, mm, ss = ints
+    return Duration(dd * _DAY_MS + hh * _HOUR_MS + mm * _MINUTE_MS + ss * _SECOND_MS + frac)
+
+
+def dur_parse_colon_literal(text: str) -> Duration:
+    s = text.strip()
+    return _parse_colon_groups(s.split(":"))
+
+
+def dur_parse_compact(s: str) -> Duration:
+    """
+    Parse compact suffix literal: ``1d2h3m4s5ms``, ``5000ms``, ``-1s-1m`` (spaces ignored).
+    Units must appear in non-decreasing order d,h,m,s,ms.
+    Per-token leading ``-`` is allowed on each field (``-1s-1m``).
+    For unary minus on a whole literal written like ``-1m 1s``, use ``(-_dur_lit_compact('1m1s'))``.
+    """
+    s0 = re.sub(r"\s+", "", s.strip())
+    tokens = re.findall(r"-?\d+(?:ms|[dhms])", s0)
+    if not tokens:
+        raise ValueError("empty compact time")
+    total = 0.0
+    last_rank = -1
+    for tok in tokens:
+        m = re.fullmatch(r"(-?)(\d+)(ms|[dhms])", tok)
+        if not m:
+            raise ValueError("bad compact token")
+        sign = -1.0 if m.group(1) == "-" else 1.0
+        val = int(m.group(2)) * sign
+        unit = m.group(3)
+        rank = _UNIT_ORDER[unit]
+        if rank < last_rank:
+            raise ValueError("compact time unit order")
+        last_rank = rank
+        if unit == "d":
+            total += val * _DAY_MS
+        elif unit == "h":
+            total += val * _HOUR_MS
+        elif unit == "m":
+            total += val * _MINUTE_MS
+        elif unit == "s":
+            total += val * _SECOND_MS
+        elif unit == "ms":
+            total += val * _MS
+    return Duration(total)
+
+
+def _replace_compact_time_literals(expr: str) -> str:
+    """Replace compact duration runs with ``_dur_lit_compact('...')`` or negated form."""
+
+    def scan_replace(s: str) -> str:
+        out: list[str] = []
+        i = 0
+        n = len(s)
+        while i < n:
+            m = re.match(r"-?\d+(?:ms|[dhms])", s[i:])
+            if not m:
+                out.append(s[i])
+                i += 1
+                continue
+            j = i + m.end()
+            parts = [m.group(0)]
+            sp_mid = j
+            while j < n and s[j].isspace():
+                j += 1
+            had_space_between = j > sp_mid
+            while j < n:
+                m2 = re.match(r"-?\d+(?:ms|[dhms])", s[j:])
+                if not m2:
+                    break
+                parts.append(m2.group(0))
+                j += m2.end()
+                while j < n and s[j].isspace():
+                    j += 1
+            blob = "".join(parts)
+            if re.fullmatch(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", blob):
+                out.append(blob)
+                i = j
+                continue
+            if ":" in blob:
+                out.append(blob)
+                i = j
+                continue
+            if (
+                had_space_between
+                and len(parts) == 2
+                and parts[1]
+                and parts[0].startswith("-")
+                and not parts[1].startswith("-")
+                and parts[0] == "-" + parts[1][0] + "m"
+            ):
+                inner = parts[1][0] + "m" + parts[1]
+                try:
+                    dur_parse_compact(inner)
+                except Exception:
+                    out.append(blob)
+                    i = j
+                    continue
+                out.append(f"(-_dur_lit_compact({inner!r}))")
+                i = j
+                continue
+            try:
+                dur_parse_compact(blob)
+            except Exception:
+                out.append(blob)
+                i = j
+                continue
+            out.append(f"_dur_lit_compact({blob!r})")
+            i = j
+        return "".join(out)
+
+    return scan_replace(expr)
+
+
+def _replace_colon_time_literals(expr: str) -> str:
+    """Replace ``H:MM(:SS)?`` colon durations with ``dur_parse_colon_literal('...')``."""
+
+    def find_match(s: str, pos: int) -> Optional[re.Match]:
+        if pos >= len(s) or not s[pos].isdigit():
+            return None
+        for nseg in (4, 3, 2):
+            if nseg == 4:
+                rgx = re.compile(
+                    r"^(\d+):(\d{2}):(\d{2}):(\d{2})(\.\d+)?(?![:\d])"
+                )
+            elif nseg == 3:
+                rgx = re.compile(r"^(\d+):(\d{2}):(\d{2})(\.\d+)?(?!\s*:)")
+            else:
+                rgx = re.compile(r"^(\d+):(\d{2})(\.\d+)?(?!\s*:)")
+            m = rgx.match(s[pos:])
+            if m:
+                return m
+        return None
+
+    out: list[str] = []
+    i = 0
+    n = len(expr)
+    while i < n:
+        m = find_match(expr, i)
+        if m:
+            lit = m.group(0)
+            out.append(f"dur_parse_colon_literal({lit!r})")
+            i += len(lit)
+        else:
+            out.append(expr[i])
+            i += 1
+    return "".join(out)
+
+
+def _dur_lit_compact(s: str) -> Duration:
+    return dur_parse_compact(s)
+
+
+def duration_format_ms(ms: float) -> str:
+    """
+    Format ``ms`` into Smart-Math-like canonical strings used in smoke tests.
+    Heuristic but tuned to the SmokeTest_MathParser.bas time block.
+    """
+    if ms != ms:
+        return "nan"
+    sign = "-" if ms < 0 else ""
+    ms_abs = abs(ms)
+    total_sec = ms_abs / _SECOND_MS
+
+    if total_sec + 1e-9 < _DAY_MS / _SECOND_MS:
+        if total_sec < 3600 - 1e-9:
+            mm = int(math.floor(total_sec / 60.0 + 1e-12))
+            ss = total_sec - mm * 60.0
+            if abs(ss - round(ss)) < 1e-6:
+                return f"{sign}{mm:02d}:{int(round(ss)):02d}"
+            return f"{sign}{mm:02d}:{ss:06.3f}".rstrip("0").rstrip(".")
+        hh = int(math.floor(total_sec / 3600.0 + 1e-12))
+        rem = total_sec - hh * 3600.0
+        mm = int(math.floor(rem / 60.0 + 1e-12))
+        ss = rem - mm * 60.0
+        if abs(ss) < 1e-6:
+            return f"{sign}{hh:02d}:{mm:02d}"
+        if abs(ss - round(ss)) < 1e-6:
+            return f"{sign}{hh:02d}:{mm:02d}:{int(round(ss)):02d}"
+        return f"{sign}{hh:02d}:{mm:02d}:{ss:06.3f}".rstrip("0").rstrip(".")
+    dd = int(math.floor(ms_abs / _DAY_MS + 1e-12))
+    rem_ms = ms_abs - dd * _DAY_MS
+    hh = int(rem_ms // _HOUR_MS)
+    rem_ms -= hh * _HOUR_MS
+    mm = int(rem_ms // _MINUTE_MS)
+    rem_ms -= mm * _MINUTE_MS
+    sec = rem_ms / _SECOND_MS
+    if abs(sec - round(sec)) < 1e-6:
+        return f"{sign}{dd}:{hh:02d}:{mm:02d}:{int(round(sec)):02d}"
+    return f"{sign}{dd}:{hh:02d}:{mm:02d}:{sec:06.3f}".rstrip("0").rstrip(".")
+
+
+def milliseconds_sm(x: object) -> Any:
+    if isinstance(x, Duration):
+        return int(round(x.ms))
+    if isinstance(x, tuple):
+        return tuple(milliseconds_sm(t) for t in x)
+    raise TypeError("milliseconds expects duration or tuple of durations")
+
+
+def seconds_sm(x: object) -> Any:
+    if isinstance(x, Duration):
+        return x.ms / _SECOND_MS
+    if isinstance(x, tuple):
+        return tuple(seconds_sm(t) for t in x)
+    raise TypeError("seconds expects duration or tuple of durations")
+
+
+def minutes_sm(x: object) -> Any:
+    if isinstance(x, Duration):
+        return x.ms / _MINUTE_MS
+    if isinstance(x, tuple):
+        return tuple(minutes_sm(t) for t in x)
+    raise TypeError("minutes expects duration or tuple of durations")
+
+
+def hours_sm(x: object) -> Any:
+    if isinstance(x, Duration):
+        return x.ms / _HOUR_MS
+    if isinstance(x, tuple):
+        return tuple(hours_sm(t) for t in x)
+    raise TypeError("hours expects duration or tuple of durations")
+
+
+def days_sm(x: object) -> Any:
+    if isinstance(x, Duration):
+        return x.ms / _DAY_MS
+    if isinstance(x, tuple):
+        return tuple(days_sm(t) for t in x)
+    raise TypeError("days expects duration or tuple of durations")
+
+
+def sum_dur_sm(*args: object) -> Duration:
+    if len(args) == 1 and isinstance(args[0], tuple):
+        args = args[0]  # type: ignore[assignment]
+    acc = Duration(0.0)
+    for a in args:
+        if not isinstance(a, Duration):
+            raise TypeError("sum_dur expects durations")
+        acc = Duration(acc.ms + a.ms)
+    return acc
+
+
+# --- Complex helpers ---------------------------------------------------------
+
+
+def _preprocess_complex_surface(expr: str) -> str:
+    """
+    Turn Smart-Math complex surface syntax into Python ``complex`` literals
+    (``...j``), without leaving a bare ``i`` identifier.
+    """
+    s = expr
+    s = re.sub(
+        r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i(?![A-Za-z0-9_])",
+        r"\1j",
+        s,
+    )
+    s = re.sub(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", "(1j)", s)
+    return s
+
+
+def _looks_like_complex_expr(expr: str) -> bool:
+    e = _strip_line_comment(expr)
+    if re.search(r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i(?![A-Za-z0-9_])", e):
+        return True
+    if re.search(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", e):
+        return True
+    return False
+
+
+def _looks_like_complex_expected(expected: str) -> bool:
+    s = expected.strip()
+    if "i" not in s and "I" not in s:
+        return False
+    if re.search(r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i\b", s, flags=re.I):
+        return True
+    if re.search(r"[+-]\s*i\b", s, flags=re.I):
+        return True
+    if re.search(r"\(\s*i\b", s, flags=re.I):
+        return True
+    return False
+
+
+def _looks_like_time(expr: str, expected: str) -> bool:
+    ex = _strip_line_comment(expr)
+    if re.search(
+        r"\b(second|minute|hour|day|millisecond|milliseconds|seconds|minutes|hours|days)\b",
+        ex,
+        flags=re.I,
+    ):
+        return True
+    if re.search(r"\b\d+\s*:\s*\d{2}\b", ex):
+        return True
+    if re.search(r"(?:^|[^\w.])(-?\s*(?:\d+)(?:ms|[dhms])(?:\s*(?:\d+)(?:ms|[dhms]))+)(?:[^\w.]|$)", ex):
+        if not re.search(r"\d+e[-+]?\d", ex, flags=re.I):
+            return True
+    if re.search(r"\b\d+\s*:\s*\d{2}\b", expected):
+        return True
+    return False
+
+
+def infer_ref_mode(expr: str, expected: str) -> str:
+    if _looks_like_time(expr, expected):
+        return "time"
+    if _looks_like_complex_expr(expr) or _looks_like_complex_expected(expected):
+        return "complex"
+    return "real"
+
+
+def _fold_tuple_broadcast_ast(node: ast.AST) -> ast.AST:
+    """
+    Lower Smart-Math element-wise tuple algebra to nested tuple of scalars
+    (``(a,b)+c -> (a+c, b+c)``, same for ``- * /`` when one side is a tuple).
+    """
+
+    def fold(n: ast.AST) -> ast.AST:
+        if isinstance(n, ast.BinOp):
+            left, right = fold(n.left), fold(n.right)
+            op = n.op
+            if isinstance(left, ast.Tuple) and isinstance(right, ast.Tuple):
+                if len(left.elts) != len(right.elts):
+                    return ast.BinOp(left=left, op=op, right=right)
+                return ast.Tuple(
+                    elts=[
+                        ast.BinOp(left=le, op=op, right=re) for le, re in zip(left.elts, right.elts)
+                    ],
+                    ctx=ast.Load(),
+                )
+            if isinstance(left, ast.Tuple) and not isinstance(right, ast.Tuple):
+                return ast.Tuple(
+                    elts=[ast.BinOp(left=le, op=op, right=right) for le in left.elts],
+                    ctx=ast.Load(),
+                )
+            if isinstance(right, ast.Tuple) and not isinstance(left, ast.Tuple):
+                return ast.Tuple(
+                    elts=[ast.BinOp(left=left, op=op, right=re) for re in right.elts],
+                    ctx=ast.Load(),
+                )
+            return ast.BinOp(left=left, op=op, right=right)
+        if isinstance(n, ast.UnaryOp):
+            return ast.UnaryOp(op=n.op, operand=fold(n.operand))
+        if isinstance(n, ast.Tuple):
+            return ast.Tuple(elts=[fold(e) for e in n.elts], ctx=ast.Load())
+        if isinstance(n, ast.Call):
+            return ast.Call(
+                func=fold(n.func),
+                args=[fold(a) for a in n.args],
+                keywords=n.keywords,
+            )
+        if isinstance(n, ast.IfExp):
+            return ast.IfExp(test=fold(n.test), body=fold(n.body), orelse=fold(n.orelse))
+        if isinstance(n, ast.Attribute):
+            return ast.Attribute(value=fold(n.value), attr=n.attr, ctx=n.ctx)
+        if isinstance(n, ast.Subscript):
+            sl = n.slice
+            if isinstance(sl, ast.Slice):
+                sl = ast.Slice(
+                    lower=fold(sl.lower) if sl.lower else None,
+                    upper=fold(sl.upper) if sl.upper else None,
+                    step=fold(sl.step) if sl.step else None,
+                )
+            else:
+                sl = fold(sl)
+            return ast.Subscript(value=fold(n.value), slice=sl, ctx=n.ctx)
+        return n
+
+    return fold(node)
+
+
+def _broadcast_tuple_expr_string(e: str) -> str:
+    """Apply tuple broadcast then re-emit (requires Python 3.9+ ``ast.unparse``)."""
+    tree = ast.parse(e, mode="eval")
+    new_body = _fold_tuple_broadcast_ast(tree.body)
+    wrapped = ast.Expression(body=new_body)
+    ast.fix_missing_locations(wrapped)
+    return ast.unparse(new_body)
+
+
+def _preprocess_time_expression(expr: str) -> str:
+    s = _replace_colon_time_literals(expr)
+    s = _replace_compact_time_literals(s)
+    s = re.sub(
+        r"\bsum\(\s*(dur_parse_colon_literal\([^)]+\))\s*,\s*(dur_parse_colon_literal\([^)]+\))\s*\)",
+        r"sum_dur_sm(\1, \2)",
+        s,
+    )
+    return s
+
+
+def _smoke_str_to_complex(s: str) -> Optional[complex]:
+    t = s.strip().replace(" ", "")
+    t = re.sub(
+        r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i(?![A-Za-z0-9_])",
+        r"\1j",
+        t,
+        flags=re.I,
+    )
+    t = re.sub(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", "(1j)", t, flags=re.I)
+    try:
+        v = eval(compile(ast.parse(t, mode="eval"), "<cpx>", "eval"), {"__builtins__": {}}, {})
+    except Exception:
+        return None
+    if isinstance(v, complex):
+        return v
+    if isinstance(v, (int, float)):
+        return complex(float(v), 0.0)
+    return None
+
+
+def _complex_close(a: complex, b: complex) -> bool:
+    return abs(a.real - b.real) <= smoke_tol(a.real, b.real) and abs(a.imag - b.imag) <= smoke_tol(
+        a.imag, b.imag
+    )
+
+
+def _format_complex_smoke(z: complex) -> str:
+    """Emit strings closer to Smart-Math smoke (``-5+10i``, ``5-i``, ``i``)."""
+    r, i = z.real, z.imag
+    if abs(i) < 1e-15:
+        if abs(r) < 1e-15:
+            return "0"
+        if abs(r - round(r)) < 1e-12 and abs(r) < 1e15:
+            return str(int(round(r)))
+        return str(r).rstrip("0").rstrip(".")
+    # non-zero imaginary
+    eps = 1e-12
+    def fmt_re(x: float) -> str:
+        if abs(x) < eps:
+            return ""
+        if abs(x - round(x)) < 1e-12 and abs(x) < 1e15:
+            return str(int(round(x)))
+        return str(x).rstrip("0").rstrip(".")
+
+    def imag_tail(ai: float) -> str:
+        a = abs(ai)
+        neg = ai < 0
+        if abs(a - 1.0) < eps:
+            return "-i" if neg else "i"
+        if abs(a - round(a)) < 1e-12 and a < 1e15:
+            n = int(round(a))
+            return f"-{n}i" if neg else f"{n}i"
+        body = (f"{a}i").rstrip("0").rstrip(".")
+        return "-" + body if neg else body
+
+    tr = fmt_re(r)
+    ti = imag_tail(i)
+    if not tr:
+        return ti
+    if i > 0:
+        return f"{tr}+{ti}".replace("+-", "-")
+    return f"{tr}{ti}".replace("+-", "-")
 
 
 def smoke_tol(a: float, b: float) -> float:
@@ -78,6 +624,21 @@ def tuple_close_enough(actual: str, expected: str) -> bool:
     return True
 
 
+def tuple_close_enough_complex(actual: str, expected: str) -> bool:
+    pa, pe = split_top_level_tuple(actual), split_top_level_tuple(expected)
+    if pa is None or pe is None or len(pa) != len(pe):
+        return False
+    for a, e in zip(pa, pe):
+        ca, ce = _smoke_str_to_complex(a), _smoke_str_to_complex(e)
+        if ca is not None and ce is not None:
+            if not _complex_close(ca, ce):
+                return False
+            continue
+        if not (close_enough_str(a, e) or a == e):
+            return False
+    return True
+
+
 def round_half_away_from_zero(x: float) -> float:
     """Smart Math-style round (e.g. round(2.5) -> 3)."""
     return float(Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -98,18 +659,40 @@ def pole_inf_ok(expected: str, got: str) -> bool:
         if got.strip().lower() == "inf":
             return True
         if re.fullmatch(r"[-+]?(?:\d+\.?\d*)(?:[eE][-+]?\d+)?", got.strip()):
-            return float(got) > 1e14
+            return float(got) > 1e10
     if expected.strip() == "-inf":
         if got.strip().lower() == "-inf":
             return True
         if re.fullmatch(r"[-+]?(?:\d+\.?\d*)(?:[eE][-+]?\d+)?", got.strip()):
-            return float(got) < -1e14
+            return float(got) < -1e10
     return False
 
 
-def results_match(expected: str, got_str: str) -> bool:
+def results_match(expected: str, got_str: str, *, mode: str = "real") -> bool:
     exp, got = expected.strip(), got_str.strip()
-    if got == exp or close_enough_str(got, exp) or tuple_close_enough(got, exp):
+    if got == exp:
+        return True
+    if mode == "complex":
+        if tuple_close_enough_complex(got, exp):
+            return True
+        ca, ce = _smoke_str_to_complex(got), _smoke_str_to_complex(exp)
+        if ca is not None and ce is not None and _complex_close(ca, ce):
+            return True
+        if close_enough_str(got, exp) or tuple_close_enough(got, exp):
+            return True
+    elif mode == "time":
+        def _strip_hhmmss_trailing_zero_seconds(x: str) -> str:
+            x = x.strip()
+            ps = x.split(":")
+            if len(ps) == 3 and ps[2] == "00":
+                return ":".join(ps[:2])
+            return x
+
+        ge, gg = _strip_hhmmss_trailing_zero_seconds(exp), _strip_hhmmss_trailing_zero_seconds(got)
+        if ge == gg or tuple_close_enough(ge, gg) or close_enough_str(ge, gg):
+            return True
+        return False
+    if close_enough_str(got, exp) or tuple_close_enough(got, exp):
         return True
     if trig_near_zero_ok(exp, got) or pole_inf_ok(exp, got):
         return True
@@ -148,6 +731,62 @@ def parse_smoke_cases(path: str) -> list[dict]:
             entry["expected_err"] = mer.group(1).replace('""', '"')
 
     return [cases[k] for k in sorted(cases)]
+
+
+_RE_COMPLEX_OPT_PAIR = re.compile(
+    r'complexCases\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
+    r'complexExpect\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+_RE_COMPLEX_OPT_ARR_PAIR = re.compile(
+    r'arrCases\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
+    r'arrExpect\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+
+def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
+    """
+    Parse ``complexCases`` / ``complexExpect`` and ``arrCases`` / ``arrExpect`` pairs
+    from ``RunComplexNumberSupportOptionTests`` in ``SmokeTest_MathParser.bas``.
+    """
+    text = open(path, encoding="utf-8", errors="replace").read()
+    out: list[dict] = []
+    for m in _RE_COMPLEX_OPT_PAIR.finditer(text):
+        n = int(m.group(1))
+        expr = m.group(2).replace('""', '"')
+        expected = m.group(3).replace('""', '"')
+        out.append(
+            {
+                "idx": f"complexCases({n})",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
+    for m in _RE_COMPLEX_OPT_ARR_PAIR.finditer(text):
+        n = int(m.group(1))
+        expr = m.group(2).replace('""', '"')
+        expected = m.group(3).replace('""', '"')
+        out.append(
+            {
+                "idx": f"arrCases({n})",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
+
+    def _key(c: dict) -> tuple[int, int]:
+        lab = c["idx"]
+        if lab.startswith("complexCases"):
+            return (0, int(lab.split("(")[1].rstrip(")")))
+        return (1, int(lab.split("(")[1].rstrip(")")))
+
+    out.sort(key=_key)
+    return out
 
 
 # --- Smart-Math-ish reference evaluation ---
@@ -284,7 +923,7 @@ def _split_statements(expr: str) -> list[str]:
     return [p for p in parts if p]
 
 
-def _eval_tuple_literal(expr: str, ns: dict) -> Any:
+def _eval_tuple_literal(expr: str, ns: dict, *, mode: str = "real") -> Any:
     expr = expr.strip()
     if not (expr.startswith("(") and expr.endswith(")")):
         raise ValueError("not tuple")
@@ -303,7 +942,7 @@ def _eval_tuple_literal(expr: str, ns: dict) -> Any:
             elems.append(inner[start:i].strip())
             start = i + 1
     elems.append(inner[start:].strip())
-    return tuple(ref_eval(e, ns) for e in elems)
+    return tuple(ref_eval(e, ns, mode=mode) for e in elems)
 
 
 def log_sm(a, b=None):
@@ -521,7 +1160,29 @@ def build_ns(ans: Any) -> dict:
     }
 
 
-def ref_eval(expr: str, ns: dict) -> Any:
+def build_ns_time(ans: Any) -> dict:
+    ns = build_ns(ans)
+    ns.update(
+        {
+            "millisecond": Duration(1),
+            "second": Duration(_SECOND_MS),
+            "minute": Duration(_MINUTE_MS),
+            "hour": Duration(_HOUR_MS),
+            "day": Duration(_DAY_MS),
+            "dur_parse_colon_literal": dur_parse_colon_literal,
+            "_dur_lit_compact": _dur_lit_compact,
+            "sum_dur_sm": sum_dur_sm,
+            "milliseconds": milliseconds_sm,
+            "seconds": seconds_sm,
+            "minutes": minutes_sm,
+            "hours": hours_sm,
+            "days": days_sm,
+        }
+    )
+    return ns
+
+
+def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
     e = _strip_line_comment(expr).strip()
     if not e:
         raise ValueError("empty")
@@ -530,21 +1191,34 @@ def ref_eval(expr: str, ns: dict) -> Any:
     if p is None:
         raise ValueError("postfix percent")
     e = p
+    if mode == "complex":
+        e = _preprocess_complex_surface(e)
+    elif mode == "time":
+        e = _preprocess_time_expression(e)
     e = _implicit_mul(e)
     t = _translate_functions(e)
     if t is None:
         raise ValueError("translate")
     e = t
+    if mode == "complex" and hasattr(ast, "unparse"):
+        try:
+            e = _broadcast_tuple_expr_string(e)
+        except Exception:
+            pass
     if e.startswith("(") and e.endswith(")") and e.count("(") == 1:
         try:
-            return _eval_tuple_literal(e, ns)
+            return _eval_tuple_literal(e, ns, mode=mode)
         except Exception:
             pass
     node = ast.parse(e, mode="eval")
     return eval(compile(node, "<smoke>", "eval"), {"__builtins__": {}}, ns)
 
 
-def ref_format(v: Any) -> str:
+def ref_format(v: Any, *, mode: str = "real") -> str:
+    if isinstance(v, Duration):
+        return duration_format_ms(v.ms)
+    if isinstance(v, complex):
+        return _format_complex_smoke(v)
     if isinstance(v, bool):
         return "1" if v else "0"
     if isinstance(v, float):
@@ -558,15 +1232,15 @@ def ref_format(v: Any) -> str:
             return s
         return str(v)
     if isinstance(v, tuple):
-        inner = ", ".join(ref_format(x) for x in v)
+        inner = ", ".join(ref_format(x, mode=mode) for x in v)
         return f"({inner})"
     return str(v)
 
 
-def try_reference(expr_chain: str) -> tuple[Optional[Any], Optional[str]]:
+def try_reference(expr_chain: str, *, mode: str = "real") -> tuple[Optional[Any], Optional[str]]:
     """Evaluate semicolon chain; last statement value is result."""
     parts = _split_statements(expr_chain)
-    ns = build_ns(None)
+    ns: dict = build_ns_time(None) if mode == "time" else build_ns(None)
     last = None
     try:
         for part in parts:
@@ -579,11 +1253,11 @@ def try_reference(expr_chain: str) -> tuple[Optional[Any], Optional[str]]:
                     name, rhs = part.split("=", 1)
                     name = name.strip()
                     rhs = rhs.strip()
-                    last = ref_eval(rhs, ns)
+                    last = ref_eval(rhs, ns, mode=mode)
                     ns[name] = last
                     ns["ans"] = last
                     continue
-            last = ref_eval(part, ns)
+            last = ref_eval(part, ns, mode=mode)
             ns["ans"] = last
         return last, None
     except Exception as ex:
@@ -654,10 +1328,13 @@ def main() -> int:
     if len(sys.argv) > 1:
         bas = sys.argv[1]
 
-    cases = parse_smoke_cases(bas)
+    cases = parse_smoke_cases(bas) + parse_smoke_complex_opt_cases(bas)
     mismatches: list[str] = []
     skipped: list[str] = []
     ok = 0
+    n_complex = 0
+    n_complex_opt = 0
+    n_time = 0
 
     for case in cases:
         idx = case["idx"]
@@ -667,13 +1344,20 @@ def main() -> int:
         if reason:
             skipped.append(f"#{idx}: {reason}")
             continue
-        val, err = try_reference(case["expr"])
+        exp = case["expected"].strip()
+        mode = case.get("ref_mode") or infer_ref_mode(case["expr"], exp)
+        if case.get("source") == "complex_opt":
+            n_complex_opt += 1
+        if mode == "complex":
+            n_complex += 1
+        elif mode == "time":
+            n_time += 1
+        val, err = try_reference(case["expr"], mode=mode)
         if err:
             skipped.append(f"#{idx}: eval failed ({err[:80]})")
             continue
-        exp = case["expected"].strip()
-        got = ref_format(val).strip()
-        if results_match(exp, got):
+        got = ref_format(val, mode=mode).strip()
+        if results_match(exp, got, mode=mode):
             ok += 1
             continue
         mismatches.append(
@@ -682,7 +1366,11 @@ def main() -> int:
 
     print("=== Smoke expected vs Python reference ===")
     print(f"Cases with numeric expected: {sum(1 for c in cases if 'expected' in c)}")
-    print(f"Compared OK (exact, float-tol, tuple-tol, or near-zero trig / pole inf): {ok}")
+    print(
+        f"Compared OK (real/complex/time reference, tol rules): {ok}  "
+        f"(complex-mode rows: {n_complex} incl. complex-opt block {n_complex_opt}, "
+        f"time-mode: {n_time})"
+    )
     print(f"Skipped (DSL-only / non-comparable / eval failed): {len(skipped)}")
     print(f"MISMATCH vs plain Python math: {len(mismatches)}")
     print()

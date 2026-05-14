@@ -44,6 +44,7 @@ const MAX_COLORS       = 6
 ' -----------------------------------------------------------------------------
 const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
+const IDM_COMPLEX_NUMBERS     = 12202
 
 ' -----------------------------------------------------------------------------
 '  Shared formatting/render defaults
@@ -70,6 +71,7 @@ extern dwOldAkelOptions as DWORD
 extern g_nDecimals as Integer
 extern g_crResultColor as COLORREF
 extern g_bUseThousandsSeparator as BOOL
+extern g_bSupportComplexNumbers as BOOL
 extern g_bLogParsedLines as BOOL
 extern g_sDecimalSeparator as String
 extern g_sThousandsSeparator as String
@@ -89,9 +91,13 @@ declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
 declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
+declare function FormatTimeValueScalar(byref s as String) as String
+declare function FormatComplexNumberScalar(byref s as String) as String
 declare function FormatArrayResultText(byref sArrayText as String) as String
 declare function AddThousandsSeparator(byref sRes as String) as String
 declare function IsDecIntStr(byref s as String) as Boolean
+declare function IsTimeValueStr(byref s as String) as Boolean
+declare function IsComplexNumberStr(byref s as String) as Boolean
 declare function NormalizeCopiedResult(byref sRes as String) as String
 declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()

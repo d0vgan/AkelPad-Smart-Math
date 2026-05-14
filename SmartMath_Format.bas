@@ -419,20 +419,123 @@ function FormatResult(byval d as Double) as String
   return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
 end function
 
+function FormatTimeValueScalar(byref s as String) as String
+  return s ' as is, no formatting
+end function
+
+private function ParseComplex(byval s as String, byref realPart as Double, byref imagPart as Double) as Boolean
+  s = Trim(LCase(s))
+  if Len(s) = 0 then return FALSE
+
+  dim sepIdx as Integer = -1
+  dim i as Integer
+  dim ch as String
+
+  ' Start searching after the first character to skip a leading sign
+  ' Look for the + or - that is NOT immediately after an 'e'
+  for i = 2 to Len(s)
+    ch = Mid(s, i, 1)
+    if ch = "+" orelse ch = "-" then
+      ' Check if the previous character was 'e' (scientific notation)
+      if Mid(s, i - 1, 1) <> "e" then
+        sepIdx = i
+        exit for
+      end if
+    end if
+  next i
+
+  if sepIdx > 0 then
+    ' Extract parts
+    realPart = Val(Left(s, sepIdx - 1))
+
+    ' Remove 'i' from the imaginary part before converting
+    dim imagStr as String = Mid(s, sepIdx)
+    if Right(imagStr, 1) = "i" then
+      imagStr = Left(imagStr, Len(imagStr) - 1)
+    end if
+
+    ' Handle the case where the string is just "+i" or "-i"
+    if imagStr = "+" then
+      imagPart = 1
+    elseif imagStr = "-" then
+      imagPart = -1
+    else
+      imagPart = Val(imagStr)
+    end if
+  else
+    ' Fallback: Check if it's purely imaginary (e.g., "5i") or purely real
+    if Right(s, 1) = "i" then
+      realPart = 0
+      imagPart = Val(Left(s, Len(s) - 1))
+    else
+      realPart = Val(s)
+      imagPart = 0
+    end if
+  end if
+  return TRUE
+end function
+
+private function IsComplexIntStr(byref s as String) as Boolean
+  dim n as Integer = len(s)
+  if n = 0 then return FALSE
+
+  dim p as ZString ptr = strptr(s)
+  dim i as Integer = 0
+  dim ch as UByte
+
+  while i < n
+    ch = p[i]
+    if (ch >= asc("0") andalso ch <= asc("9")) orelse _
+       (ch = asc("-")) orelse (ch = asc("+")) orelse _
+       (ch = asc("i")) then
+      i += 1
+    else
+      return FALSE
+    end if
+  wend
+
+  return TRUE
+end function
+
+function FormatComplexNumberScalar(byref s as String) as String
+  dim realPart as Double
+  dim imagPart as Double
+  if not ParseComplex(s, realPart, imagPart) then return s
+
+  if realPart = 0 then return FormatNumericValue(imagPart) & "i"
+
+  dim imagSign as String = ""
+  if imagPart >= 0 then
+    imagSign = "+"
+  end if
+  return FormatNumericValue(realPart) & imagSign & FormatNumericValue(imagPart) & "i"
+end function
+
 function IsTimeValueStr(byref s as String) as Boolean
   dim n as Integer = len(s)
   if n = 0 then return FALSE
 
   dim p as ZString ptr = strptr(s)
   dim i as Integer = 0
-  dim ch as UByte = p[i]
-  if (ch = asc("-")) orelse (ch = asc("+")) then
-    if n = 1 then return FALSE
-    i += 1
-  end if
+  'dim ch as UByte = p[i]
 
   while i < n
     if p[i] = asc(":") then return TRUE
+    i += 1
+  wend
+  return FALSE
+end function
+
+function IsComplexNumberStr(byref s as String) as Boolean
+  dim n as Integer = len(s)
+  if n = 0 then return FALSE
+
+  dim p as ZString ptr = strptr(s)
+  dim i as Integer = 0
+  'dim ch as UByte = p[i]
+
+  while i < n
+    if p[i] = asc("i") then return TRUE
     i += 1
   wend
   return FALSE
@@ -472,7 +575,9 @@ private sub AppendTupleBodyFromElems(byref outText as String, elems() as String,
     else
       dim elem as String = Trim(elems(j))
       if IsTimeValueStr(elem) then
-        outText &= elem
+        outText &= FormatTimeValueScalar(elem)
+      elseif IsComplexNumberStr(elem) then
+        outText &= FormatComplexNumberScalar(elem)
       elseif IsDecIntStr(elem) then
         outText &= AddThousandsSeparator(elem)
       else

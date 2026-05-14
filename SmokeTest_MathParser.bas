@@ -193,8 +193,239 @@ sub RunCase(byref c as SmokeCase)
   print ""
 end sub
 
+' Complex-number tests: keep separate from the main scalar/real suite. This sub begins by enabling
+' the parser-wide complex support flag (see USAGE_AND_SYNTAX.md); future complex tests belong here.
+private sub RunComplexNumberSupportOptionTests()
+  print "=== Complex number support (parser-wide option) ==="
+
+  Parser_SetSupportComplexNumbers(TRUE)
+
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+
+  if Parser_GetSupportComplexNumbers() = FALSE then
+    print "[complex-opt] FAIL: expected support flag ON after enabling"
+    subFail += 1
+  else
+    print "[complex-opt] PASS: getter reports enabled after Parser_SetSupportComplexNumbers(TRUE)"
+    subPass += 1
+  end if
+
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  if Parser_TryEvaluateEx("1+1", r, rt, ia) = FALSE orelse rt <> "2" then
+    print "[complex-opt] FAIL: simple eval with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: 1+1 -> 2 with support flag ON"
+    subPass += 1
+  end if
+
+  dim complexCases(1 to 7) as String
+  dim complexExpect(1 to 7) as String
+  complexCases(1) = "10+5i": complexExpect(1) = "10+5i"
+  complexCases(2) = "-1+3i": complexExpect(2) = "-1+3i"
+  complexCases(3) = "2-3*i": complexExpect(3) = "2-3i"
+  complexCases(4) = "-i+5": complexExpect(4) = "5-i"
+  complexCases(5) = "(1+2i)*(3+4i)": complexExpect(5) = "-5+10i"
+  complexCases(6) = "10+5i-10-5i": complexExpect(6) = "0"
+  complexCases(7) = "(1+2i)/i": complexExpect(7) = "2-i"
+
+  dim ci as Integer
+  for ci = 1 to 7
+    if Parser_TryEvaluateEx(complexCases(ci), r, rt, ia) = FALSE orelse rt <> complexExpect(ci) then
+      print "[complex-opt] FAIL: """ & complexCases(ci) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & complexCases(ci) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next ci
+
+  ' Mixed real/complex arrays: element-wise broadcast (+ - * /) for array+scalar, scalar+array, array+array.
+  dim arrCases(1 to 12) as String
+  dim arrExpect(1 to 12) as String
+  arrCases(1) = "(1,1+2i)+10": arrExpect(1) = "(11, 11+2i)"
+  arrCases(2) = "10+(1,1+2*i)": arrExpect(2) = "(11, 11+2i)"
+  arrCases(3) = "(5,1+2i)-(1,i)": arrExpect(3) = "(4, 1+i)"
+  arrCases(4) = "(1,2)-i": arrExpect(4) = "(1-i, 2-i)"
+  arrCases(5) = "(2,1+2i)*3": arrExpect(5) = "(6, 3+6i)"
+  arrCases(6) = "3*(2,1+2*i)": arrExpect(6) = "(6, 3+6i)"
+  arrCases(7) = "(3,4)*(1,i)": arrExpect(7) = "(3, 4i)"
+  arrCases(8) = "(1,2)*(1+i,0)": arrExpect(8) = "(1+i, 0)"
+  arrCases(9) = "(8,6+8i)/2": arrExpect(9) = "(4, 3+4i)"
+  arrCases(10) = "(8,6)/(2,3)": arrExpect(10) = "(4, 2)"
+  arrCases(11) = "(4+2i,6)/(2,3)": arrExpect(11) = "(2+i, 2)"
+  arrCases(12) = "i+(1,2)": arrExpect(12) = "(1+i, 2+i)"
+
+  dim ai as Integer
+  for ai = 1 to 12
+    if Parser_TryEvaluateEx(arrCases(ai), r, rt, ia) = FALSE orelse rt <> arrExpect(ai) then
+      print "[complex-opt] FAIL: """ & arrCases(ai) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & arrCases(ai) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next ai
+
+  dim powCases(1 to 12) as String
+  dim powExpect(1 to 12) as String
+  powCases(1) = "(1+i)**2": powExpect(1) = "2i"
+  powCases(2) = "(3+4i)**0.5": powExpect(2) = "2+i"
+  powCases(3) = "pow(1+i,2)": powExpect(3) = "2i"
+  powCases(4) = "(1+i,2)**(2,2)": powExpect(4) = "(2i, 4)"
+  powCases(5) = "sqr(1+2i)": powExpect(5) = "-3+4i"
+  powCases(6) = "sqrt(3+4i)": powExpect(6) = "2+i"
+  powCases(7) = "hypot(3*i,4)": powExpect(7) = "5"
+  powCases(8) = "hypot(1+i,1-i)": powExpect(8) = "2"
+  powCases(9) = "sqrt(-4)": powExpect(9) = "2i"
+  powCases(10) = "(-2)**(1/2)": powExpect(10) = "1.414213562373095i"
+  powCases(11) = "(-7)**(3/2)": powExpect(11) = "-18.52025917745213i"
+  powCases(12) = "(-5)**(1/3)": powExpect(12) = "0.8549879733383485+1.480882609682364i"
+
+  dim pwi as Integer
+  for pwi = 1 to 12
+    if Parser_TryEvaluateEx(powCases(pwi), r, rt, ia) = FALSE orelse rt <> powExpect(pwi) then
+      print "[complex-opt] FAIL: """ & powCases(pwi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & powCases(pwi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next pwi
+
+  ' Comparisons: `=`/`==` and `<>`/`!=` are defined for complex scalars and arrays (including mixed real/complex);
+  ' ordering comparisons (`<` `<=` `>` `>=`) are errors when any operand has a nonzero imaginary part;
+  ' complex mixed with time in `=`/`==`/`<>`/`!=` is an error.
+  dim cmpCases(1 to 10) as String
+  dim cmpExpect(1 to 10) as String
+  cmpCases(1) = "1+2i = 1+2i": cmpExpect(1) = "1"
+  cmpCases(2) = "1+2i == 3+4i": cmpExpect(2) = "0"
+  cmpCases(3) = "3 <> 1+2i": cmpExpect(3) = "1"
+  cmpCases(4) = "1+0*i = 1": cmpExpect(4) = "1"
+  cmpCases(5) = "(1+1i, 2) = (1+1i, 2)": cmpExpect(5) = "1"
+  cmpCases(6) = "(1+1i, 2) <> (1+1i, 3)": cmpExpect(6) = "1"
+  cmpCases(7) = "(1+1i, 2) = (1, 2)": cmpExpect(7) = "0"
+  cmpCases(8) = "(1, 2+1i) != (1, 2+1i)": cmpExpect(8) = "0"
+  cmpCases(9) = "2 = 1+1i": cmpExpect(9) = "0"
+  cmpCases(10) = "(2, 0) = (1+1i, 0)": cmpExpect(10) = "0"
+
+  dim cmi as Integer
+  for cmi = 1 to 10
+    if Parser_TryEvaluateEx(cmpCases(cmi), r, rt, ia) = FALSE orelse rt <> cmpExpect(cmi) then
+      print "[complex-opt] FAIL: """ & cmpCases(cmi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cmpCases(cmi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next cmi
+
+  dim cmpErrExpr(1 to 5) as String
+  cmpErrExpr(1) = "1+2i > 0"
+  cmpErrExpr(2) = "1+2i >= 1+2i"
+  cmpErrExpr(3) = "(1, 2+1i) < (1, 3)"
+  cmpErrExpr(4) = "1+2i = 1s"
+  cmpErrExpr(5) = "1+2i <> 0:01"
+
+  dim cei as Integer
+  for cei = 1 to 5
+    if Parser_TryEvaluateEx(cmpErrExpr(cei), r, rt, ia) then
+      print "[complex-opt] FAIL: expected error for """ & cmpErrExpr(cei) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errCmp as String = lcase(Parser_GetLastError())
+      if instr(errCmp, "incompatible operands") > 0 then
+        print "[complex-opt] PASS: """ & cmpErrExpr(cei) & """ -> incompatible operands"
+        subPass += 1
+      else
+        print "[complex-opt] FAIL: """ & cmpErrExpr(cei) & """ expected incompatible operands, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next cei
+
+  ' `~`, `%` / `mod`, bitwise ops: error on non-zero imaginary (scalar or array element); `!` / `not` truthiness on both Cartesian parts.
+  dim cxLogCases(1 to 5) as String
+  dim cxLogExpect(1 to 5) as String
+  cxLogCases(1) = "!(5+5i)": cxLogExpect(1) = "0"
+  cxLogCases(2) = "!(-3*i)": cxLogExpect(2) = "0"
+  cxLogCases(3) = "!(0+0*i)": cxLogExpect(3) = "1"
+  cxLogCases(4) = "not (1+1i)": cxLogExpect(4) = "0"
+  cxLogCases(5) = "not (0)": cxLogExpect(5) = "1"
+
+  dim li as Integer
+  for li = 1 to 5
+    if Parser_TryEvaluateEx(cxLogCases(li), r, rt, ia) = FALSE orelse rt <> cxLogExpect(li) then
+      print "[complex-opt] FAIL: """ & cxLogCases(li) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxLogCases(li) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next li
+
+  dim cxIntErr(1 to 9) as String
+  cxIntErr(1) = "~(1+2i)"
+  cxIntErr(2) = "~(1, 2+1i)"
+  cxIntErr(3) = "(1+2i) % 2"
+  cxIntErr(4) = "mod(1+2i, 3)"
+  cxIntErr(5) = "(1+2i) & 1"
+  cxIntErr(6) = "(1+2i) | 1"
+  cxIntErr(7) = "(1+2i) ^ 1"
+  cxIntErr(8) = "(1+2i) << 1"
+  cxIntErr(9) = "(1+2i) >> 1"
+
+  dim xi as Integer
+  for xi = 1 to 9
+    if Parser_TryEvaluateEx(cxIntErr(xi), r, rt, ia) then
+      print "[complex-opt] FAIL: expected error for """ & cxIntErr(xi) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errXi as String = lcase(Parser_GetLastError())
+      if instr(errXi, "incompatible operands") > 0 orelse instr(errXi, "modulo operands must be integer values") > 0 orelse instr(errXi, "bitwise operands must be integer values") > 0 then
+        print "[complex-opt] PASS: """ & cxIntErr(xi) & """ -> error"
+        subPass += 1
+      else
+        print "[complex-opt] FAIL: """ & cxIntErr(xi) & """ expected int/mod/bit error, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next xi
+
+  Parser_SetSupportComplexNumbers(FALSE)
+  if Parser_GetSupportComplexNumbers() <> FALSE then
+    print "[complex-opt] FAIL: expected support flag OFF after disable"
+    subFail += 1
+  else
+    print "[complex-opt] PASS: getter reports disabled after Parser_SetSupportComplexNumbers(FALSE)"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("10+5i", r, rt, ia) then
+    print "[complex-opt] FAIL: expected failure for 10+5i with complex support OFF"
+    subFail += 1
+  else
+    dim errL as String = lcase(Parser_GetLastError())
+    if (instr(errL, "unknown variable") > 0 andalso instr(errL, "i") > 0) orelse instr(errL, "unexpected token") > 0 then
+      print "[complex-opt] PASS: complex literal rejected when support is OFF"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: expected parse error for 10+5i with complex support OFF, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Complex-option sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 sub Main()
-  dim tests(1 to 1030) as SmokeCase
+  dim tests(1 to 1035) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1281,6 +1512,11 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1028).expr = "1d == 1:00:00:00": tests(1028).expected = "1" ' [time] compact equals colon form
   tests(1029).expr = "1d2": tests(1029).expectedErrContains = "compact time literal: expected unit suffix"
   tests(1030).expr = "1ms1m": tests(1030).expectedErrContains = "compact time literal: unit order or duplicate unit" ' [time] ms must follow s
+  tests(1031).expr = "(2+3x)": tests(1031).expectedErrContains = "unexpected token" ' [syntax] junk after inner expr, not ``)`` missing
+  tests(1032).expr = "(2+3t)": tests(1032).expectedErrContains = "unexpected token" ' [syntax] same for letter after number in parens
+  tests(1033).expr = "20m or 10h": tests(1033).expected = "1" ' [time] logical or after compact suffix (not ``invalid suffix``)
+  tests(1034).expr = "20m10s and 10h5m": tests(1034).expected = "1" ' [time] logical and after compact suffix
+  tests(1035).expr = "1h and not 0": tests(1035).expected = "1" ' [time] ``not`` keyword after compact + ``and``
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -1324,6 +1560,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
       print "[DUPLICATE] SKIP : " & tests(i).expr
     end if
   next i
+
+  RunComplexNumberSupportOptionTests()
 
   print "=== Result ==="
   print "Passed: " & g_passed

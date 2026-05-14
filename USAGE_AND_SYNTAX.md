@@ -56,6 +56,19 @@ Base-prefixed integer forms:
   - `200 + 15%` -> `230`
   - `200 - 15%` -> `170`
 
+### Complex Numbers
+
+Complex numbers are not supported by default.
+Be sure to call `Parser_SetSupportComplexNumbers` to enable them (refer to "Parser runtime flags").
+
+Complex numbers can be specified in the following forms:
+- `10+5i`
+- `10+5*i`
+
+Use parentheses for operations with complex numbers:
+- `(1+2i)*(3+4i)` -> `-5+10i`
+- `(1+2i)/2` -> `0.5+i`
+
 ### Time Values
 
 A **duration** (time value) is kept in whole milliseconds. Results print with colons (`MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS` as needed) and milliseconds on the last field only when the fractional part is nonzero.
@@ -236,6 +249,32 @@ Examples:
 - Comparisons: `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
 - Logical: `&&`/`and`, `||`/`or`
 - Postfix percent: `x%`
+
+#### Time Value Operators
+
+- Unary `+t`, `-t`, `!t`, `not t` (not applicable: `~t`)
+- Multiplicative: `n*t`, `t/n`, `t/t` (not applicable: `t*t`, `n/t`, modulo)
+- Additive: `t+n`, `t+t`, `t-n`, `t-t`
+- Comparisons: `=`, `==`, `<>`, `!=`, `>`, `>=`, `<`, `<=`
+- Logical: `t&&t`, `t||t`
+
+**Not** applicable:
+- Exponent
+- Bitwise operations
+- Postfix percent
+
+#### Complex Number Operators
+
+- Exponent: `c**n`, `n**c`, `c**c`
+- Unary `+c`, `-c`, `!c`, `not c` (not applicable: `~c`)
+- Multiplicative: `n*c`, `c*c` `c/n`, `n/c`, `c/c` (not applicable: modulo)
+- Additive: `c+n`, `c+c`, `c-n`, `c-c`
+- Equality: `c==c`, `c<>c` (not applicable: `>`, `>=`, `<`, `<=`)
+- Logical: `c&&c`, `c||c`
+
+**Not** applicable:
+- Bitwise operations
+- Postfix percent
 
 ### Precedence (High -> Low)
 
@@ -666,6 +705,10 @@ These behaviors may differ from other tools/languages.
 Example:
 
 - `unexpected token at col 5:  5*5 |: 25`
+
+### Parser runtime flags (plugin / reference API)
+
+- **Complex number support (off by default):** `Parser_SetSupportComplexNumbers` / `Parser_GetSupportComplexNumbers` in the FreeBASIC plugin parser. Default is off: behavior stays real-only (non-real domains keep producing `NaN` or an error as they do today). When set on, the parser registers the imaginary unit as the reserved constant **`i`** (lowercase), accepts Cartesian-style complex literals and expressions such as `10+5i`, `-1+3i`, `2-3*i`, and `-i+5` (including implicit multiplication before `i`, for example `5i`).
 
 ## SmartMath Options
 

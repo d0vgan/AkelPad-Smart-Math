@@ -84,6 +84,7 @@ const FB_STR_AND as string = "and"
 const FB_STR_OR as string = "or"
 const FB_STR_PI as string = "pi"
 const FB_STR_E as string = "e"
+const FB_STR_I as string = "i"
 const FB_STR_INF as string = "inf"
 const FB_STR_NAN as string = "nan"
 const FB_STR_PAR as string = "()"
@@ -298,6 +299,8 @@ enum ScalarFlags
   SVF_EXACT_INT64_VALID = &h01
   SVF_EXACT_UINT64_VALID = &h02
   SVF_DEC_SCI_POW63_HIGH = &h10
+  SVF_IMAG_EXACT_INT64_VALID = &h20
+  SVF_IMAG_EXACT_UINT64_VALID = &h40
 end enum
 
 enum EvalFlags
@@ -313,6 +316,9 @@ type ScalarValue
   scalar as Double
   exactInt64 as LongInt
   exactUInt64 as ULongInt
+  imag as Double
+  imagExactInt64 as LongInt
+  imagExactUInt64 as ULongInt
   declare property exactInt64Valid() as Boolean
   declare property exactInt64Valid(byval v as Boolean)
   declare property exactUInt64Valid() as Boolean
@@ -479,6 +485,7 @@ declare function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
 declare sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
 declare function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
 declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+declare function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
 
 type VarEntry
   name as String
@@ -528,6 +535,7 @@ dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
 dim shared Parser_ShowErrorLine as Boolean = FALSE
+dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 
 private function BuildErrorSnippet(byval col as Integer) as String
   if len(rootInputExpr) = 0 then return ""
@@ -684,6 +692,7 @@ enum BuiltinConstId
   CONST_MINUTE
   CONST_HOUR
   CONST_DAY
+  CONST_I
   CONST__COUNT
 end enum
 
@@ -845,6 +854,7 @@ private sub EnsureConstNames()
   ConstNames(CONST_MINUTE) = FB_STR_MINUTE
   ConstNames(CONST_HOUR) = FB_STR_HOUR
   ConstNames(CONST_DAY) = FB_STR_DAY
+  ConstNames(CONST_I) = FB_STR_I
   ConstNamesInitialized = TRUE
 end sub
 
@@ -1121,20 +1131,6 @@ private function TryRewriteTrailingFormatterStmt(byref stmt as String, byref rew
   return TRUE
 end function
 
-private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
-  v.kind = VK_SCALAR
-  v.scalarStorageKind = SSK_FLOATINGPOINT
-  v.scalar = n
-  v.expandArgs = FALSE
-  v.renderBase = 0
-  v.renderUnsigned = FALSE
-  v.exactInt64Valid = FALSE
-  v.exactInt64 = 0
-  v.exactUInt64Valid = FALSE
-  v.exactUInt64 = 0
-  erase v.arr
-end sub
-
 private function quickMult10(byval x as ULongInt) as ULongInt
   ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
   return (x shl 3) + (x shl 1)
@@ -1199,6 +1195,77 @@ private function IsFiniteValue(byval d as Double) as Boolean
   return TRUE
 end function
 
+private sub ScalarClearImag(byref sv as ScalarValue)
+  sv.imag = 0.0
+  sv.imagExactInt64 = 0
+  sv.imagExactUInt64 = 0
+  sv.flags and= not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID)
+end sub
+
+private function ScalarImagExactInt64Valid(byref sv as ScalarValue) as Boolean
+  return (sv.flags and SVF_IMAG_EXACT_INT64_VALID) <> 0
+end function
+
+private sub ScalarSetImagExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+  if v then
+    sv.flags or= SVF_IMAG_EXACT_INT64_VALID
+  else
+    sv.flags and= not CUInt(SVF_IMAG_EXACT_INT64_VALID)
+  end if
+end sub
+
+private function ScalarImagExactUInt64Valid(byref sv as ScalarValue) as Boolean
+  return (sv.flags and SVF_IMAG_EXACT_UINT64_VALID) <> 0
+end function
+
+private sub ScalarSetImagExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+  if v then
+    sv.flags or= SVF_IMAG_EXACT_UINT64_VALID
+  else
+    sv.flags and= not CUInt(SVF_IMAG_EXACT_UINT64_VALID)
+  end if
+end sub
+
+private function ScalarHasNonzeroImaginaryPart(byref sv as ScalarValue) as Boolean
+  if sv.imag <> 0.0 then return TRUE
+  if ScalarImagExactInt64Valid(sv) andalso sv.imagExactInt64 <> 0 then return TRUE
+  return FALSE
+end function
+
+private sub ScalarNormalizeIfPureReal(byref sv as ScalarValue)
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then
+    ScalarClearImag(sv)
+  end if
+end sub
+
+private sub ScalarLoadCartesian(byref sv as ScalarValue, byref ar as Double, byref ai as Double)
+  if sv.exactInt64Valid then
+    ar = CDbl(sv.exactInt64)
+  else
+    ar = sv.scalar
+  end if
+  if ScalarImagExactInt64Valid(sv) then
+    ai = CDbl(sv.imagExactInt64)
+  else
+    ai = sv.imag
+  end if
+end sub
+
+private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
+  v.kind = VK_SCALAR
+  v.scalarStorageKind = SSK_FLOATINGPOINT
+  v.scalar = n
+  ScalarClearImag(v.scalarValue)
+  v.expandArgs = FALSE
+  v.renderBase = 0
+  v.renderUnsigned = FALSE
+  v.exactInt64Valid = FALSE
+  v.exactInt64 = 0
+  v.exactUInt64Valid = FALSE
+  v.exactUInt64 = 0
+  erase v.arr
+end sub
+
 private function ScalarValueFromEvalScalar(byref v as EvalValue) as ScalarValue
   dim outV as ScalarValue
   outV.scalarStorageKind = v.scalarStorageKind
@@ -1207,6 +1274,10 @@ private function ScalarValueFromEvalScalar(byref v as EvalValue) as ScalarValue
   outV.exactInt64 = v.exactInt64
   outV.exactUInt64Valid = v.exactUInt64Valid
   outV.exactUInt64 = v.exactUInt64
+  outV.imag = v.scalarValue.imag
+  outV.imagExactInt64 = v.scalarValue.imagExactInt64
+  outV.imagExactUInt64 = v.scalarValue.imagExactUInt64
+  outV.flags = v.scalarValue.flags
   return outV
 end function
 
@@ -1217,6 +1288,11 @@ private sub EvalScalarFromScalarValue(byref s as ScalarValue, byref outV as Eval
   outV.exactInt64 = s.exactInt64
   outV.exactUInt64Valid = s.exactUInt64Valid
   outV.exactUInt64 = s.exactUInt64
+  outV.scalarValue.imag = s.imag
+  outV.scalarValue.imagExactInt64 = s.imagExactInt64
+  outV.scalarValue.imagExactUInt64 = s.imagExactUInt64
+  dim extraFlags as UInteger = s.flags and (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)
+  outV.scalarValue.flags = (outV.scalarValue.flags and not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)) or extraFlags
 end sub
 
 private sub ValueSetArray(byref v as EvalValue, a() as Double)
@@ -1234,6 +1310,7 @@ private sub ValueSetArray(byref v as EvalValue, a() as Double)
     redim v.arr(lbound(a) to ubound(a))
     dim i as Integer
     for i = lbound(a) to ubound(a)
+      ScalarClearImag(v.arr(i))
       v.arr(i).scalarStorageKind = SSK_FLOATINGPOINT
       v.arr(i).scalar = a(i)
       dim t as LongInt = CLngInt(a(i))
@@ -1313,6 +1390,57 @@ private function TryGetExactInt64FromDouble(byval n as Double, byref outV as Lon
   outV = t
   return TRUE
 end function
+
+private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as Double, byval im as Double)
+  v.kind = VK_SCALAR
+  v.scalarStorageKind = SSK_FLOATINGPOINT
+  v.scalar = re
+  v.exactInt64Valid = FALSE
+  v.exactInt64 = 0
+  v.exactUInt64Valid = FALSE
+  v.exactUInt64 = 0
+  v.scalarValue.imag = im
+  ScalarSetImagExactInt64Valid(v.scalarValue, FALSE)
+  ScalarSetImagExactUInt64Valid(v.scalarValue, FALSE)
+  v.scalarValue.imagExactInt64 = 0
+  v.scalarValue.imagExactUInt64 = 0
+  v.expandArgs = FALSE
+  v.renderBase = 0
+  v.renderUnsigned = FALSE
+  erase v.arr
+  dim tri as LongInt, tii as LongInt
+  if TryGetExactInt64FromDouble(re, tri) andalso TryGetExactInt64FromDouble(im, tii) then
+    v.scalarStorageKind = SSK_INT64
+    v.exactInt64Valid = TRUE
+    v.exactInt64 = tri
+    if tri >= 0 then
+      v.exactUInt64Valid = TRUE
+      v.exactUInt64 = CULngInt(tri)
+    end if
+    ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
+    v.scalarValue.imagExactInt64 = tii
+    if tii >= 0 then
+      ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
+      v.scalarValue.imagExactUInt64 = CULngInt(tii)
+    end if
+  end if
+  ScalarNormalizeIfPureReal(v.scalarValue)
+end sub
+
+private sub ValueSetImagUnit(byref v as EvalValue)
+  ValueSetScalarComplexFromDoubles(v, 0.0, 1.0)
+  v.scalarStorageKind = SSK_INT64
+  v.exactInt64Valid = TRUE
+  v.exactInt64 = 0
+  v.exactUInt64Valid = TRUE
+  v.exactUInt64 = 0
+  ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.imagExactInt64 = 1
+  ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.imagExactUInt64 = 1
+  v.scalar = 0.0
+  v.scalarValue.imag = 1.0
+end sub
 
 '' If n rounds to an exact LongInt in IEEE double, attach the same metadata as ValueSetInt64.
 private sub ValueSetScalarPromoteExactInt64(byref v as EvalValue, byval n as Double)
@@ -1588,8 +1716,52 @@ private function ULongIntToString(byval x as ULongInt) as String
   return s
 end function
 
+private function FormatScalarRealPartPlain(byref sv as ScalarValue) as String
+  if IsNaNValue(sv.scalar) then return "nan"
+  if IsInfValue(sv.scalar) then
+    if sv.scalar < 0 then return "-inf"
+    return "inf"
+  end if
+  if sv.exactUInt64Valid then return ltrim(ULongIntToString(sv.exactUInt64))
+  if sv.exactInt64Valid then return ltrim(str(sv.exactInt64))
+  return ltrim(str(sv.scalar))
+end function
+
+private function FormatComplexScalarValue(byref sv as ScalarValue) as String
+  dim ar as Double, ai as Double
+  ScalarLoadCartesian(sv, ar, ai)
+  dim rePart as String = FormatScalarRealPartPlain(sv)
+
+  dim coeffAbs as Double = abs(ai)
+  dim negI as Boolean = (ai < 0.0)
+  dim tail as String
+  if coeffAbs = 1.0 then
+    tail = FB_STR_I
+  else
+    tail = ltrim(str(coeffAbs)) & FB_STR_I
+  end if
+
+  dim reZero as Boolean = FALSE
+  if sv.exactInt64Valid andalso sv.exactInt64 = 0 then
+    reZero = TRUE
+  elseif sv.exactInt64Valid = FALSE andalso ar = 0.0 then
+    reZero = TRUE
+  end if
+
+  if reZero then
+    if negI then return "-" & tail
+    return tail
+  end if
+
+  if negI then return rePart & "-" & tail
+  return rePart & "+" & tail
+end function
+
 private function ValueToString(byref v as EvalValue) as String
   if v.kind = VK_SCALAR then
+    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(v.scalarValue) then
+      return FormatComplexScalarValue(v.scalarValue)
+    end if
     if IsNaNValue(v.scalar) then return "nan"
     if IsInfValue(v.scalar) then
       if v.scalar < 0 then return "-inf"
@@ -1615,7 +1787,7 @@ private function ValueToString(byref v as EvalValue) as String
     dim fmtText as String
     if TryFormatScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
       s &= fmtText
-    elseif v.renderBase = 0 then
+    elseif (v.flags and EVF_RENDER_BASE_MASK) = 0 orelse v.renderBase = 10 then
       if IsNaNValue(sv.scalar) then
         s &= "nan"
         continue for
@@ -1630,6 +1802,10 @@ private function ValueToString(byref v as EvalValue) as String
       end if
       if ScalarIsTime(sv) then
         s &= FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(sv))
+        continue for
+      end if
+      if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
+        s &= FormatComplexScalarValue(sv)
         continue for
       end if
       if sv.exactUInt64Valid then
@@ -1691,11 +1867,22 @@ end function
 private function ConsumeIdentTokenFromStream() as String
   if IsIdentStartChar(asc(pStream[0])) = FALSE then return ""
   dim pStart as ZString ptr = pStream
+  dim firstB as UByte = pStream[0]
   pStream += 1
   while IsIdentChar(asc(pStream[0]))
     pStream += 1
   wend
-  return Left(*pStart, pStream - pStart)
+  dim buf as String = ""
+  dim pu as UByte ptr = cast(UByte ptr, pStart)
+  dim qu as UByte ptr = cast(UByte ptr, pStream)
+  while pu < qu
+    buf &= String(1, CInt(pu[0]))
+    pu += 1
+  wend
+  if len(buf) = 0 andalso (firstB = CHAR_LC_I orelse firstB = CHAR_I) then
+    return FB_STR_I
+  end if
+  return buf
 end function
 
 private sub SetUnexpectedCommaError()
@@ -1739,6 +1926,21 @@ private function MatchKeywordOperator(byref kw as String) as Boolean
   return TRUE
 end function
 
+private function PeekMatchKeywordOperatorNoConsume(byref kw as String) as Boolean
+  dim kwLen as Integer = Len(kw)
+  if kwLen <= 0 then return FALSE
+  dim kwPtr as UByte Ptr = cast(UByte Ptr, strptr(kw))
+  dim p as UByte Ptr = cast(UByte Ptr, pStream)
+  dim i as Integer
+  for i = 0 to kwLen - 1
+    if p[i] = 0 then return FALSE
+    dim c1 as UByte = ToLowerCaseChar(p[i])
+    dim c2 as UByte = ToLowerCaseChar(kwPtr[i])
+    if c1 <> c2 then return FALSE
+  next i
+  return IsIdentChar(p[kwLen]) = FALSE
+end function
+
 private function StripLineComment(byref s as String) as String
   dim i as Integer
   for i = 1 to len(s)
@@ -1756,7 +1958,10 @@ private function StripLineComment(byref s as String) as String
 end function
 
 private function IsBuiltinConstantName(byref n as String) as Boolean
-  return TryFindBuiltinConstId(n) >= 0
+  dim cid as Integer = TryFindBuiltinConstId(n)
+  if cid < 0 then return FALSE
+  if cid = CONST_I then return Parser_SupportComplexNumbers
+  return TRUE
 end function
 
 private sub SetMissingClosingParenthesisError()
@@ -1780,6 +1985,9 @@ private function TryConsumeClosingParenOrSetError() as Boolean
     SetMismatchedClosingBracketError()
   elseif pStream[0] = CHAR_RBRACE then
     SetMismatchedClosingBraceError()
+  elseif IsIdentStartChar(asc(pStream[0])) orelse IsNumericLiteralStartChar(asc(pStream[0])) then
+    '' e.g. ``(2+3x)``: ``x`` cannot close the group; treat as stray input (parity with C++ ``setMissingClosingParenLikeError``).
+    SetParseError(FB_STR_UNEXPECTED_TOKEN)
   else
     SetMissingClosingParenthesisError()
   end if
@@ -1859,6 +2067,9 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
       ValueSetTimeMs(v, 3600000)
     case CONST_DAY
       ValueSetTimeMs(v, 86400000)
+    case CONST_I
+      if Parser_SupportComplexNumbers = FALSE then return FALSE
+      ValueSetImagUnit(v)
     case else
       return FALSE
   end select
@@ -2462,9 +2673,14 @@ private function TryParseCompactSuffixTimeLiteral(byref outV as EvalValue) as Bo
   SkipSpaces()
   dim c2 as UByte = pStream[0]
   if c2 >= CHAR_LC_A andalso c2 <= CHAR_LC_Z then
-    pStream = pSave
-    SetParseError(FB_STR_TIME_COMPACT_INVALID_SUFFIX)
-    return FALSE
+    dim kwOk as Boolean = PeekMatchKeywordOperatorNoConsume(OpName(OP_AND)) orelse _
+      PeekMatchKeywordOperatorNoConsume(OpName(OP_OR)) orelse _
+      PeekMatchKeywordOperatorNoConsume(OpName(OP_NOT))
+    if kwOk = FALSE then
+      pStream = pSave
+      SetParseError(FB_STR_TIME_COMPACT_INVALID_SUFFIX)
+      return FALSE
+    end if
   end if
   ValueSetTimeMs(outV, totalMs)
   return TRUE
@@ -3123,6 +3339,32 @@ end sub
 
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   dim x as Double = scalarV.scalar
+  if Parser_SupportComplexNumbers then
+    if ScalarHasNonzeroImaginaryPart(scalarV) then
+      if fnId = FUNC_SQRT orelse fnId = FUNC_SQR then
+        dim cr as Double, ci as Double
+        ScalarLoadCartesian(scalarV, cr, ci)
+        if IsNaNValue(cr) orelse IsNaNValue(ci) then
+          ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
+          return TRUE
+        end if
+        if fnId = FUNC_SQR then
+          ValueSetScalarComplexFromDoubles(outV, cr * cr - ci * ci, 2.0 * cr * ci)
+          return TRUE
+        end if
+        dim mag as Double = CalcHypot(cr, ci)
+        if mag = 0.0 then
+          ValueSetScalarComplexFromDoubles(outV, 0.0, 0.0)
+          return TRUE
+        end if
+        dim halfAng as Double = CalcAtan2(ci, cr) * 0.5
+        dim rm as Double = sqr(mag)
+        ValueSetScalarComplexFromDoubles(outV, rm * cos(halfAng), rm * sin(halfAng))
+        return TRUE
+      end if
+      return FALSE
+    end if
+  end if
   if fnId = FUNC_SIN then
     ValueSetScalarPromoteExactInt64(outV, CalcSin(x))
   elseif fnId = FUNC_COS then
@@ -3154,7 +3396,11 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
   elseif fnId = FUNC_LOG10 then
     ValueSetScalarPromoteExactInt64(outV, log(x) / log(10.0))
   elseif fnId = FUNC_SQRT then
-    ValueSetScalarPromoteExactInt64(outV, sqr(x))
+    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(scalarV) = FALSE andalso IsNonFiniteValue(x) = FALSE andalso x < 0.0 then
+      ValueSetScalarComplexFromDoubles(outV, 0.0, sqr(-x))
+    else
+      ValueSetScalarPromoteExactInt64(outV, sqr(x))
+    end if
   elseif fnId = FUNC_SQR then
     ValueSetScalarPromoteExactInt64(outV, x * x)
   elseif (fnId = FUNC_INT) orelse (fnId = FUNC_TRUNC) orelse _
@@ -3223,7 +3469,210 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
   return TRUE
 end function
 
+private sub ScalarComplexPowIntegerNonneg(byval ar as Double, byval ai as Double, byval n as LongInt, byref outR as Double, byref outI as Double)
+  if n <= 0 then
+    outR = 1.0
+    outI = 0.0
+    exit sub
+  end if
+  dim cr as Double = 1.0
+  dim ci as Double = 0.0
+  dim k as LongInt
+  for k = 1 to n
+    dim nr as Double = cr * ar - ci * ai
+    dim ni as Double = cr * ai + ci * ar
+    cr = nr
+    ci = ni
+  next k
+  outR = cr
+  outI = ci
+end sub
+
+private sub ScalarSnapComplexNearZeroAxis(byref zr as Double, byref zi as Double)
+  if IsNaNValue(zr) orelse IsNaNValue(zi) then exit sub
+  const relEps as Double = 1e-13
+  dim scaleI as Double = abs(zi)
+  if scaleI < 1.0 then scaleI = 1.0
+  if abs(zr) <= relEps * scaleI then zr = 0.0
+  dim scaleR as Double = abs(zr)
+  if scaleR < 1.0 then scaleR = 1.0
+  if abs(zi) <= relEps * scaleR then zi = 0.0
+end sub
+
+private sub ScalarComplexPowPrincipal(byval ar as Double, byval ai as Double, byval br as Double, byval bi as Double, byref outR as Double, byref outI as Double)
+  if IsNaNValue(ar) orelse IsNaNValue(ai) orelse IsNaNValue(br) orelse IsNaNValue(bi) then
+    outR = MakeNaN()
+    outI = MakeNaN()
+    exit sub
+  end if
+  dim mag as Double = CalcHypot(ar, ai)
+  if mag = 0.0 then
+    if br = 0.0 andalso bi = 0.0 then
+      outR = 1.0
+      outI = 0.0
+    elseif br > 0.0 then
+      outR = 0.0
+      outI = 0.0
+    elseif br = 0.0 andalso bi <> 0.0 then
+      outR = 0.0
+      outI = 0.0
+    else
+      outR = MakeNaN()
+      outI = MakeNaN()
+    end if
+    exit sub
+  end if
+  const epsPow as Double = 1e-14
+  if abs(bi) < epsPow then
+    if abs(br - 0.5) < epsPow then
+      dim halfAng as Double = CalcAtan2(ai, ar) * 0.5
+      dim rm as Double = sqr(mag)
+      outR = rm * cos(halfAng)
+      outI = rm * sin(halfAng)
+      ScalarSnapComplexNearZeroAxis(outR, outI)
+      exit sub
+    end if
+    if abs(br - Fix(br)) < 1e-12 then
+      dim n as LongInt = CLngInt(Fix(br))
+      if abs(n) <= 256 then
+        if n >= 0 then
+          ScalarComplexPowIntegerNonneg ar, ai, n, outR, outI
+        else
+          dim pr as Double, pi as Double
+          ScalarComplexPowIntegerNonneg ar, ai, -n, pr, pi
+          dim den as Double = pr * pr + pi * pi
+          if den = 0.0 then
+            outR = MakeNaN()
+            outI = MakeNaN()
+          else
+            outR = pr / den
+            outI = (-pi) / den
+          end if
+        end if
+        if IsNaNValue(outR) = FALSE andalso IsNaNValue(outI) = FALSE then
+          ScalarSnapComplexNearZeroAxis(outR, outI)
+        end if
+        exit sub
+      end if
+    end if
+  end if
+  dim loR as Double = log(mag)
+  dim loI as Double = CalcAtan2(ai, ar)
+  dim powRe as Double = br * loR - bi * loI
+  dim powIm as Double = br * loI + bi * loR
+  dim er as Double = exp(powRe) * cos(powIm)
+  dim ei as Double = exp(powRe) * sin(powIm)
+  outR = er
+  outI = ei
+  ScalarSnapComplexNearZeroAxis(outR, outI)
+end sub
+
+private function ValueApplyBinaryScalarsComplex(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers = FALSE then return FALSE
+  select case op
+    case CHAR_PLUS, CHAR_MINUS, CHAR_ASTERISK, CHAR_DIVIDE, CHAR_CARET
+    case else
+      return FALSE
+  end select
+
+  dim ar as Double, ai as Double, br as Double, bi as Double
+  ScalarLoadCartesian(leftS, ar, ai)
+  ScalarLoadCartesian(rightS, br, bi)
+
+  if op = CHAR_CARET then
+    dim powR as Double, powI as Double
+    ScalarComplexPowPrincipal ar, ai, br, bi, powR, powI
+    ValueSetScalarComplexFromDoubles(outV, powR, powI)
+    return TRUE
+  end if
+
+  if op = CHAR_PLUS then
+    if ScalarHasNonzeroImaginaryPart(leftS) = FALSE andalso ScalarHasNonzeroImaginaryPart(rightS) = FALSE then
+      dim lr as LongInt, rr as LongInt, ssum as LongInt
+      if TryGetExactInt64Scalar(leftS, lr) andalso TryGetExactInt64Scalar(rightS, rr) then
+        if TryAddInt64(lr, rr, ssum) then
+          ValueSetInt64(outV, ssum)
+          return TRUE
+        end if
+      end if
+    end if
+    ValueSetScalarComplexFromDoubles(outV, ar + br, ai + bi)
+    return TRUE
+  end if
+
+  if op = CHAR_MINUS then
+    ValueSetScalarComplexFromDoubles(outV, ar - br, ai - bi)
+    return TRUE
+  end if
+
+  if op = CHAR_ASTERISK then
+    dim lar as LongInt, lbr as LongInt, lai as LongInt, lbi as LongInt
+    dim p1 as LongInt, p2 as LongInt, p3 as LongInt, p4 as LongInt
+    dim oreI as LongInt, oimI as LongInt
+    if TryGetExactInt64Scalar(leftS, lar) andalso TryGetExactInt64Scalar(rightS, lbr) then
+      if ScalarImagExactInt64Valid(leftS) andalso ScalarImagExactInt64Valid(rightS) then
+        lai = leftS.imagExactInt64
+        lbi = rightS.imagExactInt64
+        if TryMulInt64(lar, lbr, p1) then
+          if TryMulInt64(lai, lbi, p2) then
+            if TryMulInt64(lar, lbi, p3) then
+              if TryMulInt64(lai, lbr, p4) then
+                if TrySubInt64(p1, p2, oreI) then
+                  if TryAddInt64(p3, p4, oimI) then
+                    ValueSetScalarComplexFromDoubles(outV, CDbl(oreI), CDbl(oimI))
+                    return TRUE
+                  end if
+                end if
+              end if
+            end if
+          end if
+        end if
+      end if
+    end if
+    ValueSetScalarComplexFromDoubles(outV, ar * br - ai * bi, ar * bi + ai * br)
+    return TRUE
+  end if
+
+  if op = CHAR_DIVIDE then
+    dim denom as Double = br * br + bi * bi
+    if denom = 0.0 then
+      ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
+    else
+      ValueSetScalarComplexFromDoubles(outV, (ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom)
+    end if
+    return TRUE
+  end if
+
+  return FALSE
+end function
+
 private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers then
+    if ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS) then
+      return ValueApplyBinaryScalarsComplex(leftS, rightS, op, outV)
+    elseif op = CHAR_CARET then
+      dim arP as Double, aiP as Double, brP as Double, biP as Double
+      dim usePrincipalNegRealPow as Boolean
+      ScalarLoadCartesian(leftS, arP, aiP)
+      ScalarLoadCartesian(rightS, brP, biP)
+      usePrincipalNegRealPow = FALSE
+      if aiP = 0.0 andalso biP = 0.0 then
+        if arP < 0.0 then
+          if IsNonFiniteValue(arP) = FALSE then
+            if IsNonFiniteValue(brP) = FALSE then
+              if abs(brP - Fix(brP)) >= 1e-12 then
+                usePrincipalNegRealPow = TRUE
+              end if
+            end if
+          end if
+        end if
+      end if
+      if usePrincipalNegRealPow then
+        return ValueApplyBinaryScalarsComplex(leftS, rightS, op, outV)
+      end if
+    end if
+  end if
+
   dim li as LongInt, ri as LongInt, ro as LongInt
   dim hasUIntL as Boolean
   dim hasUIntR as Boolean
@@ -3435,6 +3884,7 @@ private function MapTimeBinaryBroadcastScalars(byref leftV as EvalValue, byref r
 end function
 
 private function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS) then return FALSE
   dim lt as Boolean = ScalarIsTime(leftS)
   dim rt as Boolean = ScalarIsTime(rightS)
   if lt = FALSE andalso rt = FALSE then return FALSE
@@ -3536,6 +3986,21 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
     return TRUE
   end if
   if fnId = FUNC_HYPOT then
+    if Parser_SupportComplexNumbers then
+      if ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS) then
+        dim ar as Double, ai as Double, br as Double, bi as Double
+        ScalarLoadCartesian(leftS, ar, ai)
+        ScalarLoadCartesian(rightS, br, bi)
+        if IsNaNValue(ar) orelse IsNaNValue(ai) orelse IsNaNValue(br) orelse IsNaNValue(bi) then
+          ValueSetScalar(outV, MakeNaN())
+          return TRUE
+        end if
+        dim ml as Double = CalcHypot(ar, ai)
+        dim mr as Double = CalcHypot(br, bi)
+        ValueSetScalarPromoteExactInt64(outV, CalcHypot(ml, mr))
+        return TRUE
+      end if
+    end if
     ValueSetScalarPromoteExactInt64(outV, CalcHypot(leftS.scalar, rightS.scalar))
     return TRUE
   end if
@@ -3632,53 +4097,51 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
 end function
 
 private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers then
+    if EvalValueHasNonzeroImaginary(leftV) orelse EvalValueHasNonzeroImaginary(rightV) then
+      SetIncompatibleOperandsError()
+      return FALSE
+    end if
+  end if
   return MapBinaryBroadcastScalars(MAP_BINARY_OP_INT64, leftV, rightV, 0, op, -1, outV)
 end function
 
-private function CompareScalarArrayLex(byval scalarV as Double, byref arrV as EvalValue) as Integer
-  dim arrLen as Integer = ValueArrayLen(arrV)
-  if arrLen <= 0 then return 1
-  dim firstSv as ScalarValue = arrV.arr(lbound(arrV.arr))
-  dim sm as LongInt = RoundHalfUpDoubleToLongInt(scalarV * 1000.0)
-  dim fm as LongInt
-  if ScalarIsTime(firstSv) then
-    fm = TimeTotalMsFromScalarValue(firstSv)
-  else
-    fm = RoundHalfUpDoubleToLongInt(firstSv.scalar * 1000.0)
+private function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
+  if v.kind = VK_SCALAR then
+    return ScalarHasNonzeroImaginaryPart(v.scalarValue)
   end if
-  if sm < fm then return -1
-  if sm > fm then return 1
-  if arrLen = 1 then return 0
-  return -1
+  dim j as Integer
+  for j = lbound(v.arr) to ubound(v.arr)
+    if ScalarHasNonzeroImaginaryPart(v.arr(j)) then return TRUE
+  next j
+  return FALSE
 end function
 
-private function CompareEvalValues(byref leftV as EvalValue, byref rightV as EvalValue, byref cmp as Integer) as Boolean
-  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
-    if ScalarIsTime(leftV.scalarValue) orelse ScalarIsTime(rightV.scalarValue) then
-      dim lm as LongInt
-      dim rm as LongInt
-      if ScalarIsTime(leftV.scalarValue) then
-        lm = TimeTotalMsFromScalarValue(leftV.scalarValue)
-      else
-        lm = RoundHalfUpDoubleToLongInt(leftV.scalar * 1000.0)
-      end if
-      if ScalarIsTime(rightV.scalarValue) then
-        rm = TimeTotalMsFromScalarValue(rightV.scalarValue)
-      else
-        rm = RoundHalfUpDoubleToLongInt(rightV.scalar * 1000.0)
-      end if
-      if lm < rm then
-        cmp = -1
-      elseif lm > rm then
-        cmp = 1
-      else
-        cmp = 0
-      end if
-      return TRUE
+private function CmpScalarValuesForCompare(byref sa as ScalarValue, byref sb as ScalarValue, byref cmp as Integer) as Boolean
+  dim ta as Boolean = ScalarIsTime(sa)
+  dim tb as Boolean = ScalarIsTime(sb)
+  dim ha as Boolean = Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sa)
+  dim hb as Boolean = Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sb)
+  if (ha orelse hb) andalso (ta orelse tb) then
+    return FALSE
+  end if
+
+  if ta orelse tb then
+    dim lm as LongInt
+    dim rm as LongInt
+    if ta then
+      lm = TimeTotalMsFromScalarValue(sa)
+    else
+      lm = RoundHalfUpDoubleToLongInt(sa.scalar * 1000.0)
     end if
-    if leftV.scalar < rightV.scalar then
+    if tb then
+      rm = TimeTotalMsFromScalarValue(sb)
+    else
+      rm = RoundHalfUpDoubleToLongInt(sb.scalar * 1000.0)
+    end if
+    if lm < rm then
       cmp = -1
-    elseif leftV.scalar > rightV.scalar then
+    elseif lm > rm then
       cmp = 1
     else
       cmp = 0
@@ -3686,60 +4149,87 @@ private function CompareEvalValues(byref leftV as EvalValue, byref rightV as Eva
     return TRUE
   end if
 
-  if leftV.kind = VK_SCALAR then
-    cmp = CompareScalarArrayLex(leftV.scalar, rightV)
-    return TRUE
-  end if
-  if rightV.kind = VK_SCALAR then
-    cmp = -CompareScalarArrayLex(rightV.scalar, leftV)
+  if ha orelse hb then
+    dim ar as Double, ai as Double, br as Double, bi as Double
+    ScalarLoadCartesian(sa, ar, ai)
+    ScalarLoadCartesian(sb, br, bi)
+    if IsNaNValue(ar) orelse IsNaNValue(ai) orelse IsNaNValue(br) orelse IsNaNValue(bi) then
+      cmp = 1
+      return TRUE
+    end if
+    if ar < br then
+      cmp = -1
+    elseif ar > br then
+      cmp = 1
+    elseif ai < bi then
+      cmp = -1
+    elseif ai > bi then
+      cmp = 1
+    else
+      cmp = 0
+    end if
     return TRUE
   end if
 
-  dim leftLen as Integer = ValueArrayLen(leftV)
-  dim rightLen as Integer = ValueArrayLen(rightV)
-  dim minLen as Integer = IIf(leftLen < rightLen, leftLen, rightLen)
-  dim leftLb as Integer = lbound(leftV.arr)
-  dim rightLb as Integer = lbound(rightV.arr)
+  if sa.scalar < sb.scalar then
+    cmp = -1
+  elseif sa.scalar > sb.scalar then
+    cmp = 1
+  else
+    cmp = 0
+  end if
+  return TRUE
+end function
+
+private function CompareEvalValues(byref leftV as EvalValue, byref rightV as EvalValue, byref cmp as Integer) as Boolean
+  if Parser_SupportComplexNumbers = FALSE then
+    if EvalValueHasNonzeroImaginary(leftV) orelse EvalValueHasNonzeroImaginary(rightV) then
+      return FALSE
+    end if
+  end if
+
+  dim na as Integer
+  dim nb as Integer
+  if leftV.kind = VK_SCALAR then
+    na = 1
+  else
+    na = ValueArrayLen(leftV)
+  end if
+  if rightV.kind = VK_SCALAR then
+    nb = 1
+  else
+    nb = ValueArrayLen(rightV)
+  end if
+
+  dim minLen as Integer = IIf(na < nb, na, nb)
   dim i as Integer
-  dim useMsLex as Boolean = (EvalValueInvolvesTime(leftV) orelse EvalValueInvolvesTime(rightV))
+  dim lsv as ScalarValue
+  dim rsv as ScalarValue
+  dim c as Integer
+
   for i = 0 to minLen - 1
-    dim lsv as ScalarValue = leftV.arr(leftLb + i)
-    dim rsv as ScalarValue = rightV.arr(rightLb + i)
-    if useMsLex then
-      dim lvMs as LongInt
-      dim rvMs as LongInt
-      if ScalarIsTime(lsv) then
-        lvMs = TimeTotalMsFromScalarValue(lsv)
-      else
-        lvMs = RoundHalfUpDoubleToLongInt(lsv.scalar * 1000.0)
-      end if
-      if ScalarIsTime(rsv) then
-        rvMs = TimeTotalMsFromScalarValue(rsv)
-      else
-        rvMs = RoundHalfUpDoubleToLongInt(rsv.scalar * 1000.0)
-      end if
-      if lvMs < rvMs then
-        cmp = -1
-        return TRUE
-      elseif lvMs > rvMs then
-        cmp = 1
-        return TRUE
-      end if
+    if leftV.kind = VK_SCALAR then
+      lsv = leftV.scalarValue
     else
-      dim lv as Double = lsv.scalar
-      dim rv as Double = rsv.scalar
-      if lv < rv then
-        cmp = -1
-        return TRUE
-      elseif lv > rv then
-        cmp = 1
-        return TRUE
-      end if
+      lsv = leftV.arr(lbound(leftV.arr) + i)
+    end if
+    if rightV.kind = VK_SCALAR then
+      rsv = rightV.scalarValue
+    else
+      rsv = rightV.arr(lbound(rightV.arr) + i)
+    end if
+    if CmpScalarValuesForCompare(lsv, rsv, c) = FALSE then
+      return FALSE
+    end if
+    if c <> 0 then
+      cmp = c
+      return TRUE
     end if
   next i
-  if leftLen < rightLen then
+
+  if na < nb then
     cmp = -1
-  elseif leftLen > rightLen then
+  elseif na > nb then
     cmp = 1
   else
     cmp = 0
@@ -3757,18 +4247,49 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
       end if
     end if
   end if
+  if Parser_SupportComplexNumbers then
+    dim hasIm as Boolean = EvalValueHasNonzeroImaginary(leftV) orelse EvalValueHasNonzeroImaginary(rightV)
+    if hasIm then
+      select case op
+      case OP_CMP_LT, OP_CMP_LE, OP_CMP_GT, OP_CMP_GE
+        SetIncompatibleOperandsError()
+        return FALSE
+      end select
+      if EvalValueInvolvesTime(leftV) orelse EvalValueInvolvesTime(rightV) then
+        SetIncompatibleOperandsError()
+        return FALSE
+      end if
+    end if
+  end if
   '' IEEE: any scalar NaN makes comparisons unordered — only ``!=`` / ``<>`` is true.
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
-    if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
-      select case op
+    if Parser_SupportComplexNumbers then
+      dim lr as Double, li as Double, rr as Double, ri as Double
+      ScalarLoadCartesian(leftV.scalarValue, lr, li)
+      ScalarLoadCartesian(rightV.scalarValue, rr, ri)
+      if IsNaNValue(lr) orelse IsNaNValue(li) orelse IsNaNValue(rr) orelse IsNaNValue(ri) then
+        select case op
         case OP_CMP_NONE
           return FALSE
         case OP_CMP_NE
           ValueSetInt64(outV, 1)
         case else
           ValueSetInt64(outV, 0)
-      end select
-      return TRUE
+        end select
+        return TRUE
+      end if
+    else
+      if IsNaNValue(leftV.scalar) orelse IsNaNValue(rightV.scalar) then
+        select case op
+        case OP_CMP_NONE
+          return FALSE
+        case OP_CMP_NE
+          ValueSetInt64(outV, 1)
+        case else
+          ValueSetInt64(outV, 0)
+        end select
+        return TRUE
+      end if
     end if
   end if
 
@@ -3803,8 +4324,11 @@ private function EvalValueIsTruthy(byref v as EvalValue) as Boolean
   if v.kind = VK_ARRAY then
     return (ValueArrayLen(v) > 0)
   end if
-  if IsNaNValue(v.scalar) then return FALSE
-  return (v.scalar <> 0)
+  dim tr as Double
+  dim ti as Double
+  ScalarLoadCartesian(v.scalarValue, tr, ti)
+  if IsNaNValue(tr) orelse IsNaNValue(ti) then return FALSE
+  return (tr <> 0.0) orelse (ti <> 0.0)
 end function
 
 private sub ValueSetBoolResult(byval b as Boolean, byref outV as EvalValue)
@@ -3936,8 +4460,13 @@ private function IsPercentageTail() as Boolean
 end function
 
 private function IsImplicitMulStart() as Boolean
-  ' Allow implicit multiplication only for parenthesized expressions: x(y+z) => x*(y+z)
   if pStream[0] = CHAR_LPAREN then return TRUE
+  if Parser_SupportComplexNumbers then
+    if pStream[0] = CHAR_LC_I then
+      dim peekIdent as UByte = pStream[1]
+      if IsIdentChar(peekIdent) = FALSE then return TRUE
+    end if
+  end if
   return FALSE
 end function
 
@@ -5348,6 +5877,7 @@ private function ParseFactor() as EvalValue
       end if
     end if
   elseif IsIdentStartChar(asc(pStream[0])) then
+    dim firstIdentB as UByte = pStream[0]
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
     if pStream[0] = CHAR_LPAREN then
@@ -5361,6 +5891,11 @@ private function ParseFactor() as EvalValue
       if TryGetConstant(nam, n) = FALSE then
         if GetVariable(nam, n) = FALSE then
           if TryHandleUnknownIdentifier(nam, n, canIndex) = FALSE then return n
+        end if
+      end if
+      if Parser_SupportComplexNumbers then
+        if (firstIdentB = CHAR_LC_I orelse firstIdentB = CHAR_I) andalso len(nam) <= 1 then
+          ValueSetImagUnit(n)
         end if
       end if
       if canIndex then
@@ -5489,6 +6024,10 @@ private function ParseUnary() as EvalValue
     dim v as EvalValue
     v = ParseUnary()
     if parseError then return v
+    if Parser_SupportComplexNumbers andalso EvalValueHasNonzeroImaginary(v) then
+      SetIncompatibleOperandsError()
+      return v
+    end if
     dim outV as EvalValue
     dim minusOne as EvalValue
     ValueSetInt64(minusOne, -1)
@@ -5897,6 +6436,11 @@ sub Parser_ClearVariables()
   dim probeDefault as EvalValue
   ValueSetInt64(probeDefault, 1)
   SetVariable(FB_STR_FORMAL_VALIDATION_PROBE, probeDefault)
+  if Parser_SupportComplexNumbers then
+    dim iu as EvalValue
+    ValueSetImagUnit(iu)
+    SetVariable(FB_STR_I, iu)
+  end if
 end sub
 
 function Parser_TryEvaluate(byref sExpr as String, byref result as Double) as Boolean
@@ -6028,6 +6572,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   evalDepth += 1
   if evalDepth = 1 then
     ResetTopLevelEvaluationState(exprInput)
+  else
+    rootInputExpr = exprInput
   end if
   if Len(exprInput) = 0 then
     return FinishParserEvaluateEx(FALSE)
@@ -6057,7 +6603,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     return FinishParserEvaluateEx(FALSE)
   end if
 
-  pStream = StrPtr(exprInput)
+  pStream = StrPtr(rootInputExpr)
   exprStart = pStream
   parseError = 0
   isArray = FALSE
@@ -6158,7 +6704,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     end if
   end if
 
-  pStream = StrPtr(exprInput)
+  pStream = StrPtr(rootInputExpr)
   exprStart = pStream
   parseError = 0
   dim outV as EvalValue
@@ -6200,4 +6746,21 @@ end sub
 
 function Parser_GetShowErrorLine() as Boolean
   return Parser_ShowErrorLine
+end function
+
+sub Parser_SetSupportComplexNumbers(byval enabled as Boolean)
+  dim prev as Boolean = Parser_SupportComplexNumbers
+  Parser_SupportComplexNumbers = enabled
+  if enabled andalso prev = FALSE then
+    dim iu as EvalValue
+    ValueSetImagUnit(iu)
+    SetVariable(FB_STR_I, iu)
+  elseif (enabled = FALSE) andalso prev then
+    dim vIdx as Integer = FindVariableIndex(FB_STR_I)
+    if vIdx >= 0 then RemoveVariableAtIndex(vIdx)
+  end if
+end sub
+
+function Parser_GetSupportComplexNumbers() as Boolean
+  return Parser_SupportComplexNumbers
 end function
