@@ -56,19 +56,6 @@ Base-prefixed integer forms:
   - `200 + 15%` -> `230`
   - `200 - 15%` -> `170`
 
-### Complex Numbers
-
-Complex numbers are not supported by default.
-Be sure to call `Parser_SetSupportComplexNumbers` to enable them (refer to "Parser runtime flags").
-
-Complex numbers can be specified in the following forms:
-- `10+5i`
-- `10+5*i`
-
-Use parentheses for operations with complex numbers:
-- `(1+2i)*(3+4i)` -> `-5+10i`
-- `(1+2i)/2` -> `0.5+i`
-
 ### Time Values
 
 A **duration** (time value) is kept in whole milliseconds. Results print with colons (`MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS` as needed) and milliseconds on the last field only when the fractional part is nonzero.
@@ -130,6 +117,19 @@ A **duration** (time value) is kept in whole milliseconds. Results print with co
 - `1/1:00` (a number divided by a duration);
 - `product` with a duration;
 - `milliseconds(5)` (converter needs a duration; in case of an array, each array element must be a duration too).
+
+### Complex Numbers
+
+Complex numbers are not supported by default.
+Be sure to call `Parser_SetSupportComplexNumbers` to enable them (refer to "Parser runtime flags").
+
+Complex numbers can be specified in the following forms:
+- `10+5i`
+- `10+5*i`
+
+Use parentheses for operations with complex numbers:
+- `(1+2i)*(3+4i)` -> `-5+10i`
+- `(1+2i)/2` -> `0.5+i`
 
 ### Arrays
 
@@ -574,7 +574,9 @@ Notes:
 
 - Aggregation functions flatten array inputs.
 - `variance` and `stddev` use population formulas (`N`, not `N-1`).
-- With complex support enabled (see **Complex Numbers**): `sum`, `product`, `avg`, `reverse`, `unique`, and `unpack` accept complex scalars and arrays; `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not.
+- With complex support enabled (see **Complex Numbers**):
+  - `sum`, `product`, `avg`, `reverse`, `unique`, and `unpack` accept complex scalars and arrays;
+  - `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not.
 
 ### Output Formatting
 
@@ -627,8 +629,6 @@ For concepts and mixed-operator rules, see **Time values** under Common Tasks.
 ### Complex Utilities
 
 Purpose: complex numbers utilities.
-
-These functions accept a real scalar or array element as a complex number with zero imaginary part, even when complex literals and the `i` unit are disabled. Complex literals (`1+2i`) and full complex arithmetic still require complex-number support to be enabled.
 
 - Key functions:
 - `real(c)` - real part of a complex number `c`
