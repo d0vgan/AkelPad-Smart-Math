@@ -3717,6 +3717,46 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: hex/oct/bin/u* on integer complex literals (parity Basic cxFmtOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"hex(10+15i)", "0xA+0xFi"},
+                     {"bin(1+i)", "0b1+i"},
+                     {"oct(8i)", "0o10i"},
+                     {"hex((1+2i,10+11i))", "(0x1+0x2i,0xA+0xBi)"},
+                     {"uhex(-1+2i)", "0xFFFFFFFFFFFFFFFF+0x2i"},
+                     {"uoct(-1+i)", "0o1777777777777777777777+i"},
+                     {"ubin(5+10i)", "0b101+0b1010i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 p.parseAndEvaluate("hex(1+2.5i)");
+                 if (p.getError().empty()) {
+                   why = "hex(1+2.5i): expected error";
+                   return false;
+                 }
+                 std::string eh = p.getError();
+                 std::transform(eh.begin(), eh.end(), eh.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (eh.find("expects integer values") == std::string::npos) {
+                   why = std::string("bad error: ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: clamp/gcd/mod/ncr/lcm reject complex (parity Basic cxUniErr)",
                [](std::string& why) {
                  MathParser p;

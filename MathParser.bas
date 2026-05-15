@@ -1730,6 +1730,68 @@ private function TryFormatScalarByRenderBase(byref sv as ScalarValue, byval rend
   end select
 end function
 
+'' Integer real & integer imaginary (exact or float-equal int64).
+private function TryFormatComplexScalarByRenderBase(byref sv as ScalarValue, byval renderBase as Integer, byval asUnsigned as Boolean, byref outText as String) as Boolean
+  if Parser_SupportComplexNumbers = FALSE then return FALSE
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then return FALSE
+  if renderBase <> 16 andalso renderBase <> 8 andalso renderBase <> 2 then return FALSE
+
+  dim svRe as ScalarValue
+  svRe = sv
+  ScalarClearImag(svRe)
+
+  dim imI as LongInt
+  if ScalarImagExactInt64Valid(sv) then
+    imI = sv.imagExactInt64
+  elseif ScalarImagExactUInt64Valid(sv) then
+    if sv.imagExactUInt64 <= FB_I64_MAX_U then
+      imI = CLngInt(sv.imagExactUInt64)
+    else
+      return FALSE
+    end if
+  else
+    dim ai as Double = sv.imag
+    if TryGetExactInt64FromDouble(ai, imI) = FALSE then return FALSE
+  end if
+
+  dim reStr as String
+  if TryFormatScalarByRenderBase(svRe, renderBase, asUnsigned, reStr) = FALSE then return FALSE
+
+  dim absIm as LongInt
+  dim negI as Boolean
+  if imI >= 0 then
+    absIm = imI
+    negI = FALSE
+  else
+    if imI = FB_I64_MIN then return FALSE
+    absIm = -imI
+    negI = TRUE
+  end if
+
+  dim tail as String
+  if absIm = 0 then '' Should not occur if ScalarHasNonzeroImaginaryPart
+    tail = FB_STR_I
+  elseif absIm = 1 then
+    tail = FB_STR_I
+  else
+    dim evMag as EvalValue
+    ValueSetInt64(evMag, absIm)
+    if TryFormatScalarByRenderBase(evMag.scalarValue, renderBase, asUnsigned, tail) = FALSE then return FALSE
+    tail = tail & FB_STR_I
+  end if
+
+  dim ar as Double = svRe.scalar
+  if svRe.exactInt64Valid andalso svRe.exactInt64 = 0 then
+    if negI then outText = "-" & tail else outText = tail
+    return TRUE
+  elseif svRe.exactInt64Valid = FALSE andalso ar = 0.0 then
+    if negI then outText = "-" & tail else outText = tail
+    return TRUE
+  end if
+  if negI then outText = reStr & "-" & tail else outText = reStr & "+" & tail
+  return TRUE
+end function
+
 private function ULongIntToString(byval x as ULongInt) as String
   if x = 0 then return "0"
   dim s as String = ""
@@ -1784,6 +1846,10 @@ end function
 private function ValueToString(byref v as EvalValue) as String
   if v.kind = VK_SCALAR then
     if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(v.scalarValue) then
+      dim fmtCx as String
+      if v.renderBase <> 0 andalso TryFormatComplexScalarByRenderBase(v.scalarValue, v.renderBase, v.renderUnsigned, fmtCx) then
+        return fmtCx
+      end if
       return FormatComplexScalarValue(v.scalarValue)
     end if
     if IsNaNValue(v.scalar) then return "nan"
@@ -1809,6 +1875,12 @@ private function ValueToString(byref v as EvalValue) as String
     if i > lbound(v.arr) then s &= ", "
     dim sv as ScalarValue = v.arr(i)
     dim fmtText as String
+    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) andalso v.renderBase <> 0 then
+      if TryFormatComplexScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
+        s &= fmtText
+        continue for
+      end if
+    end if
     if TryFormatScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
       s &= fmtText
     elseif (v.flags and EVF_RENDER_BASE_MASK) = 0 orelse v.renderBase = 10 then
@@ -4776,24 +4848,38 @@ private function ArgsContainNonFinite(args() as EvalValue) as Boolean
   return FALSE
 end function
 
+private function ScalarIntegerRepresentableForFormat(byref sv as ScalarValue, byval allowNonFiniteForFormat as Boolean) as Boolean
+  dim ar as Double, ai as Double
+  ScalarLoadCartesian(sv, ar, ai)
+
+  if IsNonFiniteValue(ar) then
+    if allowNonFiniteForFormat = FALSE then return FALSE
+  else
+    if (sv.exactInt64Valid = FALSE) andalso (sv.exactUInt64Valid = FALSE) then
+      dim tmpRe as String
+      if FormatHexScalar(ar, tmpRe, TRUE) = FALSE then return FALSE
+    end if
+  end if
+
+  if Parser_SupportComplexNumbers = FALSE then return TRUE
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then return TRUE
+
+  if IsNonFiniteValue(ai) then return allowNonFiniteForFormat
+
+  if ScalarImagExactInt64Valid(sv) orelse ScalarImagExactUInt64Valid(sv) then return TRUE
+
+  dim tmpIm as LongInt
+  return TryGetExactInt64FromDouble(ai, tmpIm)
+end function
+
 private function ValidateIntegerRepresentableArgs(args() as EvalValue, byref fnName as String, byval allowNonFiniteForFormat as Boolean) as Boolean
   if ubound(args) = -1 then return TRUE
   for i as Integer = lbound(args) to ubound(args)
     if args(i).kind = VK_SCALAR then
-      if IsNonFiniteValue(args(i).scalar) then
-        if allowNonFiniteForFormat = FALSE then SetIntegerValuesError(fnName): return FALSE
-      elseif (args(i).exactInt64Valid = FALSE) andalso (args(i).exactUInt64Valid = FALSE) then
-        dim tmpFmt as String
-        if FormatHexScalar(args(i).scalar, tmpFmt, TRUE) = FALSE then SetIntegerValuesError(fnName): return FALSE
-      end if
+      if ScalarIntegerRepresentableForFormat(args(i).scalarValue, allowNonFiniteForFormat) = FALSE then SetIntegerValuesError(fnName): return FALSE
     else
       for j as Integer = lbound(args(i).arr) to ubound(args(i).arr)
-        if IsNonFiniteValue(args(i).arr(j).scalar) then
-          if allowNonFiniteForFormat = FALSE then SetIntegerValuesError(fnName): return FALSE
-        elseif (args(i).arr(j).exactInt64Valid = FALSE) andalso (args(i).arr(j).exactUInt64Valid = FALSE) then
-          dim tmpFmt as String
-          if FormatHexScalar(args(i).arr(j).scalar, tmpFmt, TRUE) = FALSE then SetIntegerValuesError(fnName): return FALSE
-        end if
+        if ScalarIntegerRepresentableForFormat(args(i).arr(j), allowNonFiniteForFormat) = FALSE then SetIntegerValuesError(fnName): return FALSE
       next j
     end if
   next i

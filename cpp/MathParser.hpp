@@ -364,6 +364,7 @@ private:
   static bool nearlyInt(double v, long long& out);
   static bool parseUInt64FromDouble(double v, std::uint64_t& out);
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  static bool tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
@@ -646,6 +647,7 @@ private:
   static EvalValue makeScalarComplexFromDoubles(double re, double im);
   bool tryApplyComplexBinaryScalars(const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const;
   std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
+  std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
   static bool scalarValueIsTime(const EvalValue::ScalarValue& s);
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
   static bool evalValueInvolvesTime(const EvalValue& v);

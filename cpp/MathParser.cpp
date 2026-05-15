@@ -2639,6 +2639,14 @@ bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
   return true;
 }
 
+bool MathParser::tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& out) {
+  if (s.hasImagExactInt()) {
+    out = s.imagExactInt;
+    return true;
+  }
+  return tryExtractExactInt64FromDoubleStrict(s.imag, out);
+}
+
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
   if (s.scalarKind == ScalarKind::Time) {
     return false;
@@ -2764,7 +2772,10 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
   if (v.scalarValue.scalarKind == ScalarKind::Time) {
     return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
   }
-  if (supportComplexNumbers_ && base == RenderBase::Dec && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+  if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    if (base != RenderBase::Dec) {
+      return formatComplexScalarWithRenderBase(v.scalarValue, base, v.hasRenderUnsigned());
+    }
     return formatComplexScalarValue(v.scalarValue);
   }
   if (base == RenderBase::Dec) {
@@ -3097,6 +3108,60 @@ std::string MathParser::formatComplexScalarValue(const EvalValue::ScalarValue& s
     return negI ? (std::string("-") + tail) : tail;
   }
   return negI ? (rePart + "-" + tail) : (rePart + "+" + tail);
+}
+
+std::string MathParser::formatComplexScalarWithRenderBase(
+    const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const {
+  if (!scalarHasNonzeroImaginaryPart(sv) || base == RenderBase::Dec) {
+    return formatComplexScalarValue(sv);
+  }
+  long long im = 0;
+  if (!tryGetExactImagInt64Strict(sv, im)) {
+    return formatComplexScalarValue(sv);
+  }
+  if (im == (std::numeric_limits<long long>::min)()) {
+    return formatComplexScalarValue(sv);
+  }
+
+  EvalValue reTmp = makeScalar(0);
+  double ar = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(sv, ar, ai);
+  (void)ai;
+  reTmp.scalarValue.scalar = ar;
+  reTmp.scalarValue.scalarKind = sv.scalarKind;
+  reTmp.scalarValue.setExactIntValid(sv.hasExactInt());
+  reTmp.scalarValue.exactInt = sv.exactInt;
+  reTmp.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
+  reTmp.scalarValue.exactUInt64 = sv.exactUInt64;
+  reTmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  scalarClearImaginary(reTmp.scalarValue);
+  reTmp.setRenderUnsigned(asUnsigned);
+  std::string rePart = formatScalar(reTmp, base);
+
+  bool negIm = false;
+  long long absIm = 0;
+  if (im >= 0) {
+    absIm = im;
+  } else {
+    negIm = true;
+    absIm = static_cast<long long>(-static_cast<long long>(im));
+  }
+  std::string tail;
+  if (absIm == 1LL) {
+    tail = STR_I;
+  } else {
+    EvalValue imTmp = makeScalarInt(absIm);
+    imTmp.setRenderUnsigned(asUnsigned);
+    tail = formatScalar(imTmp, base) + STR_I;
+  }
+
+  const bool reZero =
+      (sv.hasExactInt() && sv.exactInt == 0) || (!sv.hasExactInt() && ar == 0.0);
+  if (reZero) {
+    return negIm ? (std::string("-") + tail) : tail;
+  }
+  return negIm ? (rePart + std::string("-") + tail) : (rePart + std::string("+") + tail);
 }
 
 MathParser::EvalValue MathParser::makeScalarMaybeExact(double v) {
@@ -5542,11 +5607,35 @@ bool MathParser::validateIntegerRepresentableArgs(
       if (!std::isfinite(s.scalar)) {
         return allowNonFiniteForFormat;
       }
-      if (s.hasExactInt() || s.hasExactUInt64()) {
-        return true;
+      if (!(s.hasExactInt() || s.hasExactUInt64())) {
+        long long signedV = 0;
+        if (!tryGetSignedInt64FromScalar(s, signedV)) {
+          setIntegerValuesError(ctx, fnName);
+          return false;
+        }
       }
-      long long signedV = 0;
-      return tryGetSignedInt64FromScalar(s, signedV);
+      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s)) {
+        double ai = 0.0;
+        double ar = 0.0;
+        scalarLoadCartesian(s, ar, ai);
+        (void)ar;
+        if (!std::isfinite(ai)) {
+          if (!allowNonFiniteForFormat) {
+            setIntegerValuesError(ctx, fnName);
+            return false;
+          }
+          return true;
+        }
+        if (s.hasImagExactInt()) {
+          return true;
+        }
+        long long tmp = 0;
+        if (!tryExtractExactInt64FromDoubleStrict(ai, tmp)) {
+          setIntegerValuesError(ctx, fnName);
+          return false;
+        }
+      }
+      return true;
     };
     if (a.kind == ValueKind::Scalar) {
       if (!validateScalar(a.scalarValue)) {

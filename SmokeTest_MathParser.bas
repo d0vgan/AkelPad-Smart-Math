@@ -520,6 +520,42 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next ui
 
+  dim cxFmtOk(1 to 7) as String
+  dim cxFmtExpect(1 to 7) as String
+  cxFmtOk(1) = "hex(10+15i)": cxFmtExpect(1) = "0xA+0xFi"
+  cxFmtOk(2) = "bin(1+i)": cxFmtExpect(2) = "0b1+i"
+  cxFmtOk(3) = "oct(8i)": cxFmtExpect(3) = "0o10i"
+  cxFmtOk(4) = "hex((1+2i,10+11i))": cxFmtExpect(4) = "(0x1+0x2i, 0xA+0xBi)"
+  cxFmtOk(5) = "uhex(-1+2i)": cxFmtExpect(5) = "0xFFFFFFFFFFFFFFFF+0x2i"
+  cxFmtOk(6) = "uoct(-1+i)": cxFmtExpect(6) = "0o1777777777777777777777+i"
+  cxFmtOk(7) = "ubin(5+10i)": cxFmtExpect(7) = "0b101+0b1010i"
+
+  dim ffi as Integer
+  for ffi = 1 to 7
+    if Parser_TryEvaluateEx(cxFmtOk(ffi), r, rt, ia) = FALSE orelse rt <> cxFmtExpect(ffi) then
+      print "[complex-opt] FAIL: """ & cxFmtOk(ffi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      print "[complex-opt]      want: """ & cxFmtExpect(ffi) & """"
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxFmtOk(ffi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next ffi
+
+  if Parser_TryEvaluateEx("hex(1+2.5i)", r, rt, ia) then
+    print "[complex-opt] FAIL: hex(1+2.5i) expected error, got """ & rt & """"
+    subFail += 1
+  else
+    dim errHx as String = lcase(Parser_GetLastError())
+    if instr(errHx, "hex() expects integer values") > 0 then
+      print "[complex-opt] PASS: hex(1+2.5i) -> hex() expects integer values"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: hex(1+2.5i) expected integer error, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
   dim cxUniErr(1 to 5) as String
   cxUniErr(1) = "clamp(1+2i, 0, 5)"
   cxUniErr(2) = "gcd(1+2i, 2)"

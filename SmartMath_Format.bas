@@ -218,7 +218,10 @@ private function AddArrayCommaSpacing(byref s as String) as String
   dim i as Integer
   for i = 1 to n
     if Asc(s, i) = 44 then
-      outText &= g_sArrayOutputSeparator & " "
+      outText &= g_sArrayOutputSeparator
+      if i = n orelse Mid(s, i + 1, 1) <> " " then
+        outText &= " "
+      end if
     else
       outText &= Mid(s, i, 1)
     end if
@@ -532,6 +535,10 @@ function FormatComplexNumberScalar(byref s as String) as String
   return realStr & imagStr
 end function
 
+function IsBasePrefixedStr(byref s as String) as Boolean
+  return InStr(1, s, "0x") > 0 orelse InStr(1, s, "0b") > 0 orelse InStr(1, s, "0o") > 0
+end function
+
 function IsTimeValueStr(byref s as String) as Boolean
   dim n as Integer = len(s)
   if n = 0 then return FALSE
@@ -595,7 +602,9 @@ private sub AppendTupleBodyFromElems(byref outText as String, elems() as String,
       outText &= elems(j)
     else
       dim elem as String = Trim(elems(j))
-      if IsTimeValueStr(elem) then
+      if IsBasePrefixedStr(elem) then
+        outText &= elem
+      elseif IsTimeValueStr(elem) then
         outText &= FormatTimeValueScalar(elem)
       elseif IsComplexNumberStr(elem) then
         outText &= FormatComplexNumberScalar(elem)
@@ -624,7 +633,7 @@ function FormatArrayResultText(byref sArrayText as String) as String
   end if
 
   dim t as String = LCase(sArrayText)
-  if InStr(1, t, "0x") > 0 orelse InStr(1, t, "0b") > 0 orelse InStr(1, t, "0o") > 0 then
+  if IsBasePrefixedStr(t) then
     return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
   end if
 
