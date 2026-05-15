@@ -3231,6 +3231,16 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "1d == 1:00:00:00", "1"} ,
     {ParityBasicCase::Kind::ErrorContains, "1d2", "compact time literal: expected unit suffix"} ,
     {ParityBasicCase::Kind::ErrorContains, "1ms1m", "compact time literal: unit order or duplicate unit"} ,
+    {ParityBasicCase::Kind::Expected, "real(5)", "5"} ,
+    {ParityBasicCase::Kind::Expected, "imag(-3.5)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "phase(42)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "polar(10)", "(10,0)"} ,
+    {ParityBasicCase::Kind::Expected, "conj(-7)", "-7"} ,
+    {ParityBasicCase::Kind::Expected, "cart(3.5)", "3.5"} ,
+    {ParityBasicCase::Kind::Expected, "cart(polar(2))", "2"} ,
+    {ParityBasicCase::Kind::Expected, "imag((5,10))", "(0,0)"} ,
+    {ParityBasicCase::Kind::Expected, "cart((5,0))", "5"} ,
+    {ParityBasicCase::Kind::ErrorContains, "cart((5,1))", "incompatible operands"} ,
 };
 
 std::vector<TestCase> buildParityBasicFromSmokeCases() {
@@ -3353,6 +3363,45 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  const bool okUnexpected = el.find("unexpected token") != std::string::npos;
                  if (!okUnknown && !okUnexpected) {
                    why = std::string("unexpected error text: ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: complex component unaries on reals with support off (parity Basic cxRealOffOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 p.parseAndEvaluate("1+1");
+                 p.setSupportComplexNumbers(false);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"real(5)", "5"},
+                     {"cart(polar(2))", "2"},
+                     {"cart((5,0))", "5"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 p.parseAndEvaluate("cart((5,1))");
+                 if (p.getError().empty()) {
+                   why = "expected error for cart((5,1)) with complex support off";
+                   return false;
+                 }
+                 std::string elCart = p.getError();
+                 std::transform(elCart.begin(), elCart.end(), elCart.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (elCart.find("incompatible operands") == std::string::npos) {
+                   why = std::string("cart((5,1)): ") + p.getError();
                    return false;
                  }
                  return true;
@@ -3563,6 +3612,133 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    }
                    if (p.getResult() != row.expect) {
                      why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: sum/prod/avg/reverse/unique/unpack on complex (parity with Basic cxAggOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"sum(1+2i, 3)", "4+2i"},
+                     {"sum((1+2i, 3+4i))", "4+6i"},
+                     {"prod(1+i, 2)", "2+2i"},
+                     {"product((2, 1+i))", "2+2i"},
+                     {"avg(2+2i, 4+4i)", "3+3i"},
+                     {"mean((1+2i, 3))", "2+i"},
+                     {"reverse((1+2i, 3))", "(3,1+2i)"},
+                     {"unique((1+2i, 1+2i, 3))", "(1+2i,3)"},
+                     {"unique((1+2i, 1+3i))", "(1+2i,1+3i)"},
+                     {"unpack((1+2i, 3))", "(1+2i,3)"},
+                     {"sum(unpack((1+2i, 2+2i)))", "3+4i"},
+                     {"f(x,y)=x*y; f(unpack((1+i, 2)))", "2+2i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: min/max/sort/median/variance/stddev reject complex (parity with Basic cxAggErr)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const char* kExprs[] = {
+                     "min(1+2i, 3)",
+                     "max((1+2i, 2))",
+                     "sort(3+4i, 1+2i)",
+                     "median(1+2i, 5)",
+                     "variance(1+2i, 2)",
+                     "stddev((1+2i, 2))",
+                 };
+                 for (const char* expr : kExprs) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string(expr) + " expected error, got " + p.getResult();
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find("incompatible operands") == std::string::npos) {
+                     why = std::string(expr) + ": " + p.getError();
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: unary rounding/abs/sign/fact and complex-only funcs (parity Basic cxUniOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"int(2.7+3.2i)", "2+3i"},
+                     {"frac(2.5+0.5i)", "0.5+0.5i"},
+                     {"round(2.4+3.6i)", "2+4i"},
+                     {"floor(2.9+3.1i)", "2+3i"},
+                     {"ceil(2.1+3.1i)", "3+4i"},
+                     {"abs(3+4i)", "5"},
+                     {"sign(3+4i)", "0.5999999999999999+0.8i"},
+                     {"real(1+2i)", "1"},
+                     {"imag(1+2i)", "2"},
+                     {"conj(1+2i)", "1-2i"},
+                     {"phase(1)", "0"},
+                     {"polar(1+1i)", "(1.414213562373095,0.7853981633974482)"},
+                     {"cart(polar(1+1i))", "1+i"},
+                     {"fact(5)", "120"},
+                     {"int((1+2.7i,4.2+5.8i))", "(1+2i,4+5i)"},
+                     {"abs((3+4i,0))", "(5,0)"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: clamp/gcd/mod/ncr/lcm reject complex (parity Basic cxUniErr)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const char* kExprs[] = {
+                     "clamp(1+2i, 0, 5)",
+                     "gcd(1+2i, 2)",
+                     "mod(1+2i, 2)",
+                     "ncr(5+5i, 2)",
+                     "lcm(2, 1+2i)",
+                 };
+                 for (const char* expr : kExprs) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string(expr) + " expected error, got " + p.getResult();
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find("incompatible operands") == std::string::npos) {
+                     why = std::string(expr) + ": " + p.getError();
                      return false;
                    }
                  }

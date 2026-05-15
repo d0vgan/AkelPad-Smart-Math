@@ -386,8 +386,10 @@ Quick index (alphabetical):
 | `atanh(value)` | trigonometric/hyperbolic |
 | `avg/mean(...)` | aggregation |
 | `bin(...)` | output formatting |
+| `cart(value)` | complex utility |
 | `ceil(value)` | numeric utility |
 | `clamp(value, min, max)` | numeric utility |
+| `conj(value)` | complex utility |
 | `cos(angle)` | trigonometric |
 | `cosh(value)` | trigonometric/hyperbolic |
 | `days(t)` | time conversion |
@@ -400,6 +402,7 @@ Quick index (alphabetical):
 | `hex(...)` | output formatting |
 | `hours(t)` | time conversion |
 | `hypot(x, y)` | power/root |
+| `imag(value)` | complex utility |
 | `int(value)` | numeric utility |
 | `lcm(a, b)` | numeric utility |
 | `ln(value)` | logarithmic/exponential |
@@ -414,11 +417,14 @@ Quick index (alphabetical):
 | `ncr(n, r)` | numeric utility |
 | `npr(n, r)` | numeric utility |
 | `oct(...)` | output formatting |
+| `phase(value)` | complex utility |
+| `polar(value)` | complex utility |
 | `pow(value, power)` | power/root |
 | `product/prod(...)` | aggregation |
 | `rad(...)` | trigonometric conversion |
 | `rand()` | random |
 | `random(min, max)` | random |
+| `real(value)` | complex utility |
 | `reverse/reversed(...)` | array utility |
 | `round(value)` | numeric utility |
 | `seconds(t)` | time conversion |
@@ -525,6 +531,19 @@ Purpose: rounding, bounds, integer helpers, factorial.
   - `npr(5,2)` -> `20`
   - `fact(21)` -> `5.109094217170944e+019`
 
+#### Numeric Utilities With Complex Numbers
+
+With complex numbers, the meaning of some utilities is different:
+- `abs(c)` - absolute value (magnitude): `sqrt(sqr(real)+sqr(imag))`
+- `sign(c)` - complex sign (signum function): `c/abs(c)`
+- `fact(c)` - factorial to the complex plane using the Gamma Function
+- Examples:
+  - `abs(1+2i)` -> `2.236068`
+  - `sqrt(sqr(1)+sqr(2))` -> `2.236068`
+  - `sign(1+2i)` -> `0.447214+0.894427i`
+  - `(1+2i)/abs(1+2i)` -> `0.447214+0.894427i`
+  - `fact(1+2i)` -> `0.112294+0.323613i`
+
 ### Arrays and Aggregation
 
 Purpose: aggregate and transform values/lists.
@@ -555,6 +574,7 @@ Notes:
 
 - Aggregation functions flatten array inputs.
 - `variance` and `stddev` use population formulas (`N`, not `N-1`).
+- With complex support enabled (see **Complex Numbers**): `sum`, `product`, `avg`, `reverse`, `unique`, and `unpack` accept complex scalars and arrays; `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not.
 
 ### Output Formatting
 
@@ -603,6 +623,30 @@ Purpose: turn a **duration** into a plain numeric length.
   - `hours((1:00,0:30)*60)` -> `(1, 0.5)`
 
 For concepts and mixed-operator rules, see **Time values** under Common Tasks.
+
+### Complex Utilities
+
+Purpose: complex numbers utilities.
+
+These functions accept a real scalar or array element as a complex number with zero imaginary part, even when complex literals and the `i` unit are disabled. Complex literals (`1+2i`) and full complex arithmetic still require complex-number support to be enabled.
+
+- Key functions:
+- `real(c)` - real part of a complex number `c`
+- `imag(c)` - imaginary part of a complex number `c`
+- `phase(c)` - phase (angle) of a complex number `c`: `atan2(imag, real)`
+- `polar(c)` - converts the complex number `c` to polar form: `r*exp(i*angle)`
+- `cart(c)`, `cart((r,angle))` - converts the complex number `c` to cartesian form
+- `conj(c)` - complex conjugate
+- Examples:
+  - `real(1+2i)` -> `1`
+  - `imag(1+2i)` -> `2`
+  - `phase(1+2i)` -> `1.107149`
+  - `c=1+2i; atan2(imag(c), real(c))` -> `1.107149`
+  - `polar(1+2i)` -> `(2.236068, 1.107149)`
+  - `p=polar(1+2i); r=p[0]; angle=p[1]; r*exp(i*angle)` -> `1+2i`
+  - `cart(polar(1+2i))` -> `1+2i`
+  - `cart((2.236068, 1.107149))` -> `0.999999+2i`
+  - `conj(1+2i)` -> `1-2i`
 
 ### Random
 

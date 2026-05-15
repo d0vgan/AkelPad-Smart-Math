@@ -438,6 +438,112 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next xi
 
+  ' Aggregation/array utilities with complex operands (allowed vs rejected builtins).
+  dim cxAggOk(1 to 12) as String
+  dim cxAggExpect(1 to 12) as String
+  cxAggOk(1) = "sum(1+2i, 3)": cxAggExpect(1) = "4+2i"
+  cxAggOk(2) = "sum((1+2i, 3+4i))": cxAggExpect(2) = "4+6i"
+  cxAggOk(3) = "prod(1+i, 2)": cxAggExpect(3) = "2+2i"
+  cxAggOk(4) = "product((2, 1+i))": cxAggExpect(4) = "2+2i"
+  cxAggOk(5) = "avg(2+2i, 4+4i)": cxAggExpect(5) = "3+3i"
+  cxAggOk(6) = "mean((1+2i, 3))": cxAggExpect(6) = "2+i"
+  cxAggOk(7) = "reverse((1+2i, 3))": cxAggExpect(7) = "(3, 1+2i)"
+  cxAggOk(8) = "unique((1+2i, 1+2i, 3))": cxAggExpect(8) = "(1+2i, 3)"
+  cxAggOk(9) = "unique((1+2i, 1+3i))": cxAggExpect(9) = "(1+2i, 1+3i)"
+  cxAggOk(10) = "unpack((1+2i, 3))": cxAggExpect(10) = "(1+2i, 3)"
+  cxAggOk(11) = "sum(unpack((1+2i, 2+2i)))": cxAggExpect(11) = "3+4i"
+  cxAggOk(12) = "f(x,y)=x*y; f(unpack((1+i, 2)))": cxAggExpect(12) = "2+2i"
+
+  dim agi as Integer
+  for agi = 1 to 12
+    if Parser_TryEvaluateEx(cxAggOk(agi), r, rt, ia) = FALSE orelse rt <> cxAggExpect(agi) then
+      print "[complex-opt] FAIL: """ & cxAggOk(agi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxAggOk(agi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next agi
+
+  dim cxAggErr(1 to 6) as String
+  cxAggErr(1) = "min(1+2i, 3)"
+  cxAggErr(2) = "max((1+2i, 2))"
+  cxAggErr(3) = "sort(3+4i, 1+2i)"
+  cxAggErr(4) = "median(1+2i, 5)"
+  cxAggErr(5) = "variance(1+2i, 2)"
+  cxAggErr(6) = "stddev((1+2i, 2))"
+
+  dim aei as Integer
+  for aei = 1 to 6
+    if Parser_TryEvaluateEx(cxAggErr(aei), r, rt, ia) then
+      print "[complex-opt] FAIL: expected error for """ & cxAggErr(aei) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errAgg as String = lcase(Parser_GetLastError())
+      if instr(errAgg, "incompatible operands") > 0 then
+        print "[complex-opt] PASS: """ & cxAggErr(aei) & """ -> incompatible operands"
+        subPass += 1
+      else
+        print "[complex-opt] FAIL: """ & cxAggErr(aei) & """ expected incompatible operands, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next aei
+
+  dim cxUniOk(1 to 16) as String
+  dim cxUniExpect(1 to 16) as String
+  cxUniOk(1) = "int(2.7+3.2i)": cxUniExpect(1) = "2+3i"
+  cxUniOk(2) = "frac(2.5+0.5i)": cxUniExpect(2) = "0.5+0.5i"
+  cxUniOk(3) = "round(2.4+3.6i)": cxUniExpect(3) = "2+4i"
+  cxUniOk(4) = "floor(2.9+3.1i)": cxUniExpect(4) = "2+3i"
+  cxUniOk(5) = "ceil(2.1+3.1i)": cxUniExpect(5) = "3+4i"
+  cxUniOk(6) = "abs(3+4i)": cxUniExpect(6) = "5"
+  cxUniOk(7) = "sign(3+4i)": cxUniExpect(7) = "0.6+0.8i"
+  cxUniOk(8) = "real(1+2i)": cxUniExpect(8) = "1"
+  cxUniOk(9) = "imag(1+2i)": cxUniExpect(9) = "2"
+  cxUniOk(10) = "conj(1+2i)": cxUniExpect(10) = "1-2i"
+  cxUniOk(11) = "phase(1)": cxUniExpect(11) = "0"
+  cxUniOk(12) = "polar(1+1i)": cxUniExpect(12) = "(1.414213562373095, 0.7853981633974483)"
+  cxUniOk(13) = "cart(polar(1+1i))": cxUniExpect(13) = "1+i"
+  cxUniOk(14) = "fact(5)": cxUniExpect(14) = "120"
+  cxUniOk(15) = "int((1+2.7i, 4.2+5.8i))": cxUniExpect(15) = "(1+2i, 4+5i)"
+  cxUniOk(16) = "abs((3+4i, 0))": cxUniExpect(16) = "(5, 0)"
+
+  dim ui as Integer
+  for ui = 1 to 16
+    if Parser_TryEvaluateEx(cxUniOk(ui), r, rt, ia) = FALSE orelse rt <> cxUniExpect(ui) then
+      print "[complex-opt] FAIL: """ & cxUniOk(ui) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxUniOk(ui) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next ui
+
+  dim cxUniErr(1 to 5) as String
+  cxUniErr(1) = "clamp(1+2i, 0, 5)"
+  cxUniErr(2) = "gcd(1+2i, 2)"
+  cxUniErr(3) = "mod(1+2i, 2)"
+  cxUniErr(4) = "ncr(5+5i, 2)"
+  cxUniErr(5) = "lcm(2, 1+2i)"
+
+  dim uei as Integer
+  for uei = 1 to 5
+    if Parser_TryEvaluateEx(cxUniErr(uei), r, rt, ia) then
+      print "[complex-opt] FAIL: expected error for """ & cxUniErr(uei) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errUni as String = lcase(Parser_GetLastError())
+      if instr(errUni, "incompatible operands") > 0 then
+        print "[complex-opt] PASS: """ & cxUniErr(uei) & """ -> incompatible operands"
+        subPass += 1
+      else
+        print "[complex-opt] FAIL: """ & cxUniErr(uei) & """ expected incompatible operands, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next uei
+
   Parser_SetSupportComplexNumbers(FALSE)
   if Parser_GetSupportComplexNumbers() <> FALSE then
     print "[complex-opt] FAIL: expected support flag OFF after disable"
@@ -445,6 +551,36 @@ private sub RunComplexNumberSupportOptionTests()
   else
     print "[complex-opt] PASS: getter reports disabled after Parser_SetSupportComplexNumbers(FALSE)"
     subPass += 1
+  end if
+
+  dim cxRealOffOk(1 to 3) as String
+  dim cxRealOffExpect(1 to 3) as String
+  cxRealOffOk(1) = "real(5)": cxRealOffExpect(1) = "5"
+  cxRealOffOk(2) = "cart(polar(2))": cxRealOffExpect(2) = "2"
+  cxRealOffOk(3) = "cart((5,0))": cxRealOffExpect(3) = "5"
+  dim cro as Integer
+  for cro = 1 to 3
+    if Parser_TryEvaluateEx(cxRealOffOk(cro), r, rt, ia) = FALSE orelse rt <> cxRealOffExpect(cro) then
+      print "[complex-opt] FAIL: """ & cxRealOffOk(cro) & """ with support OFF -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxRealOffOk(cro) & """ with support OFF -> """ & rt & """"
+      subPass += 1
+    end if
+  next cro
+
+  if Parser_TryEvaluateEx("cart((5,1))", r, rt, ia) then
+    print "[complex-opt] FAIL: expected error for cart((5,1)) with support OFF but got """ & rt & """"
+    subFail += 1
+  else
+    dim errCart as String = lcase(Parser_GetLastError())
+    if instr(errCart, "incompatible operands") > 0 then
+      print "[complex-opt] PASS: cart((5,1)) with support OFF -> incompatible operands"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: cart((5,1)) with support OFF expected incompatible operands, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
   end if
 
   if Parser_TryEvaluateEx("10+5i", r, rt, ia) then
@@ -468,7 +604,7 @@ private sub RunComplexNumberSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1035) as SmokeCase
+  dim tests(1 to 1045) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1560,6 +1696,16 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1033).expr = "20m or 10h": tests(1033).expected = "1" ' [time] logical or after compact suffix (not ``invalid suffix``)
   tests(1034).expr = "20m10s and 10h5m": tests(1034).expected = "1" ' [time] logical and after compact suffix
   tests(1035).expr = "1h and not 0": tests(1035).expected = "1" ' [time] ``not`` keyword after compact + ``and``
+  tests(1036).expr = "real(5)":           tests(1036).expected = "5" ' [ok-func] complex component unary on real
+  tests(1037).expr = "imag(-3.5)":        tests(1037).expected = "0" ' [ok-func]
+  tests(1038).expr = "phase(42)":         tests(1038).expected = "0" ' [ok-func]
+  tests(1039).expr = "polar(10)":         tests(1039).expected = "(10, 0)" ' [ok-func]
+  tests(1040).expr = "conj(-7)":          tests(1040).expected = "-7" ' [ok-func]
+  tests(1041).expr = "cart(3.5)":         tests(1041).expected = "3.5" ' [ok-func]
+  tests(1042).expr = "cart(polar(2))":    tests(1042).expected = "2" ' [ok-func]
+  tests(1043).expr = "imag((5,10))":      tests(1043).expected = "(0, 0)" ' [ok-array]
+  tests(1044).expr = "cart((5,0))":       tests(1044).expected = "5" ' [ok-func] polar cart with zero angle
+  tests(1045).expr = "cart((5,1))":       tests(1045).expectedErrContains = "incompatible operands" ' [ok-func]
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

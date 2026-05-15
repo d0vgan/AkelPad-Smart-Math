@@ -140,6 +140,12 @@ private:
     Minutes,
     Hours,
     Days,
+    Real,
+    Imag,
+    Phase,
+    Polar,
+    Cart,
+    Conj,
     Count
   };
 

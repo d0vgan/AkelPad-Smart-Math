@@ -466,7 +466,11 @@ private function ParseComplex(byval s as String, byref realPart as Double, byref
     ' Fallback: Check if it's purely imaginary (e.g., "5i") or purely real
     if Right(s, 1) = "i" then
       realPart = 0
-      imagPart = Val(Left(s, Len(s) - 1))
+      if Len(s) = 1 then
+        imagPart = 1
+      else
+        imagPart = Val(Left(s, Len(s) - 1))
+      end if
     else
       realPart = Val(s)
       imagPart = 0
@@ -502,13 +506,30 @@ function FormatComplexNumberScalar(byref s as String) as String
   dim imagPart as Double
   if not ParseComplex(s, realPart, imagPart) then return s
 
-  if realPart = 0 then return FormatNumericValue(imagPart) & "i"
-
-  dim imagSign as String = ""
-  if imagPart >= 0 then
-    imagSign = "+"
+  if realPart = 0 then
+    if imagPart = 1 then return "i"
+    if imagPart = -1 then return "-i"
+    return FormatNumericValue(imagPart) & "i"
   end if
-  return FormatNumericValue(realPart) & imagSign & FormatNumericValue(imagPart) & "i"
+
+  dim realStr as String = FormatNumericValue(realPart)
+  dim imagStr as String
+  if imagPart = 1 then
+    imagStr = " + i"
+  elseif imagPart = -1 then
+    imagStr = " - i"
+  else
+    dim imagSign as String
+    if imagPart >= 0 then
+      imagSign = " + "
+    else
+      imagSign = " - "
+      imagPart = -imagPart
+    end if
+    imagStr = imagSign & FormatNumericValue(imagPart) & "i"
+  end if
+
+  return realStr & imagStr
 end function
 
 function IsTimeValueStr(byref s as String) as Boolean
