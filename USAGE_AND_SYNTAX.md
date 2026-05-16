@@ -458,9 +458,9 @@ Purpose: angle and trig math.
 - `acos(value)`, `arccos(value)` - inverse cosine
 - `atan(value)`, `arctan(value)` - inverse tangent
 - `atan2(y, x)` - angle of vector `(x,y)` in radians
-- `sinh(value)` - hyperbolic sine
-- `cosh(value)` - hyperbolic cosine
-- `tanh(value)` - hyperbolic tangent
+- `sinh(value)` - hyperbolic sine: `(exp(x) - exp(-x))/2`
+- `cosh(value)` - hyperbolic cosine: `(exp(x) + exp(-x))/2`
+- `tanh(value)` - hyperbolic tangent: `sinh(x)/cosh(x)`
 - `asinh(value)` - inverse hyperbolic sine
 - `acosh(value)` - inverse hyperbolic cosine
 - `atanh(value)` - inverse hyperbolic tangent
@@ -473,6 +473,16 @@ Purpose: angle and trig math.
   - `rad(180)` -> `pi`
   - `cos(rad(30,45,60))` -> `(0.866025, 0.707107, 0.5)`
   - `acos((sqrt(3)/2, sqrt(2)/2, 1/2)); deg` -> `(30, 45, 60)`
+
+#### Trigonometric and Hyperbolic With Complex Numbers
+
+With complex numbers, the meaning of functions is different:
+- `sin(a + b*i)`: `sin(a)*cosh(b) + i*cos(a)*sinh(b)`
+- `cos(a + b*i)`: `cos(a)*cosh(b) - i*sin(a)*sinh(b)`
+- `tan(a + b*i)`: `(sin(2*a) + i*sinh(2*b))/(cos(2*a) + cosh(2*b))`
+- `sinh(a + b*i)`: `sinh(a)*cos(b) + i*cosh(a)*sin(b)`
+- `cosh(a + b*i)`: `cosh(a)*cos(b) + i*sinh(a)*sin(b)`
+- `tanh(a + b*i)`: `(sinh(2*a) + i*sin(2*b))/(cosh(2*a) + cos(2*b))`
 
 ### Logarithmic and Exponential
 
@@ -488,20 +498,34 @@ Purpose: growth/scale and logarithm operations.
   - `log(8,2)` -> `3`
   - `log10(1000)` -> `3`
 
+#### Logarithmic and Exponential With Complex Numbers
+
+With complex numbers, the meaning of functions is different:
+- `exp(a + b*i)`: `exp(a)*(cos(b) + i*sin(b))`
+- `ln(c)`: `ln(abs(c)) + i*phase(c)`
+- `log(c, base)`: `ln(c)/ln(base)`
+
 ### Power and Root
 
 Purpose: power (`**`) and root operations.
 
 - Key functions:
 - `pow(value, power)` - raise value to a power (same as `value ** power`)
-- `sqrt(value)` - square root
-- `sqr(value)` - square (value * value)
-- `hypot(x, y)` - hypotenuse (`sqrt(x*x + y*y)`)
+- `sqrt(value)` - square root (same as `value ** (1/2)`)
+- `sqr(value)` - square: `value * value`
+- `hypot(x, y)` - hypotenuse: `sqrt(x*x + y*y)`
 - Examples:
   - `pow(27,1/3)` -> `3`
   - `2**63` -> `9223372036854775808`
   - `sqrt(25)` -> `5`
   - `hypot(3,4)` -> `5`
+
+#### Power and Root With Complex Numbers
+
+With complex numbers, the meaning of functions is different:
+- `pow(c, p)`: `exp(p*ln(c))`
+- `sqrt(c)`: `sqrt(abs(c))*exp(i*phase(c)/2)`
+- `sqr(a + b*i)`: `(a + b*i)*(a + b*i) = a*a - b*b + 2*a*b*i`
 
 ### Numeric Utilities
 
