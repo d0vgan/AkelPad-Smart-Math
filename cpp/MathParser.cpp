@@ -184,6 +184,26 @@ void complexExpCartesian(double ar, double ai, double& outR, double& outI) {
   outI = ea * std::sin(ai);
 }
 
+void complexPrincipalSqrt(double ar, double ai, double& outR, double& outI) {
+  const double nanv = std::numeric_limits<double>::quiet_NaN();
+  if (!std::isfinite(ar) || !std::isfinite(ai)) {
+    outR = nanv;
+    outI = nanv;
+    return;
+  }
+  const double mag = std::hypot(ar, ai);
+  if (mag == 0.0) {
+    outR = 0.0;
+    outI = 0.0;
+    return;
+  }
+  const double halfAng = std::atan2(ai, ar) * 0.5;
+  const double rm = std::sqrt(mag);
+  outR = rm * std::cos(halfAng);
+  outI = rm * std::sin(halfAng);
+  snapComplexNearZeroAxis(outR, outI);
+}
+
 void complexGamma(double zr, double zi, double& outR, double& outI) {
   const double nanv = std::numeric_limits<double>::quiet_NaN();
   if (!std::isfinite(zr) || !std::isfinite(zi)) {
@@ -1567,6 +1587,146 @@ std::string formatTimeCanonicalFromMs(long long totalMs) {
 }
 
 }  // namespace
+
+bool MathParser::isComplexUnaryTrigBuiltin(BuiltinFunctionId id) {
+  switch (id) {
+    case BuiltinFunctionId::Sin:
+    case BuiltinFunctionId::Cos:
+    case BuiltinFunctionId::Tan:
+    case BuiltinFunctionId::Asin:
+    case BuiltinFunctionId::Acos:
+    case BuiltinFunctionId::Atan:
+    case BuiltinFunctionId::Sinh:
+    case BuiltinFunctionId::Cosh:
+    case BuiltinFunctionId::Tanh:
+    case BuiltinFunctionId::Acosh:
+    case BuiltinFunctionId::Asinh:
+    case BuiltinFunctionId::Atanh:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool MathParser::complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI) {
+  const double nanv = std::numeric_limits<double>::quiet_NaN();
+  if (!std::isfinite(ar) || !std::isfinite(ai)) {
+    outR = nanv;
+    outI = nanv;
+    return true;
+  }
+  switch (id) {
+    case BuiltinFunctionId::Sin:
+      outR = std::sin(ar) * std::cosh(ai);
+      outI = std::cos(ar) * std::sinh(ai);
+      break;
+    case BuiltinFunctionId::Cos:
+      outR = std::cos(ar) * std::cosh(ai);
+      outI = -std::sin(ar) * std::sinh(ai);
+      break;
+    case BuiltinFunctionId::Sinh:
+      outR = std::sinh(ar) * std::cos(ai);
+      outI = std::cosh(ar) * std::sin(ai);
+      break;
+    case BuiltinFunctionId::Cosh:
+      outR = std::cosh(ar) * std::cos(ai);
+      outI = std::sinh(ar) * std::sin(ai);
+      break;
+    case BuiltinFunctionId::Tan:
+    case BuiltinFunctionId::Tanh: {
+      double numR = 0.0;
+      double numI = 0.0;
+      double denR = 0.0;
+      double denI = 0.0;
+      if (id == BuiltinFunctionId::Tan) {
+        numR = std::sin(ar) * std::cosh(ai);
+        numI = std::cos(ar) * std::sinh(ai);
+        denR = std::cos(ar) * std::cosh(ai);
+        denI = -std::sin(ar) * std::sinh(ai);
+      } else {
+        numR = std::sinh(ar) * std::cos(ai);
+        numI = std::cosh(ar) * std::sin(ai);
+        denR = std::cosh(ar) * std::cos(ai);
+        denI = std::sinh(ar) * std::sin(ai);
+      }
+      complexDivide(numR, numI, denR, denI, outR, outI);
+      break;
+    }
+    case BuiltinFunctionId::Asinh: {
+      const double z2r = ar * ar - ai * ai;
+      const double z2i = 2.0 * ar * ai;
+      double sqrR = 0.0;
+      double sqrI = 0.0;
+      complexPrincipalSqrt(z2r + 1.0, z2i, sqrR, sqrI);
+      scalarPrincipalLnCartesian(ar + sqrR, ai + sqrI, outR, outI);
+      break;
+    }
+    case BuiltinFunctionId::Acosh: {
+      const double z2r = ar * ar - ai * ai;
+      const double z2i = 2.0 * ar * ai;
+      double sqrR = 0.0;
+      double sqrI = 0.0;
+      complexPrincipalSqrt(z2r - 1.0, z2i, sqrR, sqrI);
+      scalarPrincipalLnCartesian(ar + sqrR, ai + sqrI, outR, outI);
+      break;
+    }
+    case BuiltinFunctionId::Atanh: {
+      double quotR = 0.0;
+      double quotI = 0.0;
+      complexDivide(1.0 + ar, ai, 1.0 - ar, -ai, quotR, quotI);
+      double lnR = 0.0;
+      double lnI = 0.0;
+      scalarPrincipalLnCartesian(quotR, quotI, lnR, lnI);
+      outR = lnR * 0.5;
+      outI = lnI * 0.5;
+      break;
+    }
+    case BuiltinFunctionId::Asin: {
+      const double izR = -ai;
+      const double izI = ar;
+      const double z2r = ar * ar - ai * ai;
+      const double z2i = 2.0 * ar * ai;
+      double sqrR = 0.0;
+      double sqrI = 0.0;
+      complexPrincipalSqrt(1.0 - z2r, -z2i, sqrR, sqrI);
+      double lnR = 0.0;
+      double lnI = 0.0;
+      scalarPrincipalLnCartesian(izR + sqrR, izI + sqrI, lnR, lnI);
+      outR = lnI;
+      outI = -lnR;
+      break;
+    }
+    case BuiltinFunctionId::Acos: {
+      double asR = 0.0;
+      double asI = 0.0;
+      if (!complexUnaryTrigCartesian(BuiltinFunctionId::Asin, ar, ai, asR, asI)) {
+        return false;
+      }
+      outR = kPi / 2.0 - asR;
+      outI = -asI;
+      break;
+    }
+    case BuiltinFunctionId::Atan: {
+      const double izR = -ai;
+      const double izI = ar;
+      double ln1mR = 0.0;
+      double ln1mI = 0.0;
+      double ln1pR = 0.0;
+      double ln1pI = 0.0;
+      scalarPrincipalLnCartesian(1.0 - izR, -izI, ln1mR, ln1mI);
+      scalarPrincipalLnCartesian(1.0 + izR, izI, ln1pR, ln1pI);
+      const double dR = ln1mR - ln1pR;
+      const double dI = ln1mI - ln1pI;
+      outR = -dI * 0.5;
+      outI = dR * 0.5;
+      break;
+    }
+    default:
+      return false;
+  }
+  snapComplexNearZeroAxis(outR, outI);
+  return true;
+}
 
 MathParser::MathParser() {
   assert(functionNames().size() == static_cast<std::size_t>(BuiltinFunctionId::Count));
@@ -6391,6 +6551,11 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       setExactArgCountError(ctx, fnName, 2);
       return makeScalar(0);
     }
+    if (supportComplexNumbers_ &&
+        (evalValueHasNonzeroImaginary(args[0]) || evalValueHasNonzeroImaginary(args[1]))) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
     if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
@@ -6665,6 +6830,14 @@ MathParser::EvalValue MathParser::builtinDegRad(
   if (args.empty()) {
     setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
+  }
+  if (supportComplexNumbers_) {
+    for (const auto& a : args) {
+      if (evalValueHasNonzeroImaginary(a)) {
+        setIncompatibleOperandsError(ctx);
+        return makeScalar(0);
+      }
+    }
   }
   const bool toDeg = (id == BuiltinFunctionId::Deg);
   if (args.size() == 1) {
@@ -7021,6 +7194,18 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     if (id == BuiltinFunctionId::Exp || id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) {
       return unaryExpLnLog10ForScalarValue(s);
     }
+    if (supportComplexNumbers_ && isComplexUnaryTrigBuiltin(id) && scalarHasNonzeroImaginaryPart(s)) {
+      double ar = 0.0;
+      double ai = 0.0;
+      scalarLoadCartesian(s, ar, ai);
+      double or_ = 0.0;
+      double oi = 0.0;
+      if (!complexUnaryTrigCartesian(id, ar, ai, or_, oi)) {
+        return makeScalarComplexFromDoubles(nanv, nanv);
+      }
+      snapComplexNearZeroAxis(or_, oi);
+      return makeScalarComplexFromDoubles(or_, oi);
+    }
     const double x = s.scalar;
     switch (id) {
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
@@ -7057,29 +7242,58 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
   }
   switch (id) {
     case BuiltinFunctionId::Sin:
-      return mapUnaryFn(args[0], calcSin);
     case BuiltinFunctionId::Cos:
-      return mapUnaryFn(args[0], calcCos);
     case BuiltinFunctionId::Tan:
-      return mapUnaryFn(args[0], calcTan);
     case BuiltinFunctionId::Asin:
-      return mapUnaryFn(args[0], std::asin);
     case BuiltinFunctionId::Acos:
-      return mapUnaryFn(args[0], std::acos);
     case BuiltinFunctionId::Atan:
-      return mapUnaryFn(args[0], std::atan);
     case BuiltinFunctionId::Sinh:
-      return mapUnaryFn(args[0], std::sinh);
     case BuiltinFunctionId::Cosh:
-      return mapUnaryFn(args[0], std::cosh);
     case BuiltinFunctionId::Tanh:
-      return mapUnaryFn(args[0], std::tanh);
     case BuiltinFunctionId::Acosh:
-      return mapUnaryFn(args[0], std::acosh);
     case BuiltinFunctionId::Asinh:
-      return mapUnaryFn(args[0], std::asinh);
-    case BuiltinFunctionId::Atanh:
-      return mapUnaryFn(args[0], std::atanh);
+    case BuiltinFunctionId::Atanh: {
+      const auto applyTrigScalar = [&](const EvalValue::ScalarValue& sItem) -> EvalValue {
+        if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sItem)) {
+          double ar = 0.0;
+          double ai = 0.0;
+          scalarLoadCartesian(sItem, ar, ai);
+          double or_ = 0.0;
+          double oi = 0.0;
+          if (!complexUnaryTrigCartesian(id, ar, ai, or_, oi)) {
+            return makeScalarComplexFromDoubles(nanv, nanv);
+          }
+          snapComplexNearZeroAxis(or_, oi);
+          return makeScalarComplexFromDoubles(or_, oi);
+        }
+        const double x = sItem.scalar;
+        switch (id) {
+          case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
+          case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
+          case BuiltinFunctionId::Tan: return makeScalarMaybeExact(calcTan(x));
+          case BuiltinFunctionId::Asin: return makeScalarMaybeExact(std::asin(x));
+          case BuiltinFunctionId::Acos: return makeScalarMaybeExact(std::acos(x));
+          case BuiltinFunctionId::Atan: return makeScalarMaybeExact(std::atan(x));
+          case BuiltinFunctionId::Sinh: return makeScalarMaybeExact(std::sinh(x));
+          case BuiltinFunctionId::Cosh: return makeScalarMaybeExact(std::cosh(x));
+          case BuiltinFunctionId::Tanh: return makeScalarMaybeExact(std::tanh(x));
+          case BuiltinFunctionId::Acosh: return makeScalarMaybeExact(std::acosh(x));
+          case BuiltinFunctionId::Asinh: return makeScalarMaybeExact(std::asinh(x));
+          case BuiltinFunctionId::Atanh: return makeScalarMaybeExact(std::atanh(x));
+          default: break;
+        }
+        return makeScalar(0);
+      };
+      if (args[0].kind == ValueKind::Scalar) {
+        return applyTrigScalar(args[0].scalarValue);
+      }
+      std::vector<EvalValue> outVals;
+      outVals.reserve(args[0].arr.size());
+      for (const auto& e : args[0].arr) {
+        outVals.emplace_back(applyTrigScalar(e));
+      }
+      return makeArrayFromScalars(outVals);
+    }
     case BuiltinFunctionId::Exp:
     case BuiltinFunctionId::Ln:
     case BuiltinFunctionId::Log10: {

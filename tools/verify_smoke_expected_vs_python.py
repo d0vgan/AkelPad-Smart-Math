@@ -15,9 +15,12 @@ switch to a dedicated reference path:
     ``SmokeTest_MathParser.bas``. That sub's table rows are discovered with a
     generic regex ``StemCases(n) = "expr": stemExpect(n) = "expect"`` (same
     ``Stem`` for both arrays) over the sub body only, so new tables like
-    ``powCases`` / ``powExpect`` or ``cxExpLnCases`` / ``cxExpLnExpect`` are picked
-    up automatically. Some rows are still skipped or may not evaluate in the Python
-    stub (principal ``**``, ``ln``/``log10`` on negatives, DSL ``=``, ``!``, …).
+    ``powCases`` / ``powExpect``, ``cxTrigOk`` / ``cxTrigExpect``, ``cxFmtOk`` /
+    ``cxFmtExpect``, and similar ``*Cases`` / ``*Ok`` + ``*Expect`` tables are picked
+    up automatically. Error-only rows (``*ErrExpr``, inline ``Parser_TryEvaluateEx``
+    probes) are captured as ``expect_error``. Formatting builtins (``hex``/``bin``/…)
+    and a few DSL-only forms (``unique``, ``unpack``, user ``f(x)=``) are parsed but
+    skipped for numeric compare when Python cannot mirror display/DSL semantics.
   * **Time:** colon literals (MM:SS / HH:MM:SS / DD:HH:MM:SS), named duration
     constants (``second`` … ``day``), compact suffix forms (``1d2h3m4s5ms``),
     converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
@@ -30,6 +33,7 @@ Float agreement uses the same tolerance idea as SmokeTest_MathParser.bas:
 from __future__ import annotations
 
 import ast
+import cmath
 import math
 import re
 import statistics
@@ -541,6 +545,8 @@ def _format_complex_smoke(z: complex) -> str:
     if abs(i) < 1e-15:
         if abs(r) < 1e-15:
             return "0"
+        if math.isinf(r):
+            return "-inf" if r < 0 else "inf"
         if abs(r - round(r)) < 1e-12 and abs(r) < 1e15:
             return str(int(round(r)))
         return str(r).rstrip("0").rstrip(".")
@@ -742,11 +748,29 @@ _RE_RUN_COMPLEX_SUB = re.compile(
     re.MULTILINE,
 )
 
-# Same-line paired table row: fooCases(3) = "expr": fooExpect(3) = "expect"
-# Stem must match for Cases and Expect (e.g. powCases / powExpect, cxExpLnCases / cxExpLnExpect).
+# Same-line paired table row: fooCases(3) or fooOk(3) = "expr": fooExpect(3) = "expect"
 _RE_COMPLEX_OPT_PAIRED_ROW = re.compile(
-    r'([A-Za-z_][A-Za-z0-9_]*)Cases\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
+    r'([A-Za-z_][A-Za-z0-9_]*)(?:Cases|Ok)\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
     r'\1Expect\s*\(\s*\2\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+# Error-only table: cmpErrExpr(1) = "1+2i > 0"
+_RE_COMPLEX_OPT_ERR_ROW = re.compile(
+    r'([A-Za-z_][A-Za-z0-9_]*Err(?:Expr)?)\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+# Inline literal probe: if Parser_TryEvaluateEx("expr", r, rt, ia) then ... expected error ...
+_RE_COMPLEX_OPT_INLINE_PROBE = re.compile(
+    r'if\s+Parser_TryEvaluateEx\("((?:[^"\\]|\\.)*)"\s*,\s*r\s*,\s*rt\s*,\s*ia\s*\)\s+then',
+    re.I,
+)
+
+# Inline success probe: ... = FALSE orelse rt <> "expect"
+_RE_COMPLEX_OPT_INLINE_SUCCESS = re.compile(
+    r'if\s+Parser_TryEvaluateEx\("((?:[^"\\]|\\.)*)"\s*,\s*r\s*,\s*rt\s*,\s*ia\s*\)\s*=\s*FALSE\s+'
+    r'orelse\s+rt\s+<>\s+"((?:[^"\\]|\\.)*)"',
     re.I,
 )
 
@@ -759,14 +783,12 @@ def _extract_run_complex_number_support_sub_body(text: str) -> Optional[str]:
 
 def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
     """
-    Parse all ``StemCases`` / ``stemExpect`` same-index pairs from
-    ``RunComplexNumberSupportOptionTests`` in ``SmokeTest_MathParser.bas``.
+    Parse numeric and error probes from ``RunComplexNumberSupportOptionTests``.
 
-    Convention (enforced by regex): ``fooCases(n)`` shares the stem ``foo`` with
-    ``fooExpect(n)`` on the same source line. New complex tables following that
-    pattern are picked up without updating this tool. Rows that only assign an
-    error probe expression (no paired ``*Expect`` on the same line, e.g. some
-    ``cmpErrExpr`` / ``cxIntErr`` entries) are not captured.
+    * Paired rows: ``fooCases(n) = "expr": fooExpect(n) = "exp"`` or
+      ``fooOk(n): fooExpect(n)`` on one line.
+    * Error tables: ``cmpErrExpr(n) = "expr"`` (no expected string).
+    * Inline ``Parser_TryEvaluateEx("literal", ...)`` success/error probes.
     """
     text = open(path, encoding="utf-8", errors="replace").read()
     block = _extract_run_complex_number_support_sub_body(text)
@@ -775,16 +797,26 @@ def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
 
     out: list[dict] = []
     stem_first_pos: dict[str, int] = {}
+    seen_keys: set[str] = set()
+
+    def add_case(entry: dict) -> None:
+        key = entry["idx"]
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        stem = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", key)
+        if stem:
+            stem_first_pos.setdefault(stem.group(1).lower(), len(out))
+        out.append(entry)
+
     for m in _RE_COMPLEX_OPT_PAIRED_ROW.finditer(block):
         stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
-        stem_key = stem.lower()
-        stem_first_pos.setdefault(stem_key, m.start())
         n = int(n_s)
         expr = expr_s.replace('""', '"')
         expected = exp_s.replace('""', '"')
-        out.append(
+        add_case(
             {
-                "idx": f"{stem}Cases({n})",
+                "idx": f"{stem}({n})",
                 "expr": expr,
                 "expected": expected,
                 "ref_mode": "complex",
@@ -792,11 +824,56 @@ def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
             }
         )
 
-    def _key(c: dict) -> tuple[int, int]:
+    for m in _RE_COMPLEX_OPT_ERR_ROW.finditer(block):
+        stem, n_s, expr_s = m.group(1), m.group(2), m.group(3)
+        n = int(n_s)
+        expr = expr_s.replace('""', '"')
+        add_case(
+            {
+                "idx": f"{stem}({n})",
+                "expr": expr,
+                "expect_error": True,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
+
+    for m in _RE_COMPLEX_OPT_INLINE_SUCCESS.finditer(block):
+        expr_s, exp_s = m.group(1), m.group(2)
+        expr = expr_s.replace('""', '"')
+        expected = exp_s.replace('""', '"')
+        add_case(
+            {
+                "idx": f"inline:{expr}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
+
+    for m in _RE_COMPLEX_OPT_INLINE_PROBE.finditer(block):
+        expr_s = m.group(1)
+        expr = expr_s.replace('""', '"')
+        tail = block[m.end() : m.end() + 400]
+        if re.search(r"expected\s+error|expected\s+failure", tail, re.I):
+            add_case(
+                {
+                    "idx": f"inline-err:{expr}",
+                    "expr": expr,
+                    "expect_error": True,
+                    "ref_mode": "complex",
+                    "source": "complex_opt",
+                }
+            )
+
+    def _key(c: dict) -> tuple[int, int, str]:
         lab = c["idx"]
-        stem = lab[: lab.index("Cases(")].lower()
-        n = int(lab.split("(")[1].rstrip(")"))
-        return (stem_first_pos.get(stem, 0), n)
+        stem_m = re.match(r"([A-Za-z_][A-Za-z0-9_]*)", lab)
+        stem = stem_m.group(1).lower() if stem_m else lab.lower()
+        n_m = re.search(r"\((\d+)\)", lab)
+        n = int(n_m.group(1)) if n_m else 0
+        return (stem_first_pos.get(stem, 10**9), n, lab)
 
     out.sort(key=_key)
     return out
@@ -829,7 +906,8 @@ def _replace_int_literals(expr: str) -> str:
 
 def _implicit_mul(expr: str) -> str:
     s = expr
-    s = re.sub(r"(\d)\s*\(", r"\1*(", s)
+    # Numeric literal before ``(`` only (not ``log10_sm(`` / ``foo2(``).
+    s = re.sub(r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)\s*\(", r"\1*(", s)
     s = re.sub(r"\)\s*\(", r")*(", s)
     return s
 
@@ -881,12 +959,34 @@ def _postfix_percent(expr: str) -> Optional[str]:
     return "".join(out)
 
 
-def _translate_functions(expr: str) -> Optional[str]:
+def _preprocess_complex_dsl(expr: str) -> str:
+    """Smart-Math DSL in complex-option block: ``<>``, ``=``, ``!`` / ``not``."""
+    s = expr.replace("<>", "!=")
+    s = re.sub(r"!\s*\(", "complex_not_sm(", s)
+    s = re.sub(r"\bnot\s+\(", "complex_not_sm(", s, flags=re.I)
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i : i + 2] in ("==", "!=", "<=", ">="):
+            out.append(s[i : i + 2])
+            i += 2
+            continue
+        if s[i] == "=":
+            out.append("==")
+            i += 1
+            continue
+        out.append(s[i])
+        i += 1
+    return "".join(out)
+
+
+def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
     """Rename / wrap calls so ast.parse + eval with NS works."""
     s = expr
     repl = {
         "ln": "log_ln",
         "log10": "log10_sm",
+        "product": "prod_sm",
         "log": "log_sm",
         "round": "round_sm",
         "pow": "pow_sm",
@@ -915,7 +1015,26 @@ def _translate_functions(expr: str) -> Optional[str]:
         "random": "random_sm",
         "rand": "rand_sm",
     }
-    for old, new in repl.items():
+    if mode == "complex":
+        repl.update(
+            {
+                "int": "int_sm_cx",
+                "frac": "frac_sm_cx",
+                "floor": "floor_sm_cx",
+                "ceil": "ceil_sm_cx",
+                "round": "round_sm_cx",
+                "real": "real_sm",
+                "imag": "imag_sm",
+                "conj": "conj_sm",
+                "phase": "phase_sm",
+                "polar": "polar_sm",
+                "cart": "cart_sm",
+                "sqrt": "sqrt_sm",
+                "hypot": "hypot_sm",
+            }
+        )
+    # Longer names first so ``log`` does not alter ``log10`` / ``log10_sm``.
+    for old, new in sorted(repl.items(), key=lambda kv: -len(kv[0])):
         s = re.sub(rf"\b{old}\b", new, s)
     return s
 
@@ -1004,6 +1123,27 @@ def avg_sm(*args):
     return mean_sm(*args)
 
 
+def _flatten_args_cx(*args: Any) -> list[Any]:
+    flat: list[Any] = []
+    for a in args:
+        if isinstance(a, tuple):
+            flat.extend(a)
+        else:
+            flat.append(a)
+    return flat
+
+
+def mean_sm_cx(*args: Any) -> complex:
+    flat = _flatten_args_cx(*args)
+    if not flat:
+        raise ValueError("empty")
+    return sum(_as_complex(x) for x in flat) / len(flat)
+
+
+def avg_sm_cx(*args: Any) -> complex:
+    return mean_sm_cx(*args)
+
+
 def fact_sm(n):
     if not float(n).is_integer() or n < 0:
         raise ValueError("fact")
@@ -1023,8 +1163,160 @@ def rad_sm(x):
     return x * math.pi / 180.0
 
 
+def _as_complex(z: Any) -> complex:
+    if isinstance(z, complex):
+        return z
+    if isinstance(z, (int, float)):
+        return complex(float(z), 0.0)
+    raise TypeError("not scalar")
+
+
+def _map_unary_cx(fn):
+    """Element-wise on tuples (Smart-Math array builtins)."""
+
+    def wrapped(x: Any) -> Any:
+        if isinstance(x, tuple):
+            return tuple(wrapped(e) for e in x)
+        return fn(x)
+
+    return wrapped
+
+
+def complex_not_sm(z: Any) -> int:
+    """Smart-Math ``!`` / ``not``: true only when both Cartesian parts are ~0."""
+    c = _as_complex(z)
+    eps = 1e-15
+    return 1 if abs(c.real) < eps and abs(c.imag) < eps else 0
+
+
 def sign_sm(x):
+    if isinstance(x, complex):
+        if abs(x) < 1e-15:
+            return 0
+        return x / abs(x)
     return -1 if x < 0 else (1 if x > 0 else 0)
+
+
+def sign_sm_real(x):
+    return -1 if x < 0 else (1 if x > 0 else 0)
+
+
+def sqrt_sm(x):
+    if isinstance(x, complex) or (isinstance(x, (int, float)) and x < 0):
+        return cmath.sqrt(complex(x))
+    return math.sqrt(float(x))
+
+
+def hypot_sm(a, b):
+    a, b = _as_complex(a), _as_complex(b)
+    return (abs(a) ** 2 + abs(b) ** 2) ** 0.5
+
+
+def _log_ln_cx_scalar(x: Any) -> complex:
+    c = _as_complex(x)
+    if c == 0:
+        return complex(-math.inf, 0.0)
+    return cmath.log(c)
+
+
+log_ln_cx = _map_unary_cx(_log_ln_cx_scalar)
+
+
+def _log10_cx_scalar(x: Any) -> complex:
+    return cmath.log10(_as_complex(x))
+
+
+log10_sm_cx = _map_unary_cx(_log10_cx_scalar)
+
+
+def log_sm_cx(a, b=None):
+    if b is None:
+        raise TypeError("log needs 2 args")
+    if isinstance(a, tuple) or isinstance(b, tuple):
+        if not (isinstance(a, tuple) and isinstance(b, tuple)):
+            raise TypeError("not scalar")
+        if len(a) != len(b):
+            raise ValueError("length")
+        return tuple(log_sm_cx(x, y) for x, y in zip(a, b))
+    return cmath.log(_as_complex(a)) / cmath.log(_as_complex(b))
+
+
+def pow_sm_cx(b, e):
+    return _as_complex(b) ** _as_complex(e)
+
+
+def _int_sm_cx_scalar(z: Any) -> complex:
+    c = _as_complex(z)
+    return complex(math.trunc(c.real), math.trunc(c.imag))
+
+
+int_sm_cx = _map_unary_cx(_int_sm_cx_scalar)
+
+
+def frac_sm_cx(z):
+    c = _as_complex(z)
+    return complex(c.real - math.trunc(c.real), c.imag - math.trunc(c.imag))
+
+
+def round_sm_cx(z):
+    c = _as_complex(z)
+    return complex(round_half_away_from_zero(c.real), round_half_away_from_zero(c.imag))
+
+
+def floor_sm_cx(z):
+    c = _as_complex(z)
+    return complex(math.floor(c.real), math.floor(c.imag))
+
+
+def ceil_sm_cx(z):
+    c = _as_complex(z)
+    return complex(math.ceil(c.real), math.ceil(c.imag))
+
+
+def real_sm(z):
+    c = _as_complex(z)
+    return c.real
+
+
+def imag_sm(z):
+    return _as_complex(z).imag
+
+
+def conj_sm(z):
+    return _as_complex(z).conjugate()
+
+
+def phase_sm(z):
+    return cmath.phase(_as_complex(z))
+
+
+def polar_sm(z):
+    c = _as_complex(z)
+    return (abs(c), cmath.phase(c))
+
+
+def cart_sm(z):
+    if isinstance(z, tuple) and len(z) == 2:
+        return cmath.rect(float(z[0]), float(z[1]))
+    return _as_complex(z)
+
+
+def atan2_sm_cx(y: Any, x: Any) -> float:
+    if isinstance(y, complex) or isinstance(x, complex):
+        raise ValueError("incompatible operands")
+    return math.atan2(float(y), float(x))
+
+
+def deg_sm_cx(x: Any) -> float:
+    if isinstance(x, complex) and abs(x.imag) > 1e-15:
+        raise ValueError("incompatible operands")
+    return deg_sm(x.real if isinstance(x, complex) else float(x))
+
+
+def rad_sm_cx(x: Any) -> float:
+    if isinstance(x, complex) and abs(x.imag) > 1e-15:
+        raise ValueError("incompatible operands")
+    return rad_sm(x.real if isinstance(x, complex) else float(x))
 
 
 def clamp_sm(x, lo, hi):
@@ -1173,6 +1465,56 @@ def build_ns(ans: Any) -> dict:
     }
 
 
+def build_ns_complex(ans: Any) -> dict:
+    """Namespace for complex-option reference (``cmath`` + Smart-Math component rules)."""
+    ns = build_ns(ans)
+    ns.update(
+        {
+            "log_sm": log_sm_cx,
+            "log_ln": log_ln_cx,
+            "log10_sm": log10_sm_cx,
+            "mean_sm": mean_sm_cx,
+            "avg_sm": avg_sm_cx,
+            "pow_sm": pow_sm_cx,
+            "sqrt_sm": sqrt_sm,
+            "hypot_sm": hypot_sm,
+            "sign_sm": sign_sm,
+            "complex_not_sm": complex_not_sm,
+            "int_sm_cx": int_sm_cx,
+            "frac_sm_cx": frac_sm_cx,
+            "round_sm_cx": round_sm_cx,
+            "floor_sm_cx": floor_sm_cx,
+            "ceil_sm_cx": ceil_sm_cx,
+            "real_sm": real_sm,
+            "imag_sm": imag_sm,
+            "conj_sm": conj_sm,
+            "phase_sm": phase_sm,
+            "polar_sm": polar_sm,
+            "cart_sm": cart_sm,
+            "sin": _map_unary_cx(cmath.sin),
+            "cos": _map_unary_cx(cmath.cos),
+            "tan": _map_unary_cx(cmath.tan),
+            "asin": _map_unary_cx(cmath.asin),
+            "acos": _map_unary_cx(cmath.acos),
+            "atan": _map_unary_cx(cmath.atan),
+            "sinh": _map_unary_cx(cmath.sinh),
+            "cosh": _map_unary_cx(cmath.cosh),
+            "tanh": _map_unary_cx(cmath.tanh),
+            "asinh": _map_unary_cx(cmath.asinh),
+            "acosh": _map_unary_cx(cmath.acosh),
+            "atanh": _map_unary_cx(cmath.atanh),
+            "exp": _map_unary_cx(cmath.exp),
+            "abs": _map_unary_cx(abs),
+            "sqrt": _map_unary_cx(sqrt_sm),
+            "hypot": hypot_sm,
+            "atan2": atan2_sm_cx,
+            "deg_sm": deg_sm_cx,
+            "rad_sm": rad_sm_cx,
+        }
+    )
+    return ns
+
+
 def build_ns_time(ans: Any) -> dict:
     ns = build_ns(ans)
     ns.update(
@@ -1206,10 +1548,11 @@ def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
     e = p
     if mode == "complex":
         e = _preprocess_complex_surface(e)
+        e = _preprocess_complex_dsl(e)
     elif mode == "time":
         e = _preprocess_time_expression(e)
     e = _implicit_mul(e)
-    t = _translate_functions(e)
+    t = _translate_functions(e, mode=mode)
     if t is None:
         raise ValueError("translate")
     e = t
@@ -1253,7 +1596,12 @@ def ref_format(v: Any, *, mode: str = "real") -> str:
 def try_reference(expr_chain: str, *, mode: str = "real") -> tuple[Optional[Any], Optional[str]]:
     """Evaluate semicolon chain; last statement value is result."""
     parts = _split_statements(expr_chain)
-    ns: dict = build_ns_time(None) if mode == "time" else build_ns(None)
+    if mode == "time":
+        ns: dict = build_ns_time(None)
+    elif mode == "complex":
+        ns = build_ns_complex(None)
+    else:
+        ns = build_ns(None)
     last = None
     try:
         for part in parts:
@@ -1298,13 +1646,22 @@ def should_skip_case(case: dict) -> Optional[str]:
         return "expected error path"
     ex_raw = case["expr"]
     ex = _strip_line_comment(ex_raw)
+    is_co = case.get("source") == "complex_opt"
+    if case.get("expect_error"):
+        if is_co and (ex.strip() in ("10+5i",) or "cart((5,1))" in ex):
+            return "complex support disabled (not modeled in Python reference)"
+        if is_co and re.search(r"\bhex\s*\([^)]*\.", ex, re.I):
+            return "hex() fractional complex part (parser-specific error text)"
+        return None
 
     if ex.strip() == "ans" and ";" not in ex:
         return "standalone ans (no prior statement in harness)"
 
-    if "hex(" in ex or "bin(" in ex or "oct(" in ex or "uhex(" in ex:
+    if is_co and re.search(r"\b(?:hex|bin|oct|uhex|uoct|ubin)\s*\(", ex, re.I):
+        return "formatting builtin (display-only)"
+    if not is_co and re.search(r"\b(?:hex|bin|oct|uhex)\s*\(", ex, re.I):
         return "formatting builtin"
-    if "sort(" in ex or "unique(" in ex:
+    if not is_co and ("sort(" in ex or "unique(" in ex):
         return "sort/unique"
     if "~" in ex:
         return "bitwise complement (~)"
@@ -1313,20 +1670,35 @@ def should_skip_case(case: dict) -> Optional[str]:
     if re.fullmatch(r"(rad|deg|hex|bin|oct)\b(\(\))?", last.strip()):
         return "trailing formatter command (DSL)"
 
-    if "==" in ex or "!=" in ex or "<=" in ex or ">=" in ex:
+    if is_co and case.get("expected", "").strip() in ("0", "1") and re.search(
+        r"(?<![<>!=])=(?!=)|<>|!=|==", ex
+    ):
+        pass  # complex-option equality / inequality -> 0/1
+    elif "==" in ex or "!=" in ex or "<=" in ex or ">=" in ex:
+        return "comparison / equality (DSL 0/1 vs Python bool)"
+    elif ex.count("=") > 0 and not is_co and re.search(r"(?<![<>!=])=(?!=)", ex):
         return "comparison / equality (DSL 0/1 vs Python bool)"
     if ex.count("==") > 1:
         return "chained =="
-    if " not " in ex or " and " in ex or " or " in ex:
+    if is_co and (re.search(r"!\s*\(", ex) or re.search(r"\bnot\s+\(", ex, re.I)):
+        pass  # complex_not_sm
+    elif " not " in ex or " and " in ex or " or " in ex:
         return "logical not/and/or (DSL semantics)"
-    masked = ex.replace("<<", "@@SL@@").replace(">>", "@@SR@@")
+    masked = ex.replace("<>", "@@NE@@").replace("<<", "@@SL@@").replace(">>", "@@SR@@")
     if "<" in masked or ">" in masked:
-        return "ordering compare (e.g. chained inequalities)"
+        if is_co and case.get("expected", "").strip() in ("0", "1"):
+            pass
+        else:
+            return "ordering compare (e.g. chained inequalities)"
 
     if ";" in ex:
         if re.search(r"\b[a-z_][a-z0-9_]*\s*[\+\-\*/]\s*[a-z_][a-z0-9_]*\s*$", last):
             return "broadcast / element-wise array algebra (DSL)"
 
+    if is_co and ("unpack(" in ex or "unique(" in ex or "reverse(" in ex):
+        return "array DSL builtin (unpack/unique/reverse)"
+    if re.search(r"\b[a-z_][a-z0-9_]*\s*\([^)]*\)\s*=", ex, re.I):
+        return "user-defined function"
     if re.search(r"\by\s*\(", ex) or re.search(r"\bf\s*\(", ex):
         return "user-defined function (y(a)=...)"
 
@@ -1350,11 +1722,13 @@ def main() -> int:
     n_complex_opt_parsed = sum(1 for c in cases if c.get("source") == "complex_opt")
     n_complex_opt_skip_should = 0
     n_complex_opt_skip_eval = 0
+    n_complex_opt_error_ok = 0
+    n_complex_opt_error_fail = 0
     n_time = 0
 
     for case in cases:
         idx = case["idx"]
-        if "expected" not in case:
+        if "expected" not in case and not case.get("expect_error"):
             continue
         reason = should_skip_case(case)
         if reason:
@@ -1362,9 +1736,29 @@ def main() -> int:
             if case.get("source") == "complex_opt":
                 n_complex_opt_skip_should += 1
             continue
-        exp = case["expected"].strip()
-        mode = case.get("ref_mode") or infer_ref_mode(case["expr"], exp)
         is_co = case.get("source") == "complex_opt"
+        mode = case.get("ref_mode") or infer_ref_mode(
+            case["expr"], case.get("expected", "")
+        )
+
+        if case.get("expect_error"):
+            if mode == "complex":
+                n_complex += 1
+            val, err = try_reference(case["expr"], mode=mode)
+            if err:
+                ok += 1
+                if is_co:
+                    n_complex_opt_error_ok += 1
+            else:
+                got = ref_format(val, mode=mode).strip()
+                mismatches.append(
+                    f"#{idx} expr={case['expr']!r}\n  expected error, ref_python={got!r}\n"
+                )
+                if is_co:
+                    n_complex_opt_error_fail += 1
+            continue
+
+        exp = case["expected"].strip()
         if mode == "complex":
             n_complex += 1
         elif mode == "time":
@@ -1388,12 +1782,12 @@ def main() -> int:
     print("=== Smoke expected vs Python reference ===")
     n_exp = sum(1 for c in cases if "expected" in c)
     print(f"Cases with numeric expected: {n_exp}")
-    co_tried = n_complex_opt_parsed - n_complex_opt_skip_should
     print(
-        f"RunComplexNumberSupportOptionTests: parsed {n_complex_opt_parsed} paired "
-        f"*Cases/*Expect rows; {n_complex_opt_skip_should} skipped (DSL/heuristic), "
+        f"RunComplexNumberSupportOptionTests: parsed {n_complex_opt_parsed} rows "
+        f"({n_complex_opt_compared_ok} numeric OK, {n_complex_opt_error_ok} error probes OK); "
+        f"{n_complex_opt_skip_should} skipped (DSL/display), "
         f"{n_complex_opt_skip_eval} eval-failed in Python stub, "
-        f"{n_complex_opt_compared_ok} compared OK."
+        f"{n_complex_opt_error_fail} error-probe mismatches."
     )
     print(
         f"Compared OK (real/complex/time reference, tol rules): {ok}  "

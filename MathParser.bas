@@ -494,6 +494,7 @@ declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS
 declare function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
 declare function CallArgsInvolveComplex(args() as EvalValue) as Boolean
 declare function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
+declare function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
 declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
 declare sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
 declare function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as EvalValue) as Boolean
@@ -3498,6 +3499,17 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
           ValueSetScalarComplexFromDoubles(outV, lr * invL10, li * invL10)
         end if
         return TRUE
+      elseif (fnId = FUNC_SIN) orelse (fnId = FUNC_COS) orelse (fnId = FUNC_TAN) orelse _
+             (fnId = FUNC_ASIN) orelse (fnId = FUNC_ACOS) orelse (fnId = FUNC_ATAN) orelse _
+             (fnId = FUNC_SINH) orelse (fnId = FUNC_COSH) orelse (fnId = FUNC_TANH) orelse _
+             (fnId = FUNC_ACOSH) orelse (fnId = FUNC_ASINH) orelse (fnId = FUNC_ATANH) then
+        dim crT as Double, ciT as Double
+        dim arT as Double, aiT as Double
+        ScalarLoadCartesian(scalarV, arT, aiT)
+        if ApplyUnaryComplexTrigById(fnId, arT, aiT, crT, ciT) then
+          ValueSetScalarComplexFromDoubles(outV, crT, ciT)
+          return TRUE
+        end if
       end if
       return FALSE
     end if
@@ -3729,6 +3741,140 @@ private sub ScalarComplexExpCartesian(byval ar as Double, byval ai as Double, by
   outR = ea * cos(ai)
   outI = ea * sin(ai)
 end sub
+
+private sub ScalarComplexPrincipalSqrt(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
+  if IsNaNValue(ar) orelse IsNaNValue(ai) then
+    outR = MakeNaN()
+    outI = MakeNaN()
+    exit sub
+  end if
+  dim mag as Double = CalcHypot(ar, ai)
+  if mag = 0.0 then
+    outR = 0.0
+    outI = 0.0
+    exit sub
+  end if
+  dim halfAng as Double = CalcAtan2(ai, ar) * 0.5
+  dim rm as Double = sqr(mag)
+  outR = rm * cos(halfAng)
+  outI = rm * sin(halfAng)
+  ScalarSnapComplexNearZeroAxis(outR, outI)
+end sub
+
+private function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
+  if IsNaNValue(ar) orelse IsNaNValue(ai) then
+    outR = MakeNaN()
+    outI = MakeNaN()
+    return TRUE
+  end if
+
+  select case fnId
+    case FUNC_SIN
+      outR = sin(ar) * cosh(ai)
+      outI = cos(ar) * sinh(ai)
+    case FUNC_COS
+      outR = cos(ar) * cosh(ai)
+      outI = -sin(ar) * sinh(ai)
+    case FUNC_SINH
+      outR = sinh(ar) * cos(ai)
+      outI = cosh(ar) * sin(ai)
+    case FUNC_COSH
+      outR = cosh(ar) * cos(ai)
+      outI = sinh(ar) * sin(ai)
+    case FUNC_TAN, FUNC_TANH
+      dim numR as Double
+      dim numI as Double
+      dim denR as Double
+      dim denI as Double
+      if fnId = FUNC_TAN then
+        numR = sin(ar) * cosh(ai)
+        numI = cos(ar) * sinh(ai)
+        denR = cos(ar) * cosh(ai)
+        denI = -sin(ar) * sinh(ai)
+      else
+        numR = sinh(ar) * cos(ai)
+        numI = cosh(ar) * sin(ai)
+        denR = cosh(ar) * cos(ai)
+        denI = sinh(ar) * sin(ai)
+      end if
+      ScalarComplexDivide(numR, numI, denR, denI, outR, outI)
+    case FUNC_ASINH
+      dim z2r as Double = ar * ar - ai * ai
+      dim z2i as Double = 2.0 * ar * ai
+      dim sqrR as Double
+      dim sqrI as Double
+      ScalarComplexPrincipalSqrt(z2r + 1.0, z2i, sqrR, sqrI)
+      dim sumR as Double = ar + sqrR
+      dim sumI as Double = ai + sqrI
+      ScalarPrincipalLnCartesian(sumR, sumI, outR, outI)
+    case FUNC_ACOSH
+      dim z2rC as Double = ar * ar - ai * ai
+      dim z2iC as Double = 2.0 * ar * ai
+      dim sqrRc as Double
+      dim sqrIc as Double
+      ScalarComplexPrincipalSqrt(z2rC - 1.0, z2iC, sqrRc, sqrIc)
+      dim sumRc as Double = ar + sqrRc
+      dim sumIc as Double = ai + sqrIc
+      ScalarPrincipalLnCartesian(sumRc, sumIc, outR, outI)
+    case FUNC_ATANH
+      dim numTr as Double = 1.0 + ar
+      dim numTi as Double = ai
+      dim denTr as Double = 1.0 - ar
+      dim denTi as Double = -ai
+      dim quotR as Double
+      dim quotI as Double
+      ScalarComplexDivide(numTr, numTi, denTr, denTi, quotR, quotI)
+      dim lnR as Double
+      dim lnI as Double
+      ScalarPrincipalLnCartesian(quotR, quotI, lnR, lnI)
+      outR = lnR * 0.5
+      outI = lnI * 0.5
+    case FUNC_ASIN
+      dim izR as Double = -ai
+      dim izI as Double = ar
+      dim z2rA as Double = ar * ar - ai * ai
+      dim z2iA as Double = 2.0 * ar * ai
+      dim oneMz2r as Double = 1.0 - z2rA
+      dim oneMz2i as Double = -z2iA
+      dim sqrRa as Double
+      dim sqrIa as Double
+      ScalarComplexPrincipalSqrt(oneMz2r, oneMz2i, sqrRa, sqrIa)
+      dim wR as Double = izR + sqrRa
+      dim wI as Double = izI + sqrIa
+      dim lnRa as Double
+      dim lnIa as Double
+      ScalarPrincipalLnCartesian(wR, wI, lnRa, lnIa)
+      outR = lnIa
+      outI = -lnRa
+    case FUNC_ACOS
+      dim asR as Double
+      dim asI as Double
+      if ApplyUnaryComplexTrigById(FUNC_ASIN, ar, ai, asR, asI) = FALSE then return FALSE
+      outR = FB_PI_VAL / 2.0 - asR
+      outI = -asI
+    case FUNC_ATAN
+      dim izr as Double = -ai
+      dim izi as Double = ar
+      dim oneMizr as Double = 1.0 - izr
+      dim oneMizi as Double = -izi
+      dim onePizr as Double = 1.0 + izr
+      dim onePizi as Double = izi
+      dim ln1mR as Double
+      dim ln1mI as Double
+      dim ln1pR as Double
+      dim ln1pI as Double
+      ScalarPrincipalLnCartesian(oneMizr, oneMizi, ln1mR, ln1mI)
+      ScalarPrincipalLnCartesian(onePizr, onePizi, ln1pR, ln1pI)
+      dim dR as Double = ln1mR - ln1pR
+      dim dI as Double = ln1mI - ln1pI
+      outR = -dI * 0.5
+      outI = dR * 0.5
+    case else
+      return FALSE
+  end select
+  ScalarSnapComplexNearZeroAxis(outR, outI)
+  return TRUE
+end function
 
 '' Gamma(z) via Lanczos (complex); factorial(n) uses Gamma(n+1).
 private sub ScalarComplexGamma(byval zr as Double, byval zi as Double, byref outR as Double, byref outI as Double)
@@ -4410,6 +4556,10 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
     return TRUE
   end if
   if fnId = FUNC_ATAN2 then
+    if Parser_SupportComplexNumbers andalso (ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS)) then
+      SetIncompatibleOperandsError()
+      return TRUE
+    end if
     ValueSetScalarPromoteExactInt64(outV, CalcAtan2(leftS.scalar, rightS.scalar))
     return TRUE
   end if
@@ -6012,6 +6162,10 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if fnId = FUNC_ATAN2 then
     if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
+    if Parser_SupportComplexNumbers andalso (EvalValueHasNonzeroImaginary(args(0)) orelse EvalValueHasNonzeroImaginary(args(1))) then
+      SetIncompatibleOperandsError()
+      return outV
+    end if
     if ApplyScalarBinaryMathFunctionValues(args(0), args(1), FUNC_ATAN2, outV) = FALSE then
       SetNumericErrorInFunction(fnName)
     end if
@@ -6110,6 +6264,10 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   if (fnId = FUNC_DEG) orelse (fnId = FUNC_RAD) then
     if ubound(args) = -1 then
       SetAtLeastOneArgError(fnName)
+      return outV
+    end if
+    if Parser_SupportComplexNumbers andalso CallArgsInvolveComplex(args()) then
+      SetIncompatibleOperandsError()
       return outV
     end if
     if ubound(args) = 0 then

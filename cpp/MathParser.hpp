@@ -648,6 +648,8 @@ private:
   bool tryApplyComplexBinaryScalars(const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const;
   std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
   std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
+  static bool isComplexUnaryTrigBuiltin(BuiltinFunctionId id);
+  static bool complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI);
   static bool scalarValueIsTime(const EvalValue::ScalarValue& s);
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
   static bool evalValueInvolvesTime(const EvalValue& v);

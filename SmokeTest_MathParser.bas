@@ -320,6 +320,74 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next exi
 
+  dim cxTrigOk(1 to 12) as String
+  dim cxTrigExpect(1 to 12) as String
+  cxTrigOk(1) = "sin(i)": cxTrigExpect(1) = "1.175201193643801i"
+  cxTrigOk(2) = "cos(i)": cxTrigExpect(2) = "1.543080634815244"
+  cxTrigOk(3) = "sin(1+i)": cxTrigExpect(3) = "1.298457581415977+0.6349639147847361i"
+  cxTrigOk(4) = "tan(i)": cxTrigExpect(4) = "0.7615941559557649i"
+  cxTrigOk(5) = "sinh(i)": cxTrigExpect(5) = "0.8414709848078965i"
+  cxTrigOk(6) = "cosh(1+i)": cxTrigExpect(6) = "0.833730025131149+0.9888977057628651i"
+  cxTrigOk(7) = "asinh(1+i)": cxTrigExpect(7) = "1.061275061905036+0.6662394324925153i"
+  cxTrigOk(8) = "atan(1+i)": cxTrigExpect(8) = "1.017221967897851+0.4023594781085251i"
+  cxTrigOk(9) = "sin((1+i,2))": cxTrigExpect(9) = "(1.298457581415977+0.6349639147847361i, 0.9092974268256817)"
+  cxTrigOk(10) = "atanh(i)": cxTrigExpect(10) = "0.7853981633974483i"
+  cxTrigOk(11) = "acos(1)": cxTrigExpect(11) = "0"
+  cxTrigOk(12) = "asin(i)": cxTrigExpect(12) = "0.8813735870195428i"
+
+  dim tri as Integer
+  for tri = 1 to 12
+    if Parser_TryEvaluateEx(cxTrigOk(tri), r, rt, ia) = FALSE orelse rt <> cxTrigExpect(tri) then
+      print "[complex-opt] FAIL: """ & cxTrigOk(tri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxTrigOk(tri) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next tri
+
+  if Parser_TryEvaluateEx("atan2(1+2i,1)", r, rt, ia) then
+    print "[complex-opt] FAIL: atan2(1+2i,1) expected error, got """ & rt & """"
+    subFail += 1
+  else
+    dim errA2 as String = lcase(Parser_GetLastError())
+    if instr(errA2, "incompatible operands") > 0 then
+      print "[complex-opt] PASS: atan2(1+2i,1) -> incompatible operands"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: atan2(1+2i,1) got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("deg(1+2i)", r, rt, ia) then
+    print "[complex-opt] FAIL: deg(1+2i) expected error, got """ & rt & """"
+    subFail += 1
+  else
+    dim errDeg as String = lcase(Parser_GetLastError())
+    if instr(errDeg, "incompatible operands") > 0 then
+      print "[complex-opt] PASS: deg(1+2i) -> incompatible operands"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: deg(1+2i) got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("rad(1+i)", r, rt, ia) then
+    print "[complex-opt] FAIL: rad(1+i) expected error, got """ & rt & """"
+    subFail += 1
+  else
+    dim errRad as String = lcase(Parser_GetLastError())
+    if instr(errRad, "incompatible operands") > 0 then
+      print "[complex-opt] PASS: rad(1+i) -> incompatible operands"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: rad(1+i) got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
   dim cxLogBaseCases(1 to 5) as String
   dim cxLogBaseExpect(1 to 5) as String
   cxLogBaseCases(1) = "log(8,2)": cxLogBaseExpect(1) = "3"

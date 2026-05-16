@@ -3717,6 +3717,60 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: sin/cos/tan and inverses on complex (parity Basic cxTrigOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"sin(i)", "1.175201193643801i"},
+                     {"cos(i)", "1.543080634815243"},
+                     {"sin(1+i)", "1.298457581415977+0.634963914784736i"},
+                     {"tan(i)", "0.7615941559557648i"},
+                     {"sinh(i)", "0.8414709848078963i"},
+                     {"cosh(1+i)", "0.8337300251311491+0.988897705762865i"},
+                     {"asinh(1+i)", "1.061275061905035+0.6662394324925152i"},
+                     {"atan(1+i)", "1.017221967897851+0.402359478108525i"},
+                     {"sin((1+i,2))", "(1.298457581415977+0.634963914784736i,0.9092974268256815)"},
+                     {"atanh(i)", "0.7853981633974482i"},
+                     {"acos(1)", "0"},
+                     {"asin(i)", "0.8813735870195428i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: atan2/deg/rad reject complex (parity Basic cxTrigErr)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const char* kExprs[] = {"atan2(1+2i,1)", "deg(1+2i)", "rad(1+i)"};
+                 for (const char* expr : kExprs) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string(expr) + " expected error, got " + p.getResult();
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find("incompatible operands") == std::string::npos) {
+                     why = std::string(expr) + ": " + p.getError();
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: hex/oct/bin/u* on integer complex literals (parity Basic cxFmtOk)",
                [](std::string& why) {
                  MathParser p;
