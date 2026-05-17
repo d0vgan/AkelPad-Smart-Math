@@ -57,6 +57,8 @@ const FB_STR_VARIANCE as string = "variance"
 const FB_STR_STDDEV as string = "stddev"
 const FB_STR_SORT as string = "sort"
 const FB_STR_SORTED as string = "sorted"
+const FB_STR_SORTBY as string = "sortby"
+const FB_STR_RATIO as string = "ratio"
 const FB_STR_REVERSE as string = "reverse"
 const FB_STR_REVERSED as string = "reversed"
 const FB_STR_UNIQUE as string = "unique"
@@ -175,7 +177,15 @@ const FB_STR_FAILED_TO_PARSE_USER_FUNCTION_BODY as string = "failed to parse use
 const FB_STR_UNEXPECTED_INPUT as string = "unexpected characters"
 const FB_STR_DEFINED as string = "defined "
 const FB_STR_UNKNOWN_VARIABLE_COLON as string = "unknown variable: "
+const FB_STR_USER_DEFINED_FUNCTION_COLON as string = "user-defined function: "
 const FB_STR_UNKNOWN_FUNCTION_COLON as string = "unknown function: "
+const FB_STR_SORTBY_EXPECTS_ONE_FUNCTION as string = "sortby expects exactly one function"
+const FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION as string = "sortby expects a function that takes 1 parameter"
+const RATIO_APPROX_EPS as Double = 1e-14
+const RATIO_MAX_DENOMINATOR as LongInt = 10000000
+const RATIO_MAX_POWER10_EXP as Integer = 18
+const FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR as string = "sortby key function must return a scalar"
+const FB_STR_PAR_ARRAY_COMMA_FUNC as string = "(array, func)"
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
 const FB_U64_MAX as ULongInt = &hFFFFFFFFFFFFFFFFULL
@@ -292,6 +302,7 @@ const CHAR_TILDE as UByte = 126            ' ~
 enum ValueKind
   VK_SCALAR = 0
   VK_ARRAY = 1
+  VK_FUNCTION_REF = 2
 end enum
 
 enum ScalarStorageKind
@@ -307,11 +318,14 @@ enum ScalarFlags
   SVF_DEC_SCI_POW63_HIGH = &h10
   SVF_IMAG_EXACT_INT64_VALID = &h20
   SVF_IMAG_EXACT_UINT64_VALID = &h40
+  SVF_RENDER_RATIONAL = &h80
+  SVF_IMAG_RENDER_RATIONAL = &h100
 end enum
 
 enum EvalFlags
   EVF_EXPAND_ARGS = &h01
   EVF_RENDER_UNSIGNED = &h02
+  EVF_RENDER_RATIONAL = &h04
   EVF_RENDER_BASE_SHIFT = 8
   EVF_RENDER_BASE_MASK = &h0000FF00
 end enum
@@ -338,6 +352,7 @@ type EvalValue
   flags as UInteger
   scalarValue as ScalarValue
   arr(any) as ScalarValue
+  funcRefName as String
   declare property renderBase() as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
   declare property renderBase(byval v as Integer)
   ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
@@ -521,11 +536,9 @@ end type
 '  Runtime calls still use real arguments.
 '
 '  Without this define, `x=1; f(x)=1%x` and `x=2; f(x)=1%(x-1)` work by
-'  seeding x.
-'  Expressions like `x=0.5; f(x)=x<<2` would fail during the validation.
-'  But it can be solved in either way:
-'  `x=0.5; f(x_)=x_<<2` would work.
-'  `x=1; f(x)=x<<2` would work.
+'  seeding x during validation when a global variable shares a formal name.
+'  A name is either a user function or a variable: defining f(...) removes variable f;
+'  assigning to x removes user function x (see SetUserFunction / assignment path).
 
 dim shared variables() as VarEntry
 dim shared userFunctions() as FuncEntry
@@ -546,13 +559,31 @@ dim shared udfCallStackSp as Integer
 dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
+dim shared sortbyKeysArgStartCol as Integer = 0
+dim shared allowUdfBareNameHint as Boolean = TRUE
 dim shared Parser_ShowErrorLine as Boolean = FALSE
 dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 
-private function BuildErrorSnippet(byval col as Integer) as String
-  if len(rootInputExpr) = 0 then return ""
+private function ExprStartPointsIntoRootInput() as Boolean
+  if len(rootInputExpr) = 0 then return FALSE
+  if exprStart = 0 then return FALSE
+  dim root0 as ZString ptr = StrPtr(rootInputExpr)
+  dim rootEnd as ZString ptr = root0 + len(rootInputExpr)
+  return (exprStart >= root0) andalso (exprStart <= rootEnd)
+end function
 
-  dim exprLen as Integer = len(rootInputExpr)
+private function ExprTextForErrorSnippet() as String
+  if ExprStartPointsIntoRootInput() then
+    return rootInputExpr
+  end if
+  if exprStart = 0 then return ""
+  return *exprStart
+end function
+
+private function BuildErrorSnippet(byval col as Integer, byref exprText as String) as String
+  if len(exprText) = 0 then return ""
+
+  dim exprLen as Integer = len(exprText)
   if col < 1 then col = 1
   if col > exprLen + 1 then col = exprLen + 1
 
@@ -564,22 +595,82 @@ private function BuildErrorSnippet(byval col as Integer) as String
   if endPos > exprLen then endPos = exprLen
   if endPos < startPos then endPos = startPos
 
-  dim snippet as String = mid(rootInputExpr, startPos, endPos - startPos + 1)
+  dim snippet as String = mid(exprText, startPos, endPos - startPos + 1)
   dim markerPos as Integer = col - startPos + 1
   if markerPos < 1 then markerPos = 1
   if markerPos > len(snippet) + 1 then markerPos = len(snippet) + 1
   return left(snippet, markerPos - 1) & "|" & mid(snippet, markerPos)
 end function
 
+private function StripErrorLocationSuffix(byref errFull as String) as String
+  dim posAt as Integer = instr(errFull, FB_STR_AT)
+  if posAt > 0 then return left(errFull, posAt - 1)
+  return errFull
+end function
+
+private sub SetParseErrorAtColumn(byref msg as String, byval col as Integer)
+  if parseError = 0 then parseError = 1
+  if lastErrorText <> "" then exit sub
+  dim exprText as String = ExprTextForErrorSnippet()
+  if len(exprText) = 0 then
+    lastErrorText = msg
+    exit sub
+  end if
+  dim locationPart as String = FB_STR_AT
+  if Parser_ShowErrorLine then locationPart = locationPart & FB_STR_LINE_1_PREFIX
+  locationPart = locationPart & FB_STR_COL & ltrim(str(col)) & FB_STR_COLON
+  lastErrorText = msg & locationPart & BuildErrorSnippet(col, exprText)
+end sub
+
+private function ComputeSortbyKeysArgErrorColumn() as Integer
+  dim exprText as String = ExprTextForErrorSnippet()
+  if len(exprText) = 0 then return sortbyKeysArgStartCol
+  dim lowExpr as String = lcase(exprText)
+  dim scanPos as Integer = instr(lowExpr, FB_STR_SORTBY & "(")
+  if scanPos = 0 then return sortbyKeysArgStartCol
+  scanPos += len(FB_STR_SORTBY) + 1
+  while scanPos <= len(exprText)
+    dim ch as String = mid(exprText, scanPos, 1)
+    if ch = " " orelse ch = chr(9) then
+      scanPos += 1
+    elseif ch = "(" then
+      scanPos += 1
+    else
+      exit while
+    end if
+  wend
+  return scanPos
+end function
+
+private function SortbyKeyFunctionFailureMessage(byref innerMsg as String) as String
+  if innerMsg = "" then return FB_STR_INCOMPATIBLE_OPERANDS
+  if instr(innerMsg, FB_STR_USER_DEFINED_FUNCTION_COLON) > 0 then return FB_STR_INCOMPATIBLE_OPERANDS
+  return innerMsg
+end function
+
+private sub RemapParseErrorToSortbyKeysArgColumn()
+  dim col as Integer = ComputeSortbyKeysArgErrorColumn()
+  if col <= 0 then exit sub
+  dim msg as String = SortbyKeyFunctionFailureMessage(StripErrorLocationSuffix(lastErrorText))
+  lastErrorText = ""
+  parseError = 0
+  SetParseErrorAtColumn(msg, col)
+end sub
+
 private sub SetParseError(byref msg as String)
   if parseError = 0 then parseError = 1
   if lastErrorText = "" then
     if (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart) then
       dim col as Integer = errorBaseCol + (pStream - exprStart)
-      dim locationPart as String = FB_STR_AT
-      if Parser_ShowErrorLine then locationPart = locationPart & FB_STR_LINE_1_PREFIX
-      locationPart = locationPart & FB_STR_COL & ltrim(str(col)) & FB_STR_COLON
-      lastErrorText = msg & locationPart & BuildErrorSnippet(col)
+      dim exprText as String = ExprTextForErrorSnippet()
+      if len(exprText) = 0 then
+        lastErrorText = msg
+      else
+        dim locationPart as String = FB_STR_AT
+        if Parser_ShowErrorLine then locationPart = locationPart & FB_STR_LINE_1_PREFIX
+        locationPart = locationPart & FB_STR_COL & ltrim(str(col)) & FB_STR_COLON
+        lastErrorText = msg & locationPart & BuildErrorSnippet(col, exprText)
+      end if
     else
       lastErrorText = msg
     end if
@@ -637,6 +728,8 @@ enum BuiltinFunctionId
   FUNC_VARIANCE
   FUNC_STDDEV
   FUNC_SORT
+  FUNC_SORTBY
+  FUNC_RATIO
   FUNC_REVERSE
   FUNC_UNIQUE
   FUNC_UNPACK
@@ -771,6 +864,8 @@ private sub EnsureFunctionNames()
   FunctionNames(FUNC_VARIANCE) = FB_STR_VARIANCE
   FunctionNames(FUNC_STDDEV) = FB_STR_STDDEV
   FunctionNames(FUNC_SORT) = FB_STR_SORT
+  FunctionNames(FUNC_SORTBY) = FB_STR_SORTBY
+  FunctionNames(FUNC_RATIO) = FB_STR_RATIO
   FunctionNames(FUNC_REVERSE) = FB_STR_REVERSE
   FunctionNames(FUNC_UNIQUE) = FB_STR_UNIQUE
   FunctionNames(FUNC_UNPACK) = FB_STR_UNPACK
@@ -951,8 +1046,10 @@ private function GetBuiltinFlags(byval id as Integer) as UInteger
       return BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER
     case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD, FUNC_FACT
       return BUILTIN_FLAG_INTEGER_ONLY
-    case FUNC_UNPACK, FUNC_SORT, FUNC_REVERSE, FUNC_UNIQUE, FUNC_RAND
+    case FUNC_UNPACK, FUNC_SORT, FUNC_SORTBY, FUNC_REVERSE, FUNC_UNIQUE, FUNC_RAND
       return BUILTIN_FLAG_NON_CALCULATING
+    case FUNC_RATIO
+      return BUILTIN_FLAG_UNARY
     case FUNC_RANDOM
       return BUILTIN_FLAG_FINITE_REQUIRED
   end select
@@ -984,6 +1081,7 @@ enum BuiltinHintKind
   BHK_X_Y
   BHK_A_B
   BHK_N_R
+  BHK_ARRAY_FUNC
 end enum
 
 private function GetBuiltinHintKind(byval id as Integer) as BuiltinHintKind
@@ -1001,6 +1099,8 @@ private function GetBuiltinHintKind(byval id as Integer) as BuiltinHintKind
     case FUNC_FRAC, FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CART, FUNC_CONJ: return BHK_VALUE
     case FUNC_LOG: return BHK_VALUE_BASE
     case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS: return BHK_VALUE
+    case FUNC_SORTBY: return BHK_ARRAY_FUNC
+    case FUNC_RATIO: return BHK_VALUE
     case FUNC_DEG, FUNC_RAD, FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_UNIQUE, FUNC_UNPACK, FUNC_AVG, FUNC_MEAN, FUNC_PRODUCT, FUNC_MIN, FUNC_MAX, FUNC_SORT, FUNC_REVERSE
       return BHK_DOTDOTDOT
     case FUNC_FACT: return BHK_N
@@ -1056,6 +1156,7 @@ private function TryGetBuiltinSignatureHint(byref fn as String, byref hint as St
     case BHK_X_Y: hint = GetFunctionName(id) & FB_STR_PAR_X_COMMA_Y
     case BHK_A_B: hint = lowFn & FB_STR_PAR_A_COMMA_B
     case BHK_N_R: hint = lowFn & FB_STR_PAR_N_COMMA_R
+    case BHK_ARRAY_FUNC: hint = displayFn & FB_STR_PAR_ARRAY_COMMA_FUNC
     case else: return FALSE
   end select
   return TRUE
@@ -1814,7 +1915,86 @@ private function FormatScalarRealPartPlain(byref sv as ScalarValue) as String
   return ltrim(str(sv.scalar))
 end function
 
+private function FormatRationalParts(byval num as LongInt, byval den as ULongInt) as String
+  if num = 0 then return "0"
+  if den = 1 then return ltrim(str(num))
+  return ltrim(str(num)) & "/" & ltrim(str(den))
+end function
+
+private function TryFormatRationalScalar(byref sv as ScalarValue, byref outText as String) as Boolean
+  if (sv.flags and SVF_RENDER_RATIONAL) = 0 then return FALSE
+  dim num as LongInt = sv.exactInt64
+  dim den as ULongInt = sv.exactUInt64
+  if den = 0 then return FALSE
+  if num = 0 then
+    outText = "0"
+    return TRUE
+  end if
+  if den = 1 then
+    outText = ltrim(str(num))
+    return TRUE
+  end if
+  outText = ltrim(str(num)) & "/" & ltrim(str(den))
+  return TRUE
+end function
+
+private function TryFormatComplexRationalScalar(byref sv as ScalarValue, byref outText as String) as Boolean
+  if (sv.flags and (SVF_RENDER_RATIONAL or SVF_IMAG_RENDER_RATIONAL)) = 0 _
+     andalso ScalarImagExactInt64Valid(sv) = FALSE then
+    return FALSE
+  end if
+  dim rePart as String = ""
+  if (sv.flags and SVF_RENDER_RATIONAL) <> 0 then
+    rePart = FormatRationalParts(sv.exactInt64, sv.exactUInt64)
+  elseif sv.exactInt64Valid then
+    if sv.exactInt64 <> 0 then rePart = ltrim(str(sv.exactInt64))
+  elseif abs(sv.scalar) >= RATIO_APPROX_EPS then
+    return FALSE
+  end if
+  dim imTail as String = ""
+  if (sv.flags and SVF_IMAG_RENDER_RATIONAL) <> 0 then
+    dim rp as String = FormatRationalParts(sv.imagExactInt64, sv.imagExactUInt64)
+    if sv.imagExactUInt64 > 1 then
+      imTail = rp & "*i"
+    elseif sv.imagExactInt64 = 1 then
+      imTail = FB_STR_I
+    elseif sv.imagExactInt64 = -1 then
+      imTail = "-" & FB_STR_I
+    else
+      imTail = rp & FB_STR_I
+    end if
+  elseif ScalarImagExactInt64Valid(sv) then
+    dim ni as LongInt = sv.imagExactInt64
+    if ni = 1 then
+      imTail = FB_STR_I
+    elseif ni = -1 then
+      imTail = "-" & FB_STR_I
+    elseif ni <> 0 then
+      imTail = ltrim(str(ni)) & FB_STR_I
+    end if
+  elseif ScalarHasNonzeroImaginaryPart(sv) then
+    return FALSE
+  end if
+  if imTail = "" then
+    if rePart = "" then rePart = "0"
+    outText = rePart
+    return TRUE
+  end if
+  if rePart = "" orelse rePart = "0" then
+    outText = imTail
+    return TRUE
+  end if
+  if left(imTail, 1) = "-" then
+    outText = rePart & imTail
+  else
+    outText = rePart & "+" & imTail
+  end if
+  return TRUE
+end function
+
 private function FormatComplexScalarValue(byref sv as ScalarValue) as String
+  dim ratCx as String
+  if TryFormatComplexRationalScalar(sv, ratCx) then return ratCx
   dim ar as Double, ai as Double
   ScalarLoadCartesian(sv, ar, ai)
   dim rePart as String = FormatScalarRealPartPlain(sv)
@@ -1861,6 +2041,8 @@ private function ValueToString(byref v as EvalValue) as String
     if v.scalarStorageKind = SSK_TIME then
       return FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(v.scalarValue))
     end if
+    dim ratText as String
+    if TryFormatRationalScalar(v.scalarValue, ratText) then return ratText
     dim fmtText as String
     if TryFormatScalarByRenderBase(v.scalarValue, v.renderBase, v.renderUnsigned, fmtText) then
       return fmtText
@@ -1876,8 +2058,22 @@ private function ValueToString(byref v as EvalValue) as String
     if i > lbound(v.arr) then s &= ", "
     dim sv as ScalarValue = v.arr(i)
     dim fmtText as String
-    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) andalso v.renderBase <> 0 then
-      if TryFormatComplexScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
+    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
+      if v.renderBase = 0 orelse v.renderBase = 10 then
+        if TryFormatComplexRationalScalar(sv, fmtText) then
+          s &= fmtText
+          continue for
+        end if
+      end if
+      if v.renderBase <> 0 then
+        if TryFormatComplexScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
+          s &= fmtText
+          continue for
+        end if
+      end if
+    end if
+    if (v.renderBase = 0 orelse v.renderBase = 10) then
+      if TryFormatRationalScalar(sv, fmtText) then
         s &= fmtText
         continue for
       end if
@@ -2257,8 +2453,9 @@ private sub RemoveVariableAtIndex(byval vIdx as Integer)
   redim preserve variables(lbound(variables) to ubound(variables) - 1)
 end sub
 
-private sub SetAnsValue(byref v as EvalValue)
-  SetVariable(FB_STR_ANS, v)
+private sub RemoveVariableByName(byref n as String)
+  dim idx as Integer = FindVariableIndex(n)
+  if idx >= 0 then RemoveVariableAtIndex(idx)
 end sub
 
 private function FindFunctionIndex(byref n as String) as Integer
@@ -2268,6 +2465,41 @@ private function FindFunctionIndex(byref n as String) as Integer
   next i
   return -1
 end function
+
+private function FormatUserFunctionSignature(byval fnIdx as Integer) as String
+  dim sig as String = userFunctions(fnIdx).name & "("
+  if ubound(userFunctions(fnIdx).params) >= lbound(userFunctions(fnIdx).params) then
+    dim k as Integer
+    for k = lbound(userFunctions(fnIdx).params) to ubound(userFunctions(fnIdx).params)
+      if k > lbound(userFunctions(fnIdx).params) then sig &= FB_STR_COMMA
+      sig &= userFunctions(fnIdx).params(k)
+    next k
+  end if
+  sig &= ")"
+  return sig
+end function
+
+private sub RemoveUserFunctionAtIndex(byval fnIdx as Integer)
+  if fnIdx < lbound(userFunctions) orelse fnIdx > ubound(userFunctions) then exit sub
+  if ubound(userFunctions) = lbound(userFunctions) then
+    erase userFunctions
+    exit sub
+  end if
+  dim j as Integer
+  for j = fnIdx to ubound(userFunctions) - 1
+    userFunctions(j) = userFunctions(j + 1)
+  next j
+  redim preserve userFunctions(lbound(userFunctions) to ubound(userFunctions) - 1)
+end sub
+
+private sub RemoveUserFunctionByName(byref n as String)
+  dim idx as Integer = FindFunctionIndex(n)
+  if idx >= 0 then RemoveUserFunctionAtIndex(idx)
+end sub
+
+private sub SetAnsValue(byref v as EvalValue)
+  SetVariable(FB_STR_ANS, v)
+end sub
 
 '' True if body text contains a call to the same identifier as fnName (case-insensitive), e.g. y(a)=g(a)+y(a)+4.
 private function UdfBodyCallsDefinedFunction(byref bodyText as String, byref fnName as String) as Boolean
@@ -2329,6 +2561,7 @@ private function TryValidateUserFunctionDefinition(byref fnName as String, fnPar
 end function
 
 private sub SetUserFunction(byref n as String, params() as String, byref expr as String)
+  RemoveVariableByName(n)
   dim idx as Integer = FindFunctionIndex(n)
   if idx < 0 then
     if ubound(userFunctions) = -1 then
@@ -2411,6 +2644,15 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
   dim fnHint as String
   if TryGetBuiltinSignatureHint(nam, fnHint) then
     SetParseError(FB_STR_HINT_PREFIX & fnHint)
+    return FALSE
+  end if
+  dim udfIdx as Integer = FindFunctionIndex(nam)
+  if udfIdx >= 0 then
+    if allowUdfBareNameHint andalso udfCallStackSp = 0 then
+      SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
+      return FALSE
+    end if
+    SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
     return FALSE
   end if
   AppendUniqueName(unknownVarsText, nam)
@@ -3077,11 +3319,13 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   dim savedWasPercentage as Boolean = wasPercentage
   dim savedExprStart as ZString ptr = exprStart
   dim savedBaseCol as Integer = errorBaseCol
+  dim savedAllowUdfBareNameHint as Boolean = allowUdfBareNameHint
 
   dim body as String = userFunctions(idx).expr
   pStream = strptr(body)
   exprStart = pStream
   errorBaseCol = 1
+  allowUdfBareNameHint = FALSE
   parseError = 0
   outV = ParseExpression()
   SkipSpaces()
@@ -3093,6 +3337,7 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   errorBaseCol = savedBaseCol
   parseError = savedParseError
   wasPercentage = savedWasPercentage
+  allowUdfBareNameHint = savedAllowUdfBareNameHint
 
   for i = 0 to pCount - 1
     dim pName as String = userFunctions(idx).params(i)
@@ -5117,6 +5362,14 @@ end function
 
 declare function ArgScalarWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as Double) as Boolean
 declare function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as ScalarValue) as Boolean
+declare function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+declare function TryBuiltinDispatchWithComplex(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+declare function TryApproximateRational(byval x as Double, byref num as LongInt, byref den as ULongInt) as Boolean
+declare sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongInt, byval den as ULongInt)
+declare function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+declare function TryBuiltinRatio(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+declare function TryParseSortbyCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
+declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnName as String, byval reverseSingleArray as Boolean, byref outV as EvalValue, vals() as ScalarValue, byref c as Integer) as Integer
 
 private function CountFlattenedArgs(args() as EvalValue) as Integer
   dim count as Integer = 0
@@ -5455,6 +5708,435 @@ private function TryParseCallArguments(args() as EvalValue, byref argsCount as I
   return TRUE
 end function
 
+private sub ValueSetFunctionRef(byref outV as EvalValue, byref nameText as String)
+  outV.kind = VK_FUNCTION_REF
+  outV.flags = 0
+  outV.funcRefName = lcase(nameText)
+end sub
+
+private function EvalValueIsScalarResult(byref v as EvalValue) as Boolean
+  if v.kind = VK_ARRAY then return FALSE
+  if v.kind = VK_FUNCTION_REF then return FALSE
+  return TRUE
+end function
+
+private function IsSortbyIneligibleBuiltin(byval fnId as Integer) as Boolean
+  select case fnId
+    case FUNC_RAND, FUNC_POW, FUNC_ATAN2, FUNC_HYPOT, FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD, FUNC_CLAMP, FUNC_LOG, FUNC_RANDOM
+      return TRUE
+    case else: return FALSE
+  end select
+end function
+
+private function IsSortbyEligibleFunctionName(byref funcName as String, byref errText as String) as Boolean
+  dim lowFn as String = lcase(funcName)
+  dim fnId as Integer = TryFindBuiltinFunctionId(lowFn)
+  if fnId >= 0 then
+    if IsSortbyIneligibleBuiltin(fnId) then
+      errText = FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION
+      return FALSE
+    end if
+    return TRUE
+  end if
+  dim idx as Integer = FindFunctionIndex(lowFn)
+  if idx < 0 then
+    dim boundVar as EvalValue
+    if GetVariable(lowFn, boundVar) then
+      errText = FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION
+      return FALSE
+    end if
+    errText = FB_STR_UNKNOWN_FUNCTION_COLON & funcName
+    return FALSE
+  end if
+  dim pCount as Integer = 0
+  if ubound(userFunctions(idx).params) >= lbound(userFunctions(idx).params) then
+    pCount = ubound(userFunctions(idx).params) - lbound(userFunctions(idx).params) + 1
+  end if
+  if pCount <> 1 then
+    errText = FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION
+    return FALSE
+  end if
+  return TRUE
+end function
+
+private function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
+  SkipSpaces()
+  dim p as ZString ptr = pStream
+  if p[0] = CHAR_LPAREN then
+    dim parsed as EvalValue = ParseExpression()
+    if parseError then return FALSE
+    if parsed.kind = VK_ARRAY then
+      SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
+      return FALSE
+    end if
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    return FALSE
+  end if
+  if not ((p[0] >= CHAR_LC_A andalso p[0] <= CHAR_LC_Z) orelse (p[0] >= CHAR_A andalso p[0] <= CHAR_Z) orelse p[0] = CHAR_UNDERSCORE) then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    return FALSE
+  end if
+  dim start as ZString ptr = p
+  p += 1
+  while TRUE
+    dim chId as UByte = p[0]
+    if IsIdentChar(chId) = FALSE then exit while
+    p += 1
+  wend
+  dim nameText as String = left(*start, p - start)
+  SkipSpaces()
+  if p[0] = CHAR_LPAREN then
+    SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
+    return FALSE
+  end if
+  pStream = p
+  ValueSetFunctionRef(outV, nameText)
+  return TRUE
+end function
+
+private function TryParseSortbyCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
+  if pStream[0] = CHAR_COMMA then
+    SetUnexpectedCommaError()
+    return FALSE
+  end if
+  if pStream[0] = CHAR_RPAREN then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    return FALSE
+  end if
+  dim a as EvalValue = ParseExpression()
+  if parseError then return FALSE
+  AppendEvalArg(args(), argsCount, argsCap, a)
+  SkipSpaces()
+  dim hasComma as Boolean
+  if TryConsumeCommaArgSeparator(hasComma) = FALSE then return FALSE
+  if hasComma = FALSE then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    return FALSE
+  end if
+  dim fnRef as EvalValue
+  if TryParseSortbyFunctionRef(fnRef) = FALSE then return FALSE
+  AppendEvalArg(args(), argsCount, argsCap, fnRef)
+  SkipSpaces()
+  if TryConsumeCommaArgSeparator(hasComma) = FALSE then return FALSE
+  if hasComma then
+    SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
+    return FALSE
+  end if
+  return TRUE
+end function
+
+private function SortbyInvokeKeyFunction(byref funcName as String, byref elem as ScalarValue, byref outV as EvalValue) as Boolean
+  dim args(0 to 0) as EvalValue
+  args(0).kind = VK_SCALAR
+  args(0).scalarValue = elem
+  args(0).flags = 0
+  dim fnId as Integer = TryFindBuiltinFunctionId(lcase(funcName))
+  if fnId < 0 then
+    if EvaluateUserFunction(funcName, args(), outV) then return TRUE
+    SetParseError(FB_STR_UNKNOWN_FUNCTION_COLON & funcName)
+    return TRUE
+  end if
+  dim fn as String = funcName
+  if ValidateBuiltinCallArgs(fnId, fn, args()) = FALSE then return TRUE
+  if TryBuiltinDispatchWithTime(fnId, fn, args(), outV) then return TRUE
+  if TryBuiltinDispatchWithComplex(fnId, fn, args(), outV) then return TRUE
+  if ApplyUnaryScalarFunctionById(fnId, elem, outV) then return TRUE
+  if (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
+    outV = args(0)
+    return TRUE
+  end if
+  if (fnId = FUNC_HEX) orelse (fnId = FUNC_OCT) orelse (fnId = FUNC_BIN) orelse (fnId = FUNC_UHEX) orelse (fnId = FUNC_UOCT) orelse (fnId = FUNC_UBIN) then
+    outV = args(0)
+    dim fmtBase as Integer = IIf((fnId = FUNC_HEX) orelse (fnId = FUNC_UHEX), 16, IIf((fnId = FUNC_OCT) orelse (fnId = FUNC_UOCT), 8, 2))
+    outV.renderBase = fmtBase
+    outV.renderUnsigned = (fnId = FUNC_UHEX) orelse (fnId = FUNC_UOCT) orelse (fnId = FUNC_UBIN)
+    return TRUE
+  end if
+  if (fnId = FUNC_DEG) orelse (fnId = FUNC_RAD) then
+    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fn)
+    return TRUE
+  end if
+  SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+  return TRUE
+end function
+
+private sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongInt, byval den as ULongInt)
+  ValueSetScalarPromoteExactInt64(outV, CDbl(num) / CDbl(den))
+  outV.scalarValue.exactInt64 = num
+  outV.scalarValue.exactUInt64 = den
+  outV.scalarValue.exactInt64Valid = TRUE
+  outV.scalarValue.exactUInt64Valid = TRUE
+  outV.scalarValue.flags or= SVF_RENDER_RATIONAL
+end sub
+
+private function RatioPow10U(byval k as Integer) as ULongInt
+  dim r as ULongInt = 1
+  dim j as Integer
+  for j = 1 to k
+    r *= 10
+  next j
+  return r
+end function
+
+private function TryExactPower10Rational(byval v as Double, byref num as LongInt, byref den as ULongInt, byref ratErr as Double) as Boolean
+  dim k as Integer
+  dim denPow as ULongInt
+  dim scaled as Double
+  dim n as LongInt
+  dim nAbs as LongInt
+  dim scaleErr as Double
+  dim g as LongInt
+  dim approx as Double
+  dim candNum as LongInt
+  dim candDen as ULongInt
+  dim candErr as Double
+  dim found as Boolean = FALSE
+  ratErr = 1e300
+  for k = 1 to RATIO_MAX_POWER10_EXP
+    denPow = RatioPow10U(k)
+    scaled = v * CDbl(denPow)
+    n = clngint(round(scaled))
+    if n = 0 then continue for
+    nAbs = abs(n)
+    scaleErr = RATIO_APPROX_EPS * abs(scaled)
+    if scaleErr < RATIO_APPROX_EPS then scaleErr = RATIO_APPROX_EPS
+    if abs(scaled - CDbl(n)) > scaleErr then continue for
+    g = GcdInt64(nAbs, CLngInt(denPow))
+    candNum = n \ g
+    candDen = CULngInt(CLngInt(denPow) \ g)
+    approx = CDbl(candNum) / CDbl(candDen)
+    candErr = abs(v - approx)
+    if candErr < ratErr then
+      ratErr = candErr
+      num = candNum
+      den = candDen
+      found = TRUE
+    end if
+  next k
+  return found
+end function
+
+private sub RatioConsiderCandidate(byval v as Double, byval p as LongInt, byval q as ULongInt, byref bestNum as LongInt, byref bestDen as ULongInt, byref bestErr as Double)
+  if q = 0 orelse q > CULngInt(RATIO_MAX_DENOMINATOR) then exit sub
+  dim approx as Double = CDbl(p) / CDbl(q)
+  dim ratErr as Double = abs(v - approx)
+  if ratErr < bestErr then
+    bestErr = ratErr
+    bestNum = p
+    bestDen = q
+  end if
+end sub
+
+private function TryApproximateRational(byval x as Double, byref num as LongInt, byref den as ULongInt) as Boolean
+  if IsNaNValue(x) orelse IsInfValue(x) then return FALSE
+  dim neg as Boolean = (x < 0.0)
+  dim v as Double = abs(x)
+  dim scale as Double = v
+  if scale < 1.0 then scale = 1.0
+  dim tol as Double = RATIO_APPROX_EPS * scale
+  if v < tol then
+    num = 0
+    den = 1
+    return TRUE
+  end if
+  dim bestNum as LongInt = 0
+  dim bestDen as ULongInt = 1
+  dim bestErr as Double = 1e300
+  dim p0 as LongInt = 0
+  dim p1 as LongInt = 1
+  dim q0 as LongInt = 1
+  dim q1 as LongInt = 0
+  dim cfVal as Double = v
+  dim i as Integer
+  dim a as LongInt
+  dim p as LongInt
+  dim q as LongInt
+  dim t as Double
+  dim h as LongInt
+  dim hMax as LongInt
+  dim ph as LongInt
+  dim qh as ULongInt
+  for i = 1 to 64
+    a = clngint(int(cfVal))
+    p = a * p1 + p0
+    q = a * q1 + q0
+    if q > RATIO_MAX_DENOMINATOR then
+      if q1 > 0 andalso q0 > 0 then
+        hMax = (RATIO_MAX_DENOMINATOR - q1) \ q0
+        for h = 0 to hMax
+          ph = p1 + h * p0
+          qh = CULngInt(q1 + h * q0)
+          RatioConsiderCandidate(v, ph, qh, bestNum, bestDen, bestErr)
+        next h
+      end if
+      exit for
+    end if
+    RatioConsiderCandidate(v, p, CULngInt(q), bestNum, bestDen, bestErr)
+    t = cfVal - CDbl(a)
+    if t <= RATIO_APPROX_EPS then exit for
+    cfVal = 1.0 / t
+    p0 = p1
+    p1 = p
+    q0 = q1
+    q1 = q
+  next i
+  dim p10Num as LongInt = 0
+  dim p10Den as ULongInt = 0
+  dim p10Err as Double = 1e300
+  if v <= 1.0 / CDbl(RATIO_MAX_DENOMINATOR) then
+    if TryExactPower10Rational(v, p10Num, p10Den, p10Err) then
+      if p10Err < bestErr then
+        bestNum = p10Num
+        bestDen = p10Den
+        bestErr = p10Err
+      end if
+    end if
+  end if
+  if bestNum = 0 then
+    num = 0
+    den = 1
+    return TRUE
+  end if
+  dim g as LongInt = GcdInt64(abs(bestNum), CLngInt(bestDen))
+  num = bestNum \ g
+  den = CULngInt(CLngInt(bestDen) \ g)
+  if neg then num = -num
+  return TRUE
+end function
+
+private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as EvalValue) as Boolean
+  if ScalarIsTime(sv) then
+    SetIncompatibleOperandsError()
+    return TRUE
+  end if
+  dim ar as Double, ai as Double
+  ScalarLoadCartesian(sv, ar, ai)
+  if IsNaNValue(ar) orelse IsNaNValue(ai) then
+    if IsNaNValue(ar) then
+      if IsNaNValue(ai) orelse (abs(ai) < RATIO_APPROX_EPS) then
+        ValueSetScalar(outV, MakeNaN())
+        return TRUE
+      end if
+    end if
+    SetIncompatibleOperandsError()
+    return TRUE
+  end if
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then
+    if IsInfValue(ar) then
+      ValueSetScalar(outV, ar)
+      return TRUE
+    end if
+    if IsInfValue(ai) then
+      SetIncompatibleOperandsError()
+      return TRUE
+    end if
+  end if
+  if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
+    dim numR as LongInt, denR as ULongInt
+    dim numI as LongInt, denI as ULongInt
+    dim hasRealRat as Boolean = FALSE
+    dim hasImagRat as Boolean = FALSE
+    dim imagIsInt as Boolean = FALSE
+    dim aiScale as Double = abs(ai)
+    if aiScale < 1.0 then aiScale = 1.0
+    dim arScale as Double = abs(ar)
+    if arScale < 1.0 then arScale = 1.0
+    if ScalarImagExactInt64Valid(sv) then
+      imagIsInt = TRUE
+      numI = sv.imagExactInt64
+      denI = 1
+    elseif abs(ai) >= RATIO_APPROX_EPS * aiScale then
+      if TryApproximateRational(ai, numI, denI) = FALSE then
+        SetIncompatibleOperandsError()
+        return TRUE
+      end if
+      hasImagRat = TRUE
+    end if
+    if abs(ar) >= RATIO_APPROX_EPS * arScale then
+      if TryApproximateRational(ar, numR, denR) = FALSE then
+        SetIncompatibleOperandsError()
+        return TRUE
+      end if
+      hasRealRat = TRUE
+    end if
+    outV.kind = VK_SCALAR
+    outV.scalarValue = sv
+    outV.flags = 0
+    if hasRealRat then
+      outV.scalarValue.exactInt64 = numR
+      outV.scalarValue.exactUInt64 = denR
+      outV.scalarValue.exactInt64Valid = TRUE
+      outV.scalarValue.exactUInt64Valid = TRUE
+      outV.scalarValue.flags or= SVF_RENDER_RATIONAL
+    elseif sv.exactInt64Valid then
+      outV.scalarValue.exactInt64 = sv.exactInt64
+      outV.scalarValue.exactInt64Valid = TRUE
+    end if
+    if hasImagRat then
+      outV.scalarValue.imagExactInt64 = numI
+      outV.scalarValue.imagExactUInt64 = denI
+      ScalarSetImagExactInt64Valid(outV.scalarValue, TRUE)
+      ScalarSetImagExactUInt64Valid(outV.scalarValue, TRUE)
+      outV.scalarValue.flags or= SVF_IMAG_RENDER_RATIONAL
+    elseif imagIsInt then
+      outV.scalarValue.imagExactInt64 = numI
+      ScalarSetImagExactInt64Valid(outV.scalarValue, TRUE)
+    end if
+    return TRUE
+  end if
+  if sv.exactInt64Valid then
+    ValueSetScalarPromoteExactInt64(outV, CDbl(sv.exactInt64))
+    return TRUE
+  end if
+  if sv.exactUInt64Valid then
+    ValueSetUInt64(outV, sv.exactUInt64)
+    return TRUE
+  end if
+  dim arScale0 as Double = abs(ar)
+  if arScale0 < 1.0 then arScale0 = 1.0
+  if abs(ar) < RATIO_APPROX_EPS * arScale0 then
+    ValueSetScalar(outV, 0.0)
+    return TRUE
+  end if
+  dim nearInt as LongInt
+  if TryGetExactInt64FromDouble(ar, nearInt) then
+    ValueSetScalarPromoteExactInt64(outV, CDbl(nearInt))
+    return TRUE
+  end if
+  dim num as LongInt, den as ULongInt
+  if TryApproximateRational(ar, num, den) = FALSE then
+    SetIncompatibleOperandsError()
+    return TRUE
+  end if
+  if den = 1 then
+    ValueSetScalarPromoteExactInt64(outV, CDbl(num))
+  else
+    ValueSetRationalReduced(outV, num, den)
+  end if
+  return TRUE
+end function
+
+private function TryBuiltinRatio(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+  if ubound(args) <> 0 then
+    SetExactArgCountError(fnName, 1, ubound(args) - lbound(args) + 1)
+    return TRUE
+  end if
+  if args(0).kind = VK_SCALAR then
+    return TryBuiltinRatioScalar(args(0).scalarValue, outV)
+  end if
+  dim i as Integer
+  dim arr() as ScalarValue
+  redim arr(0 to ValueArrayLen(args(0)) - 1)
+  for i = 0 to ubound(arr)
+    dim tmp as EvalValue
+    if TryBuiltinRatioScalar(args(0).arr(i), tmp) = FALSE then return FALSE
+    if parseError then return FALSE
+    arr(i) = tmp.scalarValue
+  next i
+  ValueSetArrayFromScalarValues(outV, arr())
+  return TRUE
+end function
+
 private function ScalarSortLess(byref a as ScalarValue, byref b as ScalarValue) as Boolean
   if ScalarIsTime(a) orelse ScalarIsTime(b) then
     dim am as LongInt
@@ -5499,6 +6181,92 @@ private function ScalarSortGreater(byref a as ScalarValue, byref b as ScalarValu
   if bNan then return (aNan = FALSE)
   if aNan then return FALSE
   return a.scalar > b.scalar
+end function
+
+private sub SortbyStableSortIndices(sortKeys() as ScalarValue, orderIdx() as Integer, byval count as Integer)
+  dim i as Integer
+  for i = 0 to count - 1
+    orderIdx(i) = i
+  next i
+  if count <= 1 then exit sub
+  dim j as Integer
+  for i = 1 to count - 1
+    j = i
+    do while j > 0
+      if ScalarSortLess(sortKeys(orderIdx(j)), sortKeys(orderIdx(j - 1))) then
+        dim t as Integer = orderIdx(j)
+        orderIdx(j) = orderIdx(j - 1)
+        orderIdx(j - 1) = t
+        j -= 1
+      else
+        exit do
+      end if
+    loop
+  next i
+end sub
+
+private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+  dim savedSortbyKeysArgCol as Integer = sortbyKeysArgStartCol
+  if ubound(args) <> 1 then
+    SetExactArgCountError(fnName, 2, ubound(args) - lbound(args) + 1)
+    return TRUE
+  end if
+  if args(1).kind <> VK_FUNCTION_REF then
+    if args(1).kind = VK_ARRAY then
+      SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
+    else
+      SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    end if
+    return TRUE
+  end if
+  dim errText as String
+  if IsSortbyEligibleFunctionName(args(1).funcRefName, errText) = FALSE then
+    SetParseError(errText)
+    return TRUE
+  end if
+  dim vals() as ScalarValue
+  dim c as Integer = 0
+  if ubound(args) >= 0 andalso args(0).kind = VK_ARRAY andalso ValueArrayLen(args(0)) = 0 then
+    ValueSetArrayFromScalarValues(outV, vals())
+    return TRUE
+  end if
+  dim prep as Integer = TrySingleArgPassthroughOrCollect(args(), fnName, FALSE, outV, vals(), c)
+  if prep = -1 then return TRUE
+  if prep = 1 then return TRUE
+  if c <= 0 then
+    ValueSetArrayFromScalarValues(outV, vals())
+    return TRUE
+  end if
+  dim keys(0 to c - 1) as ScalarValue
+  dim i as Integer
+  for i = 0 to c - 1
+    dim keyV as EvalValue
+    SortbyInvokeKeyFunction(args(1).funcRefName, vals(i), keyV)
+    if parseError then
+      RemapParseErrorToSortbyKeysArgColumn()
+      sortbyKeysArgStartCol = savedSortbyKeysArgCol
+      return TRUE
+    end if
+    if EvalValueIsScalarResult(keyV) = FALSE then
+      SetParseError(FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR)
+      return TRUE
+    end if
+    if keyV.kind = VK_SCALAR then
+      keys(i) = keyV.scalarValue
+    else
+      SetParseError(FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR)
+      return TRUE
+    end if
+  next i
+  dim order(0 to c - 1) as Integer
+  SortbyStableSortIndices(keys(), order(), c)
+  dim sorted(0 to c - 1) as ScalarValue
+  for i = 0 to c - 1
+    sorted(i) = vals(order(i))
+  next i
+  ValueSetArrayFromScalarValues(outV, sorted())
+  sortbyKeysArgStartCol = savedSortbyKeysArgCol
+  return TRUE
 end function
 
 private sub SortScalarValueArray(a() as ScalarValue)
@@ -5901,7 +6669,12 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim args() as EvalValue
   dim argsCount as Integer = 0
   dim argsCap as Integer = 0
-  if TryParseCallArguments(args(), argsCount, argsCap) = FALSE then return outV
+  dim fnLower as String = lcase(fnName)
+  if fnLower = FB_STR_SORTBY then
+    if TryParseSortbyCallArguments(args(), argsCount, argsCap) = FALSE then return outV
+  else
+    if TryParseCallArguments(args(), argsCount, argsCap) = FALSE then return outV
+  end if
 
   if TryConsumeClosingParenOrSetError() = FALSE then return outV
   if parseError then return outV
@@ -5912,10 +6685,18 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     redim preserve args(0 to argsCount - 1)
   end if
 
-  dim fn as String = lcase(fnName)
+  dim fn as String = fnLower
   dim fnId as Integer = TryFindBuiltinFunctionId(fn)
   dim flat() as Double
   dim c as Integer = 0
+  if fnId = FUNC_SORTBY then
+    if TryBuiltinSortby(fnName, args(), outV) then return outV
+    return outV
+  end if
+  if fnId = FUNC_RATIO then
+    if TryBuiltinRatio(fnName, args(), outV) then return outV
+    return outV
+  end if
   NormalizeCallArgs(args())
   if ValidateBuiltinCallArgs(fnId, fnName, args()) = FALSE then return outV
   if TryBuiltinDispatchWithTime(fnId, fnName, args(), outV) then return outV
@@ -6605,6 +7386,11 @@ private function ParseFactor() as EvalValue
       SetUnexpectedCommaError()
       return n
     end if
+    if pStream[0] = CHAR_RPAREN then
+      if TryConsumeClosingParenOrSetError() = FALSE then return n
+      ValueInitArrayLike(n, 0, -1)
+      return n
+    end if
     dim firstVal as EvalValue = ParseExpression()
     if parseError then return n
     SkipSpaces()
@@ -7267,8 +8053,6 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   evalDepth += 1
   if evalDepth = 1 then
     ResetTopLevelEvaluationState(exprInput)
-  else
-    rootInputExpr = exprInput
   end if
   if Len(exprInput) = 0 then
     return FinishParserEvaluateEx(FALSE)
@@ -7298,7 +8082,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     return FinishParserEvaluateEx(FALSE)
   end if
 
-  pStream = StrPtr(rootInputExpr)
+  pStream = StrPtr(exprInput)
   exprStart = pStream
   parseError = 0
   isArray = FALSE
@@ -7387,6 +8171,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           SetValidationError(assignNameErr)
           return FinishParserEvaluateEx(FALSE)
         end if
+        RemoveUserFunctionByName(varName)
         SetVariable(varName, exprV)
         SetAnsValue(exprV)
         resultText = ValueToString(exprV)
@@ -7399,7 +8184,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     end if
   end if
 
-  pStream = StrPtr(rootInputExpr)
+  pStream = StrPtr(exprInput)
   exprStart = pStream
   parseError = 0
   dim outV as EvalValue

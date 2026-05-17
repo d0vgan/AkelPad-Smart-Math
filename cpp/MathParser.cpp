@@ -313,7 +313,16 @@ constexpr const char* STR_MEDIAN = "median";
 constexpr const char* STR_VARIANCE = "variance";
 constexpr const char* STR_STDDEV = "stddev";
 constexpr const char* STR_SORT = "sort";
+constexpr const char* STR_SORTBY = "sortby";
+constexpr const char* STR_RATIO = "ratio";
 constexpr const char* STR_SORTED = "sorted";
+constexpr const char* STR_SORTBY_EXPECTS_ONE_FUNCTION = "sortby expects exactly one function";
+constexpr const char* STR_SORTBY_EXPECTS_UNARY_FUNCTION = "sortby expects a function that takes 1 parameter";
+constexpr const char* STR_SORTBY_KEY_MUST_RETURN_SCALAR = "sortby key function must return a scalar";
+constexpr const char* STR_PAR_ARRAY_COMMA_FUNC = "(array, func)";
+constexpr double RATIO_APPROX_EPS = 1e-14;
+constexpr long long RATIO_MAX_DENOMINATOR = 10000000LL;
+constexpr int RATIO_MAX_POWER10_EXP = 18;
 constexpr const char* STR_REVERSE = "reverse";
 constexpr const char* STR_REVERSED = "reversed";
 constexpr const char* STR_UNIQUE = "unique";
@@ -440,6 +449,7 @@ constexpr const char* STR_UNEXPECTED_INPUT = "unexpected characters";
 constexpr const char* STR_PARSE_FAILED = "parse failed";
 constexpr const char* STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR = "nothing compiled; call compile() first";
 constexpr const char* STR_UNKNOWN_VARIABLE_COLON = "unknown variable: ";
+constexpr const char* STR_USER_DEFINED_FUNCTION_COLON = "user-defined function: ";
 constexpr const char* STR_SEMICOLON_UNKNOWN_FUNCTION_COLON = "; unknown function: ";
 constexpr const char* STR_UNKNOWN_FUNCTION_COLON = "unknown function: ";
 constexpr const char* STR_INVALID_USER_FUNCTION_EXPRESSION = "invalid user function expression";
@@ -1755,7 +1765,7 @@ const std::vector<std::string>& MathParser::functionNames() {
       STR_ASIN,   STR_ACOS, STR_ATAN, STR_SINH, STR_COSH,     STR_TANH, STR_ACOSH, STR_ASINH, STR_ATANH, STR_EXP,
       STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,    STR_ABS,  STR_FLOOR,
       STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
-      STR_SORT,   STR_REVERSE, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_AVG, STR_MEAN,
+      STR_SORT,   STR_SORTBY, STR_RATIO, STR_REVERSE, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_AVG, STR_MEAN,
       STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_NCR, STR_NPR, STR_PRODUCT, STR_MIN, STR_MAX,
       STR_UHEX,   STR_UOCT,   STR_UBIN, STR_MILLISECONDS, STR_SECONDS, STR_MINUTES, STR_HOURS, STR_DAYS,
       STR_REAL,   STR_IMAG,   STR_PHASE, STR_POLAR, STR_CART, STR_CONJ};
@@ -1864,6 +1874,8 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Max:
     case BuiltinFunctionId::Sort:
     case BuiltinFunctionId::Reverse: return BuiltinHintKind::DotDotDot;
+    case BuiltinFunctionId::Ratio: return BuiltinHintKind::Value;
+    case BuiltinFunctionId::Sortby: return BuiltinHintKind::ArrayFunc;
     case BuiltinFunctionId::Fact: return BuiltinHintKind::N;
     case BuiltinFunctionId::Mod: return BuiltinHintKind::ValueDivisor;
     case BuiltinFunctionId::Clamp: return BuiltinHintKind::ValueMinMax;
@@ -1901,6 +1913,8 @@ std::string MathParser::getBuiltinFunctionMissingCallHint(BuiltinFunctionId id) 
     case BuiltinHintKind::AB:
       if (id == BuiltinFunctionId::Ncr || id == BuiltinFunctionId::Npr) return fnName + STR_PAR_N_COMMA_R;
       return fnName + STR_PAR_A_COMMA_B;
+    case BuiltinHintKind::ArrayFunc:
+      return fnName + STR_PAR_ARRAY_COMMA_FUNC;
     default: return "";
   }
 }
@@ -1960,12 +1974,32 @@ bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::str
   return true;
 }
 
+std::string MathParser::formatUserFunctionSignature(const UserFunction& uf) {
+  std::string sig = uf.name + "(";
+  for (std::size_t i = 0; i < uf.params.size(); ++i) {
+    if (i > 0) {
+      sig += ",";
+    }
+    sig += uf.params[i];
+  }
+  sig += ")";
+  return sig;
+}
+
 bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const {
   if (isLogicalBinaryOperatorKeyword(ident)) {
     setUnexpectedTokenError(ctx);
     return true;
   }
   if (trySetMissingFunctionCallError(ctx, ident)) {
+    return true;
+  }
+  if (const UserFunction* uf = findUserFunction(ident)) {
+    if (ctx.allowBareUserFunctionNameHint && userFunctionCallStack_.empty()) {
+      setError(ctx, std::string(STR_USER_DEFINED_FUNCTION_COLON) + formatUserFunctionSignature(*uf));
+      return true;
+    }
+    setError(ctx, buildUnknownVariableErrorText(ident));
     return true;
   }
   appendUniqueName(unknownList, ident);
@@ -2100,6 +2134,7 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   bodyCtx.errorText.clear();
   bodyCtx.unknownVarsText.clear();
   bodyCtx.unknownFuncsText.clear();
+  bodyCtx.allowBareUserFunctionNameHint = false;
 
   (void)evalExpr(*ex, bodyCtx, &formalScoped);
 
@@ -2926,6 +2961,86 @@ bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
   return true;
 }
 
+std::string MathParser::formatRationalParts(long long num, std::uint64_t den) {
+  if (num == 0LL) {
+    return "0";
+  }
+  if (den == 1u) {
+    return std::to_string(num);
+  }
+  return std::to_string(num) + "/" + std::to_string(den);
+}
+
+bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
+  if (!sv.hasRenderRational()) {
+    return false;
+  }
+  const long long num = sv.exactInt;
+  const std::uint64_t den = sv.exactUInt64;
+  if (den == 0u) {
+    return false;
+  }
+  outText = formatRationalParts(num, den);
+  return true;
+}
+
+bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
+  if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactInt()) {
+    return false;
+  }
+  std::string rePart;
+  if (sv.hasRenderRational()) {
+    rePart = formatRationalParts(sv.exactInt, sv.exactUInt64);
+  } else if (sv.hasExactInt()) {
+    if (sv.exactInt != 0LL) {
+      rePart = std::to_string(sv.exactInt);
+    }
+  } else if (std::fabs(sv.scalar) >= RATIO_APPROX_EPS) {
+    return false;
+  }
+  std::string imTail;
+  if (sv.hasImagRenderRational()) {
+    const std::string rp = formatRationalParts(sv.imagExactInt, sv.imagExactUInt64);
+    if (sv.imagExactUInt64 > 1u) {
+      imTail = rp + "*i";
+    } else if (sv.imagExactInt == 1LL) {
+      imTail = STR_I;
+    } else if (sv.imagExactInt == -1LL) {
+      imTail = std::string("-") + STR_I;
+    } else {
+      imTail = rp + STR_I;
+    }
+  } else if (sv.hasImagExactInt()) {
+    const long long ni = sv.imagExactInt;
+    if (ni == 1LL) {
+      imTail = STR_I;
+    } else if (ni == -1LL) {
+      imTail = std::string("-") + STR_I;
+    } else if (ni != 0LL) {
+      imTail = std::to_string(ni) + STR_I;
+    }
+  } else if (scalarHasNonzeroImaginaryPart(sv)) {
+    return false;
+  }
+  if (imTail.empty()) {
+    if (rePart.empty()) {
+      rePart = "0";
+    }
+    outText = rePart;
+    return true;
+  }
+  if (rePart.empty() || rePart == "0") {
+    outText = imTail;
+    return true;
+  }
+  if (!imTail.empty() && imTail[0] == '-') {
+    outText = rePart + imTail;
+  } else {
+    outText = rePart + "+" + imTail;
+  }
+  return true;
+}
+
 std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const {
   const int baseCode = static_cast<int>(base);
   const double dval = v.scalarValue.scalar;
@@ -2933,10 +3048,22 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
   }
   if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    if (base == RenderBase::Dec) {
+      std::string ratCx;
+      if (tryFormatComplexRationalScalar(v.scalarValue, ratCx)) {
+        return ratCx;
+      }
+    }
     if (base != RenderBase::Dec) {
       return formatComplexScalarWithRenderBase(v.scalarValue, base, v.hasRenderUnsigned());
     }
     return formatComplexScalarValue(v.scalarValue);
+  }
+  if (base == RenderBase::Dec) {
+    std::string ratText;
+    if (tryFormatRationalScalar(v.scalarValue, ratText)) {
+      return ratText;
+    }
   }
   if (base == RenderBase::Dec) {
     if (v.scalarValue.hasExactInt()) {
@@ -2983,18 +3110,7 @@ std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase)
   std::string out = "(";
   for (std::size_t i = 0; i < v.arr.size(); ++i) {
     if (i) out += ",";
-    EvalValue e = makeScalar(v.arr[i].scalar);
-    e.scalarValue.scalarKind = v.arr[i].scalarKind;
-    e.scalarValue.setExactIntValid(v.arr[i].hasExactInt());
-    e.scalarValue.exactInt = v.arr[i].exactInt;
-    e.scalarValue.setExactUInt64Valid(v.arr[i].hasExactUInt64());
-    e.scalarValue.exactUInt64 = v.arr[i].exactUInt64;
-    e.scalarValue.setDecScientificPow63High(v.arr[i].hasDecScientificPow63High());
-    e.scalarValue.imag = v.arr[i].imag;
-    e.scalarValue.imagExactInt = v.arr[i].imagExactInt;
-    e.scalarValue.imagExactUInt64 = v.arr[i].imagExactUInt64;
-    e.scalarValue.setImagExactIntValid(v.arr[i].hasImagExactInt());
-    e.scalarValue.setImagExactUInt64Valid(v.arr[i].hasImagExactUInt64());
+    EvalValue e = scalarFromScalarValue(v.arr[i]);
     e.setRenderUnsigned(v.hasRenderUnsigned());
     out += formatScalar(e, forcedBase);
   }
@@ -3234,6 +3350,10 @@ bool MathParser::tryApplyComplexBinaryScalars(
 }
 
 std::string MathParser::formatComplexScalarValue(const EvalValue::ScalarValue& sv) const {
+  std::string ratCx;
+  if (tryFormatComplexRationalScalar(sv, ratCx)) {
+    return ratCx;
+  }
   double ar = 0.0;
   double ai = 0.0;
   scalarLoadCartesian(sv, ar, ai);
@@ -3448,18 +3568,7 @@ MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalVal
   out.scalarValue.scalarKind = ScalarKind::FloatingPoint;
   out.arr.resize(v.size());
   for (std::size_t i = 0; i < v.size(); ++i) {
-    out.arr[i].scalarKind = v[i].scalarValue.scalarKind;
-    out.arr[i].scalar = v[i].scalarValue.scalar;
-    out.arr[i].setExactIntValid(v[i].scalarValue.hasExactInt());
-    out.arr[i].exactInt = v[i].scalarValue.exactInt;
-    out.arr[i].setExactUInt64Valid(v[i].scalarValue.hasExactUInt64());
-    out.arr[i].exactUInt64 = v[i].scalarValue.exactUInt64;
-    out.arr[i].setDecScientificPow63High(v[i].scalarValue.hasDecScientificPow63High());
-    out.arr[i].imag = v[i].scalarValue.imag;
-    out.arr[i].imagExactInt = v[i].scalarValue.imagExactInt;
-    out.arr[i].imagExactUInt64 = v[i].scalarValue.imagExactUInt64;
-    out.arr[i].setImagExactIntValid(v[i].scalarValue.hasImagExactInt());
-    out.arr[i].setImagExactUInt64Valid(v[i].scalarValue.hasImagExactUInt64());
+    out.arr[i] = v[i].scalarValue;
   }
   return out;
 }
@@ -3520,6 +3629,8 @@ MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarV
   out.scalarValue.imagExactUInt64 = sv.imagExactUInt64;
   out.scalarValue.setImagExactIntValid(sv.hasImagExactInt());
   out.scalarValue.setImagExactUInt64Valid(sv.hasImagExactUInt64());
+  out.scalarValue.setRenderRational(sv.hasRenderRational());
+  out.scalarValue.setImagRenderRational(sv.hasImagRenderRational());
   return out;
 }
 
@@ -3614,6 +3725,27 @@ void MathParser::setVariable(const std::string& name, const EvalValue& value) {
   }
   variables_.emplace(name, value);
   ++variablesVersion_;
+}
+
+void MathParser::removeVariableByName(const std::string& name) {
+  if (variables_.erase(name) != 0) {
+    ++variablesVersion_;
+  }
+}
+
+void MathParser::removeUserFunctionByName(const std::string& name) {
+  auto it = userFunctionIndex_.find(name);
+  if (it == userFunctionIndex_.end()) {
+    return;
+  }
+  const std::size_t idx = it->second;
+  const std::size_t last = userFunctions_.size() - 1;
+  if (idx != last) {
+    userFunctions_[idx] = std::move(userFunctions_[last]);
+    userFunctionIndex_[userFunctions_[idx].name] = idx;
+  }
+  userFunctions_.pop_back();
+  userFunctionIndex_.erase(it);
 }
 
 void MathParser::normalizeCallArgs(std::vector<EvalValue>& args) {
@@ -4233,11 +4365,13 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalCont
   ++ctx.p;
   skipSpaces(ctx);
   if (*ctx.p == ')') {
-    setUnexpectedTokenError(ctx);
-    return nullptr;
+    ++ctx.p;
+    auto emptyArr = std::make_unique<Expr>();
+    emptyArr->tag = Expr::Tag::ArrayOrParens;
+    return emptyArr;
   }
   std::vector<std::unique_ptr<Expr>> values;
-  if (!parseParenthesizedExprList(ctx, values) || values.empty()) {
+  if (!parseParenthesizedExprList(ctx, values)) {
     return nullptr;
   }
   if (*ctx.p != ')') {
@@ -4503,7 +4637,12 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
   }
   ++ctx.p;
   std::vector<std::unique_ptr<Expr>> args;
-  if (!parseParenthesizedExprList(ctx, args)) {
+  const bool isSortbyCall = (ident == STR_SORTBY);
+  if (isSortbyCall) {
+    if (!parseSortbyCallArguments(ctx, args)) {
+      return nullptr;
+    }
+  } else if (!parseParenthesizedExprList(ctx, args)) {
     return nullptr;
   }
   if (*ctx.p != ')') {
@@ -4816,6 +4955,7 @@ bool MathParser::exprIsScalarOnly(const Expr& e) const {
       return exprIsScalarOnly(*e.elements[0]);
     case Expr::Tag::Call:
     case Expr::Tag::Index:
+    case Expr::Tag::FunctionRef:
       return false;
     default:
       return false;
@@ -5352,6 +5492,12 @@ MathParser::EvalValue MathParser::evalExpr(
       }
       return makeScalar(0);
     }
+    case Expr::Tag::FunctionRef: {
+      EvalValue out;
+      out.kind = ValueKind::FunctionRef;
+      out.funcRefName = e.name;
+      return out;
+    }
     case Expr::Tag::Unary:
       return evalUnaryExpr(e, ctx, scopedVars, false);
     case Expr::Tag::PostfixPercent: {
@@ -5398,8 +5544,7 @@ MathParser::EvalValue MathParser::evalExpr(
         }
       }
       if (flatVals.empty()) {
-        setFailedToBuildArrayLiteralError(ctx);
-        return makeScalar(0);
+        return makeArrayFromScalars({});
       }
       bool anyTimeArr = false;
       bool anyNonTimeArr = false;
@@ -5710,6 +5855,7 @@ MathParser::EvalValue MathParser::runCompiledProgram(
       if (ctx.parseError) {
         return out;
       }
+      removeUserFunctionByName(st.assignName);
       setVariable(st.assignName, out);
       setVariable(STR_ANS, out);
     } else {
@@ -5749,8 +5895,8 @@ bool MathParser::isIntegerOnlyBuiltin(BuiltinFunctionId id) {
 
 bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
   return id == BuiltinFunctionId::Unpack || id == BuiltinFunctionId::Sort ||
-      id == BuiltinFunctionId::Reverse || id == BuiltinFunctionId::Unique ||
-      id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
+      id == BuiltinFunctionId::Sortby || id == BuiltinFunctionId::Reverse ||
+      id == BuiltinFunctionId::Unique || id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
 }
 
 bool MathParser::isFiniteRequiredBuiltin(BuiltinFunctionId id) {
@@ -6262,6 +6408,600 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
   }
   setInternalAggregateBuiltinError(ctx);
   return makeScalar(0);
+}
+
+bool MathParser::isSortbyIneligibleBuiltin(BuiltinFunctionId id) {
+  switch (id) {
+    case BuiltinFunctionId::Rand:
+    case BuiltinFunctionId::Pow:
+    case BuiltinFunctionId::Atan2:
+    case BuiltinFunctionId::Hypot:
+    case BuiltinFunctionId::Gcd:
+    case BuiltinFunctionId::Lcm:
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr:
+    case BuiltinFunctionId::Mod:
+    case BuiltinFunctionId::Clamp:
+    case BuiltinFunctionId::Log:
+    case BuiltinFunctionId::Random:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool MathParser::isSortbyEligibleFunctionName(
+    const MathParser& parser,
+    const std::string& funcName,
+    std::string& outErr) {
+  const std::string lowFn = toLower(funcName);
+  BuiltinFunctionId fnId = BuiltinFunctionId::Count;
+  if (tryGetBuiltinFunctionId(lowFn, fnId)) {
+    if (isSortbyIneligibleBuiltin(fnId)) {
+      outErr = STR_SORTBY_EXPECTS_UNARY_FUNCTION;
+      return false;
+    }
+    return true;
+  }
+  const UserFunction* uf = parser.findUserFunction(lowFn);
+  if (!uf) {
+    if (parser.variables_.find(lowFn) != parser.variables_.end()) {
+      outErr = STR_SORTBY_EXPECTS_UNARY_FUNCTION;
+      return false;
+    }
+    outErr = std::string(STR_UNKNOWN_FUNCTION_COLON) + funcName;
+    return false;
+  }
+  if (uf->params.size() != 1U) {
+    outErr = STR_SORTBY_EXPECTS_UNARY_FUNCTION;
+    return false;
+  }
+  return true;
+}
+
+bool MathParser::scalarSortLess(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
+  if (scalarValueIsTime(a) || scalarValueIsTime(b)) {
+    long long am = 0;
+    long long bm = 0;
+    if (scalarValueIsTime(a)) {
+      am = timeTotalMsFromScalarValue(a);
+    } else {
+      am = static_cast<long long>(std::llround(a.scalar * 1000.0));
+    }
+    if (scalarValueIsTime(b)) {
+      bm = timeTotalMsFromScalarValue(b);
+    } else {
+      bm = static_cast<long long>(std::llround(b.scalar * 1000.0));
+    }
+    return am < bm;
+  }
+  const bool aNan = std::isnan(a.scalar);
+  const bool bNan = std::isnan(b.scalar);
+  if (aNan) {
+    return !bNan;
+  }
+  if (bNan) {
+    return false;
+  }
+  return a.scalar < b.scalar;
+}
+
+void MathParser::sortbyStableSortIndices(
+    const std::vector<EvalValue::ScalarValue>& sortKeys,
+    std::vector<int>& orderIdx) {
+  const int count = static_cast<int>(sortKeys.size());
+  orderIdx.resize(static_cast<std::size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    orderIdx[static_cast<std::size_t>(i)] = i;
+  }
+  if (count <= 1) {
+    return;
+  }
+  for (int i = 1; i < count; ++i) {
+    int j = i;
+    while (j > 0) {
+      if (scalarSortLess(sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j)])],
+              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j - 1)])])) {
+        const int t = orderIdx[static_cast<std::size_t>(j)];
+        orderIdx[static_cast<std::size_t>(j)] = orderIdx[static_cast<std::size_t>(j - 1)];
+        orderIdx[static_cast<std::size_t>(j - 1)] = t;
+        --j;
+      } else {
+        break;
+      }
+    }
+  }
+}
+
+MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64_t den) {
+  EvalValue out = makeScalarMaybeExact(static_cast<double>(num) / static_cast<double>(den));
+  out.scalarValue.setExactIntValid(true);
+  out.scalarValue.exactInt = num;
+  out.scalarValue.setExactUInt64Valid(true);
+  out.scalarValue.exactUInt64 = den;
+  out.scalarValue.setRenderRational(true);
+  return out;
+}
+
+namespace {
+
+std::uint64_t ratioPow10U(int k) {
+  std::uint64_t r = 1;
+  for (int i = 0; i < k; ++i) {
+    r *= 10ULL;
+  }
+  return r;
+}
+
+bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, double& ratErr) {
+  bool found = false;
+  ratErr = 1e300;
+  for (int k = 1; k <= RATIO_MAX_POWER10_EXP; ++k) {
+    const std::uint64_t denPow = ratioPow10U(k);
+    const double scaled = v * static_cast<double>(denPow);
+    const long long n = static_cast<long long>(std::llround(scaled));
+    if (n == 0) {
+      continue;
+    }
+    const long long nAbs = std::llabs(n);
+    double scaleErr = RATIO_APPROX_EPS * std::fabs(scaled);
+    if (scaleErr < RATIO_APPROX_EPS) {
+      scaleErr = RATIO_APPROX_EPS;
+    }
+    if (std::fabs(scaled - static_cast<double>(n)) > scaleErr) {
+      continue;
+    }
+    const long long g = gcdInt64(nAbs, static_cast<long long>(denPow));
+    const long long candNum = n / g;
+    const std::uint64_t candDen =
+        static_cast<std::uint64_t>(static_cast<long long>(denPow) / g);
+    const double approx = static_cast<double>(candNum) / static_cast<double>(candDen);
+    const double candErr = std::fabs(v - approx);
+    if (candErr < ratErr) {
+      ratErr = candErr;
+      num = candNum;
+      den = candDen;
+      found = true;
+    }
+  }
+  return found;
+}
+
+}  // namespace
+
+bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t& den) {
+  if (std::isnan(x) || std::isinf(x)) {
+    return false;
+  }
+  const bool neg = x < 0.0;
+  const double v = std::fabs(x);
+  double scale = v;
+  if (scale < 1.0) {
+    scale = 1.0;
+  }
+  const double tol = RATIO_APPROX_EPS * scale;
+  if (v < tol) {
+    num = 0;
+    den = 1;
+    return true;
+  }
+  long long bestNum = 0;
+  std::uint64_t bestDen = 1;
+  double bestErr = 1e300;
+  const auto considerCandidate = [&](long long p, std::uint64_t q) {
+    if (q == 0 || q > static_cast<std::uint64_t>(RATIO_MAX_DENOMINATOR)) {
+      return;
+    }
+    const double approx = static_cast<double>(p) / static_cast<double>(q);
+    const double ratErr = std::fabs(v - approx);
+    if (ratErr < bestErr) {
+      bestErr = ratErr;
+      bestNum = p;
+      bestDen = q;
+    }
+  };
+  long long p0 = 0;
+  long long p1 = 1;
+  long long q0 = 1;
+  long long q1 = 0;
+  double frac = v;
+  for (int i = 0; i < 64; ++i) {
+    const long long a = static_cast<long long>(std::floor(frac));
+    const long long p = a * p1 + p0;
+    const long long q = a * q1 + q0;
+    if (q > RATIO_MAX_DENOMINATOR) {
+      if (q1 > 0 && q0 > 0) {
+        const long long hMax = (RATIO_MAX_DENOMINATOR - q1) / q0;
+        for (long long h = 0; h <= hMax; ++h) {
+          considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
+        }
+      }
+      break;
+    }
+    considerCandidate(p, static_cast<std::uint64_t>(q));
+    const double t = frac - static_cast<double>(a);
+    if (t <= RATIO_APPROX_EPS) {
+      break;
+    }
+    frac = 1.0 / t;
+    p0 = p1;
+    p1 = p;
+    q0 = q1;
+    q1 = q;
+  }
+  long long p10Num = 0;
+  std::uint64_t p10Den = 0;
+  double p10Err = 1e300;
+  if (v <= 1.0 / static_cast<double>(RATIO_MAX_DENOMINATOR) &&
+      tryExactPower10Rational(v, p10Num, p10Den, p10Err) && p10Err < bestErr) {
+    bestNum = p10Num;
+    bestDen = p10Den;
+    bestErr = p10Err;
+  }
+  if (bestNum == 0) {
+    num = 0;
+    den = 1;
+    return true;
+  }
+  const long long g = gcdInt64(std::llabs(bestNum), static_cast<long long>(bestDen));
+  num = bestNum / g;
+  den = static_cast<std::uint64_t>(static_cast<long long>(bestDen) / g);
+  if (neg) {
+    num = -num;
+  }
+  return true;
+}
+
+bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const {
+  if (scalarValueIsTime(sv)) {
+    ctx.parseError = true;
+    return false;
+  }
+  double ar = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(sv, ar, ai);
+  if (std::isnan(ar) || std::isnan(ai)) {
+    if (std::isnan(ar)) {
+      if (std::isnan(ai) || std::fabs(ai) < RATIO_APPROX_EPS) {
+        outV = makeScalar(std::numeric_limits<double>::quiet_NaN());
+        return true;
+      }
+    }
+    ctx.parseError = true;
+    return false;
+  }
+  if (!scalarHasNonzeroImaginaryPart(sv)) {
+    if (std::isinf(ar)) {
+      outV = makeScalar(ar);
+      return true;
+    }
+    if (std::isinf(ai)) {
+      ctx.parseError = true;
+      return false;
+    }
+  }
+  if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sv)) {
+    long long numR = 0;
+    std::uint64_t denR = 1;
+    long long numI = 0;
+    std::uint64_t denI = 1;
+    bool hasRealRat = false;
+    bool hasImagRat = false;
+    bool imagIsInt = false;
+    double aiScale = std::fabs(ai);
+    if (aiScale < 1.0) {
+      aiScale = 1.0;
+    }
+    double arScale = std::fabs(ar);
+    if (arScale < 1.0) {
+      arScale = 1.0;
+    }
+    if (sv.hasImagExactInt()) {
+      imagIsInt = true;
+      numI = sv.imagExactInt;
+      denI = 1;
+    } else if (std::fabs(ai) >= RATIO_APPROX_EPS * aiScale) {
+      if (!tryApproximateRational(ai, numI, denI)) {
+        ctx.parseError = true;
+        return false;
+      }
+      hasImagRat = true;
+    }
+    if (std::fabs(ar) >= RATIO_APPROX_EPS * arScale) {
+      if (!tryApproximateRational(ar, numR, denR)) {
+        ctx.parseError = true;
+        return false;
+      }
+      hasRealRat = true;
+    }
+    outV = scalarFromScalarValue(sv);
+    if (hasRealRat) {
+      outV.scalarValue.setExactIntValid(true);
+      outV.scalarValue.exactInt = numR;
+      outV.scalarValue.setExactUInt64Valid(true);
+      outV.scalarValue.exactUInt64 = denR;
+      outV.scalarValue.setRenderRational(true);
+    } else if (sv.hasExactInt()) {
+      outV.scalarValue.setExactIntValid(true);
+      outV.scalarValue.exactInt = sv.exactInt;
+    }
+    if (hasImagRat) {
+      outV.scalarValue.setImagExactIntValid(true);
+      outV.scalarValue.imagExactInt = numI;
+      outV.scalarValue.setImagExactUInt64Valid(true);
+      outV.scalarValue.imagExactUInt64 = denI;
+      outV.scalarValue.setImagRenderRational(true);
+    } else if (imagIsInt) {
+      outV.scalarValue.setImagExactIntValid(true);
+      outV.scalarValue.imagExactInt = numI;
+    }
+    return true;
+  }
+  if (sv.hasExactInt()) {
+    outV = makeScalarInt(sv.exactInt);
+    return true;
+  }
+  if (sv.hasExactUInt64()) {
+    outV = makeScalarUInt(sv.exactUInt64);
+    return true;
+  }
+  double arScale0 = std::fabs(ar);
+  if (arScale0 < 1.0) {
+    arScale0 = 1.0;
+  }
+  if (std::fabs(ar) < RATIO_APPROX_EPS * arScale0) {
+    outV = makeScalar(0.0);
+    return true;
+  }
+  long long nearInt = 0;
+  if (tryExtractExactInt64FromDoubleStrict(ar, nearInt)) {
+    outV = makeScalarInt(nearInt);
+    return true;
+  }
+  long long num = 0;
+  std::uint64_t den = 1;
+  if (!tryApproximateRational(ar, num, den)) {
+    ctx.parseError = true;
+    return false;
+  }
+  if (den == 1u) {
+    outV = makeScalarInt(num);
+  } else {
+    outV = makeRationalReduced(num, den);
+  }
+  return true;
+}
+
+MathParser::EvalValue MathParser::builtinRatio(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const std::vector<EvalValue>& args) const {
+  if (args.size() != 1U) {
+    setExactArgCountError(ctx, fnName, 1);
+    return makeScalar(0);
+  }
+  EvalContext sub;
+  if (args[0].kind == ValueKind::Scalar) {
+    EvalValue out = makeScalar(0);
+    if (!tryBuiltinRatioScalar(sub, args[0].scalarValue, out)) {
+      if (sub.parseError) {
+        setIncompatibleOperandsError(ctx);
+      }
+      return makeScalar(0);
+    }
+    return out;
+  }
+  std::vector<EvalValue> wrapped;
+  wrapped.reserve(args[0].arr.size());
+  for (const auto& item : args[0].arr) {
+    EvalValue tmp = makeScalar(0);
+    if (!tryBuiltinRatioScalar(sub, item, tmp)) {
+      if (sub.parseError) {
+        setIncompatibleOperandsError(ctx);
+      }
+      return makeScalar(0);
+    }
+    wrapped.push_back(scalarFromScalarValue(tmp.scalarValue));
+  }
+  return makeArrayFromScalars(wrapped);
+}
+
+MathParser::EvalValue MathParser::sortbyInvokeKeyFunction(
+    EvalContext& ctx,
+    const std::string& funcName,
+    const EvalValue::ScalarValue& elem,
+    const std::unordered_map<std::string, EvalValue>* scopedVars) {
+  const std::string lowFn = toLower(funcName);
+  std::vector<EvalValue> args;
+  args.push_back(scalarFromScalarValue(elem));
+  BuiltinFunctionId fnId = BuiltinFunctionId::Count;
+  if (!tryGetBuiltinFunctionId(lowFn, fnId)) {
+    return evalUserFunctionCall(ctx, funcName, args, scopedVars);
+  }
+  if (!validateBuiltinArgs(ctx, funcName, fnId, args)) {
+    return makeScalar(0);
+  }
+  if (fnId == BuiltinFunctionId::Milliseconds || fnId == BuiltinFunctionId::Seconds ||
+      fnId == BuiltinFunctionId::Minutes || fnId == BuiltinFunctionId::Hours ||
+      fnId == BuiltinFunctionId::Days) {
+    return evalFunctionCall(ctx, funcName, std::move(args), fnId, scopedVars);
+  }
+  if (fnId == BuiltinFunctionId::Sum || fnId == BuiltinFunctionId::Product || fnId == BuiltinFunctionId::Avg ||
+      fnId == BuiltinFunctionId::Mean || fnId == BuiltinFunctionId::Min || fnId == BuiltinFunctionId::Max) {
+    return args[0];
+  }
+  if (fnId == BuiltinFunctionId::Hex || fnId == BuiltinFunctionId::Oct || fnId == BuiltinFunctionId::Bin ||
+      fnId == BuiltinFunctionId::Uhex || fnId == BuiltinFunctionId::Uoct || fnId == BuiltinFunctionId::Ubin) {
+    EvalValue out = args[0];
+    if (fnId == BuiltinFunctionId::Hex || fnId == BuiltinFunctionId::Uhex) {
+      out.setRenderBase(RenderBase::Hex);
+    } else if (fnId == BuiltinFunctionId::Oct || fnId == BuiltinFunctionId::Uoct) {
+      out.setRenderBase(RenderBase::Oct);
+    } else {
+      out.setRenderBase(RenderBase::Bin);
+    }
+    out.setRenderUnsigned(
+        fnId == BuiltinFunctionId::Uhex || fnId == BuiltinFunctionId::Uoct || fnId == BuiltinFunctionId::Ubin);
+    return out;
+  }
+  if (fnId == BuiltinFunctionId::Deg || fnId == BuiltinFunctionId::Rad) {
+    return builtinDegRad(ctx, funcName, fnId, args);
+  }
+  const EvalValue unaryOut = builtinUnaryMath(ctx, funcName, fnId, args);
+  if (ctx.parseError) {
+    return unaryOut;
+  }
+  if (unaryOut.kind == ValueKind::Scalar || unaryOut.kind == ValueKind::Array) {
+    return unaryOut;
+  }
+  setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+  return makeScalar(0);
+}
+
+MathParser::EvalValue MathParser::builtinSortby(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const std::vector<EvalValue>& args,
+    const std::unordered_map<std::string, EvalValue>* scopedVars) {
+  if (args.size() != 2U) {
+    setExactArgCountError(ctx, fnName, 2);
+    return makeScalar(0);
+  }
+  if (args[1].kind != ValueKind::FunctionRef) {
+    if (args[1].kind == ValueKind::Array) {
+      setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
+    } else {
+      setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    }
+    return makeScalar(0);
+  }
+  std::string errText;
+  if (!isSortbyEligibleFunctionName(*this, args[1].funcRefName, errText)) {
+    setValidationError(ctx, errText.c_str());
+    return makeScalar(0);
+  }
+  std::vector<EvalValue::ScalarValue> vals;
+  const auto collectFromArg = [&](const EvalValue& a) -> bool {
+    if (a.kind == ValueKind::Scalar) {
+      vals.push_back(a.scalarValue);
+      return true;
+    }
+    vals.reserve(vals.size() + a.arr.size());
+    for (const auto& item : a.arr) {
+      vals.push_back(item);
+    }
+    return true;
+  };
+  if (!collectFromArg(args[0])) {
+    setAtLeastOneArgError(ctx, fnName);
+    return makeScalar(0);
+  }
+  if (vals.empty()) {
+    return makeArrayFromScalars({});
+  }
+  std::vector<EvalValue::ScalarValue> keys(vals.size());
+  for (std::size_t i = 0; i < vals.size(); ++i) {
+    const EvalValue keyV = sortbyInvokeKeyFunction(ctx, args[1].funcRefName, vals[i], scopedVars);
+    if (ctx.parseError) {
+      return makeScalar(0);
+    }
+    if (keyV.kind == ValueKind::Array) {
+      setValidationError(ctx, STR_SORTBY_KEY_MUST_RETURN_SCALAR);
+      return makeScalar(0);
+    }
+    if (keyV.kind != ValueKind::Scalar) {
+      setValidationError(ctx, STR_SORTBY_KEY_MUST_RETURN_SCALAR);
+      return makeScalar(0);
+    }
+    keys[i] = keyV.scalarValue;
+  }
+  std::vector<int> order;
+  sortbyStableSortIndices(keys, order);
+  std::vector<EvalValue::ScalarValue> sorted(vals.size());
+  for (std::size_t i = 0; i < vals.size(); ++i) {
+    sorted[i] = vals[static_cast<std::size_t>(order[i])];
+  }
+  std::vector<EvalValue> wrapped;
+  wrapped.reserve(sorted.size());
+  for (const auto& s : sorted) {
+    wrapped.push_back(scalarFromScalarValue(s));
+  }
+  return makeArrayFromScalars(wrapped);
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyFunctionRef(EvalContext& ctx) {
+  skipSpaces(ctx);
+  if (*ctx.p == '(') {
+    auto parsed = parseExpression(ctx);
+    if (ctx.parseError || !parsed) {
+      return nullptr;
+    }
+    if (parsed->tag == Expr::Tag::ArrayOrParens) {
+      setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
+      return nullptr;
+    }
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    return nullptr;
+  }
+  if (!isIdentStart(*ctx.p)) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    return nullptr;
+  }
+  const char* start = ctx.p;
+  ++ctx.p;
+  while (isIdentChar(*ctx.p)) {
+    ++ctx.p;
+  }
+  const std::string nameText(start, static_cast<std::size_t>(ctx.p - start));
+  skipSpaces(ctx);
+  if (*ctx.p == '(') {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
+    return nullptr;
+  }
+  auto ref = std::make_unique<Expr>();
+  ref->tag = Expr::Tag::FunctionRef;
+  ref->name = toLower(nameText);
+  return ref;
+}
+
+bool MathParser::parseSortbyCallArguments(EvalContext& ctx, std::vector<std::unique_ptr<Expr>>& outArgs) {
+  skipSpaces(ctx);
+  if (*ctx.p == ',') {
+    setUnexpectedCommaError(ctx);
+    return false;
+  }
+  if (*ctx.p == ')') {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    return false;
+  }
+  auto first = parseExpression(ctx);
+  if (ctx.parseError || !first) {
+    return false;
+  }
+  outArgs.push_back(std::move(first));
+  skipSpaces(ctx);
+  bool hasComma = false;
+  if (!tryConsumeCommaArgSeparator(ctx, hasComma)) {
+    return false;
+  }
+  if (!hasComma) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    return false;
+  }
+  auto fnRef = parseSortbyFunctionRef(ctx);
+  if (ctx.parseError || !fnRef) {
+    return false;
+  }
+  outArgs.push_back(std::move(fnRef));
+  skipSpaces(ctx);
+  if (!tryConsumeCommaArgSeparator(ctx, hasComma)) {
+    return false;
+  }
+  if (hasComma) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
+    return false;
+  }
+  return true;
 }
 
 MathParser::EvalValue MathParser::builtinSortFamily(
@@ -7516,7 +8256,12 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
 
   EvalContext sub;
   sub.evalDepth = ctx.evalDepth + 1;
+  sub.allowBareUserFunctionNameHint = false;
   EvalValue v = runCompiledProgram(sub, uf->compiledProgram, &localVars, false);
+  if (!sub.unknownVarsText.empty()) {
+    setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
+    return makeScalar(0);
+  }
   if (sub.parseError) {
     setError(ctx, sub.errorText);
     return makeScalar(0);
@@ -7540,6 +8285,13 @@ MathParser::EvalValue MathParser::evalFunctionCall(
   }
   if (!validateBuiltinArgs(ctx, fnName, id, args)) {
     return makeScalar(0);
+  }
+
+  if (id == BuiltinFunctionId::Sortby) {
+    return builtinSortby(ctx, fnName, args, scopedVars);
+  }
+  if (id == BuiltinFunctionId::Ratio) {
+    return builtinRatio(ctx, fnName, args);
   }
 
   if (id == BuiltinFunctionId::Milliseconds || id == BuiltinFunctionId::Seconds || id == BuiltinFunctionId::Minutes ||
@@ -7825,6 +8577,7 @@ const MathParser::UserFunction* MathParser::findUserFunction(const std::string& 
 }
 
 void MathParser::upsertUserFunction(UserFunction uf) {
+  removeVariableByName(uf.name);
   uf.compiledProgram.clear();
   uf.compiledProgramReady = false;
   auto it = userFunctionIndex_.find(uf.name);

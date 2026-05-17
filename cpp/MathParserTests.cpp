@@ -2396,7 +2396,19 @@ std::vector<TestCase> buildRegressionCases() {
   t.push_back({"regression/UDF parameter shadows global during body validation", [](std::string& why) {
                 MathParser p;
                 if (!expectEval(p, "x=0.5; f(x)=x<<2; f(3)", "12", why)) return false;
-                if (!expectEval(p, "x=0.5; f(x)=x<<2; x", "0.5", why)) return false;
+                if (!expectEvalErrorContains(p, "f(x)=x*2; f=10; f(3)", "unknown function: f", why))
+                  return false;
+                if (!expectEval(p, "f(x)=x*2; f=10; f", "10", why)) return false;
+                if (!expectEvalErrorContains(p, "f=10; f(x)=x*2; f", "user-defined function: f(x)", why))
+                  return false;
+                if (!expectEvalErrorContains(p, "f(x)=x+1; f", "user-defined function: f(x)", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        p, "a(x)=1/x; sortby((0:30, 1:00, 0:45), a)", "incompatible operands", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        p, "a(x)=1/a; sortby((0:30, 1:00, 0:45), a)", "unknown variable: a", why))
+                  return false;
                 return true;
               }});
   t.push_back({"regression/underscore reads as 1 before assignment", [](std::string& why) {
@@ -2536,6 +2548,109 @@ std::vector<TestCase> buildRegressionCases() {
                 return expectEval(p, "median((42))", "42", why);
               }});
 
+  return t;
+}
+
+std::vector<TestCase> buildSortbyRatioCases() {
+  std::vector<TestCase> t;
+  t.push_back({"sortby/ratio: ratio integers and zero",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "ratio(5)", "5", why)) return false;
+                 if (!expectEval(p, "ratio(0)", "0", why)) return false;
+                 if (!expectEval(p, "ratio(-4)", "-4", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: ratio approximate and exact fractions",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "ratio(0.5)", "1/2", why)) return false;
+                 if (!expectEval(p, "ratio(0.3333333333333333)", "1/3", why)) return false;
+                 if (!expectEval(p, "ratio(1.5)", "3/2", why)) return false;
+                 if (!expectEval(p, "ratio(1e-7)", "1/10000000", why)) return false;
+                 if (!expectEval(p, "ratio(1e-8)", "1/100000000", why)) return false;
+                 if (!expectEval(p, "ratio(sqrt(2))", "13250218/9369319", why)) return false;
+                 if (!expectEval(p, "ratio((sqrt(2), e, pi))",
+                                 "(13250218/9369319, 14665106/5394991, 5419351/1725033)",
+                                 why)) {
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: ratio nan inf and array",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "ratio(nan)", "nan", why)) return false;
+                 if (!expectEval(p, "ratio(inf)", "inf", why)) return false;
+                 if (!expectEval(p, "ratio((1,2,3))", "(1,2,3)", why)) return false;
+                 if (!expectEval(p, "ratio((0.5, 1/3))", "(1/2, 1/3)", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: ratio rejects time",
+               [](std::string& why) {
+                 MathParser p;
+                 return expectEvalErrorContains(p, "ratio(1:00)", "incompatible operands", why);
+               }});
+  t.push_back({"sortby/ratio: sortby stable by abs",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "sortby((3,-1,2), abs)", "(-1,2,3)", why)) return false;
+                 if (!expectEval(p, "sortby((5,1,5,2,2,9,1), abs)", "(1,1,2,2,5,5,9)", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: sortby empty array validates func",
+               [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "sortby((), abs)", "()", why);
+               }});
+  t.push_back({"sortby/ratio: sortby parse and arity errors",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), abs())", "sortby expects exactly one function", why))
+                   return false;
+                 if (!expectEvalErrorContains(p, "sortby((1,2))", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), 3)", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), (1,2))", "sortby expects exactly one function", why))
+                   return false;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), pow)", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), rand)", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: sortby unknown and UDF unary",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEvalErrorContains(p, "sortby((1,2), nosuchfn)", "unknown function: nosuchfn", why))
+                   return false;
+                 if (!expectEvalErrorContains(
+                         p, "x=10; sortby((0:30, 1:00, 0:45), x)",
+                         "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 p.addUserFunction("f(x)=x*x");
+                 if (!expectEval(p, "sortby((3,1,2), f)", "(1,2,3)", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: sortby key must return scalar",
+               [](std::string& why) {
+                 MathParser p;
+                 return expectEvalErrorContains(
+                     p, "sortby((1,2), polar)", "sortby key function must return a scalar", why);
+               }});
+  t.push_back({"sortby/ratio: sortby time and milliseconds keys",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "sortby((1:30,0:30,1:00), milliseconds)", "(00:30,01:00,01:30)", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: UDF divide duration via sortby",
+               [](std::string& why) {
+                 MathParser p;
+                 return expectEvalErrorContains(
+                     p, "f(x)=1/x; sortby((0:30, 1:00, 0:45), f)", "incompatible operands", why);
+               }});
   return t;
 }
 
@@ -2731,7 +2846,10 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "sort(nan,inf,2,-inf,nan,-2)", "(nan,nan,-inf,-2,2,inf)"} ,
     {ParityBasicCase::Kind::Expected, "sorted((nan,-3,4,inf,-inf))", "(nan,-inf,-3,4,inf)"} ,
     {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; f(3)", "12"} ,
-    {ParityBasicCase::Kind::Expected, "x=0.5; f(x)=x<<2; x", "0.5"} ,
+    {ParityBasicCase::Kind::ErrorContains, "f(x)=x*2; f=10; f(3)", "unknown function: f"} ,
+    {ParityBasicCase::Kind::Expected, "f(x)=x*2; f=10; f", "10"} ,
+    {ParityBasicCase::Kind::ErrorContains, "f=10; f(x)=x*2; f", "user-defined function: f(x)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "f(x)=x+1; f", "user-defined function: f(x)"} ,
     {ParityBasicCase::Kind::Expected, "x=0; f(x)=1/x; f(2)", "0.5"} ,
     {ParityBasicCase::Kind::Expected, "f(x)=1%x; f(7)", "1"} ,
     {ParityBasicCase::Kind::Expected, "_", "1"} ,
@@ -2894,8 +3012,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "arctan(1)", "0.7853981633974483"} ,
     {ParityBasicCase::Kind::ErrorContains, "prod()", "expects at least 1 argument"} ,
     {ParityBasicCase::Kind::ErrorContains, "mean()", "expects at least 1 argument"} ,
-    {ParityBasicCase::Kind::ErrorContains, "variance(( ))", "unexpected token"} ,
-    {ParityBasicCase::Kind::ErrorContains, "stddev(( ))", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "variance(())", "expects at least 1 argument"} ,
+    {ParityBasicCase::Kind::ErrorContains, "stddev(())", "expects at least 1 argument"} ,
     {ParityBasicCase::Kind::ErrorContains, "gcd(1)", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "lcm(1)", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "mod(1)", "expects 2 argument(s)"} ,
@@ -2914,8 +3032,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "factorial((1,2))", "expects a non-negative integer"} ,
     {ParityBasicCase::Kind::ErrorContains, "clamp((1,2,3),(4,5),6)", "expects scalar min/max"} ,
     {ParityBasicCase::Kind::Expected, "sum((1,2),(3,4),5)", "15"} ,
-    {ParityBasicCase::Kind::ErrorContains, "sort(( ))", "unexpected token"} ,
-    {ParityBasicCase::Kind::ErrorContains, "unique(( ))", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "sort(())", "expects at least 1 argument"} ,
+    {ParityBasicCase::Kind::ErrorContains, "unique(())", "expects at least 1 argument"} ,
     {ParityBasicCase::Kind::ErrorContains, "RestoreAnsFromCachedRender(g_cachedRenderText(i))", "unknown function"} ,
     {ParityBasicCase::Kind::Expected, "deg(pi/2,pi/4)", "(90,45)"} ,
     {ParityBasicCase::Kind::Expected, "rad(180,90)", "(3.141592653589793,1.570796326794897)"} ,
@@ -3007,7 +3125,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "reverse", "function: reverse(...)"} ,
     {ParityBasicCase::Kind::ErrorContains, "reverse()", "expects at least 1 argument"} ,
     {ParityBasicCase::Kind::Expected, "reverse((2,5,1),4,3)", "(3,4,1,5,2)"} ,
-    {ParityBasicCase::Kind::ErrorContains, "reverse(( ))", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "reverse(())", "expects at least 1 argument"} ,
     {ParityBasicCase::Kind::Expected, "(10,20,30)[0]", "10"} ,
     {ParityBasicCase::Kind::Expected, "(10,20,30)[2]", "30"} ,
     {ParityBasicCase::Kind::Expected, "(10,20,30)[-1]", "30"} ,
@@ -3651,6 +3769,33 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: sortby by abs and ratio on complex (parity Basic 1046+)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"sortby((3+4i, 1+2i), abs)", "(1+2i,3+4i)"},
+                     {"ratio(1+2i)", "1+2i"},
+                     {"ratio(0.5+0.25i)", "1/2+1/4*i"},
+                     {"ratio(2+3i)", "2+3i"},
+                     {"ratio(e+10i)", "14665106/5394991+10i"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: min/max/sort/median/variance/stddev reject complex (parity with Basic cxAggErr)",
                [](std::string& why) {
                  MathParser p;
@@ -3894,6 +4039,7 @@ int main() {
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
+  const auto sortbyRatio = buildSortbyRatioCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -3902,6 +4048,7 @@ int main() {
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+  runSuite("Sortby/Ratio", sortbyRatio, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

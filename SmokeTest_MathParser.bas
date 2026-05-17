@@ -648,6 +648,25 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next uei
 
+  dim cxSortRatioOk(1 to 5) as String
+  dim cxSortRatioExpect(1 to 5) as String
+  cxSortRatioOk(1) = "sortby((3+4i, 1+2i), abs)": cxSortRatioExpect(1) = "(1+2i, 3+4i)"
+  cxSortRatioOk(2) = "ratio(1+2i)": cxSortRatioExpect(2) = "1+2i"
+  cxSortRatioOk(3) = "ratio(0.5+0.25i)": cxSortRatioExpect(3) = "1/2+1/4*i"
+  cxSortRatioOk(4) = "ratio(2+3i)": cxSortRatioExpect(4) = "2+3i"
+  cxSortRatioOk(5) = "ratio(e+10i)": cxSortRatioExpect(5) = "14665106/5394991+10i"
+  dim sri as Integer
+  for sri = 1 to 5
+    if Parser_TryEvaluateEx(cxSortRatioOk(sri), r, rt, ia) = FALSE orelse rt <> cxSortRatioExpect(sri) then
+      print "[complex-opt] FAIL: """ & cxSortRatioOk(sri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      print "[complex-opt]      want: """ & cxSortRatioExpect(sri) & """"
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxSortRatioOk(sri) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next sri
+
   Parser_SetSupportComplexNumbers(FALSE)
   if Parser_GetSupportComplexNumbers() <> FALSE then
     print "[complex-opt] FAIL: expected support flag OFF after disable"
@@ -708,7 +727,7 @@ private sub RunComplexNumberSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1045) as SmokeCase
+  dim tests(1 to 1075) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -937,8 +956,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(204).expr = "arctan(1)":        tests(204).expected = "0.7853981633974483" ' [ok-func]
   tests(205).expr = "prod()":           tests(205).expectedErrContains = "expects at least 1 argument" ' [arity]
   tests(206).expr = "mean()":           tests(206).expectedErrContains = "expects at least 1 argument" ' [arity]
-  tests(207).expr = "variance(( ))":    tests(207).expectedErrContains = "unexpected token" ' [syntax]
-  tests(208).expr = "stddev(( ))":      tests(208).expectedErrContains = "unexpected token" ' [syntax]
+  tests(207).expr = "variance(())":     tests(207).expectedErrContains = "expects at least 1 argument" ' [syntax]
+  tests(208).expr = "stddev(())":       tests(208).expectedErrContains = "expects at least 1 argument" ' [syntax]
   tests(209).expr = "gcd(1)":           tests(209).expectedErrContains = "expects 2 argument(s)" ' [arity]
   tests(210).expr = "lcm(1)":           tests(210).expectedErrContains = "expects 2 argument(s)" ' [arity]
   tests(211).expr = "mod(1)":           tests(211).expectedErrContains = "expects 2 argument(s)" ' [arity]
@@ -961,8 +980,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   ' but should not change accidentally without an explicit decision.
   tests(225).expr = "clamp((1,2,3),(4,5),6)": tests(225).expectedErrContains = "expects scalar min/max" ' [type]
   tests(226).expr = "sum((1,2),(3,4),5)": tests(226).expected = "15" ' [ok-array]
-  tests(227).expr = "sort(( ))":        tests(227).expectedErrContains = "unexpected token" ' [syntax]
-  tests(228).expr = "unique(( ))":      tests(228).expectedErrContains = "unexpected token" ' [syntax]
+  tests(227).expr = "sort(())":         tests(227).expectedErrContains = "expects at least 1 argument" ' [syntax]
+  tests(228).expr = "unique(())":       tests(228).expectedErrContains = "expects at least 1 argument" ' [syntax]
   tests(229).expr = "RestoreAnsFromCachedRender(g_cachedRenderText(i))": tests(229).expectedErrContains = "unknown function" ' [regression-lock]
   tests(230).expr = "deg(pi/2,pi/4)":   tests(230).expected = "(90,45)" ' [ok-array]
   tests(231).expr = "rad(180,90)":      tests(231).expected = "(3.141592653589793,1.570796326794897)" ' [ok-array]
@@ -1054,7 +1073,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(317).expr = "reverse":          tests(317).expectedErrContains = "function: reverse(...)" ' [hint]
   tests(318).expr = "reverse()":        tests(318).expectedErrContains = "expects at least 1 argument" ' [arity]
   tests(319).expr = "reverse((2,5,1),4,3)": tests(319).expected = "(3,4,1,5,2)" ' [ok-array]
-  tests(320).expr = "reverse(( ))":     tests(320).expectedErrContains = "unexpected token" ' [syntax]
+  tests(320).expr = "reverse(())":      tests(320).expectedErrContains = "expects at least 1 argument" ' [syntax]
   tests(321).expr = "(10,20,30)[0]":    tests(321).expected = "10" ' [ok-array]
   tests(322).expr = "(10,20,30)[2]":    tests(322).expected = "30" ' [ok-array]
   tests(323).expr = "(10,20,30)[-1]":   tests(323).expected = "30" ' [ok-array]
@@ -1810,6 +1829,36 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1043).expr = "imag((5,10))":      tests(1043).expected = "(0, 0)" ' [ok-array]
   tests(1044).expr = "cart((5,0))":       tests(1044).expected = "5" ' [ok-func] polar cart with zero angle
   tests(1045).expr = "cart((5,1))":       tests(1045).expectedErrContains = "incompatible operands" ' [ok-func]
+  tests(1046).expr = "sortby((3,-1,2), abs)": tests(1046).expected = "(-1,2,3)" ' [ok-func]
+  tests(1047).expr = "sortby((5,1,5,2,2,9,1), abs)": tests(1047).expected = "(1,1,2,2,5,5,9)" ' [ok-func]
+  tests(1048).expr = "sortby((), abs)": tests(1048).expected = "()" ' [ok-func]
+  tests(1049).expr = "f(x)=x*x; sortby((3,1,2), f)": tests(1049).expected = "(1,2,3)" ' [ok-func]
+  tests(1050).expr = "sortby((1,2), abs())": tests(1050).expectedErrContains = "sortby expects exactly one function" ' [err]
+  tests(1051).expr = "sortby((1,2), pow)": tests(1051).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err]
+  tests(1052).expr = "sortby((1,2), polar)": tests(1052).expectedErrContains = "sortby key function must return a scalar" ' [err]
+  tests(1053).expr = "sortby((1:30,0:30,1:00), milliseconds)": tests(1053).expected = "(00:30,01:00,01:30)" ' [time]
+  tests(1054).expr = "ratio(5)": tests(1054).expected = "5" ' [ok-func]
+  tests(1055).expr = "ratio(0)": tests(1055).expected = "0" ' [ok-func]
+  tests(1056).expr = "ratio(0.5)": tests(1056).expected = "1/2" ' [ok-func]
+  tests(1057).expr = "ratio(0.3333333333333333)": tests(1057).expected = "1/3" ' [ok-func]
+  tests(1058).expr = "ratio(nan)": tests(1058).expected = "nan" ' [ok-func]
+  tests(1059).expr = "ratio(inf)": tests(1059).expected = "inf" ' [ok-func]
+  tests(1060).expr = "ratio((1,2,3))": tests(1060).expected = "(1,2,3)" ' [ok-array]
+  tests(1061).expr = "ratio(1:00)": tests(1061).expectedErrContains = "incompatible operands" ' [time]
+  tests(1062).expr = "ratio(hours(1:00))": tests(1062).expected = "1/60" ' [time]
+  tests(1063).expr = "ratio(1e-7)": tests(1063).expected = "1/10000000" ' [ok-func]
+  tests(1064).expr = "ratio(1e-8)": tests(1064).expected = "1/100000000" ' [ok-func]
+  tests(1065).expr = "ratio(sqrt(2))": tests(1065).expected = "13250218/9369319" ' [ok-func]
+  tests(1066).expr = "ratio((sqrt(2), e, pi))": tests(1066).expected = "(13250218/9369319, 14665106/5394991, 5419351/1725033)" ' [ok-array]
+  tests(1067).expr = "f(x)=1/x; sortby((0:30, 1:00, 0:45), f)": tests(1067).expectedErrContains = "(|0:30" ' [error-snippet] key fn failure -> sortby keys arg
+  tests(1068).expr = "x=10; sortby((0:30, 1:00, 0:45), x)": tests(1068).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err] variable name, not function ref value
+  tests(1069).expr = "f(x)=x*2; f=10; f(3)": tests(1069).expectedErrContains = "unknown function: f" ' [udf-var] assignment drops same-named user function
+  tests(1070).expr = "f(x)=x*2; f=10; f": tests(1070).expected = "10" ' [udf-var]
+  tests(1071).expr = "f=10; f(x)=x*2; f": tests(1071).expectedErrContains = "user-defined function: f(x)" ' [udf-var] bare name hints signature
+  tests(1072).expr = "f(x)=x+1; f": tests(1072).expectedErrContains = "user-defined function: f(x)" ' [udf-hint]
+  tests(1073).expr = "g(a)=1/a; sortby((0:30, 1:00, 0:45), g)": tests(1073).expectedErrContains = "(|0:30" ' [error-snippet] same as myfunction case
+  tests(1074).expr = "a(x)=1/a; sortby((0:30, 1:00, 0:45), a)": tests(1074).expectedErrContains = "unknown variable: a" ' [sortby] body uses a but param is x; not UDF hint
+  tests(1075).expr = "a(x)=1/x; sortby((0:30, 1:00, 0:45), a)": tests(1075).expectedErrContains = "incompatible operands" ' [sortby] duration key fn
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

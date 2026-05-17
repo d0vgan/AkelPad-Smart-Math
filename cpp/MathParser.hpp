@@ -116,6 +116,8 @@ private:
     Variance,
     Stddev,
     Sort,
+    Sortby,
+    Ratio,
     Reverse,
     Unique,
     Unpack,
@@ -170,10 +172,11 @@ private:
     ValueDivisor,
     ValueMinMax,
     XY,
-    AB
+    AB,
+    ArrayFunc
   };
 
-  enum class ValueKind { Scalar, Array, UdfFormalValidationDummy };
+  enum class ValueKind { Scalar, Array, FunctionRef, UdfFormalValidationDummy };
   enum class ScalarKind { FloatingPoint, Int64, UInt64, Time };
 
   enum class RenderBase { Dec = 10, Hex = 16, Oct = 8, Bin = 2 };
@@ -185,7 +188,9 @@ private:
         fExactUInt64Valid = 0x02u,
         fDecScientificPow63High = 0x10u,
         fImagExactIntValid = 0x20u,
-        fImagExactUInt64Valid = 0x40u
+        fImagExactUInt64Valid = 0x40u,
+        fRenderRational = 0x80u,
+        fImagRenderRational = 0x100u
       };
       ScalarKind scalarKind = ScalarKind::FloatingPoint;
       unsigned int flags = 0;
@@ -210,6 +215,12 @@ private:
       void setImagExactUInt64Valid(bool v) {
         flags = v ? (flags | fImagExactUInt64Valid) : (flags & ~fImagExactUInt64Valid);
       }
+      bool hasRenderRational() const { return (flags & fRenderRational) != 0; }
+      void setRenderRational(bool v) { flags = v ? (flags | fRenderRational) : (flags & ~fRenderRational); }
+      bool hasImagRenderRational() const { return (flags & fImagRenderRational) != 0; }
+      void setImagRenderRational(bool v) {
+        flags = v ? (flags | fImagRenderRational) : (flags & ~fImagRenderRational);
+      }
     };
 
     enum : unsigned int {
@@ -222,6 +233,7 @@ private:
     unsigned int flags = 0;
     ScalarValue scalarValue{};
     std::vector<ScalarValue> arr;
+    std::string funcRefName;
     /// When true with hex/oct/bin output, format negative integers as unsigned (two's complement) bit pattern.
     bool hasExpandArgs() const { return (flags & fExpandArgs) != 0; }
     void setExpandArgs(bool v) { flags = v ? (flags | fExpandArgs) : (flags & ~fExpandArgs); }
@@ -256,7 +268,8 @@ private:
       Call,
       Index,
       ArrayOrParens,
-      PostfixPercent
+      PostfixPercent,
+      FunctionRef
     };
     enum class BinaryOp {
       None = 0,
@@ -313,6 +326,8 @@ private:
     /** Collected like FreeBASIC (non-fatal until end of eval). */
     std::string unknownVarsText;
     std::string unknownFuncsText;
+    /** When false, a known UDF name used like a variable reports unknown variable, not a bare-name hint. */
+    bool allowBareUserFunctionNameHint = true;
   };
 
   EvalValue lastResult_;
@@ -359,6 +374,8 @@ private:
   bool tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const;
   bool tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const;
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
+  bool parseSortbyCallArguments(EvalContext& ctx, std::vector<std::unique_ptr<Expr>>& outArgs);
+  std::unique_ptr<Expr> parseSortbyFunctionRef(EvalContext& ctx);
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
   static bool nearlyInt(double v, long long& out);
@@ -416,6 +433,7 @@ private:
   const char* getReservedIdentifierError(const std::string& ident) const;
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
   bool trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const;
+  static std::string formatUserFunctionSignature(const UserFunction& uf);
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
   bool tryResolveVariableValue(
       const Expr& e,
@@ -581,6 +599,32 @@ private:
       const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
+  EvalValue builtinSortby(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const std::vector<EvalValue>& args,
+      const std::unordered_map<std::string, EvalValue>* scopedVars);
+  EvalValue builtinRatio(EvalContext& ctx, const std::string& fnName, const std::vector<EvalValue>& args) const;
+  EvalValue sortbyInvokeKeyFunction(
+      EvalContext& ctx,
+      const std::string& funcName,
+      const EvalValue::ScalarValue& elem,
+      const std::unordered_map<std::string, EvalValue>* scopedVars);
+  static bool isSortbyIneligibleBuiltin(BuiltinFunctionId id);
+  static bool isSortbyEligibleFunctionName(
+      const MathParser& parser,
+      const std::string& funcName,
+      std::string& outErr);
+  static bool scalarSortLess(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b);
+  static void sortbyStableSortIndices(
+      const std::vector<EvalValue::ScalarValue>& sortKeys,
+      std::vector<int>& orderIdx);
+  static bool tryApproximateRational(double x, long long& num, std::uint64_t& den);
+  static EvalValue makeRationalReduced(long long num, std::uint64_t den);
+  bool tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const;
+  static std::string formatRationalParts(long long num, std::uint64_t den);
+  static bool tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
+  static bool tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
   EvalValue builtinBaseFormat(
       EvalContext& ctx,
       const std::string& fnName,
@@ -631,6 +675,8 @@ private:
   static std::size_t countFlattenedScalars(const std::vector<EvalValue>& args);
   static int expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector<EvalValue>& out);
   void setVariable(const std::string& name, const EvalValue& value);
+  void removeVariableByName(const std::string& name);
+  void removeUserFunctionByName(const std::string& name);
   void normalizeCallArgs(std::vector<EvalValue>& args);
   void bindExprVariableRefs(Expr& e);
   void bindCompiledVariableRefs();

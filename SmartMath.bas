@@ -471,6 +471,8 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
           sRes = SMARTMATH_RESULT_PREFIX & FormatTimeValueScalar(sResult)
         elseif IsComplexNumberStr(sResult) then
           sRes = SMARTMATH_RESULT_PREFIX & FormatComplexNumberScalar(sResult)
+        elseif IsRatioStr(sResult) then
+          sRes = SMARTMATH_RESULT_PREFIX & FormatRatioScalar(sResult)
         elseif IsDecIntStr(sResult) then
           ' preserving the exact integer result
           sRes = SMARTMATH_RESULT_PREFIX & AddThousandsSeparator(sResult)

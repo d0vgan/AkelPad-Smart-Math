@@ -7,6 +7,13 @@ const LOCALE_SDECIMAL = &h0000000E
 const LOCALE_USER_DEFAULT = &h0400
 #endif
 
+' The highest LongInt value
+const FB_I64_MAX as LongInt = 9223372036854775807
+' The highest LongInt value before multiplying by 10
+const FB_I64_MAX_DIV10 as LongInt = 922337203685477580
+' The maximum allowed digit if LongInt value is exactly equal to the threshold above
+const FB_I64_MAX_MOD10 as LongInt = 7
+
 '' IEEE-754 double masks (little-endian storage; same bit pattern as uint64).
 '' Defined behavior on Win32/Win64 IEEE-754 double layout (plugin targets).
 private const SM_DBL_EXP_MASK as ULongInt = &h7FF0000000000000
@@ -426,7 +433,66 @@ function FormatTimeValueScalar(byref s as String) as String
   return s ' as is, no formatting
 end function
 
-private function ParseComplex(byval s as String, byref realPart as Double, byref imagPart as Double) as Boolean
+function FormatRatioScalar(byref s as String) as String
+  dim idx as Integer = InStr(1, s, "/")
+  if idx > 0 then return AddThousandsSeparator(Left(s, idx - 1)) & "/" & AddThousandsSeparator(Mid(s, idx + 1))
+  return AddThousandsSeparator(s)
+end function
+
+private function ParseComplexAsLongInt(byref s as String, byref realPart as LongInt, byref imagPart as LongInt) as Boolean
+  dim n as Integer = len(s)
+  if n = 0 then return FALSE
+
+  dim p as ZString ptr = strptr(s)
+  dim i as Integer = 0
+  dim ch as UByte
+  dim digit as Integer
+  dim isImag as Boolean = FALSE
+  dim isNeg as Boolean = FALSE
+
+  realPart = 0
+  imagPart = 0
+
+  for i = 0 to n - 1
+    ch = p[i]
+    if ch >= asc("0") andalso ch <= asc("9") then
+      digit = ch - asc("0")
+      if isImag then
+        if (imagPart > FB_I64_MAX_DIV10) orelse (imagPart = FB_I64_MAX_DIV10 andalso digit > FB_I64_MAX_MOD10) then return FALSE
+        imagPart = imagPart * 10 + digit
+      else
+        if (realPart > FB_I64_MAX_DIV10) orelse (realPart = FB_I64_MAX_DIV10 andalso digit > FB_I64_MAX_MOD10) then return FALSE
+        realPart = realPart * 10 + digit
+      end if
+    elseif ch = asc("-") then
+      if i > 0 then
+        isImag = TRUE
+        if isNeg then realPart = -realPart
+      end if
+      isNeg = TRUE
+    elseif (ch = asc("+")) then
+      if i > 0 then
+        isImag = TRUE
+        if isNeg then realPart = -realPart
+      end if
+      isNeg = FALSE
+    elseif (ch = asc("i")) then
+      if isImag then
+        if imagPart = 0 then imagPart = 1 ' "N+i" or "N-i"
+      else
+        imagPart = realPart ' "Ni" or "-Ni"
+        realPart = 0
+      end if
+      if isNeg then imagPart = -imagPart
+    else
+      return FALSE
+    end if
+  next i
+
+  return TRUE
+end function
+
+private function ParseComplexAsDouble(byval s as String, byref realPart as Double, byref imagPart as Double) as Boolean
   s = Trim(LCase(s))
   if Len(s) = 0 then return FALSE
 
@@ -482,55 +548,69 @@ private function ParseComplex(byval s as String, byref realPart as Double, byref
   return TRUE
 end function
 
-private function IsComplexIntStr(byref s as String) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
-
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  dim ch as UByte
-
-  while i < n
-    ch = p[i]
-    if (ch >= asc("0") andalso ch <= asc("9")) orelse _
-       (ch = asc("-")) orelse (ch = asc("+")) orelse _
-       (ch = asc("i")) then
-      i += 1
-    else
-      return FALSE
-    end if
-  wend
-
-  return TRUE
-end function
-
 function FormatComplexNumberScalar(byref s as String) as String
-  dim realPart as Double
-  dim imagPart as Double
-  if not ParseComplex(s, realPart, imagPart) then return s
+  dim realPartDbl as Double
+  dim imagPartDbl as Double
+  dim realPartI64 as LongInt
+  dim imagPartI64 as LongInt
+  dim realStr as String
+  dim imagStr as String
 
-  if realPart = 0 then
-    if imagPart = 1 then return "i"
-    if imagPart = -1 then return "-i"
-    return FormatNumericValue(imagPart) & "i"
+  if IsRatioStr(s) then
+    dim imgIdx as Integer = InStr(2, s, "+")
+    if imgIdx > 0 then
+      realStr = Left(s, imgIdx - 1)
+      imagStr = Mid(s, imgIdx + 1, Len(s) - imgIdx - 2) ' without "*i"
+    else
+      imgIdx = InStr(2, s, "-")
+      if imgIdx > 0 then
+        realStr = Left(s, imgIdx - 1)
+        imagStr = Mid(s, imgIdx, Len(s) - imgIdx - 1) ' without "*i"
+      else
+        if Right(s, 1) = "i" then
+          realStr = "0"
+          imagStr = Left(s, Len(s) - 2) ' without "*i"
+        else
+          realStr = s
+          imagStr = "0"
+        end if
+      end if
+    end if
+    realStr = FormatRatioScalar(realStr)
+    imagStr = FormatRatioScalar(imagStr)
+  elseif ParseComplexAsLongInt(s, realPartI64, imagPartI64) then
+    realStr = AddThousandsSeparator(Str(realPartI64))
+    imagStr = AddThousandsSeparator(Str(imagPartI64))
+  elseif ParseComplexAsDouble(s, realPartDbl, imagPartDbl) then
+    realStr = FormatNumericValue(realPartDbl)
+    imagStr = FormatNumericValue(imagPartDbl)
+  else
+    return s
   end if
 
-  dim realStr as String = FormatNumericValue(realPart)
-  dim imagStr as String
-  if imagPart = 1 then
+  ' OutputDebugString("[SmartMath] in, realStr: " & realStr & ", imagStr: " & imagStr)
+
+  if realStr = "0" then
+    if imagStr = "1" then return "i"
+    if imagStr = "-1" then return "-i"
+    return imagStr & "i"
+  end if
+
+  if imagStr = "1" then
     imagStr = " + i"
-  elseif imagPart = -1 then
+  elseif imagStr = "-1" then
     imagStr = " - i"
   else
-    dim imagSign as String
-    if imagPart >= 0 then
-      imagSign = " + "
-    else
-      imagSign = " - "
-      imagPart = -imagPart
+    dim idx as Integer = 2 ' after the leading "-" in "-Ni"
+    dim sign as String = Left(imagStr, 1)
+    if sign <> "-" then
+      sign = "+"
+      idx = 1 ' first digit in "Ni"
     end if
-    imagStr = imagSign & FormatNumericValue(imagPart) & "i"
+    imagStr = " " & sign & " " & Mid(imagStr, idx) & "i"
   end if
+
+  ' OutputDebugString("[SmartMath] out, realStr: " & realStr & ", imagStr: " & imagStr)
 
   return realStr & imagStr
 end function
@@ -540,33 +620,15 @@ function IsBasePrefixedStr(byref s as String) as Boolean
 end function
 
 function IsTimeValueStr(byref s as String) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
-
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  'dim ch as UByte = p[i]
-
-  while i < n
-    if p[i] = asc(":") then return TRUE
-    i += 1
-  wend
-  return FALSE
+  return InStr(1, s, ":") > 0
 end function
 
 function IsComplexNumberStr(byref s as String) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
+  return InStr(1, s, "i") > 0
+end function
 
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  'dim ch as UByte = p[i]
-
-  while i < n
-    if p[i] = asc("i") then return TRUE
-    i += 1
-  wend
-  return FALSE
+function IsRatioStr(byref s as String) as Boolean
+  return InStr(1, s, "/") > 0
 end function
 
 function IsDecIntStr(byref s as String) as Boolean
@@ -608,6 +670,8 @@ private sub AppendTupleBodyFromElems(byref outText as String, elems() as String,
         outText &= FormatTimeValueScalar(elem)
       elseif IsComplexNumberStr(elem) then
         outText &= FormatComplexNumberScalar(elem)
+      elseif IsRatioStr(elem) then
+        outText &= FormatRatioScalar(elem)
       elseif IsDecIntStr(elem) then
         outText &= AddThousandsSeparator(elem)
       else

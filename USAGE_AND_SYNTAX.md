@@ -25,6 +25,8 @@ Copy/paste examples:
 - `(1,2,3)+10` -> `(11,12,13)`
 - `sum(1,2,3,10)` -> `16`
 - `sort(3,1,2)` -> `(1,2,3)`
+- `sortby((3,-1,2), abs)` -> `(-1,2,3)`
+- `ratio(0.5)` -> `1/2`
 - `hex(255)` -> `0xFF`
 - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
 - `2+3; ans/10` -> `0.5`
@@ -424,6 +426,7 @@ Quick index (alphabetical):
 | `rad(...)` | trigonometric conversion |
 | `rand()` | random |
 | `random(min, max)` | random |
+| `ratio(value)` | rational display |
 | `real(value)` | complex utility |
 | `reverse/reversed(...)` | array utility |
 | `round(value)` | numeric utility |
@@ -432,6 +435,7 @@ Quick index (alphabetical):
 | `sin(angle)` | trigonometric |
 | `sinh(value)` | trigonometric/hyperbolic |
 | `sort/sorted(...)` | array utility |
+| `sortby(array, func)` | array utility |
 | `sqrt(value)` | power/root |
 | `sqr(value)` | power/root |
 | `stddev(...)` | aggregation |
@@ -582,6 +586,7 @@ Purpose: aggregate and transform values/lists.
 - `min(...)` - smallest value
 - `max(...)` - largest value
 - `sort(...)`, `sorted(...)` - sorted flattened values
+- `sortby(array, func)` - stable sort of `array` by `func(value)` per element
 - `reverse(...)`, `reversed(...)` - reversed flattened values
 - `unique(...)` - first-occurrence unique values
 - `unpack(...)` - expand arrays into positional arguments
@@ -590,6 +595,8 @@ Purpose: aggregate and transform values/lists.
   - `product(18446744073709551615,1)` -> `18446744073709551615`
   - `avg(1,2,3,4)` -> `2.5`
   - `sort(3,1,2)` -> `(1,2,3)`
+  - `sortby((3,-1,2), abs)` -> `(-1,2,3)` (stable on equal keys)
+  - `f(x)=1/x; sortby((1,-1,-2,0,2), f)` -> `(-1, -2, 2, 1, 0)`
   - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
   - `unique(3,1,3,2,1,2)` -> `(3,1,2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
@@ -600,7 +607,27 @@ Notes:
 - `variance` and `stddev` use population formulas (`N`, not `N-1`).
 - With complex support enabled (see **Complex Numbers**):
   - `sum`, `product`, `avg`, `reverse`, `unique`, and `unpack` accept complex scalars and arrays;
-  - `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not.
+  - `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not;
+  - `sortby` accepts complex arrays when the key function supports complex scalars (for example `abs`).
+
+### Rational Display
+
+Purpose: show a plain numeric value as a reduced fraction when it is (or is close to) rational.
+
+- Key functions:
+- `ratio(x)` - reduced `n/m` with `m > 0` and sign in `n`
+- Examples:
+  - `ratio(0.5)` -> `1/2`
+  - `ratio(1/3)` and `ratio(0.3333333333333333)` -> `1/3`
+  - `ratio(30m/1h)` -> `1/2`
+  - `ratio(hours(1:00))` -> `1/60` (argument must be a plain number, not a duration)
+  - `ratio(1+2i)` -> `1+2i`
+  - `ratio(0.5+0.25i)` -> `1/2+1/4*i`
+- Notes:
+  - `nan` / `inf` pass through;
+  - duration arguments are rejected (`ratio(1:00)` -> `incompatible operands`);
+  - non-exact values use the best reduced fraction `n/m` with `m <= 10_000_000` (for example `ratio(sqrt(2))` -> `13250218/9369319`);
+  - exact decimal powers of ten may use a larger denominator (for example `ratio(7.73e-8)` -> `773/10000000000`).
 
 ### Output Formatting
 
