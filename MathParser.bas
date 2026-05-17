@@ -1258,33 +1258,26 @@ private function TryRewriteTrailingFormatterStmt(byref stmt as String, byref rew
   return TRUE
 end function
 
-private function quickMult10(byval x as ULongInt) as ULongInt
-  ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
-  return (x shl 3) + (x shl 1)
-end function
-
-private function mult10_N_times(byval x as ULongInt, byval N as Integer) as ULongInt
-  dim i as Integer
-  for i = 1 to N
-    x = quickMult10(x)
-  next i
-  return x
-end function
-
-private function TryMult10OnceChecked(byval x as ULongInt, byref outV as ULongInt) as Boolean
-  if x > (FB_U64_MAX \ 10ull) then return FALSE
-  outV = quickMult10(x)
-  return TRUE
-end function
-
-private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
-  dim i as Integer
-  outV = x
-  for i = 1 to N
-    if TryMult10OnceChecked(outV, outV) = FALSE then return FALSE
-  next i
-  return TRUE
-end function
+private const POW10_0 as ULongInt = 1ull
+private const POW10_1 as ULongInt = 10ull
+private const POW10_2 as ULongInt = 100ull
+private const POW10_3 as ULongInt = 1000ull
+private const POW10_4 as ULongInt = 10000ull
+private const POW10_5 as ULongInt = 100000ull
+private const POW10_6 as ULongInt = 1000000ull
+private const POW10_7 as ULongInt = 10000000ull
+private const POW10_8 as ULongInt = 100000000ull
+private const POW10_9 as ULongInt = 1000000000ull
+private const POW10_10 as ULongInt = 10000000000ull
+private const POW10_11 as ULongInt = 100000000000ull
+private const POW10_12 as ULongInt = 1000000000000ull
+private const POW10_13 as ULongInt = 10000000000000ull
+private const POW10_14 as ULongInt = 100000000000000ull
+private const POW10_15 as ULongInt = 1000000000000000ull
+private const POW10_16 as ULongInt = 10000000000000000ull
+private const POW10_17 as ULongInt = 100000000000000000ull
+private const POW10_18 as ULongInt = 1000000000000000000ull
+private const POW10_19 as ULongInt = 10000000000000000000ull
 
 private function TryAddULongChecked(byval a as ULongInt, byval b as ULongInt, byref outV as ULongInt) as Boolean
   if a > (FB_U64_MAX - b) then return FALSE
@@ -1296,6 +1289,73 @@ private function TryMulULongChecked(byval a as ULongInt, byval b as ULongInt, by
   if b <> 0ull andalso a > (FB_U64_MAX \ b) then return FALSE
   outV = a * b
   return TRUE
+end function
+
+private function TryMult10_N_TimesImpl(byval x as ULongInt, byval N as Integer, byval useChecked as Boolean, byref outV as ULongInt) as Boolean
+  outV = x
+  if N <= 0 then return TRUE
+
+  while N >= 19
+    if useChecked then
+      if TryMulULongChecked(outV, POW10_19, outV) = FALSE then return FALSE
+    else
+      outV = outV * POW10_19
+    end if
+    N -= 19
+  wend
+
+  if N > 0 then
+    dim m as ULongInt = 1
+    select case N
+      case 1:  m = POW10_1
+      case 2:  m = POW10_2
+      case 3:  m = POW10_3
+      case 4:  m = POW10_4
+      case 5:  m = POW10_5
+      case 6:  m = POW10_6
+      case 7:  m = POW10_7
+      case 8:  m = POW10_8
+      case 9:  m = POW10_9
+      case 10: m = POW10_10
+      case 11: m = POW10_11
+      case 12: m = POW10_12
+      case 13: m = POW10_13
+      case 14: m = POW10_14
+      case 15: m = POW10_15
+      case 16: m = POW10_16
+      case 17: m = POW10_17
+      case 18: m = POW10_18
+    end select
+
+    if useChecked then
+      if TryMulULongChecked(outV, m, outV) = FALSE then return FALSE
+    else
+      outV = outV * m
+    end if
+  end if
+
+  return TRUE
+end function
+
+private function mult10_N_times(byval x as ULongInt, byval N as Integer) as ULongInt
+  dim result as ULongInt
+  TryMult10_N_TimesImpl(x, N, FALSE, result)
+  return result
+end function
+
+private function quickMult10(byval x as ULongInt) as ULongInt
+  ' x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
+  return (x shl 3) + (x shl 1)
+end function
+
+private function TryMult10OnceChecked(byval x as ULongInt, byref outV as ULongInt) as Boolean
+  if x > (FB_U64_MAX \ 10ull) then return FALSE
+  outV = quickMult10(x)
+  return TRUE
+end function
+
+private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
+  return TryMult10_N_TimesImpl(x, N, TRUE, outV)
 end function
 
 private function MakeNaN() as Double
@@ -5870,15 +5930,6 @@ private sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongIn
   outV.scalarValue.flags or= SVF_RENDER_RATIONAL
 end sub
 
-private function RatioPow10U(byval k as Integer) as ULongInt
-  dim r as ULongInt = 1
-  dim j as Integer
-  for j = 1 to k
-    r *= 10
-  next j
-  return r
-end function
-
 private function TryExactPower10Rational(byval v as Double, byref num as LongInt, byref den as ULongInt, byref ratErr as Double) as Boolean
   dim k as Integer
   dim denPow as ULongInt
@@ -5894,7 +5945,7 @@ private function TryExactPower10Rational(byval v as Double, byref num as LongInt
   dim found as Boolean = FALSE
   ratErr = 1e300
   for k = 1 to RATIO_MAX_POWER10_EXP
-    denPow = RatioPow10U(k)
+    denPow = mult10_N_times(1ull, k)
     scaled = v * CDbl(denPow)
     n = clngint(round(scaled))
     if n = 0 then continue for

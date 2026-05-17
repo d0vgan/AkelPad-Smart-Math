@@ -456,6 +456,29 @@ constexpr const char* STR_UNKNOWN_FUNCTION_COLON = "unknown function: ";
 constexpr const char* STR_INVALID_USER_FUNCTION_EXPRESSION = "invalid user function expression";
 constexpr const char* STR_UNEXPECTED_CONTENT_AFTER_FUNCTION_DEFINITION = "unexpected content after function definition";
 
+static constexpr std::uint64_t pow10_u64[20] = {
+  1ull,
+  10ull,
+  100ull,
+  1000ull,
+  10000ull,
+  100000ull,
+  1000000ull,
+  10000000ull,
+  100000000ull,
+  1000000000ull,
+  10000000000ull,
+  100000000000ull,
+  1000000000000ull,
+  10000000000000ull,
+  100000000000000ull,
+  1000000000000000ull,
+  10000000000000000ull,
+  100000000000000000ull,
+  1000000000000000000ull,
+  10000000000000000000ull
+};
+
 inline int quickMult10(int x) {
   // x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
   return ((x << 3) + (x << 1));
@@ -467,8 +490,15 @@ inline std::uint64_t quickMult10(std::uint64_t x) {
 }
 
 std::uint64_t mult10_N_times(std::uint64_t x, int N) {
-  for (;N > 0; --N) {
-    x = quickMult10(x);
+  if (N <= 0) {
+    return x;
+  }
+  while (N >= 19) {
+    x *= pow10_u64[19];
+    N -= 19;
+  }
+  if (N > 0) {
+    x *= pow10_u64[N];
   }
   return x;
 }
@@ -597,28 +627,6 @@ inline bool digitsToUint64(const unsigned char* digits, int digitCount, std::uin
 }
 
 bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std::uint64_t& outValue) {
-  static constexpr std::uint64_t pow10_u64[20] = {
-    1ull,
-    10ull,
-    100ull,
-    1000ull,
-    10000ull,
-    100000ull,
-    1000000ull,
-    10000000ull,
-    100000000ull,
-    1000000000ull,
-    10000000000ull,
-    100000000000ull,
-    1000000000000ull,
-    10000000000000ull,
-    100000000000000ull,
-    1000000000000000ull,
-    10000000000000000ull,
-    100000000000000000ull,
-    1000000000000000000ull,
-    10000000000000000000ull
-  };
 
   if (!numStart || !numEnd || numStart >= numEnd) {
     return false;
@@ -6526,19 +6534,11 @@ MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64
 
 namespace {
 
-std::uint64_t ratioPow10U(int k) {
-  std::uint64_t r = 1;
-  for (int i = 0; i < k; ++i) {
-    r *= 10ULL;
-  }
-  return r;
-}
-
 bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, double& ratErr) {
   bool found = false;
   ratErr = 1e300;
   for (int k = 1; k <= RATIO_MAX_POWER10_EXP; ++k) {
-    const std::uint64_t denPow = ratioPow10U(k);
+    const std::uint64_t denPow = mult10_N_times(1ull, k);
     const double scaled = v * static_cast<double>(denPow);
     const long long n = static_cast<long long>(std::llround(scaled));
     if (n == 0) {
