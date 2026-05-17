@@ -477,12 +477,11 @@ private function ParseComplexAsLongInt(byref s as String, byref realPart as Long
       end if
       isNeg = FALSE
     elseif (ch = asc("i")) then
-      if isImag then
-        if imagPart = 0 then imagPart = 1 ' "N+i" or "N-i"
-      else
-        imagPart = realPart ' "Ni" or "-Ni"
+      if not isImag then
+        imagPart = realPart  ' "Ni" or "-Ni"
         realPart = 0
       end if
+      if imagPart = 0 then imagPart = 1  ' "i" or "-i"
       if isNeg then imagPart = -imagPart
     else
       return FALSE
@@ -555,27 +554,36 @@ function FormatComplexNumberScalar(byref s as String) as String
   dim imagPartI64 as LongInt
   dim realStr as String
   dim imagStr as String
+  dim isImagRatio as Boolean = FALSE
 
   if IsRatioStr(s) then
     dim imgIdx as Integer = InStr(2, s, "+")
+    dim n as Integer
     if imgIdx > 0 then
       realStr = Left(s, imgIdx - 1)
-      imagStr = Mid(s, imgIdx + 1, Len(s) - imgIdx - 2) ' without "*i"
+      n = 1  ' without "i"
+      if (InStr(imgIdx + 1, s, "*") > 0) then n = 2  ' without "*i"
+      imagStr = Mid(s, imgIdx + 1, Len(s) - imgIdx - n)
     else
       imgIdx = InStr(2, s, "-")
       if imgIdx > 0 then
         realStr = Left(s, imgIdx - 1)
-        imagStr = Mid(s, imgIdx, Len(s) - imgIdx - 1) ' without "*i"
+        n = 0  ' without "i"
+        if (InStr(imgIdx + 1, s, "*") > 0) then n = 1  ' without "*i"
+        imagStr = Mid(s, imgIdx, Len(s) - imgIdx - n)
       else
         if Right(s, 1) = "i" then
           realStr = "0"
-          imagStr = Left(s, Len(s) - 2) ' without "*i"
+          n = 1  ' without "i"
+          if (InStr(1, s, "*") > 0) then n = 2  ' without "*i"
+          imagStr = Left(s, Len(s) - n)
         else
           realStr = s
           imagStr = "0"
         end if
       end if
     end if
+    if IsRatioStr(imagStr) then isImagRatio = TRUE
     realStr = FormatRatioScalar(realStr)
     imagStr = FormatRatioScalar(imagStr)
   elseif ParseComplexAsLongInt(s, realPartI64, imagPartI64) then
@@ -593,6 +601,7 @@ function FormatComplexNumberScalar(byref s as String) as String
   if realStr = "0" then
     if imagStr = "1" then return "i"
     if imagStr = "-1" then return "-i"
+    if isImagRatio then imagStr &= "*"
     return imagStr & "i"
   end if
 
@@ -607,7 +616,9 @@ function FormatComplexNumberScalar(byref s as String) as String
       sign = "+"
       idx = 1 ' first digit in "Ni"
     end if
-    imagStr = " " & sign & " " & Mid(imagStr, idx) & "i"
+    imagStr = " " & sign & " " & Mid(imagStr, idx)
+    if isImagRatio then imagStr &= "*"
+    imagStr &= "i"
   end if
 
   ' OutputDebugString("[SmartMath] out, realStr: " & realStr & ", imagStr: " & imagStr)

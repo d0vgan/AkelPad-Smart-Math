@@ -595,9 +595,9 @@ Purpose: aggregate and transform values/lists.
   - `product(18446744073709551615,1)` -> `18446744073709551615`
   - `avg(1,2,3,4)` -> `2.5`
   - `sort(3,1,2)` -> `(1,2,3)`
+  - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
   - `sortby((3,-1,2), abs)` -> `(-1,2,3)` (stable on equal keys)
   - `f(x)=1/x; sortby((1,-1,-2,0,2), f)` -> `(-1, -2, 2, 1, 0)`
-  - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
   - `unique(3,1,3,2,1,2)` -> `(3,1,2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
 
@@ -617,11 +617,10 @@ Purpose: show a plain numeric value as a reduced fraction when it is (or is clos
 - Key functions:
 - `ratio(x)` - reduced `n/m` with `m > 0` and sign in `n`
 - Examples:
-  - `ratio(0.5)` -> `1/2`
+  - `ratio(-0.5)` -> `-1/2`
   - `ratio(1/3)` and `ratio(0.3333333333333333)` -> `1/3`
-  - `ratio(30m/1h)` -> `1/2`
-  - `ratio(hours(1:00))` -> `1/60` (argument must be a plain number, not a duration)
-  - `ratio(1+2i)` -> `1+2i`
+  - `ratio(15m/1h)` -> `1/4`
+  - `ratio(hours(1:00))` -> `1/60` (argument of `ratio` must be a plain number, not a duration)
   - `ratio(0.5+0.25i)` -> `1/2+1/4*i`
 - Notes:
   - `nan` / `inf` pass through;

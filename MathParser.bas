@@ -184,6 +184,7 @@ const FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION as string = "sortby expects a functio
 const RATIO_APPROX_EPS as Double = 1e-14
 const RATIO_MAX_DENOMINATOR as LongInt = 10000000
 const RATIO_MAX_POWER10_EXP as Integer = 18
+const RATIO_SEMICONV_LINEAR_THRESH as Integer = 64
 const FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR as string = "sortby key function must return a scalar"
 const FB_STR_PAR_ARRAY_COMMA_FUNC as string = "(array, func)"
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
@@ -5927,6 +5928,44 @@ private sub RatioConsiderCandidate(byval v as Double, byval p as LongInt, byval 
   end if
 end sub
 
+private function RatioSemiconvergentApproxErr(byval v as Double, byval p1 as LongInt, byval q1 as LongInt, byval p0 as LongInt, byval q0 as LongInt, byval h as LongInt) as Double
+  if h < 0 then return 1e300
+  dim qh as LongInt = q1 + h * q0
+  if qh <= 0 then return 1e300
+  dim ph as LongInt = p1 + h * p0
+  return abs(v - CDbl(ph) / CDbl(qh))
+end function
+
+private sub RatioScanSemiconvergentRange(byval v as Double, byval p1 as LongInt, byval q1 as LongInt, byval p0 as LongInt, byval q0 as LongInt, byval hMax as LongInt, byref bestNum as LongInt, byref bestDen as ULongInt, byref bestErr as Double)
+  if hMax < 0 then exit sub
+  if hMax <= RATIO_SEMICONV_LINEAR_THRESH then
+    dim hLin as LongInt
+    for hLin = 0 to hMax
+      RatioConsiderCandidate(v, p1 + hLin * p0, CULngInt(q1 + hLin * q0), bestNum, bestDen, bestErr)
+    next hLin
+    exit sub
+  end if
+  dim lo as LongInt = 0
+  dim hi as LongInt = hMax
+  RatioConsiderCandidate(v, p1, CULngInt(q1), bestNum, bestDen, bestErr)
+  while hi - lo > 2
+    dim span as LongInt = hi - lo
+    dim m1 as LongInt = lo + span \ 3
+    dim m2 as LongInt = hi - span \ 3
+    dim e1 as Double = RatioSemiconvergentApproxErr(v, p1, q1, p0, q0, m1)
+    dim e2 as Double = RatioSemiconvergentApproxErr(v, p1, q1, p0, q0, m2)
+    if e1 <= e2 then
+      hi = m2
+    else
+      lo = m1
+    end if
+  wend
+  dim hFin as LongInt
+  for hFin = lo to hi
+    RatioConsiderCandidate(v, p1 + hFin * p0, CULngInt(q1 + hFin * q0), bestNum, bestDen, bestErr)
+  next hFin
+end sub
+
 private function TryApproximateRational(byval x as Double, byref num as LongInt, byref den as ULongInt) as Boolean
   if IsNaNValue(x) orelse IsInfValue(x) then return FALSE
   dim neg as Boolean = (x < 0.0)
@@ -5952,10 +5991,7 @@ private function TryApproximateRational(byval x as Double, byref num as LongInt,
   dim p as LongInt
   dim q as LongInt
   dim t as Double
-  dim h as LongInt
   dim hMax as LongInt
-  dim ph as LongInt
-  dim qh as ULongInt
   for i = 1 to 64
     a = clngint(int(cfVal))
     p = a * p1 + p0
@@ -5963,11 +5999,7 @@ private function TryApproximateRational(byval x as Double, byref num as LongInt,
     if q > RATIO_MAX_DENOMINATOR then
       if q1 > 0 andalso q0 > 0 then
         hMax = (RATIO_MAX_DENOMINATOR - q1) \ q0
-        for h = 0 to hMax
-          ph = p1 + h * p0
-          qh = CULngInt(q1 + h * q0)
-          RatioConsiderCandidate(v, ph, qh, bestNum, bestDen, bestErr)
-        next h
+        RatioScanSemiconvergentRange(v, p1, q1, p0, q0, hMax, bestNum, bestDen, bestErr)
       end if
       exit for
     end if
@@ -6121,15 +6153,21 @@ private function TryBuiltinRatio(byref fnName as String, args() as EvalValue, by
     SetExactArgCountError(fnName, 1, ubound(args) - lbound(args) + 1)
     return TRUE
   end if
-  if args(0).kind = VK_SCALAR then
-    return TryBuiltinRatioScalar(args(0).scalarValue, outV)
+  dim vals() as ScalarValue
+  dim c as Integer = CopySingleArgToScalarValues(args(0), vals(), FALSE)
+  if c <= 0 then
+    SetAtLeastOneArgError(fnName)
+    return TRUE
+  end if
+  if c = 1 andalso args(0).kind = VK_SCALAR then
+    return TryBuiltinRatioScalar(vals(0), outV)
   end if
   dim i as Integer
   dim arr() as ScalarValue
-  redim arr(0 to ValueArrayLen(args(0)) - 1)
-  for i = 0 to ubound(arr)
+  redim arr(0 to c - 1)
+  for i = 0 to c - 1
     dim tmp as EvalValue
-    if TryBuiltinRatioScalar(args(0).arr(i), tmp) = FALSE then return FALSE
+    if TryBuiltinRatioScalar(vals(i), tmp) = FALSE then return FALSE
     if parseError then return FALSE
     arr(i) = tmp.scalarValue
   next i
@@ -6225,16 +6263,9 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     return TRUE
   end if
   dim vals() as ScalarValue
-  dim c as Integer = 0
-  if ubound(args) >= 0 andalso args(0).kind = VK_ARRAY andalso ValueArrayLen(args(0)) = 0 then
-    ValueSetArrayFromScalarValues(outV, vals())
-    return TRUE
-  end if
-  dim prep as Integer = TrySingleArgPassthroughOrCollect(args(), fnName, FALSE, outV, vals(), c)
-  if prep = -1 then return TRUE
-  if prep = 1 then return TRUE
+  dim c as Integer = CopySingleArgToScalarValues(args(0), vals(), FALSE)
   if c <= 0 then
-    ValueSetArrayFromScalarValues(outV, vals())
+    SetAtLeastOneArgError(fnName)
     return TRUE
   end if
   dim keys(0 to c - 1) as ScalarValue

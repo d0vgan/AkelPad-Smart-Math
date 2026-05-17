@@ -323,6 +323,7 @@ constexpr const char* STR_PAR_ARRAY_COMMA_FUNC = "(array, func)";
 constexpr double RATIO_APPROX_EPS = 1e-14;
 constexpr long long RATIO_MAX_DENOMINATOR = 10000000LL;
 constexpr int RATIO_MAX_POWER10_EXP = 18;
+constexpr int RATIO_SEMICONV_LINEAR_THRESH = 64;
 constexpr const char* STR_REVERSE = "reverse";
 constexpr const char* STR_REVERSED = "reversed";
 constexpr const char* STR_UNIQUE = "unique";
@@ -6567,6 +6568,51 @@ bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, doubl
   return found;
 }
 
+double ratioSemiconvergentApproxErr(double v, long long p1, long long q1, long long p0, long long q0,
+                                    long long h) {
+  if (h < 0) {
+    return 1e300;
+  }
+  const long long qh = q1 + h * q0;
+  if (qh <= 0) {
+    return 1e300;
+  }
+  const long long ph = p1 + h * p0;
+  return std::fabs(v - static_cast<double>(ph) / static_cast<double>(qh));
+}
+
+template <typename ConsiderFn>
+void scanSemiconvergentRange(double v, long long p1, long long q1, long long p0, long long q0, long long hMax,
+                             const ConsiderFn& considerCandidate) {
+  if (hMax < 0) {
+    return;
+  }
+  if (hMax <= RATIO_SEMICONV_LINEAR_THRESH) {
+    for (long long h = 0; h <= hMax; ++h) {
+      considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
+    }
+    return;
+  }
+  long long lo = 0;
+  long long hi = hMax;
+  considerCandidate(p1, static_cast<std::uint64_t>(q1));
+  while (hi - lo > 2) {
+    const long long span = hi - lo;
+    const long long m1 = lo + span / 3;
+    const long long m2 = hi - span / 3;
+    const double e1 = ratioSemiconvergentApproxErr(v, p1, q1, p0, q0, m1);
+    const double e2 = ratioSemiconvergentApproxErr(v, p1, q1, p0, q0, m2);
+    if (e1 <= e2) {
+      hi = m2;
+    } else {
+      lo = m1;
+    }
+  }
+  for (long long h = lo; h <= hi; ++h) {
+    considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
+  }
+}
+
 }  // namespace
 
 bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t& den) {
@@ -6612,9 +6658,7 @@ bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t&
     if (q > RATIO_MAX_DENOMINATOR) {
       if (q1 > 0 && q0 > 0) {
         const long long hMax = (RATIO_MAX_DENOMINATOR - q1) / q0;
-        for (long long h = 0; h <= hMax; ++h) {
-          considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
-        }
+        scanSemiconvergentRange(v, p1, q1, p0, q0, hMax, considerCandidate);
       }
       break;
     }
@@ -6781,9 +6825,14 @@ MathParser::EvalValue MathParser::builtinRatio(
     return makeScalar(0);
   }
   EvalContext sub;
-  if (args[0].kind == ValueKind::Scalar) {
+  std::vector<EvalValue> flat;
+  if (!flattenArgsToScalars({args[0]}, flat)) {
+    setAtLeastOneArgError(ctx, fnName);
+    return makeScalar(0);
+  }
+  if (flat.size() == 1U && args[0].kind == ValueKind::Scalar) {
     EvalValue out = makeScalar(0);
-    if (!tryBuiltinRatioScalar(sub, args[0].scalarValue, out)) {
+    if (!tryBuiltinRatioScalar(sub, flat[0].scalarValue, out)) {
       if (sub.parseError) {
         setIncompatibleOperandsError(ctx);
       }
@@ -6792,10 +6841,10 @@ MathParser::EvalValue MathParser::builtinRatio(
     return out;
   }
   std::vector<EvalValue> wrapped;
-  wrapped.reserve(args[0].arr.size());
-  for (const auto& item : args[0].arr) {
+  wrapped.reserve(flat.size());
+  for (const auto& item : flat) {
     EvalValue tmp = makeScalar(0);
-    if (!tryBuiltinRatioScalar(sub, item, tmp)) {
+    if (!tryBuiltinRatioScalar(sub, item.scalarValue, tmp)) {
       if (sub.parseError) {
         setIncompatibleOperandsError(ctx);
       }
@@ -6880,24 +6929,15 @@ MathParser::EvalValue MathParser::builtinSortby(
     setValidationError(ctx, errText.c_str());
     return makeScalar(0);
   }
-  std::vector<EvalValue::ScalarValue> vals;
-  const auto collectFromArg = [&](const EvalValue& a) -> bool {
-    if (a.kind == ValueKind::Scalar) {
-      vals.push_back(a.scalarValue);
-      return true;
-    }
-    vals.reserve(vals.size() + a.arr.size());
-    for (const auto& item : a.arr) {
-      vals.push_back(item);
-    }
-    return true;
-  };
-  if (!collectFromArg(args[0])) {
+  std::vector<EvalValue> flat;
+  if (!flattenArgsToScalars({args[0]}, flat)) {
     setAtLeastOneArgError(ctx, fnName);
     return makeScalar(0);
   }
-  if (vals.empty()) {
-    return makeArrayFromScalars({});
+  std::vector<EvalValue::ScalarValue> vals;
+  vals.reserve(flat.size());
+  for (const auto& item : flat) {
+    vals.push_back(item.scalarValue);
   }
   std::vector<EvalValue::ScalarValue> keys(vals.size());
   for (std::size_t i = 0; i < vals.size(); ++i) {

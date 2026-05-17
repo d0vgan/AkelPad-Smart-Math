@@ -2598,10 +2598,11 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  if (!expectEval(p, "sortby((5,1,5,2,2,9,1), abs)", "(1,1,2,2,5,5,9)", why)) return false;
                  return true;
                }});
-  t.push_back({"sortby/ratio: sortby empty array validates func",
+  t.push_back({"sortby/ratio: empty array rejects like sort",
                [](std::string& why) {
                  MathParser p;
-                 return expectEval(p, "sortby((), abs)", "()", why);
+                 if (!expectEvalErrorContains(p, "sortby((), abs)", "expects at least 1 argument", why)) return false;
+                 return expectEvalErrorContains(p, "ratio(())", "expects at least 1 argument", why);
                }});
   t.push_back({"sortby/ratio: sortby parse and arity errors",
                [](std::string& why) {
