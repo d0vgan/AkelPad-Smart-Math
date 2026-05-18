@@ -1,5 +1,23 @@
 #include once "SmartMath_Globals.bi"
 
+#ifdef FORMATTER_TEST_BUILD
+function Parser_FormatTimeMs(byval totalMs as LongInt) as String
+  '' Standalone formatter tests: minimal time placeholder (plugin uses MathParser.bas).
+  return ltrim(str(totalMs)) & "ms"
+end function
+
+function Parser_GetLastRawResult(byref rawOut as RawResult) as Boolean
+  RawResultClear(rawOut)
+  return FALSE
+end function
+
+function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String
+  '' Formatter tests without MathParser: no hex/oct/bin from renderBase.
+  s = s
+  return ""
+end function
+#endif
+
 #ifndef LOCALE_SDECIMAL
 const LOCALE_SDECIMAL = &h0000000E
 #endif
@@ -218,63 +236,6 @@ private function TrimTrailingFractionZeros(byref s as String) as String
   return Left(s, n)
 end function
 
-private function AddArrayCommaSpacing(byref s as String) as String
-  dim n as Integer = Len(s)
-  if n = 0 then return ""
-  dim outText as String = ""
-  dim i as Integer
-  for i = 1 to n
-    if Asc(s, i) = 44 then
-      outText &= g_sArrayOutputSeparator
-      if i = n orelse Mid(s, i + 1, 1) <> " " then
-        outText &= " "
-      end if
-    else
-      outText &= Mid(s, i, 1)
-    end if
-  next i
-  return outText
-end function
-
-'' Split inner text of "( ... )" on commas that are not inside nested parentheses.
-'' MathParser array text always uses ASCII comma between elements; decimals use "." from Str().
-private function SplitTopLevelArrayCsvInner(byref inner as String, elems() as String) as Integer
-  erase elems
-  dim s as String = Trim(inner)
-  dim n as Integer = Len(s)
-  if n = 0 then return 0
-  dim depth as Integer = 0
-  dim start as Integer = 1
-  dim partCount as Integer = 0
-  dim i as Integer
-  for i = 1 to n
-    select case Asc(s, i)
-    case 40
-      depth += 1
-    case 41
-      if depth > 0 then depth -= 1
-    case 44
-      if depth <> 0 then continue for
-      if partCount = 0 then
-        redim elems(0 to 0)
-      else
-        redim preserve elems(0 to partCount)
-      end if
-      elems(partCount) = Trim(Mid(s, start, i - start))
-      partCount += 1
-      start = i + 1
-    case else
-    end select
-  next i
-  if partCount = 0 then
-    redim elems(0 to 0)
-  else
-    redim preserve elems(0 to partCount)
-  end if
-  elems(partCount) = Trim(Mid(s, start, n - start + 1))
-  return partCount + 1
-end function
-
 '' Map parser scalar token to formatter display; empty if not non-finite.
 function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
   dim t as String = LCase(Trim(s))
@@ -331,6 +292,7 @@ private function FormatNumericValue(byval d as Double) as String
   end if
   if d <> d then return SM_FMT_NAN
   if Not (d <= d) then return SM_FMT_NAN
+  if d = 0.0 then d = 0.0 '' positive zero (Str/Format(-0.0) may yield "-0")
 
   if g_nDecimals < 0 then
     sRes = LTrim(Str(d))
@@ -425,184 +387,76 @@ function AddThousandsSeparator(byref sRes as String) as String
   return sRes
 end function
 
-function FormatResult(byval d as Double) as String
-  return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
-end function
-
-function FormatTimeValueScalar(byref s as String) as String
-  return s ' as is, no formatting
-end function
-
-function FormatRatioScalar(byref s as String) as String
-  dim idx as Integer = InStr(1, s, "/")
-  if idx > 0 then return AddThousandsSeparator(Left(s, idx - 1)) & "/" & AddThousandsSeparator(Mid(s, idx + 1))
-  return AddThousandsSeparator(s)
-end function
-
-private function ParseComplexAsLongInt(byref s as String, byref realPart as LongInt, byref imagPart as LongInt) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
-
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  dim ch as UByte
-  dim digit as Integer
-  dim isImag as Boolean = FALSE
-  dim isNeg as Boolean = FALSE
-
-  realPart = 0
-  imagPart = 0
-
-  for i = 0 to n - 1
-    ch = p[i]
-    if ch >= asc("0") andalso ch <= asc("9") then
-      digit = ch - asc("0")
-      if isImag then
-        if (imagPart > FB_I64_MAX_DIV10) orelse (imagPart = FB_I64_MAX_DIV10 andalso digit > FB_I64_MAX_MOD10) then return FALSE
-        imagPart = imagPart * 10 + digit
-      else
-        if (realPart > FB_I64_MAX_DIV10) orelse (realPart = FB_I64_MAX_DIV10 andalso digit > FB_I64_MAX_MOD10) then return FALSE
-        realPart = realPart * 10 + digit
-      end if
-    elseif ch = asc("-") then
-      if i > 0 then
-        isImag = TRUE
-        if isNeg then realPart = -realPart
-      end if
-      isNeg = TRUE
-    elseif (ch = asc("+")) then
-      if i > 0 then
-        isImag = TRUE
-        if isNeg then realPart = -realPart
-      end if
-      isNeg = FALSE
-    elseif (ch = asc("i")) then
-      if not isImag then
-        imagPart = realPart  ' "Ni" or "-Ni"
-        realPart = 0
-      end if
-      if imagPart = 0 then imagPart = 1  ' "i" or "-i"
-      if isNeg then imagPart = -imagPart
-    else
-      return FALSE
-    end if
-  next i
-
-  return TRUE
-end function
-
-private function ParseComplexAsDouble(byval s as String, byref realPart as Double, byref imagPart as Double) as Boolean
-  s = Trim(LCase(s))
-  if Len(s) = 0 then return FALSE
-
-  dim sepIdx as Integer = -1
-  dim i as Integer
-  dim ch as String
-
-  ' Start searching after the first character to skip a leading sign
-  ' Look for the + or - that is NOT immediately after an 'e'
-  for i = 2 to Len(s)
-    ch = Mid(s, i, 1)
-    if ch = "+" orelse ch = "-" then
-      ' Check if the previous character was 'e' (scientific notation)
-      if Mid(s, i - 1, 1) <> "e" then
-        sepIdx = i
-        exit for
-      end if
-    end if
-  next i
-
-  if sepIdx > 0 then
-    ' Extract parts
-    realPart = Val(Left(s, sepIdx - 1))
-
-    ' Remove 'i' from the imaginary part before converting
-    dim imagStr as String = Mid(s, sepIdx)
-    if Right(imagStr, 1) = "i" then
-      imagStr = Left(imagStr, Len(imagStr) - 1)
-    end if
-
-    ' Handle the case where the string is just "+i" or "-i"
-    if imagStr = "+" then
-      imagPart = 1
-    elseif imagStr = "-" then
-      imagPart = -1
-    else
-      imagPart = Val(imagStr)
-    end if
-  else
-    ' Fallback: Check if it's purely imaginary (e.g., "5i") or purely real
-    if Right(s, 1) = "i" then
-      realPart = 0
-      if Len(s) = 1 then
-        imagPart = 1
-      else
-        imagPart = Val(Left(s, Len(s) - 1))
-      end if
-    else
-      realPart = Val(s)
-      imagPart = 0
-    end if
+private function FormatNonFiniteFromDouble(byval d as Double) as String
+  dim bits as ULongInt = *cast(ULongInt ptr, @d)
+  if (bits and SM_DBL_EXP_MASK) = SM_DBL_EXP_MASK then
+    if (bits and SM_DBL_FRAC_MASK) <> 0 then return SM_FMT_NAN
+    if (bits and SM_DBL_SIGN_MASK) <> 0 then return SM_FMT_NEGINF
+    return SM_FMT_INF
   end if
-  return TRUE
+  if d <> d then return SM_FMT_NAN
+  if Not (d <= d) then return SM_FMT_NAN
+  return ""
 end function
 
-function FormatComplexNumberScalar(byref s as String) as String
-  dim realPartDbl as Double
-  dim imagPartDbl as Double
-  dim realPartI64 as LongInt
-  dim imagPartI64 as LongInt
-  dim realStr as String
-  dim imagStr as String
-  dim isImagRatio as Boolean = FALSE
+private function ImagCoeffNeedsStarBeforeI(byref coeffStr as String, byval isImagRatio as Boolean) as Boolean
+  if isImagRatio then return TRUE
+  if coeffStr = SM_FMT_NAN orelse coeffStr = SM_FMT_INF orelse coeffStr = SM_FMT_NEGINF then return TRUE
+  return FALSE
+end function
 
-  if IsRatioStr(s) then
-    dim imgIdx as Integer = InStr(2, s, "+")
-    dim n as Integer
-    if imgIdx > 0 then
-      realStr = Left(s, imgIdx - 1)
-      n = 1  ' without "i"
-      if (InStr(imgIdx + 1, s, "*") > 0) then n = 2  ' without "*i"
-      imagStr = Mid(s, imgIdx + 1, Len(s) - imgIdx - n)
-    else
-      imgIdx = InStr(2, s, "-")
-      if imgIdx > 0 then
-        realStr = Left(s, imgIdx - 1)
-        n = 0  ' without "i"
-        if (InStr(imgIdx + 1, s, "*") > 0) then n = 1  ' without "*i"
-        imagStr = Mid(s, imgIdx, Len(s) - imgIdx - n)
-      else
-        if Right(s, 1) = "i" then
-          realStr = "0"
-          n = 1  ' without "i"
-          if (InStr(1, s, "*") > 0) then n = 2  ' without "*i"
-          imagStr = Left(s, Len(s) - n)
-        else
-          realStr = s
-          imagStr = "0"
-        end if
-      end if
-    end if
-    if IsRatioStr(imagStr) then isImagRatio = TRUE
-    realStr = FormatRatioScalar(realStr)
-    imagStr = FormatRatioScalar(imagStr)
-  elseif ParseComplexAsLongInt(s, realPartI64, imagPartI64) then
-    realStr = AddThousandsSeparator(Str(realPartI64))
-    imagStr = AddThousandsSeparator(Str(imagPartI64))
-  elseif ParseComplexAsDouble(s, realPartDbl, imagPartDbl) then
-    realStr = FormatNumericValue(realPartDbl)
-    imagStr = FormatNumericValue(imagPartDbl)
-  else
-    return s
+private sub AppendImagUnitSuffix(byref imagPart as String, byval isImagRatio as Boolean)
+  if ImagCoeffNeedsStarBeforeI(imagPart, isImagRatio) then imagPart &= "*"
+  imagPart &= "i"
+end sub
+
+private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as String
+  select case c.kind
+  case RSK_TIME
+    return Parser_FormatTimeMs(c.intValue)
+  case RSK_INT64
+    return AddThousandsSeparator(ltrim(str(c.intValue)))
+  case RSK_UINT64
+    return AddThousandsSeparator(ltrim(str(c.uintValue)))
+  case RSK_RATIONAL
+    if c.ratDen = 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
+    return AddThousandsSeparator(ltrim(str(c.ratNum))) & "/" & AddThousandsSeparator(ltrim(str(c.ratDen)))
+  case else
+    dim nf as String = FormatNonFiniteFromDouble(c.floatValue)
+    if Len(nf) > 0 then return nf
+    return FormatNumericValue(c.floatValue)
+  end select
+end function
+
+private function RawCartesianIsZeroForComplexReal(byref c as RawCartesianScalar) as Boolean
+  if c.kind = RSK_FLOATING then
+    if Len(FormatNonFiniteFromDouble(c.floatValue)) > 0 then return FALSE
   end if
+  return RawCartesianIsZero(c)
+end function
 
-  ' OutputDebugString("[SmartMath] in, realStr: " & realStr & ", imagStr: " & imagStr)
+private function RawCartesianIsNaN(byref c as RawCartesianScalar) as Boolean
+  if c.kind <> RSK_FLOATING then return FALSE
+  return FormatNonFiniteFromDouble(c.floatValue) = SM_FMT_NAN
+end function
 
-  if realStr = "0" then
+private function RawComplexHasNaNComponent(byref s as RawScalar) as Boolean
+  if s.kind <> RSK_COMPLEX then return FALSE
+  return RawCartesianIsNaN(s.real) orelse RawCartesianIsNaN(s.imag)
+end function
+
+private function FormatRawComplexDisplay(byref s as RawScalar) as String
+  if s.kind <> RSK_COMPLEX then return ""
+  if RawComplexHasNaNComponent(s) then return SM_FMT_NAN
+  dim realStr as String = FormatRawCartesianDisplay(s.real)
+  dim imagStr as String = FormatRawCartesianDisplay(s.imag)
+  dim isImagRatio as Boolean = RawCartesianIsRational(s.imag)
+
+  if RawCartesianIsZeroForComplexReal(s.real) then
     if imagStr = "1" then return "i"
     if imagStr = "-1" then return "-i"
-    if isImagRatio then imagStr &= "*"
-    return imagStr & "i"
+    AppendImagUnitSuffix(imagStr, isImagRatio)
+    return imagStr
   end if
 
   if imagStr = "1" then
@@ -610,121 +464,129 @@ function FormatComplexNumberScalar(byref s as String) as String
   elseif imagStr = "-1" then
     imagStr = " - i"
   else
-    dim idx as Integer = 2 ' after the leading "-" in "-Ni"
-    dim sign as String = Left(imagStr, 1)
-    if sign <> "-" then
-      sign = "+"
-      idx = 1 ' first digit in "Ni"
+    dim signCh as String = "+"
+    dim coeffBody as String = imagStr
+    if left(coeffBody, 1) = "-" then
+      signCh = "-"
+      coeffBody = mid(coeffBody, 2)
     end if
-    imagStr = " " & sign & " " & Mid(imagStr, idx)
-    if isImagRatio then imagStr &= "*"
-    imagStr &= "i"
+    dim imagTail as String = coeffBody
+    AppendImagUnitSuffix(imagTail, isImagRatio)
+    imagStr = " " & signCh & " " & imagTail
   end if
-
-  ' OutputDebugString("[SmartMath] out, realStr: " & realStr & ", imagStr: " & imagStr)
-
   return realStr & imagStr
 end function
 
-function IsBasePrefixedStr(byref s as String) as Boolean
-  return InStr(1, s, "0x") > 0 orelse InStr(1, s, "0b") > 0 orelse InStr(1, s, "0o") > 0
+private function FormatRawScalarDisplay(byref s as RawScalar) as String
+  if s.kind = RSK_COMPLEX then return FormatRawComplexDisplay(s)
+  dim c as RawCartesianScalar
+  c.kind = s.kind
+  select case s.kind
+  case RSK_TIME
+    c.intValue = s.intValue
+  case RSK_INT64
+    c.intValue = s.intValue
+  case RSK_UINT64
+    c.uintValue = s.uintValue
+  case RSK_RATIONAL
+    c.ratNum = s.ratNum
+    c.ratDen = s.ratDen
+  case else
+    c.floatValue = s.floatValue
+  end select
+  return FormatRawCartesianDisplay(c)
 end function
 
-function IsTimeValueStr(byref s as String) as Boolean
-  return InStr(1, s, ":") > 0
-end function
-
-function IsComplexNumberStr(byref s as String) as Boolean
-  return InStr(1, s, "i") > 0
-end function
-
-function IsRatioStr(byref s as String) as Boolean
-  return InStr(1, s, "/") > 0
-end function
-
-function IsDecIntStr(byref s as String) as Boolean
-  dim n as Integer = len(s)
-  if n = 0 then return FALSE
-
-  dim p as ZString ptr = strptr(s)
-  dim i as Integer = 0
-  dim ch as UByte = p[i]
-  if (ch = asc("-")) orelse (ch = asc("+")) then
-    if n = 1 then return FALSE
-    i += 1
-  end if
-
-  while i < n
-    ch = p[i]
-    if (ch < asc("0")) orelse (ch > asc("9")) then return FALSE
-    i += 1
-  wend
-
-  return TRUE
-end function
-
-'' Shared by FormatArrayResultText tuple branches: rawTokens TRUE keeps parser scalars; FALSE runs FormatNumericValue(Val).
-private sub AppendTupleBodyFromElems(byref outText as String, elems() as String, byval cnt as Integer, byval rawTokens as Boolean)
-  dim j as Integer
-  for j = 0 to cnt - 1
-    if j > 0 then outText &= g_sArrayOutputSeparator & " "
-    dim nf as String = FormatNonFiniteDisplayFromParserScalar(elems(j))
-    if Len(nf) > 0 then
-      outText &= nf
-    elseif rawTokens then
-      outText &= elems(j)
+private function FormatRawComplexDisplayWithDecimalOptions(byref s as RawScalar) as String
+  if s.kind <> RSK_COMPLEX then return FormatRawScalarDisplay(s)
+  if RawComplexHasNaNComponent(s) then return SM_FMT_NAN
+  dim realStr as String
+  dim imagStr as String
+  if s.real.kind = RSK_FLOATING then
+    dim nfRe as String = FormatNonFiniteFromDouble(s.real.floatValue)
+    if Len(nfRe) > 0 then
+      realStr = nfRe
     else
-      dim elem as String = Trim(elems(j))
-      if IsBasePrefixedStr(elem) then
-        outText &= elem
-      elseif IsTimeValueStr(elem) then
-        outText &= FormatTimeValueScalar(elem)
-      elseif IsComplexNumberStr(elem) then
-        outText &= FormatComplexNumberScalar(elem)
-      elseif IsRatioStr(elem) then
-        outText &= FormatRatioScalar(elem)
-      elseif IsDecIntStr(elem) then
-        outText &= AddThousandsSeparator(elem)
-      else
-        outText &= FormatNumericValue(Val(elem))
-      end if
+      realStr = FormatNumericValue(s.real.floatValue)
     end if
-  next j
-end sub
-
-function FormatArrayResultText(byref sArrayText as String) as String
-  if g_nDecimals < 0 andalso g_bUseThousandsSeparator = FALSE then
-    dim trimmedFast as String = Trim(sArrayText)
-    if Len(trimmedFast) >= 2 andalso Left(trimmedFast, 1) = "(" andalso Right(trimmedFast, 1) = ")" then
-      dim innerFast as String = Mid(trimmedFast, 2, Len(trimmedFast) - 2)
-      dim elemsFast() as String
-      dim cntFast as Integer = SplitTopLevelArrayCsvInner(innerFast, elemsFast())
-      dim outFast as String = "("
-      AppendTupleBodyFromElems(outFast, elemsFast(), cntFast, TRUE)
-      outFast &= ")"
-      return SMARTMATH_RESULT_PREFIX & outFast
+  else
+    realStr = FormatRawCartesianDisplay(s.real)
+  end if
+  if s.imag.kind = RSK_FLOATING then
+    dim nfIm as String = FormatNonFiniteFromDouble(s.imag.floatValue)
+    if Len(nfIm) > 0 then
+      imagStr = nfIm
+    else
+      imagStr = FormatNumericValue(s.imag.floatValue)
     end if
-    return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
+  else
+    imagStr = FormatRawCartesianDisplay(s.imag)
   end if
-
-  dim t as String = LCase(sArrayText)
-  if IsBasePrefixedStr(t) then
-    return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
+  dim isImagRatio as Boolean = RawCartesianIsRational(s.imag)
+  if RawCartesianIsZeroForComplexReal(s.real) then
+    if imagStr = "1" then return "i"
+    if imagStr = "-1" then return "-i"
+    AppendImagUnitSuffix(imagStr, isImagRatio)
+    return imagStr
   end if
-
-  '' Parser uses comma only between elements; do not treat g_sDecimalSeparator as part of scan
-  '' (European "," would merge "(40,50)" into one token). Join with ArrayOutputSeparator so
-  '' formatted numbers may contain "," decimals without breaking.
-  dim trimmed as String = Trim(sArrayText)
-  if Len(trimmed) >= 2 andalso Left(trimmed, 1) = "(" andalso Right(trimmed, 1) = ")" then
-    dim inner as String = Mid(trimmed, 2, Len(trimmed) - 2)
-    dim elems() as String
-    dim cnt as Integer = SplitTopLevelArrayCsvInner(inner, elems())
-    dim outText as String = "("
-    AppendTupleBodyFromElems(outText, elems(), cnt, FALSE)
-    outText &= ")"
-    return SMARTMATH_RESULT_PREFIX & outText
+  if imagStr = "1" then
+    imagStr = " + i"
+  elseif imagStr = "-1" then
+    imagStr = " - i"
+  else
+    dim signCh as String = "+"
+    dim coeffBody as String = imagStr
+    if left(coeffBody, 1) = "-" then
+      signCh = "-"
+      coeffBody = mid(coeffBody, 2)
+    end if
+    dim imagTail as String = coeffBody
+    AppendImagUnitSuffix(imagTail, isImagRatio)
+    imagStr = " " & signCh & " " & imagTail
   end if
+  return realStr & imagStr
+end function
 
-  return SMARTMATH_RESULT_PREFIX & AddArrayCommaSpacing(sArrayText)
+private function FormatRawScalarForDisplayContext(byref s as RawScalar) as String
+  if s.renderBase <> 0 then
+    dim baseText as String = Parser_FormatRawScalarRenderBase(s)
+    if Len(baseText) > 0 then return baseText
+  end if
+  if g_nDecimals >= 0 orelse g_bUseThousandsSeparator then
+    if s.kind = RSK_FLOATING then
+      return FormatNumericValue(s.floatValue)
+    end if
+    if s.kind = RSK_COMPLEX then
+      return FormatRawComplexDisplayWithDecimalOptions(s)
+    end if
+  end if
+  return FormatRawScalarDisplay(s)
+end function
+
+private function FormatRawArrayBody(byref r as RawResult) as String
+  dim outText as String = "("
+  dim i as Integer
+  for i = 0 to ubound(r.arr)
+    if i > 0 then outText &= g_sArrayOutputSeparator & " "
+    outText &= FormatRawScalarForDisplayContext(r.arr(i))
+  next i
+  outText &= ")"
+  return outText
+end function
+
+function FormatRawResultForDisplay(byref r as RawResult) as String
+  if RawResultHasValue(r) = FALSE then return ""
+  if r.kind = RRK_SCALAR then
+    return SMARTMATH_RESULT_PREFIX & FormatRawScalarForDisplayContext(r.scalar)
+  end if
+  if r.kind <> RRK_ARRAY then return ""
+  return SMARTMATH_RESULT_PREFIX & FormatRawArrayBody(r)
+end function
+
+function FormatRawEvaluationResult(byref raw as RawResult) as String
+  return FormatRawResultForDisplay(raw)
+end function
+
+function FormatResult(byval d as Double) as String
+  return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
 end function

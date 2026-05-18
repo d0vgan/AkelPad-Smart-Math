@@ -79,7 +79,49 @@ private function CountCharAsc(byref s as String, byval chAsc as Integer) as Inte
   return c
 end function
 
-'' Parser array text uses ASCII commas between elements; output uses g_sArrayOutputSeparator and per-element FormatNumericValue.
+private sub FormatterTestInitRawScalarFloat(byref s as RawScalar, byval v as Double)
+  s.kind = RSK_FLOATING
+  s.floatValue = v
+  s.renderBase = 0
+  s.renderUnsigned = FALSE
+end sub
+
+private sub FormatterTestInitRawScalarInt64(byref s as RawScalar, byval v as LongInt)
+  s.kind = RSK_INT64
+  s.intValue = v
+  s.renderBase = 0
+  s.renderUnsigned = FALSE
+end sub
+
+private sub FormatterTestSetRawFloatArray(byref r as RawResult, vals() as Double)
+  RawResultClear(r)
+  r.kind = RRK_ARRAY
+  dim lb as Integer = lbound(vals)
+  dim ub as Integer = ubound(vals)
+  redim r.arr(0 to ub - lb)
+  dim i as Integer
+  for i = lb to ub
+    FormatterTestInitRawScalarFloat r.arr(i - lb), vals(i)
+  next i
+end sub
+
+private sub FormatterTestSetRawInt64Array(byref r as RawResult, vals() as LongInt)
+  RawResultClear(r)
+  r.kind = RRK_ARRAY
+  dim lb as Integer = lbound(vals)
+  dim ub as Integer = ubound(vals)
+  redim r.arr(0 to ub - lb)
+  dim i as Integer
+  for i = lb to ub
+    FormatterTestInitRawScalarInt64 r.arr(i - lb), vals(i)
+  next i
+end sub
+
+private function FormatTestRawArray(byref r as RawResult) as String
+  return FormatRawResultForDisplay(r)
+end function
+
+'' Array display via RawResult (same output as former FormatArrayResultText parser-text path).
 private sub RunArrayDisplayTests(byref failCount as Integer)
   dim savedLc as DWORD = GetThreadLocale()
   if SetThreadLocale(LCID_EN_US) = 0 then
@@ -89,11 +131,14 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
   ResetSmartMathFormatLocaleCache()
   print !"-- Array display (en-US for stable Format)"
 
-  '' Fast path: auto decimals, no thousands — only array sep substitution
+  '' Auto decimals, no thousands — integer elements, custom array separator
   FormatterTestSetup()
   g_sArrayOutputSeparator = ";"
-  dim rFast as String = FormatArrayResultText("(10, 20)")
-  AssertTrue("arr/fast/semicolon elem sep", InStr(1, rFast, ";") > 0, failCount)
+  dim rawFast as RawResult
+  dim intsFast(0 to 1) as LongInt = {10, 20}
+  FormatterTestSetRawInt64Array rawFast, intsFast()
+  dim rFast as String = FormatTestRawArray(rawFast)
+  AssertEq("arr/fast/semicolon elem sep", rFast, SMARTMATH_RESULT_PREFIX & "(10; 20)", failCount)
 
   '' Fixed decimals, dot decimal, comma as g_sArrayOutputSeparator (e.g. (12.345, 1.444, 7.890))
   g_nDecimals = 3
@@ -101,7 +146,10 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
   g_sDecimalSeparator = "."
   g_sArrayOutputSeparator = ","
   '' Use values that keep a non-zero fractional part after rounding/trim (avoids all-integer tuple).
-  dim rDot as String = FormatArrayResultText("(12.345, 1.444, 7.890)")
+  dim rawDot as RawResult
+  dim floatsDot(0 to 2) as Double = {12.345, 1.444, 7.890}
+  FormatterTestSetRawFloatArray rawDot, floatsDot()
+  dim rDot as String = FormatTestRawArray(rawDot)
   AssertTrue("arr/fixed/dot-dec/has prefix", Left(rDot, Len(SMARTMATH_RESULT_PREFIX)) = SMARTMATH_RESULT_PREFIX, failCount)
   AssertTrue("arr/fixed/dot-dec/parens", InStr(1, rDot, "(") > 0 andalso InStr(1, rDot, ")") > 0, failCount)
   AssertTrue("arr/fixed/dot-dec/elem gap uses array sep", InStr(1, rDot, ", ") > 0, failCount)
@@ -113,7 +161,10 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
   g_sThousandsSeparator = "'"
   g_sDecimalSeparator = ","
   g_sArrayOutputSeparator = ","
-  dim rThou as String = FormatArrayResultText("(1024.333, 2048.666, 4096.999)")
+  dim rawThou as RawResult
+  dim floatsThou(0 to 2) as Double = {1024.333, 2048.666, 4096.999}
+  FormatterTestSetRawFloatArray rawThou, floatsThou()
+  dim rThou as String = FormatTestRawArray(rawThou)
   AssertTrue("arr/thou-comma/thou marks", CountCharAsc(rThou, 39) >= 3, failCount)
   AssertTrue("arr/thou-comma/has 1'024", InStr(1, rThou, "1'024") > 0, failCount)
   AssertTrue("arr/thou-comma/has 2'048", InStr(1, rThou, "2'048") > 0, failCount)
@@ -124,7 +175,10 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
 
   '' Alternate array separator with same numeric styling
   g_sArrayOutputSeparator = "|"
-  dim rPipe as String = FormatArrayResultText("(1024.333, 2048.666)")
+  dim rawPipe as RawResult
+  dim floatsPipe(0 to 1) as Double = {1024.333, 2048.666}
+  FormatterTestSetRawFloatArray rawPipe, floatsPipe()
+  dim rPipe as String = FormatTestRawArray(rawPipe)
   AssertTrue("arr/pipe-elem/has pipe-space", InStr(1, rPipe, "| ") > 0, failCount)
   AssertTrue("arr/pipe-elem/still thousands", InStr(1, rPipe, "1'024") > 0, failCount)
 
@@ -196,7 +250,10 @@ private sub RunSeparatorMatrix(byref failCount as Integer)
           AssertTrue(tag & !"/len", Len(r) > Len(SMARTMATH_RESULT_PREFIX), failCount)
           AssertNoSubstr(tag & !"/no double-dec glitch", r, dch & dch, failCount)
 
-          dim a as String = FormatArrayResultText("(1, 2, 3)")
+          dim rawArr as RawResult
+          dim intsArr(0 to 2) as LongInt = {1, 2, 3}
+          FormatterTestSetRawInt64Array rawArr, intsArr()
+          dim a as String = FormatTestRawArray(rawArr)
           AssertTrue(tag & !"/array has sep", InStr(1, a, ach) > 0, failCount)
         end if
       next ai
@@ -254,6 +311,68 @@ dim rSci as String = FormatResult(0.0000012)
 AssertTrue("sci uses e", InStr(1, LCase(rSci), "e") > 0, failures)
 
 RunArrayDisplayTests(failures)
+
+private sub RunRawResultFormatTests(byref failCount as Integer)
+  FormatterTestSetup()
+  dim nanv as Double
+  nanv = 0.0 / 0.0
+  dim pInf as Double = 1.0e200 * 1.0e200
+  dim r as RawResult
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_RATIONAL
+  r.scalar.ratNum = 1
+  r.scalar.ratDen = 2
+  AssertEq("raw format rational scalar", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "1/2", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_COMPLEX
+  r.scalar.real.kind = RSK_INT64
+  r.scalar.real.intValue = 10
+  r.scalar.imag.kind = RSK_INT64
+  r.scalar.imag.intValue = 5
+  AssertEq("raw format complex int", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "10 + 5i", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_COMPLEX
+  r.scalar.real.kind = RSK_FLOATING
+  r.scalar.real.floatValue = -0.0
+  r.scalar.imag.kind = RSK_FLOATING
+  r.scalar.imag.floatValue = -0.22
+  AssertEq("raw format pure imag neg zero real", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "-0.22i", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_COMPLEX
+  r.scalar.real.kind = RSK_FLOATING
+  r.scalar.real.floatValue = pInf
+  r.scalar.imag.kind = RSK_FLOATING
+  r.scalar.imag.floatValue = pInf
+  AssertEq("raw format complex inf inf*i", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "Inf + Inf*i", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_COMPLEX
+  r.scalar.real.kind = RSK_FLOATING
+  r.scalar.real.floatValue = nanv
+  r.scalar.imag.kind = RSK_FLOATING
+  r.scalar.imag.floatValue = nanv
+  AssertEq("raw format complex nan nan*i", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "NaN", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_ARRAY
+  redim r.arr(0 to 1)
+  r.arr(0).kind = RSK_RATIONAL
+  r.arr(0).ratNum = 1
+  r.arr(0).ratDen = 2
+  r.arr(1).kind = RSK_INT64
+  r.arr(1).intValue = 3
+  AssertEq("raw format array mix", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "(1/2, 3)", failCount)
+end sub
+
+RunRawResultFormatTests(failures)
 
 '' --- Locale emulation via SetThreadLocale ---
 dim savedLc as DWORD = GetThreadLocale()

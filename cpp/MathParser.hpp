@@ -10,22 +10,51 @@ class MathParser {
 public:
   struct RawResult {
     enum class Kind { None, Scalar, Array };
-    enum class ScalarKind { FloatingPoint, Int64, UInt64 };
+    enum class ScalarKind { FloatingPoint, Int64, UInt64, Rational, Complex };
 
-    struct Scalar {
-      /// Active numeric representation for this scalar.
+    /// Real-only component (also used for each part of a complex value).
+    struct CartesianScalar {
       ScalarKind kind = ScalarKind::FloatingPoint;
-      /// Exactly one union member is valid, selected by kind.
       union {
-        /// Valid only when kind == FloatingPoint.
         double floatingPoint;
-        /// Valid only when kind == Int64.
         long long intValue;
-        /// Valid only when kind == UInt64.
         std::uint64_t uintValue;
+        struct {
+          long long numerator;
+          std::uint64_t denominator;
+        } rational;
       };
 
+      CartesianScalar() : floatingPoint(0.0) {}
+
+      bool isFloatingPoint() const { return kind == ScalarKind::FloatingPoint; }
+      bool isInt64() const { return kind == ScalarKind::Int64; }
+      bool isUInt64() const { return kind == ScalarKind::UInt64; }
+      bool isRational() const { return kind == ScalarKind::Rational; }
+    };
+
+    struct Scalar {
+      ScalarKind kind = ScalarKind::FloatingPoint;
+      union {
+        double floatingPoint;
+        long long intValue;
+        std::uint64_t uintValue;
+        struct {
+          long long numerator;
+          std::uint64_t denominator;
+        } rational;
+      };
+      /// Valid when kind == Complex.
+      CartesianScalar real{};
+      CartesianScalar imag{};
+
       Scalar() : floatingPoint(0.0) {}
+
+      bool isFloatingPoint() const { return kind == ScalarKind::FloatingPoint; }
+      bool isInt64() const { return kind == ScalarKind::Int64; }
+      bool isUInt64() const { return kind == ScalarKind::UInt64; }
+      bool isRational() const { return kind == ScalarKind::Rational; }
+      bool isComplex() const { return kind == ScalarKind::Complex; }
     };
 
     /// None: no value available (for example, after evaluation error).
@@ -184,10 +213,10 @@ private:
   struct EvalValue {
     struct ScalarValue {
       enum : unsigned int {
-        fExactIntValid = 0x01u,
+        fExactInt64Valid = 0x01u,
         fExactUInt64Valid = 0x02u,
         fDecScientificPow63High = 0x10u,
-        fImagExactIntValid = 0x20u,
+        fImagExactInt64Valid = 0x20u,
         fImagExactUInt64Valid = 0x40u,
         fRenderRational = 0x80u,
         fImagRenderRational = 0x100u
@@ -195,22 +224,22 @@ private:
       ScalarKind scalarKind = ScalarKind::FloatingPoint;
       unsigned int flags = 0;
       double scalar = 0.0;
-      long long exactInt = 0;
+      long long exactInt64 = 0;
       std::uint64_t exactUInt64 = 0;
       double imag = 0.0;
-      long long imagExactInt = 0;
+      long long imagExactInt64 = 0;
       std::uint64_t imagExactUInt64 = 0;
 
-      bool hasExactInt() const { return (flags & fExactIntValid) != 0; }
-      void setExactIntValid(bool v) { flags = v ? (flags | fExactIntValid) : (flags & ~fExactIntValid); }
+      bool hasExactInt64() const { return (flags & fExactInt64Valid) != 0; }
+      void setExactInt64Valid(bool v) { flags = v ? (flags | fExactInt64Valid) : (flags & ~fExactInt64Valid); }
       bool hasExactUInt64() const { return (flags & fExactUInt64Valid) != 0; }
       void setExactUInt64Valid(bool v) { flags = v ? (flags | fExactUInt64Valid) : (flags & ~fExactUInt64Valid); }
       bool hasDecScientificPow63High() const { return (flags & fDecScientificPow63High) != 0; }
       void setDecScientificPow63High(bool v) {
         flags = v ? (flags | fDecScientificPow63High) : (flags & ~fDecScientificPow63High);
       }
-      bool hasImagExactInt() const { return (flags & fImagExactIntValid) != 0; }
-      void setImagExactIntValid(bool v) { flags = v ? (flags | fImagExactIntValid) : (flags & ~fImagExactIntValid); }
+      bool hasImagExactInt64() const { return (flags & fImagExactInt64Valid) != 0; }
+      void setImagExactInt64Valid(bool v) { flags = v ? (flags | fImagExactInt64Valid) : (flags & ~fImagExactInt64Valid); }
       bool hasImagExactUInt64() const { return (flags & fImagExactUInt64Valid) != 0; }
       void setImagExactUInt64Valid(bool v) {
         flags = v ? (flags | fImagExactUInt64Valid) : (flags & ~fImagExactUInt64Valid);
@@ -691,6 +720,31 @@ private:
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
   static EvalValue makeImaginaryUnit();
   static EvalValue makeScalarComplexFromDoubles(double re, double im);
+  struct ExactCartesianComponent {
+    bool hasInt = false;
+    long long intV = 0;
+    bool hasUInt = false;
+    std::uint64_t uintV = 0;
+  };
+  static void exactCartesianComponentClear(ExactCartesianComponent& c);
+  static bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
+  static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
+                                                 const ExactCartesianComponent& im);
+  static bool tryAddExactCartesianComponents(const ExactCartesianComponent& a,
+                                             const ExactCartesianComponent& b, ExactCartesianComponent& out);
+  static bool tryQuotExactInt64(long long num, long long den, long long& quo);
+  static bool trySubExactCartesianComponents(const ExactCartesianComponent& a,
+                                             const ExactCartesianComponent& b, ExactCartesianComponent& out);
+  static bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
+                                                  const EvalValue::ScalarValue& rightS, char op,
+                                                  EvalValue& outV);
+  static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
+  static bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
+  static bool tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out);
+  static bool tryFoldExactComplexCartesian(const std::vector<EvalValue>& args, char op, EvalValue& out);
+  static bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out);
   bool tryApplyComplexBinaryScalars(const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const;
   std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
   std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
@@ -702,6 +756,7 @@ private:
   static bool evalValueHasNonzeroImaginary(const EvalValue& v);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
+  static RawResult::CartesianScalar toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart);
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);
   static RawResult toRawResult(const EvalValue& v);
   static EvalValue scalarFromScalarValue(const EvalValue::ScalarValue& sv);

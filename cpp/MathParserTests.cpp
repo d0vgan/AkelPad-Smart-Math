@@ -451,6 +451,53 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+  t.push_back({"unit/getRawResult rational from ratio()",
+               [](std::string& why) {
+                 MathParser p;
+                 p.parseAndEvaluate("ratio(0.5)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 MathParser::RawResult r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.rational.numerator != 1LL ||
+                     r.scalar.rational.denominator != 2ULL) {
+                   why = "expected scalar rational 1/2";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("ratio(sqrt(2))");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.rational.numerator != 13250218LL ||
+                     r.scalar.rational.denominator != 9369319ULL) {
+                   why = "expected scalar rational sqrt(2) convergent";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("ratio((0.5, 1/3))");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isArray() || r.array.size() != 2U) {
+                   why = "expected rational array[2]";
+                   return false;
+                 }
+                 if (!r.array[0].isRational() || r.array[0].rational.numerator != 1LL || r.array[0].rational.denominator != 2ULL) {
+                   why = "array[0] expected 1/2";
+                   return false;
+                 }
+                 if (!r.array[1].isRational() || r.array[1].rational.numerator != 1LL || r.array[1].rational.denominator != 3ULL) {
+                   why = "array[1] expected 1/3";
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"unit/parseAndEvaluateRaw returns raw and empty on error", [](std::string& why) {
                  MathParser p;
                  MathParser::RawResult r = p.parseAndEvaluateRaw("10+20");
@@ -2830,6 +2877,9 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "(-0xFFFFFFFFFFFFFFFF)%2", "modulo operands must be integer values"} ,
     {ParityBasicCase::Kind::ErrorContains, "(-0xFFFFFFFFFFFFFFFF)>>1", "bitwise operands must be integer values"} ,
     {ParityBasicCase::Kind::Expected, "-0x7FFFFFFFFFFFFFFF+2", "-9223372036854775805"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF+0", "18446744073709551615"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(0xFFFFFFFFFFFFFFFF+0)", "0xFFFFFFFFFFFFFFFF"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF+1", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF+2", "9223372036854775809"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF-2", "9223372036854775805"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF<<1", "18446744073709551614"} ,
@@ -3472,6 +3522,9 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"(1+2i)*(3+4i)", "-5+10i"},
                      {"10+5i-10-5i", "0"},
                      {"(1+2i)/i", "2-i"},
+                     {"inf+i*inf", "inf+inf*i"},
+                     {"inf+i*nan", "nan"},
+                     {"(1+2i)/0", "nan"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);
@@ -3811,6 +3864,60 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: getRawResult exposes complex and rational components",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+
+                 p.parseAndEvaluate("10+5i");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 MathParser::RawResult r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isComplex() || !r.scalar.real.isInt64() || r.scalar.real.intValue != 10LL ||
+                     !r.scalar.imag.isInt64() || r.scalar.imag.intValue != 5LL) {
+                   why = "expected complex int64 10+5i";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("ratio(0.5+0.25i)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isComplex() || !r.scalar.real.isRational() ||
+                     r.scalar.real.rational.numerator != 1LL || r.scalar.real.rational.denominator != 2ULL ||
+                     !r.scalar.imag.isRational() || r.scalar.imag.rational.numerator != 1LL ||
+                     r.scalar.imag.rational.denominator != 4ULL) {
+                   why = "expected complex rational 1/2+1/4i";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("ratio(e+10i)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isComplex() || !r.scalar.real.isRational() ||
+                     r.scalar.real.rational.numerator != 14665106LL || r.scalar.real.rational.denominator != 5394991ULL) {
+                   why = "expected complex rational real part for e";
+                   return false;
+                 }
+                 const bool imagTenInt =
+                     r.scalar.imag.isInt64() && r.scalar.imag.intValue == 10LL;
+                 const bool imagTenRat = r.scalar.imag.isRational() && r.scalar.imag.rational.numerator == 10LL &&
+                                         r.scalar.imag.rational.denominator == 1ULL;
+                 if (!imagTenInt && !imagTenRat) {
+                   why = "expected imag 10 as int64 or rational 10/1";
+                   return false;
+                 }
+
+                 p.setSupportComplexNumbers(false);
+                 return true;
+               }});
   t.push_back({"complex-opt: min/max/sort/median/variance/stddev reject complex (parity with Basic cxAggErr)",
                [](std::string& why) {
                  MathParser p;
@@ -3957,6 +4064,42 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
                      return false;
                    }
+                 }
+                 p.parseAndEvaluate("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi);uhex");
+                 if (!p.getError().empty()) {
+                   why = std::string("large hex complex uhex: ") + p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "0xFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFi") {
+                   why = std::string("large hex complex uhex -> ") + p.getResult();
+                   return false;
+                 }
+                 p.parseAndEvaluate("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi)");
+                 if (!p.getError().empty()) {
+                   why = std::string("large hex complex sum: ") + p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "72057594037927935+36028797018963967i") {
+                   why = std::string("large hex complex sum -> ") + p.getResult();
+                   return false;
+                 }
+                 p.parseAndEvaluate("sum(0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFi)");
+                 if (!p.getError().empty()) {
+                   why = std::string("sum exact complex scalars: ") + p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "72057594037927935+36028797018963967i") {
+                   why = std::string("sum exact complex scalars -> ") + p.getResult();
+                   return false;
+                 }
+                 p.parseAndEvaluate("conj(0xFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFi);uhex");
+                 if (!p.getError().empty()) {
+                   why = std::string("conj exact uhex: ") + p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "0xFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFi") {
+                   why = std::string("conj exact uhex -> ") + p.getResult();
+                   return false;
                  }
                  p.parseAndEvaluate("hex(1+2.5i)");
                  if (p.getError().empty()) {

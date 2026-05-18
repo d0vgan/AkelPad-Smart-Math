@@ -193,6 +193,112 @@ sub RunCase(byref c as SmokeCase)
   print ""
 end sub
 
+private sub RunRawResultApiTests()
+  print "=== RawResult API (parser last-eval snapshot) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim raw as RawResult
+
+  Parser_ClearVariables()
+  if Parser_TryEvaluateEx("ratio(0.5)", r, rt, ia) = FALSE then
+    print "[raw] FAIL: ratio(0.5) eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_RATIONAL _
+    orelse raw.scalar.ratNum <> 1 orelse raw.scalar.ratDen <> 2 then
+    print "[raw] FAIL: ratio(0.5) raw rational"
+    subFail += 1
+  else
+    print "[raw] PASS: ratio(0.5) -> rational 1/2"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("2+3", r, rt, ia) = FALSE then
+    print "[raw] FAIL: 2+3 eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_INT64 orelse raw.scalar.intValue <> 5 then
+    print "[raw] FAIL: 2+3 raw int64"
+    subFail += 1
+  else
+    print "[raw] PASS: 2+3 -> int64 5"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("ratio((1,2,3))", r, rt, ia) = FALSE orelse ia = FALSE then
+    print "[raw] FAIL: ratio array eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_ARRAY orelse ubound(raw.arr) <> 2 then
+    print "[raw] FAIL: ratio array shape"
+    subFail += 1
+  else
+    dim badArrKind as Boolean = FALSE
+    if raw.arr(0).kind <> RSK_INT64 then badArrKind = TRUE
+    if raw.arr(1).kind <> RSK_INT64 then badArrKind = TRUE
+    if raw.arr(2).kind <> RSK_INT64 then badArrKind = TRUE
+    if badArrKind then
+      print "[raw] FAIL: ratio array element kinds"
+      subFail += 1
+    else
+      print "[raw] PASS: ratio((1,2,3)) array of integers"
+      subPass += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("f(x)=1", r, rt, ia) = FALSE then
+    print "[raw] FAIL: UDF defined eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) then
+    print "[raw] FAIL: defined should not expose raw result"
+    subFail += 1
+  else
+    print "[raw] PASS: defined clears raw snapshot"
+    subPass += 1
+  end if
+
+  Parser_SetSupportComplexNumbers(TRUE)
+  if Parser_TryEvaluateEx("ratio(0.5+0.25i)", r, rt, ia) = FALSE then
+    print "[raw] FAIL: complex ratio eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.scalar.kind <> RSK_COMPLEX orelse raw.scalar.real.kind <> RSK_RATIONAL _
+    orelse raw.scalar.imag.kind <> RSK_RATIONAL then
+    print "[raw] FAIL: complex ratio raw parts"
+    subFail += 1
+  else
+    print "[raw] PASS: ratio(0.5+0.25i) complex+rational parts"
+    subPass += 1
+  end if
+  Parser_SetSupportComplexNumbers(FALSE)
+
+  if Parser_TryEvaluateExRaw("ratio(0.5)", raw) = FALSE then
+    print "[raw] FAIL: Parser_TryEvaluateExRaw ratio(0.5)"
+    subFail += 1
+  elseif raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_RATIONAL then
+    print "[raw] FAIL: Parser_TryEvaluateExRaw rational kind"
+    subFail += 1
+  else
+    print "[raw] PASS: Parser_TryEvaluateExRaw"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateExRaw("f(x)=2", raw) = FALSE then
+    print "[raw] FAIL: Parser_TryEvaluateExRaw UDF defined should succeed"
+    subFail += 1
+  elseif RawResultHasValue(raw) then
+    print "[raw] FAIL: Parser_TryEvaluateExRaw defined should leave empty raw"
+    subFail += 1
+  else
+    print "[raw] PASS: Parser_TryEvaluateExRaw defined (no raw value)"
+    subPass += 1
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "RawResult sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 ' Complex-number tests: keep separate from the main scalar/real suite. This sub begins by enabling
 ' the parser-wide complex support flag (see USAGE_AND_SYNTAX.md); future complex tests belong here.
 private sub RunComplexNumberSupportOptionTests()
@@ -598,6 +704,62 @@ private sub RunComplexNumberSupportOptionTests()
   cxFmtOk(6) = "uoct(-1+i)": cxFmtExpect(6) = "0o1777777777777777777777+i"
   cxFmtOk(7) = "ubin(5+10i)": cxFmtExpect(7) = "0b101+0b1010i"
 
+  if Parser_TryEvaluateEx("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi);uhex", r, rt, ia) = FALSE orelse rt <> "0xFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFi" then
+    print "[complex-opt] FAIL: large hex complex uhex -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: large hex complex uhex preserves exact integers"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi)", r, rt, ia) = FALSE orelse rt <> "72057594037927935+36028797018963967i" then
+    print "[complex-opt] FAIL: large hex complex sum -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: large hex complex sum exact"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("sum(0xFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFi)", r, rt, ia) = FALSE orelse rt <> "72057594037927935+36028797018963967i" then
+    print "[complex-opt] FAIL: sum exact complex scalars -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: sum() preserves exact large complex"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("conj(0xFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFi);uhex", r, rt, ia) = FALSE orelse rt <> "0xFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFi" then
+    print "[complex-opt] FAIL: conj exact uhex -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: conj() preserves exact integers"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("inf+i*inf", r, rt, ia) = FALSE orelse rt <> "inf+inf*i" then
+    print "[complex-opt] FAIL: inf+i*inf -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: inf+i*inf non-finite complex multiply/add"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("inf+i*nan", r, rt, ia) = FALSE orelse rt <> "nan" then
+    print "[complex-opt] FAIL: inf+i*nan -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: inf+i*nan collapses to scalar NaN"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("(1+2i)/0", r, rt, ia) = FALSE orelse rt <> "nan" then
+    print "[complex-opt] FAIL: (1+2i)/0 -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: complex divide-by-zero collapses to scalar NaN"
+    subPass += 1
+  end if
+
   dim ffi as Integer
   for ffi = 1 to 7
     if Parser_TryEvaluateEx(cxFmtOk(ffi), r, rt, ia) = FALSE orelse rt <> cxFmtExpect(ffi) then
@@ -727,7 +889,7 @@ private sub RunComplexNumberSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1085) as SmokeCase
+  dim tests(1 to 1088) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1869,6 +2031,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1083).expr = "ratio(0.9999999)": tests(1083).expected = "9999999/10000000" ' [ok-func] near-one large denom
   tests(1084).expr = "ratio(0.123456789012345)": tests(1084).expected = "10/81" ' [ok-func] modest denominator
   tests(1085).expr = "ratio(1/7)": tests(1085).expected = "1/7" ' [ok-func] exact rational input
+  tests(1086).expr = "0xFFFFFFFFFFFFFFFF+0": tests(1086).expected = "18446744073709551615" ' [hex-exact] uint64 metadata preserved
+  tests(1087).expr = "0x7FFFFFFFFFFFFFFF+1": tests(1087).expected = "9223372036854775808" ' [hex-exact] int64-range hex add
+  tests(1088).expr = "uhex(0xFFFFFFFFFFFFFFFF+0)": tests(1088).expected = "0xFFFFFFFFFFFFFFFF" ' [hex-exact] uhex on exact uint result
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -1912,6 +2077,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
       print "[DUPLICATE] SKIP : " & tests(i).expr
     end if
   next i
+
+  RunRawResultApiTests()
 
   RunComplexNumberSupportOptionTests()
 

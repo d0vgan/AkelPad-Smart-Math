@@ -91,15 +91,9 @@ declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
 declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
-declare function FormatTimeValueScalar(byref s as String) as String
-declare function FormatComplexNumberScalar(byref s as String) as String
-declare function FormatRatioScalar(byref s as String) as String
-declare function FormatArrayResultText(byref sArrayText as String) as String
+declare function FormatRawResultForDisplay(byref r as RawResult) as String
+declare function FormatRawEvaluationResult(byref raw as RawResult) as String
 declare function AddThousandsSeparator(byref sRes as String) as String
-declare function IsDecIntStr(byref s as String) as Boolean
-declare function IsRatioStr(byref s as String) as Boolean
-declare function IsTimeValueStr(byref s as String) as Boolean
-declare function IsComplexNumberStr(byref s as String) as Boolean
 declare function NormalizeCopiedResult(byref sRes as String) as String
 declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()

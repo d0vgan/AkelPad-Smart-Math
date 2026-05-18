@@ -176,6 +176,13 @@ void complexDivide(double numR, double numI, double denR, double denI, double& o
 void complexMultiply(double ar, double ai, double br, double bi, double& outR, double& outI) {
   outR = ar * br - ai * bi;
   outI = ar * bi + ai * br;
+  if (std::isnan(outR) && !std::isnan(outI)) {
+    if (ar == 0.0 && ai != 0.0 && bi == 0.0 && std::isinf(br)) {
+      outR = 0.0;
+    } else if (br == 0.0 && bi != 0.0 && ai == 0.0 && std::isinf(ar)) {
+      outR = 0.0;
+    }
+  }
 }
 
 void complexExpCartesian(double ar, double ai, double& outR, double& outI) {
@@ -2844,8 +2851,8 @@ bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
 }
 
 bool MathParser::tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& out) {
-  if (s.hasImagExactInt()) {
-    out = s.imagExactInt;
+  if (s.hasImagExactInt64()) {
+    out = s.imagExactInt64;
     return true;
   }
   return tryExtractExactInt64FromDoubleStrict(s.imag, out);
@@ -2858,8 +2865,8 @@ bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& 
   if (scalarHasNonzeroImaginaryPart(s)) {
     return false;
   }
-  if (s.hasExactInt()) {
-    outI = s.exactInt;
+  if (s.hasExactInt64()) {
+    outI = s.exactInt64;
     return true;
   }
   if (s.hasExactUInt64()) {
@@ -2878,8 +2885,8 @@ bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::Sca
   if (scalarHasNonzeroImaginaryPart(s)) {
     return false;
   }
-  if (s.hasExactInt()) {
-    outI = s.exactInt;
+  if (s.hasExactInt64()) {
+    outI = s.exactInt64;
     return true;
   }
   if (s.hasExactUInt64() &&
@@ -2901,8 +2908,8 @@ bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarV
     outU = s.exactUInt64;
     return true;
   }
-  if (s.hasExactInt() && s.exactInt >= 0) {
-    outU = static_cast<std::uint64_t>(s.exactInt);
+  if (s.hasExactInt64() && s.exactInt64 >= 0) {
+    outU = static_cast<std::uint64_t>(s.exactInt64);
     return true;
   }
   return false;
@@ -2951,7 +2958,7 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
 
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
   return (a.scalarKind == ScalarKind::FloatingPoint) && (b.scalarKind == ScalarKind::FloatingPoint) &&
-      !MathParser::scalarValueIsTime(a) && !MathParser::scalarValueIsTime(b) && !a.hasExactInt() && !a.hasExactUInt64() && !b.hasExactInt() &&
+      !MathParser::scalarValueIsTime(a) && !MathParser::scalarValueIsTime(b) && !a.hasExactInt64() && !a.hasExactUInt64() && !b.hasExactInt64() &&
       !b.hasExactUInt64() && !scalarHasNonzeroImaginaryPart(a) && !scalarHasNonzeroImaginaryPart(b);
 }
 
@@ -2984,7 +2991,7 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
   if (!sv.hasRenderRational()) {
     return false;
   }
-  const long long num = sv.exactInt;
+  const long long num = sv.exactInt64;
   const std::uint64_t den = sv.exactUInt64;
   if (den == 0u) {
     return false;
@@ -2994,33 +3001,33 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
 }
 
 bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
-  if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactInt()) {
+  if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactInt64()) {
     return false;
   }
   std::string rePart;
   if (sv.hasRenderRational()) {
-    rePart = formatRationalParts(sv.exactInt, sv.exactUInt64);
-  } else if (sv.hasExactInt()) {
-    if (sv.exactInt != 0LL) {
-      rePart = std::to_string(sv.exactInt);
+    rePart = formatRationalParts(sv.exactInt64, sv.exactUInt64);
+  } else if (sv.hasExactInt64()) {
+    if (sv.exactInt64 != 0LL) {
+      rePart = std::to_string(sv.exactInt64);
     }
   } else if (std::fabs(sv.scalar) >= RATIO_APPROX_EPS) {
     return false;
   }
   std::string imTail;
   if (sv.hasImagRenderRational()) {
-    const std::string rp = formatRationalParts(sv.imagExactInt, sv.imagExactUInt64);
+    const std::string rp = formatRationalParts(sv.imagExactInt64, sv.imagExactUInt64);
     if (sv.imagExactUInt64 > 1u) {
       imTail = rp + "*i";
-    } else if (sv.imagExactInt == 1LL) {
+    } else if (sv.imagExactInt64 == 1LL) {
       imTail = STR_I;
-    } else if (sv.imagExactInt == -1LL) {
+    } else if (sv.imagExactInt64 == -1LL) {
       imTail = std::string("-") + STR_I;
     } else {
       imTail = rp + STR_I;
     }
-  } else if (sv.hasImagExactInt()) {
-    const long long ni = sv.imagExactInt;
+  } else if (sv.hasImagExactInt64()) {
+    const long long ni = sv.imagExactInt64;
     if (ni == 1LL) {
       imTail = STR_I;
     } else if (ni == -1LL) {
@@ -3075,8 +3082,8 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     }
   }
   if (base == RenderBase::Dec) {
-    if (v.scalarValue.hasExactInt()) {
-      return std::to_string(v.scalarValue.exactInt);
+    if (v.scalarValue.hasExactInt64()) {
+      return std::to_string(v.scalarValue.exactInt64);
     }
     if (v.scalarValue.hasExactUInt64()) {
       return std::to_string(v.scalarValue.exactUInt64);
@@ -3100,10 +3107,10 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
   std::uint64_t u = 0;
   if (v.scalarValue.hasExactUInt64()) {
     u = v.scalarValue.exactUInt64;
-  } else if (v.scalarValue.hasExactInt() && v.scalarValue.exactInt >= 0) {
-    u = static_cast<std::uint64_t>(v.scalarValue.exactInt);
-  } else if (v.scalarValue.hasExactInt() && v.scalarValue.exactInt < 0) {
-    const long long iv = v.scalarValue.exactInt;
+  } else if (v.scalarValue.hasExactInt64() && v.scalarValue.exactInt64 >= 0) {
+    u = static_cast<std::uint64_t>(v.scalarValue.exactInt64);
+  } else if (v.scalarValue.hasExactInt64() && v.scalarValue.exactInt64 < 0) {
+    const long long iv = v.scalarValue.exactInt64;
     return formatSignedMagnitudeForRenderBase(iv, baseCode, v.hasRenderUnsigned());
   } else if (!parseUInt64FromDouble(dval, u)) {
     return formatScalar(v, RenderBase::Dec);
@@ -3208,15 +3215,15 @@ MathParser::EvalValue MathParser::makeScalar(double v) {
   out.kind = ValueKind::Scalar;
   out.scalarValue.scalarKind = ScalarKind::FloatingPoint;
   out.scalarValue.scalar = v;
-  out.scalarValue.setExactIntValid(false);
-  out.scalarValue.exactInt = 0;
+  out.scalarValue.setExactInt64Valid(false);
+  out.scalarValue.exactInt64 = 0;
   out.scalarValue.setExactUInt64Valid(false);
   out.scalarValue.exactUInt64 = 0;
   out.scalarValue.setDecScientificPow63High(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactInt64 = 0;
   out.scalarValue.imagExactUInt64 = 0;
-  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactInt64Valid(false);
   out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
@@ -3225,31 +3232,31 @@ bool MathParser::scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s) 
   if (s.imag != 0.0) {
     return true;
   }
-  return s.hasImagExactInt() && s.imagExactInt != 0;
+  return s.hasImagExactInt64() && s.imagExactInt64 != 0;
 }
 
 void MathParser::scalarClearImaginary(EvalValue::ScalarValue& s) {
   s.imag = 0.0;
-  s.imagExactInt = 0;
+  s.imagExactInt64 = 0;
   s.imagExactUInt64 = 0;
-  s.setImagExactIntValid(false);
+  s.setImagExactInt64Valid(false);
   s.setImagExactUInt64Valid(false);
 }
 
 void MathParser::scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im) {
-  re = s.hasExactInt() ? static_cast<double>(s.exactInt) : s.scalar;
-  im = s.hasImagExactInt() ? static_cast<double>(s.imagExactInt) : s.imag;
+  re = s.hasExactInt64() ? static_cast<double>(s.exactInt64) : s.scalar;
+  im = s.hasImagExactInt64() ? static_cast<double>(s.imagExactInt64) : s.imag;
 }
 
 MathParser::EvalValue MathParser::makeImaginaryUnit() {
   EvalValue out = makeScalarComplexFromDoubles(0.0, 1.0);
   out.scalarValue.scalarKind = ScalarKind::Int64;
-  out.scalarValue.setExactIntValid(true);
-  out.scalarValue.exactInt = 0;
+  out.scalarValue.setExactInt64Valid(true);
+  out.scalarValue.exactInt64 = 0;
   out.scalarValue.setExactUInt64Valid(true);
   out.scalarValue.exactUInt64 = 0;
-  out.scalarValue.setImagExactIntValid(true);
-  out.scalarValue.imagExactInt = 1;
+  out.scalarValue.setImagExactInt64Valid(true);
+  out.scalarValue.imagExactInt64 = 1;
   out.scalarValue.setImagExactUInt64Valid(true);
   out.scalarValue.imagExactUInt64 = 1u;
   out.scalarValue.scalar = 0.0;
@@ -3258,33 +3265,477 @@ MathParser::EvalValue MathParser::makeImaginaryUnit() {
 }
 
 MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double im) {
+  if (std::isnan(re) || std::isnan(im)) {
+    return makeScalar(std::numeric_limits<double>::quiet_NaN());
+  }
   EvalValue out = makeScalar(re);
   out.scalarValue.imag = im;
-  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactInt64Valid(false);
   out.scalarValue.setImagExactUInt64Valid(false);
-  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactInt64 = 0;
   out.scalarValue.imagExactUInt64 = 0;
   long long tri = 0;
   long long tii = 0;
-  if (tryExtractExactInt64FromDoubleStrict(re, tri) && tryExtractExactInt64FromDoubleStrict(im, tii)) {
+  if (tryExtractExactInt64FromDoubleStrict(re, tri)) {
     out.scalarValue.scalarKind = ScalarKind::Int64;
-    out.scalarValue.setExactIntValid(true);
-    out.scalarValue.exactInt = tri;
+    out.scalarValue.setExactInt64Valid(true);
+    out.scalarValue.exactInt64 = tri;
     if (tri >= 0) {
       out.scalarValue.setExactUInt64Valid(true);
       out.scalarValue.exactUInt64 = static_cast<std::uint64_t>(tri);
+    } else {
+      out.scalarValue.setExactUInt64Valid(false);
+      out.scalarValue.exactUInt64 = 0;
     }
-    out.scalarValue.setImagExactIntValid(true);
-    out.scalarValue.imagExactInt = tii;
+  }
+  if (tryExtractExactInt64FromDoubleStrict(im, tii)) {
+    out.scalarValue.setImagExactInt64Valid(true);
+    out.scalarValue.imagExactInt64 = tii;
     if (tii >= 0) {
       out.scalarValue.setImagExactUInt64Valid(true);
       out.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(tii);
+    } else {
+      out.scalarValue.setImagExactUInt64Valid(false);
+      out.scalarValue.imagExactUInt64 = 0;
     }
   }
   if (!scalarHasNonzeroImaginaryPart(out.scalarValue)) {
     scalarClearImaginary(out.scalarValue);
   }
   return out;
+}
+
+void MathParser::exactCartesianComponentClear(ExactCartesianComponent& c) {
+  c.hasInt = false;
+  c.intV = 0;
+  c.hasUInt = false;
+  c.uintV = 0;
+}
+
+bool MathParser::tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI) {
+  if (c.hasInt) {
+    outI = c.intV;
+    return true;
+  }
+  if (c.hasUInt && c.uintV <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    outI = static_cast<long long>(c.uintV);
+    return true;
+  }
+  if (!c.hasInt && !c.hasUInt) {
+    outI = 0;
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
+  exactCartesianComponentClear(c);
+  if (sv.hasExactInt64()) {
+    c.hasInt = true;
+    c.intV = sv.exactInt64;
+    if (sv.exactInt64 >= 0) {
+      c.hasUInt = true;
+      c.uintV = static_cast<std::uint64_t>(sv.exactInt64);
+    } else if (sv.hasExactUInt64()) {
+      c.hasUInt = true;
+      c.uintV = sv.exactUInt64;
+    }
+    return true;
+  }
+  if (sv.hasExactUInt64()) {
+    c.hasUInt = true;
+    c.uintV = sv.exactUInt64;
+    if (sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      c.hasInt = true;
+      c.intV = static_cast<long long>(sv.exactUInt64);
+    }
+    return true;
+  }
+  long long t = 0;
+  if (tryExtractExactInt64FromDoubleStrict(sv.scalar, t)) {
+    c.hasInt = true;
+    c.intV = t;
+    if (t >= 0) {
+      c.hasUInt = true;
+      c.uintV = static_cast<std::uint64_t>(t);
+    }
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
+  exactCartesianComponentClear(c);
+  if (sv.hasImagExactInt64()) {
+    c.hasInt = true;
+    c.intV = sv.imagExactInt64;
+    if (sv.imagExactInt64 >= 0) {
+      c.hasUInt = true;
+      c.uintV = static_cast<std::uint64_t>(sv.imagExactInt64);
+    } else if (sv.hasImagExactUInt64()) {
+      c.hasUInt = true;
+      c.uintV = sv.imagExactUInt64;
+    }
+    return true;
+  }
+  if (sv.hasImagExactUInt64()) {
+    c.hasUInt = true;
+    c.uintV = sv.imagExactUInt64;
+    if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      c.hasInt = true;
+      c.intV = static_cast<long long>(sv.imagExactUInt64);
+    }
+    return true;
+  }
+  if (!scalarHasNonzeroImaginaryPart(sv)) {
+    return true;
+  }
+  long long t = 0;
+  if (tryExtractExactInt64FromDoubleStrict(sv.imag, t)) {
+    c.hasInt = true;
+    c.intV = t;
+    if (t >= 0) {
+      c.hasUInt = true;
+      c.uintV = static_cast<std::uint64_t>(t);
+    }
+    return true;
+  }
+  return false;
+}
+
+void MathParser::setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
+                                                    const ExactCartesianComponent& im) {
+  v.kind = ValueKind::Scalar;
+  if (re.hasInt) {
+    v.scalarValue.scalarKind = ScalarKind::Int64;
+    v.scalarValue.scalar = static_cast<double>(re.intV);
+    v.scalarValue.setExactInt64Valid(true);
+    v.scalarValue.exactInt64 = re.intV;
+    if (re.intV >= 0) {
+      v.scalarValue.setExactUInt64Valid(true);
+      v.scalarValue.exactUInt64 = static_cast<std::uint64_t>(re.intV);
+    } else {
+      v.scalarValue.setExactUInt64Valid(false);
+      v.scalarValue.exactUInt64 = 0;
+    }
+  } else if (re.hasUInt) {
+    v.scalarValue.scalarKind = ScalarKind::UInt64;
+    v.scalarValue.scalar = static_cast<double>(re.uintV);
+    v.scalarValue.setExactUInt64Valid(true);
+    v.scalarValue.exactUInt64 = re.uintV;
+    if (re.uintV <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      v.scalarValue.setExactInt64Valid(true);
+      v.scalarValue.exactInt64 = static_cast<long long>(re.uintV);
+    } else {
+      v.scalarValue.setExactInt64Valid(false);
+      v.scalarValue.exactInt64 = 0;
+    }
+  } else {
+    v.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+    v.scalarValue.scalar = 0.0;
+    v.scalarValue.setExactInt64Valid(false);
+    v.scalarValue.setExactUInt64Valid(false);
+  }
+  v.scalarValue.setDecScientificPow63High(false);
+  v.scalarValue.imag = 0.0;
+  v.scalarValue.imagExactInt64 = 0;
+  v.scalarValue.imagExactUInt64 = 0;
+  v.scalarValue.setImagExactInt64Valid(false);
+  v.scalarValue.setImagExactUInt64Valid(false);
+  if (im.hasInt || im.hasUInt) {
+    if (im.hasInt) {
+      v.scalarValue.setImagExactInt64Valid(true);
+      v.scalarValue.imagExactInt64 = im.intV;
+      v.scalarValue.imag = static_cast<double>(im.intV);
+      if (im.intV >= 0) {
+        v.scalarValue.setImagExactUInt64Valid(true);
+        v.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(im.intV);
+      } else if (im.hasUInt) {
+        v.scalarValue.setImagExactUInt64Valid(true);
+        v.scalarValue.imagExactUInt64 = im.uintV;
+        v.scalarValue.imag = static_cast<double>(im.uintV);
+      }
+    } else {
+      v.scalarValue.setImagExactUInt64Valid(true);
+      v.scalarValue.imagExactUInt64 = im.uintV;
+      v.scalarValue.imag = static_cast<double>(im.uintV);
+    }
+  }
+  if (!scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    scalarClearImaginary(v.scalarValue);
+  }
+}
+
+bool MathParser::tryAddExactCartesianComponents(const ExactCartesianComponent& a, const ExactCartesianComponent& b,
+                                    ExactCartesianComponent& out) {
+  exactCartesianComponentClear(out);
+  long long ai = 0;
+  long long bi = 0;
+  long long oi = 0;
+  if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
+      checkedAddLL(ai, bi, oi)) {
+    out.hasInt = true;
+    out.intV = oi;
+    if (oi >= 0) {
+      out.hasUInt = true;
+      out.uintV = static_cast<std::uint64_t>(oi);
+    }
+    return true;
+  }
+  if (a.hasUInt && b.hasUInt) {
+    std::uint64_t ou = 0;
+    if (tryAddUInt64Checked(a.uintV, b.uintV, ou)) {
+      out.hasUInt = true;
+      out.uintV = ou;
+      if (ou <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+        out.hasInt = true;
+        out.intV = static_cast<long long>(ou);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+bool MathParser::tryQuotExactInt64(long long num, long long den, long long& quo) {
+  if (den == 0) {
+    return false;
+  }
+  quo = num / den;
+  return quo * den == num;
+}
+
+bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a, const ExactCartesianComponent& b,
+                                    ExactCartesianComponent& out) {
+  exactCartesianComponentClear(out);
+  long long ai = 0;
+  long long bi = 0;
+  long long oi = 0;
+  if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
+      checkedSubLL(ai, bi, oi)) {
+    out.hasInt = true;
+    out.intV = oi;
+    if (oi >= 0) {
+      out.hasUInt = true;
+      out.uintV = static_cast<std::uint64_t>(oi);
+    }
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
+                                                   const EvalValue::ScalarValue& rightS, char op,
+                                                   EvalValue& outV) {
+  ExactCartesianComponent lRe{};
+  ExactCartesianComponent lIm{};
+  ExactCartesianComponent rRe{};
+  ExactCartesianComponent rIm{};
+  ExactCartesianComponent oRe{};
+  ExactCartesianComponent oIm{};
+  if (!tryExtractExactRealComponent(leftS, lRe) || !tryExtractExactImagComponent(leftS, lIm) ||
+      !tryExtractExactRealComponent(rightS, rRe) || !tryExtractExactImagComponent(rightS, rIm)) {
+    return false;
+  }
+  if (op == '+') {
+    if (!tryAddExactCartesianComponents(lRe, rRe, oRe) || !tryAddExactCartesianComponents(lIm, rIm, oIm)) {
+      return false;
+    }
+    setScalarComplexFromExactCartesian(outV, oRe, oIm);
+    return true;
+  }
+  if (op == '-') {
+    if (!trySubExactCartesianComponents(lRe, rRe, oRe) || !trySubExactCartesianComponents(lIm, rIm, oIm)) {
+      return false;
+    }
+    setScalarComplexFromExactCartesian(outV, oRe, oIm);
+    return true;
+  }
+  if (op == '*') {
+    long long lar = 0;
+    long long lai = 0;
+    long long lbr = 0;
+    long long lbi = 0;
+    long long p1 = 0;
+    long long p2 = 0;
+    long long p3 = 0;
+    long long p4 = 0;
+    long long oreI = 0;
+    long long oimI = 0;
+    if (!tryExactCartesianComponentToInt64(lRe, lar) || !tryExactCartesianComponentToInt64(lIm, lai) ||
+        !tryExactCartesianComponentToInt64(rRe, lbr) || !tryExactCartesianComponentToInt64(rIm, lbi) ||
+        !checkedMulLL(lar, lbr, p1) || !checkedMulLL(lai, lbi, p2) || !checkedMulLL(lar, lbi, p3) ||
+        !checkedMulLL(lai, lbr, p4) || !checkedSubLL(p1, p2, oreI) || !checkedAddLL(p3, p4, oimI)) {
+      return false;
+    }
+    exactCartesianComponentClear(oRe);
+    oRe.hasInt = true;
+    oRe.intV = oreI;
+    if (oreI >= 0) {
+      oRe.hasUInt = true;
+      oRe.uintV = static_cast<std::uint64_t>(oreI);
+    }
+    exactCartesianComponentClear(oIm);
+    oIm.hasInt = true;
+    oIm.intV = oimI;
+    if (oimI >= 0) {
+      oIm.hasUInt = true;
+      oIm.uintV = static_cast<std::uint64_t>(oimI);
+    }
+    setScalarComplexFromExactCartesian(outV, oRe, oIm);
+    return true;
+  }
+  if (op == '/') {
+    long long lar = 0;
+    long long lai = 0;
+    long long lbr = 0;
+    long long lbi = 0;
+    long long p1 = 0;
+    long long p2 = 0;
+    long long p3 = 0;
+    long long p4 = 0;
+    long long p5 = 0;
+    long long p6 = 0;
+    long long numRe = 0;
+    long long numIm = 0;
+    long long denom = 0;
+    long long qRe = 0;
+    long long qIm = 0;
+    if (!tryExactCartesianComponentToInt64(lRe, lar) || !tryExactCartesianComponentToInt64(lIm, lai) ||
+        !tryExactCartesianComponentToInt64(rRe, lbr) || !tryExactCartesianComponentToInt64(rIm, lbi) ||
+        !checkedMulLL(lar, lbr, p1) || !checkedMulLL(lai, lbi, p2) || !checkedAddLL(p1, p2, numRe) ||
+        !checkedMulLL(lbr, lbr, p3) || !checkedMulLL(lbi, lbi, p4) || !checkedAddLL(p3, p4, denom) ||
+        denom == 0 || !checkedMulLL(lai, lbr, p5) || !checkedMulLL(lar, lbi, p6) ||
+        !checkedSubLL(p5, p6, numIm) || !tryQuotExactInt64(numRe, denom, qRe) ||
+        !tryQuotExactInt64(numIm, denom, qIm)) {
+      return false;
+    }
+    exactCartesianComponentClear(oRe);
+    oRe.hasInt = true;
+    oRe.intV = qRe;
+    if (qRe >= 0) {
+      oRe.hasUInt = true;
+      oRe.uintV = static_cast<std::uint64_t>(qRe);
+    }
+    exactCartesianComponentClear(oIm);
+    oIm.hasInt = true;
+    oIm.intV = qIm;
+    if (qIm >= 0) {
+      oIm.hasUInt = true;
+      oIm.uintV = static_cast<std::uint64_t>(qIm);
+    }
+    setScalarComplexFromExactCartesian(outV, oRe, oIm);
+    return true;
+  }
+  return false;
+}
+
+MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const EvalValue& rePart,
+                                                                        const EvalValue& imPart) {
+  ExactCartesianComponent reC{};
+  ExactCartesianComponent imC{};
+  if (tryExtractExactRealComponent(rePart.scalarValue, reC) &&
+      tryExtractExactRealComponent(imPart.scalarValue, imC)) {
+    EvalValue out{};
+    setScalarComplexFromExactCartesian(out, reC, imC);
+    return out;
+  }
+  return makeScalarComplexFromDoubles(rePart.scalarValue.scalar, imPart.scalarValue.scalar);
+}
+
+bool MathParser::tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC) {
+  ExactCartesianComponent z{};
+  exactCartesianComponentClear(z);
+  return trySubExactCartesianComponents(z, c, outC);
+}
+
+bool MathParser::tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out) {
+  if (!scalarHasNonzeroImaginaryPart(sv)) {
+    return false;
+  }
+  ExactCartesianComponent lRe{};
+  ExactCartesianComponent lIm{};
+  ExactCartesianComponent oRe{};
+  ExactCartesianComponent oIm{};
+  if (!tryExtractExactRealComponent(sv, lRe) || !tryExtractExactImagComponent(sv, lIm) ||
+      !tryNegateExactCartesianComponent(lRe, oRe) || !tryNegateExactCartesianComponent(lIm, oIm)) {
+    return false;
+  }
+  setScalarComplexFromExactCartesian(out, oRe, oIm);
+  return true;
+}
+
+bool MathParser::tryFoldExactComplexCartesian(const std::vector<EvalValue>& args, char op, EvalValue& out) {
+  bool gotAny = false;
+  EvalValue acc{};
+  const auto processScalar = [&](const EvalValue::ScalarValue& s) -> bool {
+    const EvalValue item = scalarFromScalarValue(s);
+    if (!gotAny) {
+      acc = item;
+      gotAny = true;
+      return true;
+    }
+    EvalValue next{};
+    if (!tryApplyExactComplexCartesianBinary(acc.scalarValue, item.scalarValue, op, next)) {
+      return false;
+    }
+    acc = next;
+    return true;
+  };
+  for (const auto& a : args) {
+    if (a.kind == ValueKind::Scalar) {
+      if (!processScalar(a.scalarValue)) {
+        return false;
+      }
+    } else {
+      for (const auto& item : a.arr) {
+        if (!processScalar(item)) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!gotAny) {
+    return false;
+  }
+  out = acc;
+  return true;
+}
+
+bool MathParser::tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out) {
+  if (itemCount == 0) {
+    return false;
+  }
+  const long long n = static_cast<long long>(itemCount);
+  ExactCartesianComponent lRe{};
+  ExactCartesianComponent lIm{};
+  ExactCartesianComponent oRe{};
+  ExactCartesianComponent oIm{};
+  long long reI = 0;
+  long long imI = 0;
+  long long qRe = 0;
+  long long qIm = 0;
+  if (!tryExtractExactRealComponent(sumV.scalarValue, lRe) || !tryExtractExactImagComponent(sumV.scalarValue, lIm) ||
+      !tryExactCartesianComponentToInt64(lRe, reI) || !tryExactCartesianComponentToInt64(lIm, imI) ||
+      !tryQuotExactInt64(reI, n, qRe) || !tryQuotExactInt64(imI, n, qIm)) {
+    return false;
+  }
+  exactCartesianComponentClear(oRe);
+  oRe.hasInt = true;
+  oRe.intV = qRe;
+  if (qRe >= 0) {
+    oRe.hasUInt = true;
+    oRe.uintV = static_cast<std::uint64_t>(qRe);
+  }
+  exactCartesianComponentClear(oIm);
+  oIm.hasInt = true;
+  oIm.intV = qIm;
+  if (qIm >= 0) {
+    oIm.hasUInt = true;
+    oIm.uintV = static_cast<std::uint64_t>(qIm);
+  }
+  setScalarComplexFromExactCartesian(out, oRe, oIm);
+  return true;
 }
 
 bool MathParser::tryApplyComplexBinaryScalars(
@@ -3318,6 +3769,10 @@ bool MathParser::tryApplyComplexBinaryScalars(
   if (!lIm && !rIm) {
     return false;
   }
+  if ((op == '+' || op == '-' || op == '*' || op == '/') &&
+      tryApplyExactComplexCartesianBinary(lv, rv, op, outS)) {
+    return true;
+  }
   if (op == '+') {
     outS = makeScalarComplexFromDoubles(ar + br, ai + bi);
     return true;
@@ -3327,25 +3782,10 @@ bool MathParser::tryApplyComplexBinaryScalars(
     return true;
   }
   if (op == '*') {
-    long long lar = 0;
-    long long lbr = 0;
-    if (tryGetExactSignedInt64NoUIntWrapFromScalar(lv, lar) && tryGetExactSignedInt64NoUIntWrapFromScalar(rv, lbr) &&
-        lv.hasImagExactInt() && rv.hasImagExactInt()) {
-      const long long lai = lv.imagExactInt;
-      const long long lbi = rv.imagExactInt;
-      long long p1 = 0;
-      long long p2 = 0;
-      long long p3 = 0;
-      long long p4 = 0;
-      long long ore = 0;
-      long long oim = 0;
-      if (checkedMulLL(lar, lbr, p1) && checkedMulLL(lai, lbi, p2) && checkedMulLL(lar, lbi, p3) &&
-          checkedMulLL(lai, lbr, p4) && checkedSubLL(p1, p2, ore) && checkedAddLL(p3, p4, oim)) {
-        outS = makeScalarComplexFromDoubles(static_cast<double>(ore), static_cast<double>(oim));
-        return true;
-      }
-    }
-    outS = makeScalarComplexFromDoubles(ar * br - ai * bi, ar * bi + ai * br);
+    double mulR = 0.0;
+    double mulI = 0.0;
+    complexMultiply(ar, ai, br, bi, mulR, mulI);
+    outS = makeScalarComplexFromDoubles(mulR, mulI);
     return true;
   }
   const double denom = br * br + bi * bi;
@@ -3366,37 +3806,68 @@ std::string MathParser::formatComplexScalarValue(const EvalValue::ScalarValue& s
   double ar = 0.0;
   double ai = 0.0;
   scalarLoadCartesian(sv, ar, ai);
+  if (std::isnan(ar) || std::isnan(ai)) {
+    return STR_NAN;
+  }
   EvalValue tmp = makeScalar(ar);
   tmp.scalarValue.scalarKind = sv.scalarKind;
-  tmp.scalarValue.setExactIntValid(sv.hasExactInt());
-  tmp.scalarValue.exactInt = sv.exactInt;
+  tmp.scalarValue.setExactInt64Valid(sv.hasExactInt64());
+  tmp.scalarValue.exactInt64 = sv.exactInt64;
   tmp.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
   tmp.scalarValue.exactUInt64 = sv.exactUInt64;
   tmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
   const std::string rePart = formatScalar(tmp, RenderBase::Dec);
   const double coeffAbs = std::fabs(ai);
-  const bool negI = sv.hasImagExactInt() ? (sv.imagExactInt < 0) : (ai < 0.0);
+  bool negUnit = false;
   std::string tail;
-  if (sv.hasImagExactInt()) {
-    const long long ii = sv.imagExactInt;
+  if (std::isnan(ai)) {
+    tail = std::string("nan*") + STR_I;
+  } else if (std::isinf(ai)) {
+    tail = (ai < 0.0) ? (std::string("-") + STR_INF + "*" + STR_I)
+                        : (std::string(STR_INF) + "*" + STR_I);
+  } else if (sv.hasImagExactInt64()) {
+    const long long ii = sv.imagExactInt64;
     const long long ac = ii >= 0 ? ii : -ii;
-    tail = (ac == 1LL) ? std::string(STR_I) : (std::to_string(ac) + STR_I);
+    if (ac == 1LL) {
+      tail = STR_I;
+      negUnit = ii < 0;
+    } else if (ii < 0) {
+      tail = std::string("-") + std::to_string(ac) + STR_I;
+    } else {
+      tail = std::to_string(ac) + STR_I;
+    }
   } else {
     long long nearlyI = 0;
     if (nearlyInt(ai, nearlyI) && nearlyI != 0) {
       const long long ac = nearlyI >= 0 ? nearlyI : -nearlyI;
-      tail = (ac == 1LL) ? std::string(STR_I) : (std::to_string(ac) + STR_I);
+      if (ac == 1LL) {
+        tail = STR_I;
+        negUnit = nearlyI < 0;
+      } else if (nearlyI < 0) {
+        tail = std::string("-") + std::to_string(ac) + STR_I;
+      } else {
+        tail = std::to_string(ac) + STR_I;
+      }
     } else if (coeffAbs == 1.0) {
       tail = STR_I;
+      negUnit = ai < 0.0;
+    } else if (ai < 0.0) {
+      tail = std::string("-") + formatDoubleFast(coeffAbs) + STR_I;
     } else {
       tail = formatDoubleFast(coeffAbs) + STR_I;
     }
   }
-  const bool reZero = (sv.hasExactInt() && sv.exactInt == 0) || (!sv.hasExactInt() && ar == 0.0);
+  const bool reZero = (sv.hasExactInt64() && sv.exactInt64 == 0) || (!sv.hasExactInt64() && ar == 0.0);
   if (reZero) {
-    return negI ? (std::string("-") + tail) : tail;
+    return negUnit ? (std::string("-") + tail) : tail;
   }
-  return negI ? (rePart + "-" + tail) : (rePart + "+" + tail);
+  if (negUnit) {
+    return rePart + "-" + tail;
+  }
+  if (!tail.empty() && tail.front() == '-') {
+    return rePart + tail;
+  }
+  return rePart + "+" + tail;
 }
 
 std::string MathParser::formatComplexScalarWithRenderBase(
@@ -3419,8 +3890,8 @@ std::string MathParser::formatComplexScalarWithRenderBase(
   (void)ai;
   reTmp.scalarValue.scalar = ar;
   reTmp.scalarValue.scalarKind = sv.scalarKind;
-  reTmp.scalarValue.setExactIntValid(sv.hasExactInt());
-  reTmp.scalarValue.exactInt = sv.exactInt;
+  reTmp.scalarValue.setExactInt64Valid(sv.hasExactInt64());
+  reTmp.scalarValue.exactInt64 = sv.exactInt64;
   reTmp.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
   reTmp.scalarValue.exactUInt64 = sv.exactUInt64;
   reTmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
@@ -3446,7 +3917,7 @@ std::string MathParser::formatComplexScalarWithRenderBase(
   }
 
   const bool reZero =
-      (sv.hasExactInt() && sv.exactInt == 0) || (!sv.hasExactInt() && ar == 0.0);
+      (sv.hasExactInt64() && sv.exactInt64 == 0) || (!sv.hasExactInt64() && ar == 0.0);
   if (reZero) {
     return negIm ? (std::string("-") + tail) : tail;
   }
@@ -3458,8 +3929,8 @@ MathParser::EvalValue MathParser::makeScalarMaybeExact(double v) {
   long long asInt = 0;
   if (tryExtractExactInt64FromDoubleStrict(v, asInt)) {
     out.scalarValue.scalarKind = ScalarKind::Int64;
-    out.scalarValue.setExactIntValid(true);
-    out.scalarValue.exactInt = asInt;
+    out.scalarValue.setExactInt64Valid(true);
+    out.scalarValue.exactInt64 = asInt;
     if (asInt >= 0) {
       out.scalarValue.setExactUInt64Valid(true);
       out.scalarValue.exactUInt64 = static_cast<std::uint64_t>(asInt);
@@ -3473,15 +3944,15 @@ MathParser::EvalValue MathParser::makeScalarInt(long long v) {
   out.kind = ValueKind::Scalar;
   out.scalarValue.scalarKind = ScalarKind::Int64;
   out.scalarValue.scalar = static_cast<double>(v);
-  out.scalarValue.setExactIntValid(true);
-  out.scalarValue.exactInt = v;
+  out.scalarValue.setExactInt64Valid(true);
+  out.scalarValue.exactInt64 = v;
   out.scalarValue.setExactUInt64Valid(v >= 0);
   out.scalarValue.exactUInt64 = (v >= 0) ? static_cast<std::uint64_t>(v) : 0;
   out.scalarValue.setDecScientificPow63High(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactInt64 = 0;
   out.scalarValue.imagExactUInt64 = 0;
-  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactInt64Valid(false);
   out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
@@ -3494,17 +3965,17 @@ MathParser::EvalValue MathParser::makeScalarUInt(std::uint64_t v) {
   out.scalarValue.setExactUInt64Valid(true);
   out.scalarValue.exactUInt64 = v;
   if (v <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-    out.scalarValue.setExactIntValid(true);
-    out.scalarValue.exactInt = static_cast<long long>(v);
+    out.scalarValue.setExactInt64Valid(true);
+    out.scalarValue.exactInt64 = static_cast<long long>(v);
   } else {
-    out.scalarValue.setExactIntValid(false);
-    out.scalarValue.exactInt = 0;
+    out.scalarValue.setExactInt64Valid(false);
+    out.scalarValue.exactInt64 = 0;
   }
   out.scalarValue.setDecScientificPow63High(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactInt64 = 0;
   out.scalarValue.imagExactUInt64 = 0;
-  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactInt64Valid(false);
   out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
@@ -3514,14 +3985,14 @@ MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
   out.kind = ValueKind::Scalar;
   out.scalarValue.scalarKind = ScalarKind::Time;
   out.scalarValue.scalar = static_cast<double>(totalMs) / 1000.0;
-  out.scalarValue.exactInt = totalMs;
-  out.scalarValue.setExactIntValid(false);
+  out.scalarValue.exactInt64 = totalMs;
+  out.scalarValue.setExactInt64Valid(false);
   out.scalarValue.setExactUInt64Valid(false);
   out.scalarValue.setDecScientificPow63High(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactInt = 0;
+  out.scalarValue.imagExactInt64 = 0;
   out.scalarValue.imagExactUInt64 = 0;
-  out.scalarValue.setImagExactIntValid(false);
+  out.scalarValue.setImagExactInt64Valid(false);
   out.scalarValue.setImagExactUInt64Valid(false);
   return out;
 }
@@ -3531,7 +4002,7 @@ bool MathParser::scalarValueIsTime(const EvalValue::ScalarValue& s) {
 }
 
 long long MathParser::timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s) {
-  return s.exactInt;
+  return s.exactInt64;
 }
 
 bool MathParser::evalValueInvolvesTime(const EvalValue& v) {
@@ -3582,30 +4053,79 @@ MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalVal
   return out;
 }
 
-MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarValue& v) {
-  RawResult::Scalar out;
-  if (v.scalarKind == ScalarKind::Time) {
+MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart) {
+  RawResult::CartesianScalar out;
+  if (!imagPart) {
+    if (v.scalarKind == ScalarKind::Time) {
+      out.kind = RawResult::ScalarKind::FloatingPoint;
+      out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
+      return out;
+    }
+    if (v.hasRenderRational() && v.hasExactUInt64()) {
+      out.kind = RawResult::ScalarKind::Rational;
+      out.rational.numerator = v.exactInt64;
+      out.rational.denominator = v.exactUInt64;
+      return out;
+    }
+    if (v.scalarKind == ScalarKind::Int64) {
+      out.kind = RawResult::ScalarKind::Int64;
+      out.intValue = v.exactInt64;
+      return out;
+    }
+    if (v.scalarKind == ScalarKind::UInt64) {
+      out.kind = RawResult::ScalarKind::UInt64;
+      out.uintValue = v.exactUInt64;
+      return out;
+    }
     out.kind = RawResult::ScalarKind::FloatingPoint;
-    out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
+    out.floatingPoint = v.scalar;
     return out;
   }
-  if (scalarHasNonzeroImaginaryPart(v)) {
-    out.kind = RawResult::ScalarKind::FloatingPoint;
-    out.floatingPoint = std::numeric_limits<double>::quiet_NaN();
+
+  if (v.hasImagRenderRational() && v.hasImagExactUInt64()) {
+    out.kind = RawResult::ScalarKind::Rational;
+    out.rational.numerator = v.imagExactInt64;
+    out.rational.denominator = v.imagExactUInt64;
     return out;
   }
-  if (v.scalarKind == ScalarKind::Int64) {
+  if (v.hasImagExactInt64()) {
     out.kind = RawResult::ScalarKind::Int64;
-    out.intValue = v.exactInt;
-    return out;
-  }
-  if (v.scalarKind == ScalarKind::UInt64) {
-    out.kind = RawResult::ScalarKind::UInt64;
-    out.uintValue = v.exactUInt64;
+    out.intValue = v.imagExactInt64;
     return out;
   }
   out.kind = RawResult::ScalarKind::FloatingPoint;
-  out.floatingPoint = v.scalar;
+  out.floatingPoint = v.imag;
+  return out;
+}
+
+MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarValue& v) {
+  if (scalarHasNonzeroImaginaryPart(v)) {
+    RawResult::Scalar out;
+    out.kind = RawResult::ScalarKind::Complex;
+    out.real = toRawCartesianScalar(v, false);
+    out.imag = toRawCartesianScalar(v, true);
+    return out;
+  }
+  const RawResult::CartesianScalar cart = toRawCartesianScalar(v, false);
+  RawResult::Scalar out;
+  out.kind = cart.kind;
+  switch (cart.kind) {
+    case RawResult::ScalarKind::FloatingPoint:
+      out.floatingPoint = cart.floatingPoint;
+      break;
+    case RawResult::ScalarKind::Int64:
+      out.intValue = cart.intValue;
+      break;
+    case RawResult::ScalarKind::UInt64:
+      out.uintValue = cart.uintValue;
+      break;
+    case RawResult::ScalarKind::Rational:
+      out.rational.numerator = cart.rational.numerator;
+      out.rational.denominator = cart.rational.denominator;
+      break;
+    default:
+      break;
+  }
   return out;
 }
 
@@ -3628,15 +4148,15 @@ MathParser::RawResult MathParser::toRawResult(const EvalValue& v) {
 MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarValue& sv) {
   EvalValue out = makeScalar(sv.scalar);
   out.scalarValue.scalarKind = sv.scalarKind;
-  out.scalarValue.setExactIntValid(sv.hasExactInt());
-  out.scalarValue.exactInt = sv.exactInt;
+  out.scalarValue.setExactInt64Valid(sv.hasExactInt64());
+  out.scalarValue.exactInt64 = sv.exactInt64;
   out.scalarValue.setExactUInt64Valid(sv.hasExactUInt64());
   out.scalarValue.exactUInt64 = sv.exactUInt64;
   out.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
   out.scalarValue.imag = sv.imag;
-  out.scalarValue.imagExactInt = sv.imagExactInt;
+  out.scalarValue.imagExactInt64 = sv.imagExactInt64;
   out.scalarValue.imagExactUInt64 = sv.imagExactUInt64;
-  out.scalarValue.setImagExactIntValid(sv.hasImagExactInt());
+  out.scalarValue.setImagExactInt64Valid(sv.hasImagExactInt64());
   out.scalarValue.setImagExactUInt64Valid(sv.hasImagExactUInt64());
   out.scalarValue.setRenderRational(sv.hasRenderRational());
   out.scalarValue.setImagRenderRational(sv.hasImagRenderRational());
@@ -3812,6 +4332,10 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     return makeScalarTimeMs(-ms);
   }
   if (scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+    EvalValue exactNeg{};
+    if (tryNegateExactComplexScalar(v.scalarValue, exactNeg)) {
+      return exactNeg;
+    }
     double re = 0.0;
     double im = 0.0;
     scalarLoadCartesian(v.scalarValue, re, im);
@@ -3826,8 +4350,8 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
       return makeScalarUInt(1ull << 63);
     }
   }
-  if (v.scalarValue.hasExactInt()) {
-    const long long x = v.scalarValue.exactInt;
+  if (v.scalarValue.hasExactInt64()) {
+    const long long x = v.scalarValue.exactInt64;
     if (x == (std::numeric_limits<long long>::min)()) {
       return makeScalarUInt(1ull << 63);
     }
@@ -4060,7 +4584,8 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
       return true;
     }
 
-    if (lv.hasExactUInt64() && rv.hasExactUInt64() && (!lv.hasExactInt() || !rv.hasExactInt())) {
+    if (lv.hasExactUInt64() && rv.hasExactUInt64()
+        && (!lv.hasExactInt64() || !rv.hasExactInt64())) {
       if (op == '+') {
         std::uint64_t outU = 0;
         if (tryAddUInt64Checked(lv.exactUInt64, rv.exactUInt64, outU)) {
@@ -4166,12 +4691,12 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
         }
       }
     }
-    if (op == '+' && lv.hasExactInt() && lv.exactInt == (std::numeric_limits<long long>::max)() && !rv.hasExactInt() &&
+    if (op == '+' && lv.hasExactInt64() && lv.exactInt64 == (std::numeric_limits<long long>::max)() && !rv.hasExactInt64() &&
         !rv.hasExactUInt64() && std::fabs(rv.scalar - 0.5) < 1e-12) {
       outS = makePow63();
       return true;
     }
-    if (op == '+' && rv.hasExactInt() && rv.exactInt == (std::numeric_limits<long long>::max)() && !lv.hasExactInt() &&
+    if (op == '+' && rv.hasExactInt64() && rv.exactInt64 == (std::numeric_limits<long long>::max)() && !lv.hasExactInt64() &&
         !lv.hasExactUInt64() && std::fabs(lv.scalar - 0.5) < 1e-12) {
       outS = makePow63();
       return true;
@@ -4573,7 +5098,11 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       ctx.p = parsedEnd;
       auto lit = std::make_unique<Expr>();
       lit->tag = Expr::Tag::Literal;
-      lit->literalValue = makeScalarUInt(parsedUInt);
+      if (parsedUInt > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+        lit->literalValue = makeScalarUInt(parsedUInt);
+      } else {
+        lit->literalValue = makeScalarInt(static_cast<long long>(parsedUInt));
+      }
       return lit;
     }
   }
@@ -5128,7 +5657,7 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
       }
     }
 
-    if (lv.hasExactUInt64() && rv.hasExactUInt64() && (!lv.hasExactInt() || !rv.hasExactInt())) {
+    if (lv.hasExactUInt64() && rv.hasExactUInt64()) {
       const std::uint64_t aU = lv.exactUInt64;
       const std::uint64_t bU = rv.exactUInt64;
       if (isModulo) {
@@ -5265,7 +5794,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
         return makeScalar(0);
       }
       v.scalarValue.scalar /= 100.0;
-      v.scalarValue.setExactIntValid(false);
+      v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
       return v;
     }
@@ -5288,7 +5817,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
             return makeScalar(0);
           }
           if (l.scalarValue.hasExactUInt64() && r.scalarValue.hasExactUInt64() &&
-              (!l.scalarValue.hasExactInt() || !r.scalarValue.hasExactInt())) {
+              (!l.scalarValue.hasExactInt64() || !r.scalarValue.hasExactInt64())) {
             if (r.scalarValue.exactUInt64 == 0u) {
               setIncompatibleOperandsError(ctx);
               return makeScalar(0);
@@ -5329,7 +5858,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
             }
           }
           if (l.scalarValue.hasExactUInt64() && r.scalarValue.hasExactUInt64() &&
-              (!l.scalarValue.hasExactInt() || !r.scalarValue.hasExactInt())) {
+              (!l.scalarValue.hasExactInt64() || !r.scalarValue.hasExactInt64())) {
             const std::uint64_t aU = l.scalarValue.exactUInt64;
             const std::uint64_t bU = r.scalarValue.exactUInt64;
             if (bU > 63u) {
@@ -5527,7 +6056,7 @@ MathParser::EvalValue MathParser::evalExpr(
         return makeScalar(0);
       }
       v.scalarValue.scalar /= 100.0;
-      v.scalarValue.setExactIntValid(false);
+      v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
       return v;
     }
@@ -5922,7 +6451,7 @@ bool MathParser::validateIntegerRepresentableArgs(
       if (!std::isfinite(s.scalar)) {
         return allowNonFiniteForFormat;
       }
-      if (!(s.hasExactInt() || s.hasExactUInt64())) {
+      if (!(s.hasExactInt64() || s.hasExactUInt64())) {
         long long signedV = 0;
         if (!tryGetSignedInt64FromScalar(s, signedV)) {
           setIntegerValuesError(ctx, fnName);
@@ -5941,7 +6470,7 @@ bool MathParser::validateIntegerRepresentableArgs(
           }
           return true;
         }
-        if (s.hasImagExactInt()) {
+        if (s.hasImagExactInt64()) {
           return true;
         }
         long long tmp = 0;
@@ -6071,6 +6600,29 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
           return args[0];
         }
+        std::size_t itemCount = 0;
+        forEachArgScalarValue([&](const EvalValue::ScalarValue&) { ++itemCount; });
+        if (itemCount == 0) {
+          setAtLeastOneArgError(ctx, fnName);
+          return makeScalar(0);
+        }
+        const char foldOp = (id == BuiltinFunctionId::Product) ? '*' : '+';
+        EvalValue folded{};
+        if (tryFoldExactComplexCartesian(args, foldOp, folded)) {
+          if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
+            EvalValue avg{};
+            if (tryAvgExactComplexFromSum(folded, itemCount, avg)) {
+              return avg;
+            }
+            double ar = 0.0;
+            double ai = 0.0;
+            scalarLoadCartesian(folded.scalarValue, ar, ai);
+            ar /= static_cast<double>(itemCount);
+            ai /= static_cast<double>(itemCount);
+            return makeScalarComplexFromDoubles(ar, ai);
+          }
+          return folded;
+        }
         double ar = 0.0;
         double ai = 0.0;
         if (id == BuiltinFunctionId::Product) {
@@ -6079,7 +6631,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         }
         double br = 0.0;
         double bi = 0.0;
-        const std::size_t n = forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
           scalarLoadCartesian(s, br, bi);
           if (id == BuiltinFunctionId::Product) {
             const double nr = ar * br - ai * bi;
@@ -6091,13 +6643,9 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
             ai += bi;
           }
         });
-        if (n == 0) {
-          setAtLeastOneArgError(ctx, fnName);
-          return makeScalar(0);
-        }
         if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
-          ar /= static_cast<double>(n);
-          ai /= static_cast<double>(n);
+          ar /= static_cast<double>(itemCount);
+          ai /= static_cast<double>(itemCount);
         }
         return makeScalarComplexFromDoubles(ar, ai);
       }
@@ -6524,8 +7072,8 @@ void MathParser::sortbyStableSortIndices(
 
 MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64_t den) {
   EvalValue out = makeScalarMaybeExact(static_cast<double>(num) / static_cast<double>(den));
-  out.scalarValue.setExactIntValid(true);
-  out.scalarValue.exactInt = num;
+  out.scalarValue.setExactInt64Valid(true);
+  out.scalarValue.exactInt64 = num;
   out.scalarValue.setExactUInt64Valid(true);
   out.scalarValue.exactUInt64 = den;
   out.scalarValue.setRenderRational(true);
@@ -6744,9 +7292,9 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     if (arScale < 1.0) {
       arScale = 1.0;
     }
-    if (sv.hasImagExactInt()) {
+    if (sv.hasImagExactInt64()) {
       imagIsInt = true;
-      numI = sv.imagExactInt;
+      numI = sv.imagExactInt64;
       denI = 1;
     } else if (std::fabs(ai) >= RATIO_APPROX_EPS * aiScale) {
       if (!tryApproximateRational(ai, numI, denI)) {
@@ -6764,29 +7312,29 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     }
     outV = scalarFromScalarValue(sv);
     if (hasRealRat) {
-      outV.scalarValue.setExactIntValid(true);
-      outV.scalarValue.exactInt = numR;
+      outV.scalarValue.setExactInt64Valid(true);
+      outV.scalarValue.exactInt64 = numR;
       outV.scalarValue.setExactUInt64Valid(true);
       outV.scalarValue.exactUInt64 = denR;
       outV.scalarValue.setRenderRational(true);
-    } else if (sv.hasExactInt()) {
-      outV.scalarValue.setExactIntValid(true);
-      outV.scalarValue.exactInt = sv.exactInt;
+    } else if (sv.hasExactInt64()) {
+      outV.scalarValue.setExactInt64Valid(true);
+      outV.scalarValue.exactInt64 = sv.exactInt64;
     }
     if (hasImagRat) {
-      outV.scalarValue.setImagExactIntValid(true);
-      outV.scalarValue.imagExactInt = numI;
+      outV.scalarValue.setImagExactInt64Valid(true);
+      outV.scalarValue.imagExactInt64 = numI;
       outV.scalarValue.setImagExactUInt64Valid(true);
       outV.scalarValue.imagExactUInt64 = denI;
       outV.scalarValue.setImagRenderRational(true);
     } else if (imagIsInt) {
-      outV.scalarValue.setImagExactIntValid(true);
-      outV.scalarValue.imagExactInt = numI;
+      outV.scalarValue.setImagExactInt64Valid(true);
+      outV.scalarValue.imagExactInt64 = numI;
     }
     return true;
   }
-  if (sv.hasExactInt()) {
-    outV = makeScalarInt(sv.exactInt);
+  if (sv.hasExactInt64()) {
+    outV = makeScalarInt(sv.exactInt64);
     return true;
   }
   if (sv.hasExactUInt64()) {
@@ -7505,7 +8053,7 @@ MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::ve
     return makeScalar(0);
   }
   auto applyModScalar = [&](const EvalValue::ScalarValue& aS, const EvalValue::ScalarValue& bS, EvalValue& outS) -> bool {
-    if (aS.hasExactUInt64() && bS.hasExactUInt64() && (!aS.hasExactInt() || !bS.hasExactInt())) {
+    if (aS.hasExactUInt64() && bS.hasExactUInt64() && (!aS.hasExactInt64() || !bS.hasExactInt64())) {
       if (bS.exactUInt64 == 0u) {
         setNumericErrorInFunction(ctx, fnName);
         return false;
@@ -7660,8 +8208,8 @@ MathParser::EvalValue MathParser::calcRoundingFn(BuiltinFunctionId id, const Eva
   if (s.hasExactUInt64())
     return makeScalarUInt(s.exactUInt64);
 
-  if (s.hasExactInt())
-    return makeScalarInt(s.exactInt);
+  if (s.hasExactInt64())
+    return makeScalarInt(s.exactInt64);
 
   if (x > K_MAX_EXACT_INT_FROM_DOUBLE || x < -K_MAX_EXACT_INT_FROM_DOUBLE)
   {
@@ -7742,12 +8290,12 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       EvalValue::ScalarValue svRe = sv;
       svRe.scalar = ar;
       scalarClearImaginary(svRe);
-      EvalValue::ScalarValue svIm = sv;
+      EvalValue::ScalarValue svIm{};
       svIm.scalar = ai;
       scalarClearImaginary(svIm);
-      if (sv.hasImagExactInt()) {
-        svIm.setExactIntValid(true);
-        svIm.exactInt = sv.imagExactInt;
+      if (sv.hasImagExactInt64()) {
+        svIm.setExactInt64Valid(true);
+        svIm.exactInt64 = sv.imagExactInt64;
         if (sv.hasImagExactUInt64()) {
           svIm.setExactUInt64Valid(true);
           svIm.exactUInt64 = sv.imagExactUInt64;
@@ -7755,14 +8303,14 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       }
       const EvalValue outRe = calcRoundingFn(rid, svRe);
       const EvalValue outIm = calcRoundingFn(rid, svIm);
-      return makeScalarComplexFromDoubles(outRe.scalarValue.scalar, outIm.scalarValue.scalar);
+      return setScalarComplexFromEvalRealImagParts(outRe, outIm);
     };
     switch (bid) {
       case BuiltinFunctionId::Real: {
         out = makeScalarMaybeExact(ar);
-        if (sv.hasExactInt()) {
-          out.scalarValue.setExactIntValid(true);
-          out.scalarValue.exactInt = sv.exactInt;
+        if (sv.hasExactInt64()) {
+          out.scalarValue.setExactInt64Valid(true);
+          out.scalarValue.exactInt64 = sv.exactInt64;
           if (sv.hasExactUInt64()) {
             out.scalarValue.setExactUInt64Valid(true);
             out.scalarValue.exactUInt64 = sv.exactUInt64;
@@ -7773,9 +8321,9 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       }
       case BuiltinFunctionId::Imag: {
         out = makeScalarMaybeExact(ai);
-        if (sv.hasImagExactInt()) {
-          out.scalarValue.setExactIntValid(true);
-          out.scalarValue.exactInt = sv.imagExactInt;
+        if (sv.hasImagExactInt64()) {
+          out.scalarValue.setExactInt64Valid(true);
+          out.scalarValue.exactInt64 = sv.imagExactInt64;
           if (sv.hasImagExactUInt64()) {
             out.scalarValue.setExactUInt64Valid(true);
             out.scalarValue.exactUInt64 = sv.imagExactUInt64;
@@ -7797,9 +8345,18 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Cart:
         out = makeScalarComplexFromDoubles(ar, ai);
         return true;
-      case BuiltinFunctionId::Conj:
-        out = makeScalarComplexFromDoubles(ar, -ai);
+      case BuiltinFunctionId::Conj: {
+        ExactCartesianComponent cRe{};
+        ExactCartesianComponent cIm{};
+        ExactCartesianComponent cImNeg{};
+        if (tryExtractExactRealComponent(sv, cRe) && tryExtractExactImagComponent(sv, cIm) &&
+            tryNegateExactCartesianComponent(cIm, cImNeg)) {
+          setScalarComplexFromExactCartesian(out, cRe, cImNeg);
+        } else {
+          out = makeScalarComplexFromDoubles(ar, -ai);
+        }
         return true;
+      }
       case BuiltinFunctionId::Int:
       case BuiltinFunctionId::Trunc:
       case BuiltinFunctionId::Floor:
@@ -7807,9 +8364,28 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Round:
         out = calcRoundCart(bid);
         return true;
-      case BuiltinFunctionId::Frac:
-        out = makeScalarComplexFromDoubles(ar - std::trunc(ar), ai - std::trunc(ai));
+      case BuiltinFunctionId::Frac: {
+        EvalValue::ScalarValue svFracRe = sv;
+        svFracRe.scalar = ar;
+        scalarClearImaginary(svFracRe);
+        EvalValue::ScalarValue svFracIm{};
+        svFracIm.scalar = ai;
+        scalarClearImaginary(svFracIm);
+        if (sv.hasImagExactInt64()) {
+          svFracIm.setExactInt64Valid(true);
+          svFracIm.exactInt64 = sv.imagExactInt64;
+          if (sv.hasImagExactUInt64()) {
+            svFracIm.setExactUInt64Valid(true);
+            svFracIm.exactUInt64 = sv.imagExactUInt64;
+          }
+        }
+        const EvalValue fracIntRe = calcRoundingFn(BuiltinFunctionId::Int, svFracRe);
+        const EvalValue fracIntIm = calcRoundingFn(BuiltinFunctionId::Int, svFracIm);
+        EvalValue fRe = makeScalar(ar - fracIntRe.scalarValue.scalar);
+        EvalValue fIm = makeScalar(ai - fracIntIm.scalarValue.scalar);
+        out = setScalarComplexFromEvalRealImagParts(fRe, fIm);
         return true;
+      }
       case BuiltinFunctionId::Abs:
         if (!std::isfinite(ar) || !std::isfinite(ai)) {
           out = makeScalar(std::numeric_limits<double>::quiet_NaN());
@@ -8017,7 +8593,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Int:
       case BuiltinFunctionId::Round: return calcRoundingFn(id, s);
       case BuiltinFunctionId::Sign:
-        if (s.hasExactInt()) return makeScalarInt((s.exactInt > 0) ? 1LL : ((s.exactInt < 0) ? -1LL : 0LL));
+        if (s.hasExactInt64()) return makeScalarInt((s.exactInt64 > 0) ? 1LL : ((s.exactInt64 < 0) ? -1LL : 0LL));
         if (s.hasExactUInt64()) return makeScalarInt((s.exactUInt64 == 0u) ? 0LL : 1LL);
         return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
       case BuiltinFunctionId::Frac: return makeScalarMaybeExact(x - std::trunc(x));
@@ -8155,7 +8731,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       auto applyIntLikeUnaryToScalar = [&](const EvalValue::ScalarValue& sItem) -> EvalValue {
         const double x = sItem.scalar;
         if (id == BuiltinFunctionId::Sign) {
-          if (sItem.hasExactInt()) return makeScalarInt((sItem.exactInt > 0) ? 1LL : ((sItem.exactInt < 0) ? -1LL : 0LL));
+          if (sItem.hasExactInt64()) return makeScalarInt((sItem.exactInt64 > 0) ? 1LL : ((sItem.exactInt64 < 0) ? -1LL : 0LL));
           if (sItem.hasExactUInt64()) return makeScalarInt((sItem.exactUInt64 == 0u) ? 0LL : 1LL);
           return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
         }

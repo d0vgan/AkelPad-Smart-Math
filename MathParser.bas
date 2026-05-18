@@ -1,5 +1,6 @@
 #include once "crt.bi"
 #include once "Inc\MathParser.bi"
+#include once "MathParserRawResult.bas"
 
 extern "C"
 declare function acosh (byval x as double) as double
@@ -547,6 +548,8 @@ dim shared pStream as ZString ptr
 dim shared parseError as Integer
 dim shared wasPercentage as Boolean
 dim shared lastErrorText as String
+dim shared lastRawResultValid as Boolean = FALSE
+dim shared lastRawResult as RawResult
 dim shared unknownVarsText as String
 dim shared unknownFuncsText as String
 #ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
@@ -1579,6 +1582,10 @@ private function TryGetExactInt64FromDouble(byval n as Double, byref outV as Lon
 end function
 
 private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as Double, byval im as Double)
+  if IsNaNValue(re) orelse IsNaNValue(im) then
+    ValueSetScalar(v, MakeNaN())
+    exit sub
+  end if
   v.kind = VK_SCALAR
   v.scalarStorageKind = SSK_FLOATINGPOINT
   v.scalar = re
@@ -1596,19 +1603,27 @@ private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as D
   v.renderUnsigned = FALSE
   erase v.arr
   dim tri as LongInt, tii as LongInt
-  if TryGetExactInt64FromDouble(re, tri) andalso TryGetExactInt64FromDouble(im, tii) then
+  if TryGetExactInt64FromDouble(re, tri) then
     v.scalarStorageKind = SSK_INT64
     v.exactInt64Valid = TRUE
     v.exactInt64 = tri
     if tri >= 0 then
       v.exactUInt64Valid = TRUE
       v.exactUInt64 = CULngInt(tri)
+    else
+      v.exactUInt64Valid = FALSE
+      v.exactUInt64 = 0
     end if
+  end if
+  if TryGetExactInt64FromDouble(im, tii) then
     ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
     v.scalarValue.imagExactInt64 = tii
     if tii >= 0 then
       ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
       v.scalarValue.imagExactUInt64 = CULngInt(tii)
+    else
+      ScalarSetImagExactUInt64Valid(v.scalarValue, FALSE)
+      v.scalarValue.imagExactUInt64 = 0
     end if
   end if
   ScalarNormalizeIfPureReal(v.scalarValue)
@@ -2053,21 +2068,32 @@ private function TryFormatComplexRationalScalar(byref sv as ScalarValue, byref o
   return TRUE
 end function
 
+private function FormatComplexImagCoeffTail(byval ai as Double, byref negUnit as Boolean) as String
+  negUnit = FALSE
+  if IsNaNValue(ai) then return "nan*" & FB_STR_I
+  if IsInfValue(ai) then
+    if ai < 0.0 then return "-" & FB_STR_INF & "*" & FB_STR_I
+    return FB_STR_INF & "*" & FB_STR_I
+  end if
+  dim coeffAbs as Double = abs(ai)
+  if coeffAbs = 1.0 then
+    if ai < 0.0 then negUnit = TRUE
+    return FB_STR_I
+  end if
+  if ai < 0.0 then return "-" & ltrim(str(coeffAbs)) & FB_STR_I
+  return ltrim(str(coeffAbs)) & FB_STR_I
+end function
+
 private function FormatComplexScalarValue(byref sv as ScalarValue) as String
   dim ratCx as String
   if TryFormatComplexRationalScalar(sv, ratCx) then return ratCx
   dim ar as Double, ai as Double
   ScalarLoadCartesian(sv, ar, ai)
+  if IsNaNValue(ar) orelse IsNaNValue(ai) then return "nan"
   dim rePart as String = FormatScalarRealPartPlain(sv)
 
-  dim coeffAbs as Double = abs(ai)
-  dim negI as Boolean = (ai < 0.0)
-  dim tail as String
-  if coeffAbs = 1.0 then
-    tail = FB_STR_I
-  else
-    tail = ltrim(str(coeffAbs)) & FB_STR_I
-  end if
+  dim negUnit as Boolean
+  dim tail as String = FormatComplexImagCoeffTail(ai, negUnit)
 
   dim reZero as Boolean = FALSE
   if sv.exactInt64Valid andalso sv.exactInt64 = 0 then
@@ -2077,11 +2103,12 @@ private function FormatComplexScalarValue(byref sv as ScalarValue) as String
   end if
 
   if reZero then
-    if negI then return "-" & tail
+    if negUnit then return "-" & tail
     return tail
   end if
 
-  if negI then return rePart & "-" & tail
+  if negUnit then return rePart & "-" & tail
+  if left(tail, 1) = "-" then return rePart & tail
   return rePart & "+" & tail
 end function
 
@@ -4037,9 +4064,20 @@ private sub ScalarComplexDivide(byval numR as Double, byval numI as Double, byva
   end if
 end sub
 
-private sub ScalarComplexMultiply(byval ar as Double, byval ai as Double, byval br as Double, byval bi as Double, byref outR as Double, byref outI as Double)
+'' Cartesian product; treat 0*inf on a canceled real term as 0 when the imaginary part is still defined.
+private sub ScalarComplexCartesianMul(byval ar as Double, byval ai as Double, byval br as Double, byval bi as Double, byref outR as Double, byref outI as Double)
   outR = ar * br - ai * bi
   outI = ar * bi + ai * br
+  if IsNaNValue(outR) andalso IsNaNValue(outI) = FALSE then
+    dim isZero as Boolean = ar = 0.0 andalso ai <> 0.0 andalso bi = 0.0
+    if isZero andalso IsInfValue(br) then outR = 0.0
+    isZero = br = 0.0 andalso bi <> 0.0 andalso ai = 0.0
+    if isZero andalso IsInfValue(ar) then outR = 0.0
+  end if
+end sub
+
+private sub ScalarComplexMultiply(byval ar as Double, byval ai as Double, byval br as Double, byval bi as Double, byref outR as Double, byref outI as Double)
+  ScalarComplexCartesianMul(ar, ai, br, bi, outR, outI)
 end sub
 
 private sub ScalarComplexExpCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
@@ -4231,6 +4269,322 @@ private sub ScalarComplexGamma(byval zr as Double, byval zi as Double, byref out
   ScalarSnapComplexNearZeroAxis(outR, outI)
 end sub
 
+private type ExactCartesianComponent
+  hasInt as Boolean
+  intV as LongInt
+  hasUInt as Boolean
+  uintV as ULongInt
+end type
+
+private sub ExactCartesianComponentClear(byref c as ExactCartesianComponent)
+  c.hasInt = FALSE
+  c.intV = 0
+  c.hasUInt = FALSE
+  c.uintV = 0
+end sub
+
+private function TryExactCartesianComponentToInt64(byref c as ExactCartesianComponent, byref outI as LongInt) as Boolean
+  if c.hasInt then
+    outI = c.intV
+    return TRUE
+  end if
+  if c.hasUInt andalso c.uintV <= FB_I64_MAX_U then
+    outI = CLngInt(c.uintV)
+    return TRUE
+  end if
+  if c.hasInt = FALSE andalso c.hasUInt = FALSE then
+    outI = 0
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryExtractExactRealComponent(byref sv as ScalarValue, byref c as ExactCartesianComponent) as Boolean
+  ExactCartesianComponentClear(c)
+  if sv.exactInt64Valid then
+    c.hasInt = TRUE
+    c.intV = sv.exactInt64
+    if sv.exactInt64 >= 0 then
+      c.hasUInt = TRUE
+      c.uintV = CULngInt(sv.exactInt64)
+    elseif sv.exactUInt64Valid then
+      c.hasUInt = TRUE
+      c.uintV = sv.exactUInt64
+    end if
+    return TRUE
+  end if
+  if sv.exactUInt64Valid then
+    c.hasUInt = TRUE
+    c.uintV = sv.exactUInt64
+    if sv.exactUInt64 <= FB_I64_MAX_U then
+      c.hasInt = TRUE
+      c.intV = CLngInt(sv.exactUInt64)
+    end if
+    return TRUE
+  end if
+  dim t as LongInt
+  if TryGetExactInt64FromDouble(sv.scalar, t) then
+    c.hasInt = TRUE
+    c.intV = t
+    if t >= 0 then
+      c.hasUInt = TRUE
+      c.uintV = CULngInt(t)
+    end if
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryExtractExactImagComponent(byref sv as ScalarValue, byref c as ExactCartesianComponent) as Boolean
+  ExactCartesianComponentClear(c)
+  if ScalarImagExactInt64Valid(sv) then
+    c.hasInt = TRUE
+    c.intV = sv.imagExactInt64
+    if sv.imagExactInt64 >= 0 then
+      c.hasUInt = TRUE
+      c.uintV = CULngInt(sv.imagExactInt64)
+    elseif ScalarImagExactUInt64Valid(sv) then
+      c.hasUInt = TRUE
+      c.uintV = sv.imagExactUInt64
+    end if
+    return TRUE
+  end if
+  if ScalarImagExactUInt64Valid(sv) then
+    c.hasUInt = TRUE
+    c.uintV = sv.imagExactUInt64
+    if sv.imagExactUInt64 <= FB_I64_MAX_U then
+      c.hasInt = TRUE
+      c.intV = CLngInt(sv.imagExactUInt64)
+    end if
+    return TRUE
+  end if
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then
+    return TRUE
+  end if
+  dim t as LongInt
+  if TryGetExactInt64FromDouble(sv.imag, t) then
+    c.hasInt = TRUE
+    c.intV = t
+    if t >= 0 then
+      c.hasUInt = TRUE
+      c.uintV = CULngInt(t)
+    end if
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private sub ValueSetScalarComplexFromExactCartesian(byref v as EvalValue, byref re as ExactCartesianComponent, byref im as ExactCartesianComponent)
+  if re.hasInt then
+    ValueSetInt64(v, re.intV)
+  elseif re.hasUInt then
+    ValueSetUInt64(v, re.uintV)
+  else
+    ValueSetScalar(v, 0.0)
+  end if
+  ScalarClearImag(v.scalarValue)
+  v.scalarValue.imag = 0.0
+  if im.hasInt orelse im.hasUInt then
+    if im.hasInt then
+      ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
+      v.scalarValue.imagExactInt64 = im.intV
+      v.scalarValue.imag = CDbl(im.intV)
+      if im.intV >= 0 then
+        ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
+        v.scalarValue.imagExactUInt64 = CULngInt(im.intV)
+      elseif im.hasUInt then
+        ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
+        v.scalarValue.imagExactUInt64 = im.uintV
+        v.scalarValue.imag = CDbl(im.uintV)
+      end if
+    else
+      ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
+      v.scalarValue.imagExactUInt64 = im.uintV
+      v.scalarValue.imag = CDbl(im.uintV)
+    end if
+  end if
+  ScalarNormalizeIfPureReal(v.scalarValue)
+end sub
+
+private function TryAddExactCartesianComponents(byref a as ExactCartesianComponent, byref b as ExactCartesianComponent, byref result as ExactCartesianComponent) as Boolean
+  ExactCartesianComponentClear(result)
+  dim ai as LongInt, bi as LongInt, oi as LongInt
+  if TryExactCartesianComponentToInt64(a, ai) andalso TryExactCartesianComponentToInt64(b, bi) then
+    if TryAddInt64(ai, bi, oi) = FALSE then return FALSE
+    result.hasInt = TRUE
+    result.intV = oi
+    if oi >= 0 then
+      result.hasUInt = TRUE
+      result.uintV = CULngInt(oi)
+    end if
+    return TRUE
+  end if
+  if a.hasUInt andalso b.hasUInt then
+    dim ou as ULongInt
+    if TryAddULongChecked(a.uintV, b.uintV, ou) = FALSE then return FALSE
+    result.hasUInt = TRUE
+    result.uintV = ou
+    if ou <= FB_I64_MAX_U then
+      result.hasInt = TRUE
+      result.intV = CLngInt(ou)
+    end if
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryQuotExactInt64(byval num as LongInt, byval den as LongInt, byref quo as LongInt) as Boolean
+  if den = 0 then return FALSE
+  quo = num \ den
+  if quo * den = num then return TRUE
+  return FALSE
+end function
+
+private function TrySubExactCartesianComponents(byref a as ExactCartesianComponent, byref b as ExactCartesianComponent, byref result as ExactCartesianComponent) as Boolean
+  ExactCartesianComponentClear(result)
+  dim ai as LongInt, bi as LongInt, oi as LongInt
+  if TryExactCartesianComponentToInt64(a, ai) andalso TryExactCartesianComponentToInt64(b, bi) then
+    if TrySubInt64(ai, bi, oi) = FALSE then return FALSE
+    result.hasInt = TRUE
+    result.intV = oi
+    if oi >= 0 then
+      result.hasUInt = TRUE
+      result.uintV = CULngInt(oi)
+    end if
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryApplyExactComplexCartesianBinary(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  dim lRe as ExactCartesianComponent
+  dim lIm as ExactCartesianComponent
+  dim rRe as ExactCartesianComponent
+  dim rIm as ExactCartesianComponent
+  dim oRe as ExactCartesianComponent
+  dim oIm as ExactCartesianComponent
+  if TryExtractExactRealComponent(leftS, lRe) = FALSE then return FALSE
+  if TryExtractExactImagComponent(leftS, lIm) = FALSE then return FALSE
+  if TryExtractExactRealComponent(rightS, rRe) = FALSE then return FALSE
+  if TryExtractExactImagComponent(rightS, rIm) = FALSE then return FALSE
+
+  if op = CHAR_PLUS then
+    if TryAddExactCartesianComponents(lRe, rRe, oRe) = FALSE then return FALSE
+    if TryAddExactCartesianComponents(lIm, rIm, oIm) = FALSE then return FALSE
+    ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
+    return TRUE
+  end if
+
+  if op = CHAR_MINUS then
+    if TrySubExactCartesianComponents(lRe, rRe, oRe) = FALSE then return FALSE
+    if TrySubExactCartesianComponents(lIm, rIm, oIm) = FALSE then return FALSE
+    ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
+    return TRUE
+  end if
+
+  if op = CHAR_ASTERISK then
+    dim lar as LongInt, lai as LongInt, lbr as LongInt, lbi as LongInt
+    dim p1 as LongInt, p2 as LongInt, p3 as LongInt, p4 as LongInt
+    dim oreI as LongInt, oimI as LongInt
+    if TryExactCartesianComponentToInt64(lRe, lar) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(lIm, lai) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(rRe, lbr) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(rIm, lbi) = FALSE then return FALSE
+    if TryMulInt64(lar, lbr, p1) = FALSE then return FALSE
+    if TryMulInt64(lai, lbi, p2) = FALSE then return FALSE
+    if TryMulInt64(lar, lbi, p3) = FALSE then return FALSE
+    if TryMulInt64(lai, lbr, p4) = FALSE then return FALSE
+    if TrySubInt64(p1, p2, oreI) = FALSE then return FALSE
+    if TryAddInt64(p3, p4, oimI) = FALSE then return FALSE
+    ExactCartesianComponentClear(oRe)
+    oRe.hasInt = TRUE
+    oRe.intV = oreI
+    if oreI >= 0 then
+      oRe.hasUInt = TRUE
+      oRe.uintV = CULngInt(oreI)
+    end if
+    ExactCartesianComponentClear(oIm)
+    oIm.hasInt = TRUE
+    oIm.intV = oimI
+    if oimI >= 0 then
+      oIm.hasUInt = TRUE
+      oIm.uintV = CULngInt(oimI)
+    end if
+    ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
+    return TRUE
+  end if
+
+  if op = CHAR_DIVIDE then
+    dim lar as LongInt, lai as LongInt, lbr as LongInt, lbi as LongInt
+    dim p1 as LongInt, p2 as LongInt, p3 as LongInt, p4 as LongInt, p5 as LongInt, p6 as LongInt
+    dim numRe as LongInt, numIm as LongInt, denom as LongInt, qRe as LongInt, qIm as LongInt
+    if TryExactCartesianComponentToInt64(lRe, lar) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(lIm, lai) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(rRe, lbr) = FALSE then return FALSE
+    if TryExactCartesianComponentToInt64(rIm, lbi) = FALSE then return FALSE
+    if TryMulInt64(lar, lbr, p1) = FALSE then return FALSE
+    if TryMulInt64(lai, lbi, p2) = FALSE then return FALSE
+    if TryAddInt64(p1, p2, numRe) = FALSE then return FALSE
+    if TryMulInt64(lbr, lbr, p3) = FALSE then return FALSE
+    if TryMulInt64(lbi, lbi, p4) = FALSE then return FALSE
+    if TryAddInt64(p3, p4, denom) = FALSE then return FALSE
+    if denom = 0 then return FALSE
+    if TryMulInt64(lai, lbr, p5) = FALSE then return FALSE
+    if TryMulInt64(lar, lbi, p6) = FALSE then return FALSE
+    if TrySubInt64(p5, p6, numIm) = FALSE then return FALSE
+    if TryQuotExactInt64(numRe, denom, qRe) = FALSE then return FALSE
+    if TryQuotExactInt64(numIm, denom, qIm) = FALSE then return FALSE
+    ExactCartesianComponentClear(oRe)
+    oRe.hasInt = TRUE
+    oRe.intV = qRe
+    if qRe >= 0 then
+      oRe.hasUInt = TRUE
+      oRe.uintV = CULngInt(qRe)
+    end if
+    ExactCartesianComponentClear(oIm)
+    oIm.hasInt = TRUE
+    oIm.intV = qIm
+    if qIm >= 0 then
+      oIm.hasUInt = TRUE
+      oIm.uintV = CULngInt(qIm)
+    end if
+    ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
+    return TRUE
+  end if
+
+  return FALSE
+end function
+
+private sub ValueSetScalarComplexFromEvalRealImagParts(byref outV as EvalValue, byref rePart as EvalValue, byref imPart as EvalValue)
+  dim reC as ExactCartesianComponent
+  dim imC as ExactCartesianComponent
+  if TryExtractExactRealComponent(rePart.scalarValue, reC) andalso TryExtractExactRealComponent(imPart.scalarValue, imC) then
+    ValueSetScalarComplexFromExactCartesian(outV, reC, imC)
+  else
+    ValueSetScalarComplexFromDoubles(outV, rePart.scalar, imPart.scalar)
+  end if
+end sub
+
+private function TryNegateExactCartesianComponent(byref c as ExactCartesianComponent, byref outC as ExactCartesianComponent) as Boolean
+  dim z as ExactCartesianComponent
+  ExactCartesianComponentClear(z)
+  return TrySubExactCartesianComponents(z, c, outC)
+end function
+
+private function TryNegateExactComplexScalar(byref sv as ScalarValue, byref outV as EvalValue) as Boolean
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then return FALSE
+  dim lRe as ExactCartesianComponent
+  dim lIm as ExactCartesianComponent
+  dim oRe as ExactCartesianComponent
+  dim oIm as ExactCartesianComponent
+  if TryExtractExactRealComponent(sv, lRe) = FALSE then return FALSE
+  if TryExtractExactImagComponent(sv, lIm) = FALSE then return FALSE
+  if TryNegateExactCartesianComponent(lRe, oRe) = FALSE then return FALSE
+  if TryNegateExactCartesianComponent(lIm, oIm) = FALSE then return FALSE
+  ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
+  return TRUE
+end function
+
 private sub CalcRoundingFnCartesian(byval fnId as Integer, byref scalarV as ScalarValue, byval ar as Double, byval ai as Double, byref outV as EvalValue)
   dim svRe as ScalarValue = scalarV
   svRe.scalar = ar
@@ -4250,7 +4604,7 @@ private sub CalcRoundingFnCartesian(byval fnId as Integer, byref scalarV as Scal
   dim outIm as EvalValue
   calcRoundingFn(fnId, svRe, outRe)
   calcRoundingFn(fnId, svImOnly, outIm)
-  ValueSetScalarComplexFromDoubles(outV, outRe.scalar, outIm.scalar)
+  ValueSetScalarComplexFromEvalRealImagParts(outV, outRe, outIm)
 end sub
 
 private function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as EvalValue) as Boolean
@@ -4315,11 +4669,41 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
     case FUNC_CART
       ValueSetScalarComplexFromDoubles(outV, ar, ai)
     case FUNC_CONJ
-      ValueSetScalarComplexFromDoubles(outV, ar, -ai)
+      dim cRe as ExactCartesianComponent
+      dim cIm as ExactCartesianComponent
+      dim cImNeg as ExactCartesianComponent
+      if TryExtractExactRealComponent(scalarV, cRe) andalso TryExtractExactImagComponent(scalarV, cIm) andalso _
+         TryNegateExactCartesianComponent(cIm, cImNeg) then
+        ValueSetScalarComplexFromExactCartesian(outV, cRe, cImNeg)
+      else
+        ValueSetScalarComplexFromDoubles(outV, ar, -ai)
+      end if
     case FUNC_INT, FUNC_TRUNC, FUNC_FLOOR, FUNC_CEIL, FUNC_ROUND
       CalcRoundingFnCartesian(fnId, scalarV, ar, ai, outV)
     case FUNC_FRAC
-      ValueSetScalarComplexFromDoubles(outV, ar - Fix(ar), ai - Fix(ai))
+      dim svFracRe as ScalarValue = scalarV
+      svFracRe.scalar = ar
+      ScalarClearImag(svFracRe)
+      dim svFracIm as ScalarValue
+      svFracIm.scalar = ai
+      ScalarClearImag(svFracIm)
+      if ScalarImagExactInt64Valid(scalarV) then
+        svFracIm.exactInt64Valid = TRUE
+        svFracIm.exactInt64 = scalarV.imagExactInt64
+        if ScalarImagExactUInt64Valid(scalarV) then
+          svFracIm.exactUInt64Valid = TRUE
+          svFracIm.exactUInt64 = scalarV.imagExactUInt64
+        end if
+      end if
+      dim fracIntRe as EvalValue
+      dim fracIntIm as EvalValue
+      calcRoundingFn(FUNC_INT, svFracRe, fracIntRe)
+      calcRoundingFn(FUNC_INT, svFracIm, fracIntIm)
+      dim fracOutRe as EvalValue
+      dim fracOutIm as EvalValue
+      ValueSetScalar(fracOutRe, ar - fracIntRe.scalar)
+      ValueSetScalar(fracOutIm, ai - fracIntIm.scalar)
+      ValueSetScalarComplexFromEvalRealImagParts(outV, fracOutRe, fracOutIm)
     case FUNC_ABS
       if IsNaNValue(ar) orelse IsNaNValue(ai) then
         ValueSetScalar(outV, MakeNaN())
@@ -4438,6 +4822,10 @@ private function ValueApplyBinaryScalarsComplex(byref leftS as ScalarValue, byre
     return TRUE
   end if
 
+  if op = CHAR_PLUS orelse op = CHAR_MINUS orelse op = CHAR_ASTERISK orelse op = CHAR_DIVIDE then
+    if TryApplyExactComplexCartesianBinary(leftS, rightS, op, outV) then return TRUE
+  end if
+
   if op = CHAR_PLUS then
     if ScalarHasNonzeroImaginaryPart(leftS) = FALSE andalso ScalarHasNonzeroImaginaryPart(rightS) = FALSE then
       dim lr as LongInt, rr as LongInt, ssum as LongInt
@@ -4458,30 +4846,9 @@ private function ValueApplyBinaryScalarsComplex(byref leftS as ScalarValue, byre
   end if
 
   if op = CHAR_ASTERISK then
-    dim lar as LongInt, lbr as LongInt, lai as LongInt, lbi as LongInt
-    dim p1 as LongInt, p2 as LongInt, p3 as LongInt, p4 as LongInt
-    dim oreI as LongInt, oimI as LongInt
-    if TryGetExactInt64Scalar(leftS, lar) andalso TryGetExactInt64Scalar(rightS, lbr) then
-      if ScalarImagExactInt64Valid(leftS) andalso ScalarImagExactInt64Valid(rightS) then
-        lai = leftS.imagExactInt64
-        lbi = rightS.imagExactInt64
-        if TryMulInt64(lar, lbr, p1) then
-          if TryMulInt64(lai, lbi, p2) then
-            if TryMulInt64(lar, lbi, p3) then
-              if TryMulInt64(lai, lbr, p4) then
-                if TrySubInt64(p1, p2, oreI) then
-                  if TryAddInt64(p3, p4, oimI) then
-                    ValueSetScalarComplexFromDoubles(outV, CDbl(oreI), CDbl(oimI))
-                    return TRUE
-                  end if
-                end if
-              end if
-            end if
-          end if
-        end if
-      end if
-    end if
-    ValueSetScalarComplexFromDoubles(outV, ar * br - ai * bi, ar * bi + ai * br)
+    dim mulRe as Double, mulIm as Double
+    ScalarComplexCartesianMul(ar, ai, br, bi, mulRe, mulIm)
+    ValueSetScalarComplexFromDoubles(outV, mulRe, mulIm)
     return TRUE
   end if
 
@@ -4531,8 +4898,8 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   dim lu as ULongInt, ru as ULongInt
   hasUIntL = TryGetExactNonNegativeUInt64Scalar(leftS, lu)
   hasUIntR = TryGetExactNonNegativeUInt64Scalar(rightS, ru)
-  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid andalso _
-     ((leftS.exactInt64Valid = FALSE) orelse (rightS.exactInt64Valid = FALSE)) then
+  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid _
+    andalso (leftS.exactInt64Valid = FALSE orelse rightS.exactInt64Valid = FALSE) then
     select case op
       case CHAR_PLUS
         dim outU as ULongInt
@@ -4920,8 +5287,7 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
     end if
   end if
 
-  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid andalso _
-     ((leftS.exactInt64Valid = FALSE) orelse (rightS.exactInt64Valid = FALSE)) then
+  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid then
     dim lu as ULongInt = leftS.exactUInt64
     dim ru as ULongInt = rightS.exactUInt64
     select case op
@@ -5566,6 +5932,59 @@ private function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Int
   else
     outV = args(srcArgIdx).arr(srcElemIdx)
   end if
+  return TRUE
+end function
+
+private function TryFoldExactComplexCartesian(args() as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim sv as ScalarValue
+  dim gotAny as Boolean = FALSE
+  dim accV as EvalValue
+  while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+    dim itemV as EvalValue
+    EvalScalarFromScalarValue(sv, itemV)
+    if gotAny = FALSE then
+      accV = itemV
+      gotAny = TRUE
+    else
+      if TryApplyExactComplexCartesianBinary(accV.scalarValue, itemV.scalarValue, op, outV) = FALSE then return FALSE
+      accV = outV
+    end if
+  wend
+  if gotAny = FALSE then return FALSE
+  outV = accV
+  return TRUE
+end function
+
+private function TryAvgExactComplexFromSum(byref sumV as EvalValue, byval itemCount as LongInt, byref outV as EvalValue) as Boolean
+  if itemCount <= 0 then return FALSE
+  dim lRe as ExactCartesianComponent
+  dim lIm as ExactCartesianComponent
+  dim oRe as ExactCartesianComponent
+  dim oIm as ExactCartesianComponent
+  if TryExtractExactRealComponent(sumV.scalarValue, lRe) = FALSE then return FALSE
+  if TryExtractExactImagComponent(sumV.scalarValue, lIm) = FALSE then return FALSE
+  dim reI as LongInt, imI as LongInt, qRe as LongInt, qIm as LongInt
+  if TryExactCartesianComponentToInt64(lRe, reI) = FALSE then return FALSE
+  if TryExactCartesianComponentToInt64(lIm, imI) = FALSE then return FALSE
+  if TryQuotExactInt64(reI, itemCount, qRe) = FALSE then return FALSE
+  if TryQuotExactInt64(imI, itemCount, qIm) = FALSE then return FALSE
+  ExactCartesianComponentClear(oRe)
+  oRe.hasInt = TRUE
+  oRe.intV = qRe
+  if qRe >= 0 then
+    oRe.hasUInt = TRUE
+    oRe.uintV = CULngInt(qRe)
+  end if
+  ExactCartesianComponentClear(oIm)
+  oIm.hasInt = TRUE
+  oIm.intV = qIm
+  if qIm >= 0 then
+    oIm.hasUInt = TRUE
+    oIm.uintV = CULngInt(qIm)
+  end if
+  ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
   return TRUE
 end function
 
@@ -6571,6 +6990,35 @@ private function TryBuiltinDispatchWithComplex(byval fnId as Integer, byref fnNa
         outV = args(0)
         return TRUE
       end if
+      dim itemCountCx as Integer = 0
+      dim argIdxCount as Integer = lbound(args)
+      dim elemIdxCount as Integer = -1
+      dim svCount as ScalarValue
+      while ArgScalarValueWalkNext(args(), argIdxCount, elemIdxCount, svCount)
+        itemCountCx += 1
+      wend
+      if itemCountCx <= 0 then
+        SetAtLeastOneArgError(fnName)
+        return TRUE
+      end if
+      dim foldOp as UByte = CHAR_PLUS
+      if fnId = FUNC_PRODUCT then foldOp = CHAR_ASTERISK
+      if TryFoldExactComplexCartesian(args(), foldOp, outV) then
+        if (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN) then
+          dim avgV as EvalValue
+          if TryAvgExactComplexFromSum(outV, CLngInt(itemCountCx), avgV) then
+            outV = avgV
+          else
+            dim arCx as Double
+            dim aiCx as Double
+            ScalarLoadCartesian(outV.scalarValue, arCx, aiCx)
+            arCx /= CDbl(itemCountCx)
+            aiCx /= CDbl(itemCountCx)
+            ValueSetScalarComplexFromDoubles(outV, arCx, aiCx)
+          end if
+        end if
+        return TRUE
+      end if
       dim argIdxCx as Integer = lbound(args)
       dim elemIdxCx as Integer = -1
       dim svCx as ScalarValue
@@ -6578,7 +7026,6 @@ private function TryBuiltinDispatchWithComplex(byval fnId as Integer, byref fnNa
       dim aiCx as Double
       dim brCx as Double
       dim biCx as Double
-      dim itemCountCx as Integer = 0
       if fnId = FUNC_PRODUCT then
         arCx = 1.0
         aiCx = 0.0
@@ -6597,12 +7044,7 @@ private function TryBuiltinDispatchWithComplex(byval fnId as Integer, byref fnNa
           arCx += brCx
           aiCx += biCx
         end if
-        itemCountCx += 1
       wend
-      if itemCountCx <= 0 then
-        SetAtLeastOneArgError(fnName)
-        return TRUE
-      end if
       if (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN) then
         arCx /= CDbl(itemCountCx)
         aiCx /= CDbl(itemCountCx)
@@ -7401,11 +7843,15 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
     end if
   end if
 
-  ValueSetScalar(n, dVal)
-  n.exactInt64Valid = keepExactInt
-  if keepExactInt then n.exactInt64 = keepInt
-  n.exactUInt64Valid = keepExactUInt
-  if keepExactUInt then n.exactUInt64 = keepUInt
+  if keepExactUInt andalso keepUInt > FB_I64_MAX_U then
+    ValueSetUInt64(n, keepUInt)
+  elseif keepExactInt then
+    ValueSetInt64(n, keepInt)
+  elseif keepExactUInt then
+    ValueSetUInt64(n, keepUInt)
+  else
+    ValueSetScalar(n, dVal)
+  end if
   return TRUE
 end function
 
@@ -7992,6 +8438,228 @@ private sub ResetTopLevelEvaluationState(byref exprInput as String)
   udfCallStackSp = 0
   errorBaseCol = 1
   rootInputExpr = exprInput
+  lastRawResultValid = FALSE
+  RawResultClear(lastRawResult)
+end sub
+
+private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart as Boolean, byref outC as RawCartesianScalar)
+  outC.kind = RSK_FLOATING
+  outC.floatValue = 0.0
+  if imagPart = FALSE then
+    if ScalarIsTime(sv) then
+      outC.kind = RSK_TIME
+      outC.intValue = TimeTotalMsFromScalarValue(sv)
+      exit sub
+    end if
+    if (sv.flags and SVF_RENDER_RATIONAL) <> 0 andalso sv.exactUInt64Valid then
+      outC.kind = RSK_RATIONAL
+      outC.ratNum = sv.exactInt64
+      outC.ratDen = sv.exactUInt64
+      exit sub
+    end if
+    if sv.scalarStorageKind = SSK_INT64 then
+      outC.kind = RSK_INT64
+      outC.intValue = sv.exactInt64
+      exit sub
+    end if
+    if sv.scalarStorageKind = SSK_UINT64 then
+      outC.kind = RSK_UINT64
+      outC.uintValue = sv.exactUInt64
+      exit sub
+    end if
+    outC.kind = RSK_FLOATING
+    outC.floatValue = sv.scalar
+    exit sub
+  end if
+  if (sv.flags and SVF_IMAG_RENDER_RATIONAL) <> 0 andalso ScalarImagExactUInt64Valid(sv) then
+    outC.kind = RSK_RATIONAL
+    outC.ratNum = sv.imagExactInt64
+    outC.ratDen = sv.imagExactUInt64
+    exit sub
+  end if
+  if ScalarImagExactInt64Valid(sv) then
+    outC.kind = RSK_INT64
+    outC.intValue = sv.imagExactInt64
+    exit sub
+  end if
+  outC.kind = RSK_FLOATING
+  outC.floatValue = sv.imag
+end sub
+
+private sub ScalarValueLoadFromRawCartesian(byref c as RawCartesianScalar, byref sv as ScalarValue, byval imagPart as Boolean)
+  select case c.kind
+  case RSK_TIME
+    if imagPart then exit sub
+    sv.scalarStorageKind = SSK_TIME
+    sv.exactInt64 = c.intValue
+    sv.scalar = CDbl(c.intValue) / 1000.0
+    sv.exactInt64Valid = FALSE
+    sv.exactUInt64Valid = FALSE
+  case RSK_INT64
+    if imagPart then
+      sv.imag = CDbl(c.intValue)
+      sv.imagExactInt64 = c.intValue
+      ScalarSetImagExactInt64Valid(sv, TRUE)
+    else
+      sv.scalarStorageKind = SSK_INT64
+      sv.scalar = CDbl(c.intValue)
+      sv.exactInt64Valid = TRUE
+      sv.exactInt64 = c.intValue
+      if c.intValue >= 0 then
+        sv.exactUInt64Valid = TRUE
+        sv.exactUInt64 = CULngInt(c.intValue)
+      else
+        sv.exactUInt64Valid = FALSE
+        sv.exactUInt64 = 0
+      end if
+    end if
+  case RSK_UINT64
+    if imagPart then
+      sv.imag = CDbl(c.uintValue)
+      if c.uintValue <= FB_I64_MAX_U then
+        sv.imagExactInt64 = CLngInt(c.uintValue)
+        ScalarSetImagExactInt64Valid(sv, TRUE)
+      else
+        sv.imagExactUInt64 = c.uintValue
+        ScalarSetImagExactUInt64Valid(sv, TRUE)
+      end if
+    else
+      sv.scalarStorageKind = SSK_UINT64
+      sv.scalar = CDbl(c.uintValue)
+      sv.exactUInt64Valid = TRUE
+      sv.exactUInt64 = c.uintValue
+      if c.uintValue <= FB_I64_MAX_U then
+        sv.exactInt64Valid = TRUE
+        sv.exactInt64 = CLngInt(c.uintValue)
+      else
+        sv.exactInt64Valid = FALSE
+        sv.exactInt64 = 0
+      end if
+    end if
+  case RSK_RATIONAL
+    if imagPart then
+      sv.flags or= SVF_IMAG_RENDER_RATIONAL
+      sv.imagExactInt64 = c.ratNum
+      sv.imagExactUInt64 = c.ratDen
+      ScalarSetImagExactInt64Valid(sv, TRUE)
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+    else
+      sv.flags or= SVF_RENDER_RATIONAL
+      sv.exactInt64Valid = TRUE
+      sv.exactInt64 = c.ratNum
+      sv.exactUInt64Valid = TRUE
+      sv.exactUInt64 = c.ratDen
+      sv.scalar = CDbl(c.ratNum) / CDbl(c.ratDen)
+    end if
+  case else
+    if imagPart then
+      sv.imag = c.floatValue
+    else
+      sv.scalarStorageKind = SSK_FLOATINGPOINT
+      sv.scalar = c.floatValue
+      sv.exactInt64Valid = FALSE
+      sv.exactUInt64Valid = FALSE
+    end if
+  end select
+end sub
+
+private sub ScalarValueFromRawScalar(byref s as RawScalar, byref sv as ScalarValue)
+  sv.scalarStorageKind = SSK_FLOATINGPOINT
+  sv.flags = 0
+  sv.scalar = 0.0
+  sv.exactInt64Valid = FALSE
+  sv.exactInt64 = 0
+  sv.exactUInt64Valid = FALSE
+  sv.exactUInt64 = 0
+  ScalarClearImag(sv)
+  if s.kind = RSK_COMPLEX then
+    ScalarValueLoadFromRawCartesian(s.real, sv, FALSE)
+    ScalarValueLoadFromRawCartesian(s.imag, sv, TRUE)
+    exit sub
+  end if
+  dim cart as RawCartesianScalar
+  cart.kind = s.kind
+  select case s.kind
+  case RSK_TIME
+    cart.intValue = s.intValue
+  case RSK_INT64
+    cart.intValue = s.intValue
+  case RSK_UINT64
+    cart.uintValue = s.uintValue
+  case RSK_RATIONAL
+    cart.ratNum = s.ratNum
+    cart.ratDen = s.ratDen
+  case else
+    cart.floatValue = s.floatValue
+  end select
+  ScalarValueLoadFromRawCartesian(cart, sv, FALSE)
+end sub
+
+function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String
+  if s.renderBase = 0 then return ""
+  dim sv as ScalarValue
+  ScalarValueFromRawScalar(s, sv)
+  dim outText as String
+  if s.kind = RSK_COMPLEX then
+    if TryFormatComplexScalarByRenderBase(sv, s.renderBase, s.renderUnsigned, outText) then return outText
+  else
+    if TryFormatScalarByRenderBase(sv, s.renderBase, s.renderUnsigned, outText) then return outText
+  end if
+  return ""
+end function
+
+private sub RawScalarFromScalarValue(byref sv as ScalarValue, byref outS as RawScalar, byval renderBase as UInteger, byval renderUnsigned as Boolean)
+  outS.renderBase = renderBase
+  outS.renderUnsigned = renderUnsigned
+  if ScalarHasNonzeroImaginaryPart(sv) then
+    outS.kind = RSK_COMPLEX
+    RawCartesianFromScalarValue(sv, FALSE, outS.real)
+    RawCartesianFromScalarValue(sv, TRUE, outS.imag)
+    exit sub
+  end if
+  dim cart as RawCartesianScalar
+  RawCartesianFromScalarValue(sv, FALSE, cart)
+  outS.kind = cart.kind
+  select case cart.kind
+  case RSK_TIME
+    outS.intValue = cart.intValue
+  case RSK_INT64
+    outS.intValue = cart.intValue
+  case RSK_UINT64
+    outS.uintValue = cart.uintValue
+  case RSK_RATIONAL
+    outS.ratNum = cart.ratNum
+    outS.ratDen = cart.ratDen
+  case else
+    outS.floatValue = cart.floatValue
+  end select
+end sub
+
+private sub EvalValueToRawResult(byref v as EvalValue, byref outR as RawResult)
+  RawResultClear(outR)
+  if v.kind = VK_SCALAR then
+    outR.kind = RRK_SCALAR
+    RawScalarFromScalarValue(v.scalarValue, outR.scalar, v.renderBase, v.renderUnsigned)
+    exit sub
+  end if
+  dim n as Integer = ValueArrayLen(v)
+  if n <= 0 then exit sub
+  outR.kind = RRK_ARRAY
+  redim outR.arr(0 to n - 1)
+  dim i as Integer
+  for i = 0 to n - 1
+    RawScalarFromScalarValue(v.arr(i), outR.arr(i), v.renderBase, v.renderUnsigned)
+  next i
+end sub
+
+private sub CommitLastRawResult(byref v as EvalValue)
+  EvalValueToRawResult(v, lastRawResult)
+  lastRawResultValid = TRUE
+end sub
+
+private sub InvalidateLastRawResult()
+  lastRawResultValid = FALSE
+  RawResultClear(lastRawResult)
 end sub
 
 sub Parser_ClearVariables()
@@ -8012,6 +8680,20 @@ end sub
 function Parser_TryEvaluate(byref sExpr as String, byref result as Double) as Boolean
   dim textResult as String, isArray as Boolean
   return Parser_TryEvaluateEx(sExpr, result, textResult, isArray)
+end function
+
+function Parser_TryEvaluateExRaw(byref sExpr as String, byref rawOut as RawResult) as Boolean
+  dim result as Double
+  dim resultText as String
+  dim isArray as Boolean
+  RawResultClear(rawOut)
+  if Parser_TryEvaluateEx(sExpr, result, resultText, isArray) = FALSE then
+    return FALSE
+  end if
+  if Parser_GetLastRawResult(rawOut) = FALSE then
+    RawResultClear(rawOut)
+  end if
+  return TRUE
 end function
 
 private function IsTopLevelStatementSeparator(byref ch as String, byval depthParen as Integer, byval depthBracket as Integer, byval depthBrace as Integer) as Boolean
@@ -8234,6 +8916,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           resultText = FB_STR_DEFINED & sig
           isArray = FALSE
           result = 0
+          InvalidateLastRawResult()
           return FinishParserEvaluateEx(TRUE)
         end if
       end if
@@ -8262,6 +8945,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         resultText = ValueToString(exprV)
         isArray = (exprV.kind = VK_ARRAY)
         if exprV.kind = VK_SCALAR then result = exprV.scalar
+        CommitLastRawResult(exprV)
         return FinishParserEvaluateEx(TRUE)
       end if
       if parseError = 0 then SetUnexpectedTokenError()
@@ -8297,7 +8981,21 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   isArray = (outV.kind = VK_ARRAY)
   if outV.kind = VK_SCALAR then result = outV.scalar
   SetAnsValue(outV)
+  CommitLastRawResult(outV)
   return FinishParserEvaluateEx(TRUE)
+end function
+
+function Parser_GetLastRawResult(byref rawOut as RawResult) as Boolean
+  if lastRawResultValid = FALSE then
+    RawResultClear(rawOut)
+    return FALSE
+  end if
+  rawOut = lastRawResult
+  return TRUE
+end function
+
+function Parser_FormatTimeMs(byval totalMs as LongInt) as String
+  return FormatTimeCanonicalFromMs(totalMs)
 end function
 
 function Parser_GetLastError() as String

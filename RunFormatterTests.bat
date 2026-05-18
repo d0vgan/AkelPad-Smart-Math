@@ -10,7 +10,7 @@ echo SmartMath formatter regression tests
 echo ==========================================
 echo.
 echo [1/2] Compiling FormatterRegressionTests.exe ...
-fbc "FormatterTest_Globals.bas" "FormatterRegressionTests.bas" "SmartMath_Format.bas" -x "FormatterRegressionTests.exe"
+fbc -d FORMATTER_TEST_BUILD "FormatterTest_Globals.bas" "FormatterRegressionTests.bas" "SmartMath_Format.bas" "MathParserRawResult.bas" -x "FormatterRegressionTests.exe"
 if errorlevel 1 goto :compile_failed
 
 echo.

@@ -443,44 +443,10 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
     end if
   end if
 
-  dim dResult as Double
-  dim sResult as String
-  dim bIsArray as Boolean
+  dim raw as RawResult
 
-  if Parser_TryEvaluateEx(sLine, dResult, sResult, bIsArray) then
-    ' LogInfo("Result: " & sResult)
-    dim sTrimResult as String = lcase(trim(sResult))
-    dim sResultLeft2 as String = left(sTrimResult, 2)
-    dim sResultLeft3 as String = left(sTrimResult, 3)
-    dim bPrefixedScalar as Boolean = (sResultLeft2 = "0x") orelse (sResultLeft3 = "-0x") _
-                              orelse (sResultLeft2 = "0b") orelse (sResultLeft3 = "-0b") _
-                              orelse (sResultLeft2 = "0o") orelse (sResultLeft3 = "-0o")
-    if lcase(left(trim(sResult), 8)) = "defined " then
-      sRes = ""
-    elseif bIsArray then
-      sRes = FormatArrayResultText(sResult)
-    elseif bPrefixedScalar then
-      sRes = SMARTMATH_RESULT_PREFIX & sResult
-    else
-      '' Non-finite: use parser classification but formatter display (NaN/Inf/-Inf).
-      dim sNf as String = FormatNonFiniteDisplayFromParserScalar(sResult)
-      if Len(sNf) > 0 then
-        sRes = SMARTMATH_RESULT_PREFIX & sNf
-      else
-        if IsTimeValueStr(sResult) then
-          sRes = SMARTMATH_RESULT_PREFIX & FormatTimeValueScalar(sResult)
-        elseif IsComplexNumberStr(sResult) then
-          sRes = SMARTMATH_RESULT_PREFIX & FormatComplexNumberScalar(sResult)
-        elseif IsRatioStr(sResult) then
-          sRes = SMARTMATH_RESULT_PREFIX & FormatRatioScalar(sResult)
-        elseif IsDecIntStr(sResult) then
-          ' preserving the exact integer result
-          sRes = SMARTMATH_RESULT_PREFIX & AddThousandsSeparator(sResult)
-        else
-          sRes = FormatResult(dResult)
-        end if
-      end if
-    end if
+  if Parser_TryEvaluateExRaw(sLine, raw) then
+    sRes = FormatRawEvaluationResult(raw)
   else
     dim sErr as String = Parser_GetLastError()
     if len(sErr) > 0 then
