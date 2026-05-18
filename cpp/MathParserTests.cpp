@@ -2586,6 +2586,20 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  if (!expectEval(p, "ratio((0.5, 1/3))", "(1/2, 1/3)", why)) return false;
                  return true;
                }});
+  t.push_back({"sortby/ratio: ratio edge cases (cross-multiply error path)",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "ratio(0.14285714285714285)", "1/7", why)) return false;
+                 if (!expectEval(p, "ratio(-0.3333333333333333)", "-1/3", why)) return false;
+                 if (!expectEval(p, "ratio(1234567)", "1234567", why)) return false;
+                 if (!expectEval(p, "ratio(0.0000001)", "1/10000000", why)) return false;
+                 if (!expectEval(p, "ratio(0.4142135623730951)", "3880899/9369319", why)) return false;
+                 if (!expectEval(p, "ratio((0.14285714285714285, sqrt(2)))", "(1/7, 13250218/9369319)", why))
+                   return false;
+                 if (!expectEval(p, "ratio(0.9999999)", "9999999/10000000", why)) return false;
+                 if (!expectEval(p, "ratio(0.123456789012345)", "10/81", why)) return false;
+                 return expectEval(p, "ratio(1/7)", "1/7", why);
+               }});
   t.push_back({"sortby/ratio: ratio rejects time",
                [](std::string& why) {
                  MathParser p;

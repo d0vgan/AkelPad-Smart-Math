@@ -6534,6 +6534,11 @@ MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64
 
 namespace {
 
+double ratioRationalApproxErr(double v, long long p, std::uint64_t q) {
+  const double qd = static_cast<double>(q);
+  return std::fabs(v * qd - static_cast<double>(p)) / qd;
+}
+
 bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, double& ratErr) {
   bool found = false;
   ratErr = 1e300;
@@ -6552,12 +6557,12 @@ bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, doubl
     if (std::fabs(scaled - static_cast<double>(n)) > scaleErr) {
       continue;
     }
-    const long long g = gcdInt64(nAbs, static_cast<long long>(denPow));
+    const long long denPowLong = static_cast<long long>(denPow);
+    const long long g = gcdInt64(nAbs, denPowLong);
     const long long candNum = n / g;
-    const std::uint64_t candDen =
-        static_cast<std::uint64_t>(static_cast<long long>(denPow) / g);
-    const double approx = static_cast<double>(candNum) / static_cast<double>(candDen);
-    const double candErr = std::fabs(v - approx);
+    const long long candDenLong = denPowLong / g;
+    const std::uint64_t candDen = static_cast<std::uint64_t>(candDenLong);
+    const double candErr = ratioRationalApproxErr(v, candNum, candDen);
     if (candErr < ratErr) {
       ratErr = candErr;
       num = candNum;
@@ -6578,7 +6583,7 @@ double ratioSemiconvergentApproxErr(double v, long long p1, long long q1, long l
     return 1e300;
   }
   const long long ph = p1 + h * p0;
-  return std::fabs(v - static_cast<double>(ph) / static_cast<double>(qh));
+  return ratioRationalApproxErr(v, ph, static_cast<std::uint64_t>(qh));
 }
 
 template <typename ConsiderFn>
@@ -6638,8 +6643,7 @@ bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t&
     if (q == 0 || q > static_cast<std::uint64_t>(RATIO_MAX_DENOMINATOR)) {
       return;
     }
-    const double approx = static_cast<double>(p) / static_cast<double>(q);
-    const double ratErr = std::fabs(v - approx);
+    const double ratErr = ratioRationalApproxErr(v, p, q);
     if (ratErr < bestErr) {
       bestErr = ratErr;
       bestNum = p;

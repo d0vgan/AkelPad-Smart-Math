@@ -5933,13 +5933,14 @@ end sub
 private function TryExactPower10Rational(byval v as Double, byref num as LongInt, byref den as ULongInt, byref ratErr as Double) as Boolean
   dim k as Integer
   dim denPow as ULongInt
+  dim denPowLong as LongInt
   dim scaled as Double
   dim n as LongInt
   dim nAbs as LongInt
   dim scaleErr as Double
   dim g as LongInt
-  dim approx as Double
   dim candNum as LongInt
+  dim candDenLong as LongInt
   dim candDen as ULongInt
   dim candErr as Double
   dim found as Boolean = FALSE
@@ -5953,11 +5954,12 @@ private function TryExactPower10Rational(byval v as Double, byref num as LongInt
     scaleErr = RATIO_APPROX_EPS * abs(scaled)
     if scaleErr < RATIO_APPROX_EPS then scaleErr = RATIO_APPROX_EPS
     if abs(scaled - CDbl(n)) > scaleErr then continue for
-    g = GcdInt64(nAbs, CLngInt(denPow))
+    denPowLong = CLngInt(denPow)
+    g = GcdInt64(nAbs, denPowLong)
     candNum = n \ g
-    candDen = CULngInt(CLngInt(denPow) \ g)
-    approx = CDbl(candNum) / CDbl(candDen)
-    candErr = abs(v - approx)
+    candDenLong = denPowLong \ g
+    candDen = CULngInt(candDenLong)
+    candErr = abs(v * CDbl(candDen) - CDbl(candNum)) / CDbl(candDen)
     if candErr < ratErr then
       ratErr = candErr
       num = candNum
@@ -5970,8 +5972,8 @@ end function
 
 private sub RatioConsiderCandidate(byval v as Double, byval p as LongInt, byval q as ULongInt, byref bestNum as LongInt, byref bestDen as ULongInt, byref bestErr as Double)
   if q = 0 orelse q > CULngInt(RATIO_MAX_DENOMINATOR) then exit sub
-  dim approx as Double = CDbl(p) / CDbl(q)
-  dim ratErr as Double = abs(v - approx)
+  dim qd as Double = CDbl(q)
+  dim ratErr as Double = abs(v * qd - CDbl(p)) / qd
   if ratErr < bestErr then
     bestErr = ratErr
     bestNum = p
@@ -5984,7 +5986,8 @@ private function RatioSemiconvergentApproxErr(byval v as Double, byval p1 as Lon
   dim qh as LongInt = q1 + h * q0
   if qh <= 0 then return 1e300
   dim ph as LongInt = p1 + h * p0
-  return abs(v - CDbl(ph) / CDbl(qh))
+  dim qhd as Double = CDbl(qh)
+  return abs(v * qhd - CDbl(ph)) / qhd
 end function
 
 private sub RatioScanSemiconvergentRange(byval v as Double, byval p1 as LongInt, byval q1 as LongInt, byval p0 as LongInt, byval q0 as LongInt, byval hMax as LongInt, byref bestNum as LongInt, byref bestDen as ULongInt, byref bestErr as Double)

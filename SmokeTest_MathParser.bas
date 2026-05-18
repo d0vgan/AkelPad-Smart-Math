@@ -727,7 +727,7 @@ private sub RunComplexNumberSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1076) as SmokeCase
+  dim tests(1 to 1085) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -1860,6 +1860,15 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1074).expr = "a(x)=1/a; sortby((0:30, 1:00, 0:45), a)": tests(1074).expectedErrContains = "unknown variable: a" ' [sortby] body uses a but param is x; not UDF hint
   tests(1075).expr = "a(x)=1/x; sortby((0:30, 1:00, 0:45), a)": tests(1075).expectedErrContains = "incompatible operands" ' [sortby] duration key fn
   tests(1076).expr = "ratio(())": tests(1076).expectedErrContains = "expects at least 1 argument" ' [arity]
+  tests(1077).expr = "ratio(0.14285714285714285)": tests(1077).expected = "1/7" ' [ok-func] repeating decimal
+  tests(1078).expr = "ratio(-0.3333333333333333)": tests(1078).expected = "-1/3" ' [ok-func] negative
+  tests(1079).expr = "ratio(1234567)": tests(1079).expected = "1234567" ' [ok-func] exact integer
+  tests(1080).expr = "ratio(0.0000001)": tests(1080).expected = "1/10000000" ' [ok-func] power-of-10 small
+  tests(1081).expr = "ratio(0.4142135623730951)": tests(1081).expected = "3880899/9369319" ' [ok-func] semiconvergent
+  tests(1082).expr = "ratio((0.14285714285714285, sqrt(2)))": tests(1082).expected = "(1/7, 13250218/9369319)" ' [ok-array]
+  tests(1083).expr = "ratio(0.9999999)": tests(1083).expected = "9999999/10000000" ' [ok-func] near-one large denom
+  tests(1084).expr = "ratio(0.123456789012345)": tests(1084).expected = "10/81" ' [ok-func] modest denominator
+  tests(1085).expr = "ratio(1/7)": tests(1085).expected = "1/7" ' [ok-func] exact rational input
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
