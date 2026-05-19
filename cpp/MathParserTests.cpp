@@ -2879,6 +2879,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "-0x7FFFFFFFFFFFFFFF+2", "-9223372036854775805"} ,
     {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF+0", "18446744073709551615"} ,
     {ParityBasicCase::Kind::Expected, "uhex(0xFFFFFFFFFFFFFFFF+0)", "0xFFFFFFFFFFFFFFFF"} ,
+    {ParityBasicCase::Kind::Expected, "100000000000000000000", "1.0000000000000000e+20"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF+1", "9223372036854775808"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF+2", "9223372036854775809"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF-2", "9223372036854775805"} ,
@@ -3360,6 +3361,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "(pi/4,pi/3,pi/2); deg", "(45, 60, 90)"} ,
     {ParityBasicCase::Kind::ErrorContains, "0xAA; foo()", "unknown function"} ,
     {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
+    {ParityBasicCase::Kind::Expected, "d(x)=(ratio(x), x-ratio(x)); d(seconds(20ms))", "(1/50, 0)" } ,
+    {ParityBasicCase::Kind::Expected, "f(x)=x*(2,3,4); f(10)", "(20, 30, 40)" }
 };
 
 static const ParityBasicCase kParityTimeFromSmokeCases[] = {
@@ -3469,6 +3472,133 @@ std::vector<TestCase> buildParityTimeFromSmokeCases() {
                    }});
     }
   }
+  return t;
+}
+
+std::vector<TestCase> buildTimeValuesSupportOptionCases() {
+  std::vector<TestCase> t;
+  t.push_back({"time-opt: flag and duration eval under enabled mode",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 if (!p.getSupportTimeValues()) {
+                   why = "expected true after setSupportTimeValues(true)";
+                   return false;
+                 }
+                 p.parseAndEvaluate("1:30 + 2:45.111");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "04:15.111") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 p.setSupportTimeValues(false);
+                 if (p.getSupportTimeValues()) {
+                   why = "expected false after setSupportTimeValues(false)";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: fresh parser defaults to on",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!p.getSupportTimeValues()) {
+                   why = "expected default true";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: literals and converters disabled when support off",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(false);
+                 p.parseAndEvaluate("1:30 + 2:45.111");
+                 if (p.getError().empty()) {
+                   why = "expected evaluation failure for colon time literal with time support off";
+                   return false;
+                 }
+                 std::string el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 const bool okParse =
+                     el.find("unexpected token") != std::string::npos || el.find("invalid numeric") != std::string::npos ||
+                     el.find("invalid segment") != std::string::npos;
+                 if (!okParse) {
+                   why = std::string("unexpected error for colon literal: ") + p.getError();
+                   return false;
+                 }
+                 p.parseAndEvaluate("second");
+                 if (p.getError().empty()) {
+                   why = "expected failure for second with time support off";
+                   return false;
+                 }
+                 el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (el.find("unknown variable") == std::string::npos) {
+                   why = std::string("unexpected error for second: ") + p.getError();
+                   return false;
+                 }
+                 p.parseAndEvaluate("milliseconds(5)");
+                 if (p.getError().empty()) {
+                   why = "expected failure for milliseconds(5) with time support off";
+                   return false;
+                 }
+                 el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (el.find("incompatible operands") == std::string::npos) {
+                   why = std::string("unexpected error for milliseconds(5): ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: oversized plain decimal is numeric, not time literal",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 p.parseAndEvaluate("100000000000000000000");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (!smokeScalarCloseEnough(p.getResult(), "1.0000000000000000e+20")) {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: UDF accepts duration argument",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 p.parseAndEvaluate("_=0:00; rd(t)=ratio(days(t)); rd(1h)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "1/24") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: sin still rejects duration argument",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 p.parseAndEvaluate("sin(1:00)");
+                 if (p.getError().empty()) {
+                   why = std::string("expected error, got ") + p.getResult();
+                   return false;
+                 }
+                 std::string el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (el.find("incompatible operands") == std::string::npos) {
+                   why = std::string("unexpected error: ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
   return t;
 }
 
@@ -4197,6 +4327,7 @@ int main() {
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
+  const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
 
   runSuite("Unit", unit, s);
@@ -4206,6 +4337,7 @@ int main() {
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+  runSuite("Time value support (parser option)", timeValuesSupportOption, s);
   runSuite("Sortby/Ratio", sortbyRatio, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";

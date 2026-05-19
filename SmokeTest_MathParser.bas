@@ -888,8 +888,140 @@ private sub RunComplexNumberSupportOptionTests()
   print ""
 end sub
 
+private sub RunTimeValuesSupportOptionTests()
+  print "=== Time value support (parser-wide option) ==="
+
+  Parser_SetSupportTimeValues(TRUE)
+
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+
+  if Parser_GetSupportTimeValues() = FALSE then
+    print "[time-opt] FAIL: expected support flag ON after enabling"
+    subFail += 1
+  else
+    print "[time-opt] PASS: getter reports enabled after Parser_SetSupportTimeValues(TRUE)"
+    subPass += 1
+  end if
+
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  if Parser_TryEvaluateEx("1:30 + 2:45.111", r, rt, ia) = FALSE orelse rt <> "04:15.111" then
+    print "[time-opt] FAIL: duration add with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[time-opt] PASS: 1:30 + 2:45.111 -> 04:15.111 with support flag ON"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("second + 5", r, rt, ia) = FALSE orelse rt <> "00:06" then
+    print "[time-opt] FAIL: second constant with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[time-opt] PASS: second + 5 -> 00:06 with support flag ON"
+    subPass += 1
+  end if
+
+  Parser_SetSupportTimeValues(FALSE)
+  if Parser_GetSupportTimeValues() <> FALSE then
+    print "[time-opt] FAIL: expected support flag OFF after disable"
+    subFail += 1
+  else
+    print "[time-opt] PASS: getter reports disabled after Parser_SetSupportTimeValues(FALSE)"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("1:30 + 2:45.111", r, rt, ia) then
+    print "[time-opt] FAIL: expected failure for colon time literal with support OFF but got """ & rt & """"
+    subFail += 1
+  else
+    dim errTimeLit as String = lcase(Parser_GetLastError())
+    if instr(errTimeLit, "unexpected token") > 0 orelse instr(errTimeLit, "invalid numeric") > 0 orelse instr(errTimeLit, "invalid segment") > 0 then
+      print "[time-opt] PASS: colon time literal rejected when support is OFF"
+      subPass += 1
+    else
+      print "[time-opt] FAIL: colon literal with support OFF expected parse error, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("5000ms", r, rt, ia) then
+    print "[time-opt] FAIL: expected failure for compact time literal 5000ms with support OFF but got """ & rt & """"
+    subFail += 1
+  else
+    dim errCompact as String = lcase(Parser_GetLastError())
+    if instr(errCompact, "unknown variable") > 0 orelse instr(errCompact, "unexpected token") > 0 orelse instr(errCompact, "invalid numeric") > 0 then
+      print "[time-opt] PASS: compact time literal rejected when support is OFF"
+      subPass += 1
+    else
+      print "[time-opt] FAIL: compact literal with support OFF expected parse error, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("second", r, rt, ia) then
+    print "[time-opt] FAIL: expected failure for second constant with support OFF but got """ & rt & """"
+    subFail += 1
+  else
+    dim errSecond as String = lcase(Parser_GetLastError())
+    if instr(errSecond, "unknown variable") > 0 then
+      print "[time-opt] PASS: second constant unavailable when support is OFF"
+      subPass += 1
+    else
+      print "[time-opt] FAIL: second with support OFF expected unknown variable, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  if Parser_TryEvaluateEx("milliseconds(5)", r, rt, ia) then
+    print "[time-opt] FAIL: expected failure for milliseconds(5) with support OFF but got """ & rt & """"
+    subFail += 1
+  else
+    dim errMs as String = lcase(Parser_GetLastError())
+    if instr(errMs, "incompatible operands") > 0 then
+      print "[time-opt] PASS: milliseconds(5) with support OFF -> incompatible operands"
+      subPass += 1
+    else
+      print "[time-opt] FAIL: milliseconds(5) with support OFF expected incompatible operands, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  Parser_SetSupportTimeValues(TRUE)
+
+  Parser_ClearVariables()
+  Parser_SetSupportTimeValues(TRUE)
+  if Parser_TryEvaluateEx("_=0:00; rd(t)=ratio(days(t)); rd(1h)", r, rt, ia) = FALSE orelse rt <> "1/24" then
+    print "[time-opt] FAIL: UDF duration arg, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[time-opt] PASS: _=0:00; rd(t)=ratio(days(t)); rd(1h) -> 1/24"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("sin(1:00)", r, rt, ia) then
+    print "[time-opt] FAIL: sin(1:00) should fail with incompatible operands but got """ & rt & """"
+    subFail += 1
+  else
+    dim errSinTime as String = lcase(Parser_GetLastError())
+    if instr(errSinTime, "incompatible operands") > 0 then
+      print "[time-opt] PASS: sin(1:00) still rejects duration argument"
+      subPass += 1
+    else
+      print "[time-opt] FAIL: sin(1:00) expected incompatible operands, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Time-option sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 sub Main()
-  dim tests(1 to 1088) as SmokeCase
+  dim tests(1 to 1091) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2034,6 +2166,9 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1086).expr = "0xFFFFFFFFFFFFFFFF+0": tests(1086).expected = "18446744073709551615" ' [hex-exact] uint64 metadata preserved
   tests(1087).expr = "0x7FFFFFFFFFFFFFFF+1": tests(1087).expected = "9223372036854775808" ' [hex-exact] int64-range hex add
   tests(1088).expr = "uhex(0xFFFFFFFFFFFFFFFF+0)": tests(1088).expected = "0xFFFFFFFFFFFFFFFF" ' [hex-exact] uhex on exact uint result
+  tests(1089).expr = "100000000000000000000": tests(1089).expected = "1.0000000000000000e+20" ' [numeric] long decimal integer, not compact time
+  tests(1090).expr = "d(x)=(ratio(x), x-ratio(x)); d(seconds(20ms))": tests(1090).expected = "(1/50, 0)"
+  tests(1091).expr = "f(x)=x*(2,3,4); f(10)": tests(1091).expected = "(20, 30, 40)"
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -2081,6 +2216,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunRawResultApiTests()
 
   RunComplexNumberSupportOptionTests()
+
+  RunTimeValuesSupportOptionTests()
 
   print "=== Result ==="
   print "Passed: " & g_passed

@@ -98,6 +98,8 @@ public:
   /// When true, future releases may evaluate complex-valued builtins and accept complex literals/arrays.
   void setSupportComplexNumbers(bool enabled);
   bool getSupportComplexNumbers() const;
+  void setSupportTimeValues(bool enabled);
+  bool getSupportTimeValues() const;
 
   void addConst(const std::string& constName, long long intValue);
   void addConst(const std::string& constName, double dblValue);
@@ -377,6 +379,7 @@ private:
   bool hasCompiledProgram_ = false;
   bool compiledScalarOnly_ = false;
   bool supportComplexNumbers_ = false;
+  bool supportTimeValues_ = true;
 
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
@@ -727,7 +730,12 @@ private:
     std::uint64_t uintV = 0;
   };
   static void exactCartesianComponentClear(ExactCartesianComponent& c);
+  static void exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n);
+  static void exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u);
   static bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
+  static bool complexNeedsPrincipalNegRealPow(double ar, double ai, double br, double bi);
+  static void complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
+                                     double& outI);
   static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
@@ -750,9 +758,9 @@ private:
   std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
   static bool isComplexUnaryTrigBuiltin(BuiltinFunctionId id);
   static bool complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI);
-  static bool scalarValueIsTime(const EvalValue::ScalarValue& s);
+  bool scalarValueIsTime(const EvalValue::ScalarValue& s) const;
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
-  static bool evalValueInvolvesTime(const EvalValue& v);
+  bool evalValueInvolvesTime(const EvalValue& v) const;
   static bool evalValueHasNonzeroImaginary(const EvalValue& v);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);

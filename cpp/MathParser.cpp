@@ -1425,10 +1425,14 @@ bool tryProductCoeffUnitMs(long long coeff, long long factor, long long& outDelt
   return true;
 }
 
-/** Parse `lit` as MM:SS, HH:MM:SS, or DD:HH:MM:SS (optional fractional last field). Returns false and `err` message on failure. */
-bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const char*& err) {
+/** Parse `[litStart,litEnd)` as MM:SS, HH:MM:SS, or DD:HH:MM:SS (optional fractional last field). */
+bool parseTimeLiteralStringToMs(const char* litStart, const char* litEnd, long long& outMs, const char*& err) {
   err = nullptr;
-  const int n = static_cast<int>(lit.size());
+  if (!litStart || !litEnd || litStart >= litEnd) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
+  const int n = static_cast<int>(litEnd - litStart);
   if (n <= 0) {
     err = STR_TIME_LITERAL_INVALID_SEGMENT;
     return false;
@@ -1436,7 +1440,7 @@ bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const 
   std::vector<int> colonPos;
   colonPos.reserve(8);
   for (int i = 0; i < n; ++i) {
-    if (lit[static_cast<std::size_t>(i)] == ':') {
+    if (litStart[i] == ':') {
       if (colonPos.size() > 6U) {
         err = STR_TIME_LITERAL_INVALID_SEGMENT;
         return false;
@@ -1461,28 +1465,29 @@ bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const 
       err = STR_TIME_LITERAL_EMPTY_SEGMENT;
       return false;
     }
-    std::string segStr = lit.substr(static_cast<std::size_t>(getSegStart), static_cast<std::size_t>(segEnd - getSegStart + 1));
-    if (segStr.empty()) {
+    const char* segPtr = litStart + getSegStart;
+    const char* segEndPtr = litStart + segEnd + 1;
+    if (segPtr >= segEndPtr) {
       err = STR_TIME_LITERAL_EMPTY_SEGMENT;
       return false;
     }
+    const char* wholeEndPtr = segEndPtr;
+    fracPart.clear();
     if (si == segCount - 1) {
-      const std::size_t dotPos = segStr.find('.');
-      if (dotPos != std::string::npos) {
-        fracPart = segStr.substr(dotPos + 1);
-        segStr = segStr.substr(0, dotPos);
-        if (segStr.empty()) {
-          err = STR_TIME_LITERAL_EMPTY_SEGMENT;
-          return false;
+      for (const char* t = segPtr; t < segEndPtr; ++t) {
+        if (*t == '.') {
+          wholeEndPtr = t;
+          fracPart.assign(t + 1, segEndPtr);
+          break;
         }
-      } else {
-        fracPart.clear();
       }
-    } else {
-      fracPart.clear();
     }
-    for (char ch : segStr) {
-      if (ch < '0' || ch > '9') {
+    if (wholeEndPtr == segPtr) {
+      err = STR_TIME_LITERAL_EMPTY_SEGMENT;
+      return false;
+    }
+    for (const char* t = segPtr; t < wholeEndPtr; ++t) {
+      if (*t < '0' || *t > '9') {
         err = STR_TIME_LITERAL_INVALID_SEGMENT;
         return false;
       }
@@ -1494,8 +1499,8 @@ bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const 
       }
     }
     std::uint64_t uv = 0;
-    for (char ch : segStr) {
-      const int dig = ch - '0';
+    for (const char* t = segPtr; t < wholeEndPtr; ++t) {
+      const int dig = *t - '0';
       if (uv > ((std::numeric_limits<std::uint64_t>::max)() - static_cast<std::uint64_t>(dig)) / 10u) {
         err = STR_TIME_LITERAL_INVALID_SEGMENT;
         return false;
@@ -1556,6 +1561,10 @@ bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const 
   }
   outMs = roundHalfUpDoubleToLongLong(t);
   return true;
+}
+
+bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const char*& err) {
+  return parseTimeLiteralStringToMs(lit.data(), lit.data() + lit.size(), outMs, err);
 }
 
 std::string pad2DigitsLl(long long n) {
@@ -1961,9 +1970,12 @@ const char* MathParser::getReservedIdentifierError(const std::string& ident) con
       return STR_RESERVED_CONSTANT_NAME;
     }
   }
-  if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN ||
-      ident == STR_MILLISECOND || ident == STR_SECOND || ident == STR_MINUTE ||
-      ident == STR_HOUR || ident == STR_DAY) {
+  if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN) {
+    return STR_RESERVED_CONSTANT_NAME;
+  }
+  if (supportTimeValues_ &&
+      (ident == STR_MILLISECOND || ident == STR_SECOND || ident == STR_MINUTE || ident == STR_HOUR ||
+       ident == STR_DAY)) {
     return STR_RESERVED_CONSTANT_NAME;
   }
   return nullptr;
@@ -2060,10 +2072,13 @@ MathParser::EvalValue MathParser::makeUdfFormalValidationDummy() {
   return v;
 }
 
-static bool isReservedBuiltinConstantName(const std::string& nameText) {
-  return nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN ||
-      nameText == STR_MILLISECOND || nameText == STR_SECOND || nameText == STR_MINUTE ||
-      nameText == STR_HOUR || nameText == STR_DAY;
+static bool isReservedBuiltinConstantName(const std::string& nameText, bool supportTimeValues) {
+  if (nameText == STR_PI || nameText == STR_E || nameText == STR_INF || nameText == STR_NAN) {
+    return true;
+  }
+  return supportTimeValues &&
+         (nameText == STR_MILLISECOND || nameText == STR_SECOND || nameText == STR_MINUTE ||
+          nameText == STR_HOUR || nameText == STR_DAY);
 }
 
 static bool isReservedBuiltinVariableNameForUserFunctionDefinition(const std::string& fnName) {
@@ -2094,7 +2109,7 @@ const char* MathParser::validateUserFunctionDefinitionNames(
     if (seen.find(p) != seen.end()) {
       return STR_DUPLICATE_PARAMETER_NAME;
     }
-    if (isReservedBuiltinConstantName(p)) {
+    if (isReservedBuiltinConstantName(p, supportTimeValues_)) {
       return STR_RESERVED_CONSTANT_NAME;
     }
     {
@@ -2958,7 +2973,7 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
 
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
   return (a.scalarKind == ScalarKind::FloatingPoint) && (b.scalarKind == ScalarKind::FloatingPoint) &&
-      !MathParser::scalarValueIsTime(a) && !MathParser::scalarValueIsTime(b) && !a.hasExactInt64() && !a.hasExactUInt64() && !b.hasExactInt64() &&
+      (a.scalarKind != ScalarKind::Time) && (b.scalarKind != ScalarKind::Time) && !a.hasExactInt64() && !a.hasExactUInt64() && !b.hasExactInt64() &&
       !b.hasExactUInt64() && !scalarHasNonzeroImaginaryPart(a) && !scalarHasNonzeroImaginaryPart(b);
 }
 
@@ -3200,6 +3215,30 @@ bool MathParser::getSupportComplexNumbers() const {
   return supportComplexNumbers_;
 }
 
+void MathParser::setSupportTimeValues(bool enabled) {
+  if (supportTimeValues_ == enabled) {
+    return;
+  }
+  supportTimeValues_ = enabled;
+  if (enabled) {
+    setVariable(STR_MILLISECOND, makeScalarTimeMs(1LL));
+    setVariable(STR_SECOND, makeScalarTimeMs(1000LL));
+    setVariable(STR_MINUTE, makeScalarTimeMs(60000LL));
+    setVariable(STR_HOUR, makeScalarTimeMs(3600000LL));
+    setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
+  } else {
+    variables_.erase(STR_MILLISECOND);
+    variables_.erase(STR_SECOND);
+    variables_.erase(STR_MINUTE);
+    variables_.erase(STR_HOUR);
+    variables_.erase(STR_DAY);
+  }
+}
+
+bool MathParser::getSupportTimeValues() const {
+  return supportTimeValues_;
+}
+
 void MathParser::addConst(const std::string& constName, long long intValue) {
   EvalValue v = makeScalarInt(intValue);
   setVariable(toLower(constName), v);
@@ -3312,6 +3351,67 @@ void MathParser::exactCartesianComponentClear(ExactCartesianComponent& c) {
   c.uintV = 0;
 }
 
+void MathParser::exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n) {
+  exactCartesianComponentClear(c);
+  c.hasInt = true;
+  c.intV = n;
+  if (n >= 0) {
+    c.hasUInt = true;
+    c.uintV = static_cast<std::uint64_t>(n);
+  }
+}
+
+void MathParser::exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u) {
+  exactCartesianComponentClear(c);
+  c.hasUInt = true;
+  c.uintV = u;
+  if (u <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    c.hasInt = true;
+    c.intV = static_cast<long long>(u);
+  }
+}
+
+bool MathParser::complexNeedsPrincipalNegRealPow(double ar, double ai, double br, double bi) {
+  if (ai != 0.0 || bi != 0.0) {
+    return false;
+  }
+  if (ar >= 0.0) {
+    return false;
+  }
+  if (!std::isfinite(ar) || !std::isfinite(br)) {
+    return false;
+  }
+  if (std::fabs(br - std::trunc(br)) < 1e-12) {
+    return false;
+  }
+  return true;
+}
+
+void MathParser::complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
+                                          double& outI) {
+  switch (op) {
+    case '+':
+      outR = ar + br;
+      outI = ai + bi;
+      break;
+    case '-':
+      outR = ar - br;
+      outI = ai - bi;
+      break;
+    case '*': {
+      complexMultiply(ar, ai, br, bi, outR, outI);
+      break;
+    }
+    case '/':
+      complexDivide(ar, ai, br, bi, outR, outI);
+      break;
+    default:
+      outR = std::numeric_limits<double>::quiet_NaN();
+      outI = std::numeric_limits<double>::quiet_NaN();
+      break;
+  }
+}
+
 bool MathParser::tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI) {
   if (c.hasInt) {
     outI = c.intV;
@@ -3329,77 +3429,50 @@ bool MathParser::tryExactCartesianComponentToInt64(const ExactCartesianComponent
 }
 
 bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
-  exactCartesianComponentClear(c);
   if (sv.hasExactInt64()) {
-    c.hasInt = true;
-    c.intV = sv.exactInt64;
-    if (sv.exactInt64 >= 0) {
-      c.hasUInt = true;
-      c.uintV = static_cast<std::uint64_t>(sv.exactInt64);
-    } else if (sv.hasExactUInt64()) {
+    exactCartesianComponentAssignFromInt64(c, sv.exactInt64);
+    if (sv.exactInt64 < 0 && sv.hasExactUInt64()) {
       c.hasUInt = true;
       c.uintV = sv.exactUInt64;
     }
     return true;
   }
   if (sv.hasExactUInt64()) {
-    c.hasUInt = true;
-    c.uintV = sv.exactUInt64;
-    if (sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-      c.hasInt = true;
-      c.intV = static_cast<long long>(sv.exactUInt64);
-    }
+    exactCartesianComponentAssignFromUInt64(c, sv.exactUInt64);
     return true;
   }
   long long t = 0;
   if (tryExtractExactInt64FromDoubleStrict(sv.scalar, t)) {
-    c.hasInt = true;
-    c.intV = t;
-    if (t >= 0) {
-      c.hasUInt = true;
-      c.uintV = static_cast<std::uint64_t>(t);
-    }
+    exactCartesianComponentAssignFromInt64(c, t);
     return true;
   }
+  exactCartesianComponentClear(c);
   return false;
 }
 
 bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
-  exactCartesianComponentClear(c);
   if (sv.hasImagExactInt64()) {
-    c.hasInt = true;
-    c.intV = sv.imagExactInt64;
-    if (sv.imagExactInt64 >= 0) {
-      c.hasUInt = true;
-      c.uintV = static_cast<std::uint64_t>(sv.imagExactInt64);
-    } else if (sv.hasImagExactUInt64()) {
+    exactCartesianComponentAssignFromInt64(c, sv.imagExactInt64);
+    if (sv.imagExactInt64 < 0 && sv.hasImagExactUInt64()) {
       c.hasUInt = true;
       c.uintV = sv.imagExactUInt64;
     }
     return true;
   }
   if (sv.hasImagExactUInt64()) {
-    c.hasUInt = true;
-    c.uintV = sv.imagExactUInt64;
-    if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-      c.hasInt = true;
-      c.intV = static_cast<long long>(sv.imagExactUInt64);
-    }
+    exactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64);
     return true;
   }
   if (!scalarHasNonzeroImaginaryPart(sv)) {
+    exactCartesianComponentClear(c);
     return true;
   }
   long long t = 0;
   if (tryExtractExactInt64FromDoubleStrict(sv.imag, t)) {
-    c.hasInt = true;
-    c.intV = t;
-    if (t >= 0) {
-      c.hasUInt = true;
-      c.uintV = static_cast<std::uint64_t>(t);
-    }
+    exactCartesianComponentAssignFromInt64(c, t);
     return true;
   }
+  exactCartesianComponentClear(c);
   return false;
 }
 
@@ -3474,23 +3547,13 @@ bool MathParser::tryAddExactCartesianComponents(const ExactCartesianComponent& a
   long long oi = 0;
   if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
       checkedAddLL(ai, bi, oi)) {
-    out.hasInt = true;
-    out.intV = oi;
-    if (oi >= 0) {
-      out.hasUInt = true;
-      out.uintV = static_cast<std::uint64_t>(oi);
-    }
+    exactCartesianComponentAssignFromInt64(out, oi);
     return true;
   }
   if (a.hasUInt && b.hasUInt) {
     std::uint64_t ou = 0;
     if (tryAddUInt64Checked(a.uintV, b.uintV, ou)) {
-      out.hasUInt = true;
-      out.uintV = ou;
-      if (ou <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-        out.hasInt = true;
-        out.intV = static_cast<long long>(ou);
-      }
+      exactCartesianComponentAssignFromUInt64(out, ou);
       return true;
     }
   }
@@ -3513,12 +3576,7 @@ bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a
   long long oi = 0;
   if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
       checkedSubLL(ai, bi, oi)) {
-    out.hasInt = true;
-    out.intV = oi;
-    if (oi >= 0) {
-      out.hasUInt = true;
-      out.uintV = static_cast<std::uint64_t>(oi);
-    }
+    exactCartesianComponentAssignFromInt64(out, oi);
     return true;
   }
   return false;
@@ -3568,20 +3626,8 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
         !checkedMulLL(lai, lbr, p4) || !checkedSubLL(p1, p2, oreI) || !checkedAddLL(p3, p4, oimI)) {
       return false;
     }
-    exactCartesianComponentClear(oRe);
-    oRe.hasInt = true;
-    oRe.intV = oreI;
-    if (oreI >= 0) {
-      oRe.hasUInt = true;
-      oRe.uintV = static_cast<std::uint64_t>(oreI);
-    }
-    exactCartesianComponentClear(oIm);
-    oIm.hasInt = true;
-    oIm.intV = oimI;
-    if (oimI >= 0) {
-      oIm.hasUInt = true;
-      oIm.uintV = static_cast<std::uint64_t>(oimI);
-    }
+    exactCartesianComponentAssignFromInt64(oRe, oreI);
+    exactCartesianComponentAssignFromInt64(oIm, oimI);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -3610,20 +3656,8 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
         !tryQuotExactInt64(numIm, denom, qIm)) {
       return false;
     }
-    exactCartesianComponentClear(oRe);
-    oRe.hasInt = true;
-    oRe.intV = qRe;
-    if (qRe >= 0) {
-      oRe.hasUInt = true;
-      oRe.uintV = static_cast<std::uint64_t>(qRe);
-    }
-    exactCartesianComponentClear(oIm);
-    oIm.hasInt = true;
-    oIm.intV = qIm;
-    if (qIm >= 0) {
-      oIm.hasUInt = true;
-      oIm.uintV = static_cast<std::uint64_t>(qIm);
-    }
+    exactCartesianComponentAssignFromInt64(oRe, qRe);
+    exactCartesianComponentAssignFromInt64(oIm, qIm);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -3720,20 +3754,8 @@ bool MathParser::tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t it
       !tryQuotExactInt64(reI, n, qRe) || !tryQuotExactInt64(imI, n, qIm)) {
     return false;
   }
-  exactCartesianComponentClear(oRe);
-  oRe.hasInt = true;
-  oRe.intV = qRe;
-  if (qRe >= 0) {
-    oRe.hasUInt = true;
-    oRe.uintV = static_cast<std::uint64_t>(qRe);
-  }
-  exactCartesianComponentClear(oIm);
-  oIm.hasInt = true;
-  oIm.intV = qIm;
-  if (qIm >= 0) {
-    oIm.hasUInt = true;
-    oIm.uintV = static_cast<std::uint64_t>(qIm);
-  }
+  exactCartesianComponentAssignFromInt64(oRe, qRe);
+  exactCartesianComponentAssignFromInt64(oIm, qIm);
   setScalarComplexFromExactCartesian(out, oRe, oIm);
   return true;
 }
@@ -3755,10 +3777,7 @@ bool MathParser::tryApplyComplexBinaryScalars(
   const bool lIm = scalarHasNonzeroImaginaryPart(lv);
   const bool rIm = scalarHasNonzeroImaginaryPart(rv);
   if (op == '^') {
-    const bool principalNegRealPow =
-        std::isfinite(ar) && std::isfinite(br) && ai == 0.0 && bi == 0.0 && ar < 0.0 &&
-        std::fabs(br - std::trunc(br)) >= 1e-12;
-    if (lIm || rIm || principalNegRealPow) {
+    if (lIm || rIm || complexNeedsPrincipalNegRealPow(ar, ai, br, bi)) {
       double powR = 0.0;
       double powI = 0.0;
       complexPowPrincipal(ar, ai, br, bi, powR, powI);
@@ -3773,28 +3792,10 @@ bool MathParser::tryApplyComplexBinaryScalars(
       tryApplyExactComplexCartesianBinary(lv, rv, op, outS)) {
     return true;
   }
-  if (op == '+') {
-    outS = makeScalarComplexFromDoubles(ar + br, ai + bi);
-    return true;
-  }
-  if (op == '-') {
-    outS = makeScalarComplexFromDoubles(ar - br, ai - bi);
-    return true;
-  }
-  if (op == '*') {
-    double mulR = 0.0;
-    double mulI = 0.0;
-    complexMultiply(ar, ai, br, bi, mulR, mulI);
-    outS = makeScalarComplexFromDoubles(mulR, mulI);
-    return true;
-  }
-  const double denom = br * br + bi * bi;
-  if (denom == 0.0) {
-    const double nanv = std::numeric_limits<double>::quiet_NaN();
-    outS = makeScalarComplexFromDoubles(nanv, nanv);
-  } else {
-    outS = makeScalarComplexFromDoubles((ar * br + ai * bi) / denom, (ai * br - ar * bi) / denom);
-  }
+  double floatR = 0.0;
+  double floatI = 0.0;
+  complexCartesianBinary(ar, ai, br, bi, op, floatR, floatI);
+  outS = makeScalarComplexFromDoubles(floatR, floatI);
   return true;
 }
 
@@ -3997,7 +3998,10 @@ MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
   return out;
 }
 
-bool MathParser::scalarValueIsTime(const EvalValue::ScalarValue& s) {
+bool MathParser::scalarValueIsTime(const EvalValue::ScalarValue& s) const {
+  if (!supportTimeValues_) {
+    return false;
+  }
   return s.scalarKind == ScalarKind::Time;
 }
 
@@ -4005,16 +4009,19 @@ long long MathParser::timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s
   return s.exactInt64;
 }
 
-bool MathParser::evalValueInvolvesTime(const EvalValue& v) {
+bool MathParser::evalValueInvolvesTime(const EvalValue& v) const {
+  if (!supportTimeValues_) {
+    return false;
+  }
   if (v.kind != ValueKind::Scalar) {
     for (const auto& item : v.arr) {
-      if (MathParser::scalarValueIsTime(item)) {
+      if (scalarValueIsTime(item)) {
         return true;
       }
     }
     return false;
   }
-  return MathParser::scalarValueIsTime(v.scalarValue);
+  return scalarValueIsTime(v.scalarValue);
 }
 
 bool MathParser::evalValueHasNonzeroImaginary(const EvalValue& v) {
@@ -4442,8 +4449,11 @@ bool MathParser::tryApplyTimeBinaryScalars(
     const EvalValue::ScalarValue& rv,
     char op,
     EvalValue& outS) const {
-  const bool lt = MathParser::scalarValueIsTime(lv);
-  const bool rt = MathParser::scalarValueIsTime(rv);
+  if (!supportTimeValues_) {
+    return false;
+  }
+  const bool lt = scalarValueIsTime(lv);
+  const bool rt = scalarValueIsTime(rv);
   if (!lt && !rt) {
     return false;
   }
@@ -4922,16 +4932,21 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalCont
   return arr;
 }
 
-bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const {
-  const char* p0 = ctx.p;
-  if (*p0 < '0' || *p0 > '9') {
+namespace {
+
+enum class NumericLiteralRoute { Plain, ColonTime, CompactTime };
+
+bool isDecimalRadixPrefixedAt(const char* p) {
+  if (p[0] != '0') {
     return false;
   }
-  if (*p0 == '0') {
-    const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(p0[1])));
-    if (px == 'x' || px == 'b' || px == 'o') {
-      return false;
-    }
+  const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(p[1])));
+  return px == 'x' || px == 'b' || px == 'o';
+}
+
+bool scanColonTimeLiteralEnd(const char* p0, const char*& outEnd) {
+  if (*p0 < '0' || *p0 > '9' || isDecimalRadixPrefixedAt(p0)) {
+    return false;
   }
   const char* q = p0;
   bool hasColon = false;
@@ -4944,10 +4959,100 @@ bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) con
   if (!hasColon) {
     return false;
   }
-  const std::string lit(p0, q);
+  outEnd = q;
+  return true;
+}
+
+bool peekCompactTimeSuffixAfterDigitRun(const char* digitEnd) {
+  const char* r = digitEnd;
+  while (*r == ' ' || *r == '\t') {
+    ++r;
+  }
+  if (*r == 'm' && r[1] == 's') {
+    return true;
+  }
+  if (*r == 'd' || *r == 'h' || *r == 's') {
+    return true;
+  }
+  if (*r == 'm') {
+    return true;
+  }
+  return false;
+}
+
+NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
+  if (*p < '0' || *p > '9') {
+    return NumericLiteralRoute::Plain;
+  }
+  if (isDecimalRadixPrefixedAt(p)) {
+    return NumericLiteralRoute::Plain;
+  }
+  const char* colonEnd = nullptr;
+  if (scanColonTimeLiteralEnd(p, colonEnd)) {
+    return NumericLiteralRoute::ColonTime;
+  }
+  const char* q = p;
+  while (*q >= '0' && *q <= '9') {
+    ++q;
+  }
+  if (*q == 'e' || *q == 'E') {
+    return NumericLiteralRoute::Plain;
+  }
+  if (peekCompactTimeSuffixAfterDigitRun(q)) {
+    return NumericLiteralRoute::CompactTime;
+  }
+  return NumericLiteralRoute::Plain;
+}
+
+const char* scanDecimalNumericLiteralEnd(const char* p) {
+  if (!p || !*p) {
+    return p;
+  }
+  if (*p == '+') {
+    ++p;
+  }
+  const char* q = p;
+  bool anyDigit = false;
+  while (*q >= '0' && *q <= '9') {
+    anyDigit = true;
+    ++q;
+  }
+  if (*q == '.') {
+    ++q;
+    while (*q >= '0' && *q <= '9') {
+      anyDigit = true;
+      ++q;
+    }
+  }
+  if (*q == 'e' || *q == 'E') {
+    const char* e = q + 1;
+    if (*e == '+' || *e == '-') {
+      ++e;
+    }
+    if (*e >= '0' && *e <= '9') {
+      while (*e >= '0' && *e <= '9') {
+        ++e;
+      }
+      q = e;
+    }
+  }
+  return anyDigit ? q : p;
+}
+
+}  // namespace
+
+bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const {
+  if (!supportTimeValues_) {
+    return false;
+  }
+  const char* p0 = ctx.p;
+  const char* q = nullptr;
+  if (!scanColonTimeLiteralEnd(p0, q)) {
+    return false;
+  }
   const char* timeErr = nullptr;
   long long ms = 0;
-  if (!parseTimeLiteralStringToMs(lit, ms, timeErr)) {
+  if (!parseTimeLiteralStringToMs(p0, q, ms, timeErr)) {
     if (timeErr != nullptr) {
       setValidationError(ctx, timeErr);
     }
@@ -4959,15 +5064,12 @@ bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) con
 }
 
 bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const {
-  const char* const pSave = ctx.p;
-  if (*ctx.p < '0' || *ctx.p > '9') {
+  if (!supportTimeValues_) {
     return false;
   }
-  if (*ctx.p == '0') {
-    const char px = static_cast<char>(std::tolower(static_cast<unsigned char>(ctx.p[1])));
-    if (px == 'x' || px == 'b' || px == 'o') {
-      return false;
-    }
+  const char* const pSave = ctx.p;
+  if (*ctx.p < '0' || *ctx.p > '9' || isDecimalRadixPrefixedAt(ctx.p)) {
+    return false;
   }
   long long totalMs = 0;
   int lastUnitRank = -1;
@@ -4981,7 +5083,9 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
       const int dig = *ctx.p - '0';
       if (uv > ((std::numeric_limits<std::uint64_t>::max)() - static_cast<std::uint64_t>(dig)) / 10u) {
         ctx.p = pSave;
-        setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+        if (comps > 0) {
+          setValidationError(ctx, STR_TIME_LITERAL_INVALID_SEGMENT);
+        }
         return false;
       }
       uv = uv * 10u + static_cast<std::uint64_t>(dig);
@@ -5106,35 +5210,63 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       return lit;
     }
   }
-  {
-    EvalValue timeLit;
-    if (tryParseScalarTimeLiteral(ctx, timeLit)) {
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
-      lit->literalValue = std::move(timeLit);
-      return lit;
-    }
-    if (ctx.parseError) {
-      return nullptr;
+  if (supportTimeValues_) {
+    switch (classifyNumericLiteralRoute(ctx.p)) {
+      case NumericLiteralRoute::ColonTime: {
+        EvalValue timeLit;
+        if (tryParseScalarTimeLiteral(ctx, timeLit)) {
+          auto lit = std::make_unique<Expr>();
+          lit->tag = Expr::Tag::Literal;
+          lit->literalValue = std::move(timeLit);
+          return lit;
+        }
+        if (ctx.parseError) {
+          return nullptr;
+        }
+        break;
+      }
+      case NumericLiteralRoute::CompactTime: {
+        EvalValue compactLit;
+        if (tryParseCompactSuffixTimeLiteral(ctx, compactLit)) {
+          auto lit = std::make_unique<Expr>();
+          lit->tag = Expr::Tag::Literal;
+          lit->literalValue = std::move(compactLit);
+          return lit;
+        }
+        if (ctx.parseError) {
+          return nullptr;
+        }
+        break;
+      }
+      case NumericLiteralRoute::Plain:
+        break;
     }
   }
-  {
-    EvalValue compactLit;
-    if (tryParseCompactSuffixTimeLiteral(ctx, compactLit)) {
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
-      lit->literalValue = std::move(compactLit);
-      return lit;
+  const char* const numStart = ctx.p;
+  const char* const numEnd = scanDecimalNumericLiteralEnd(numStart);
+  if (numEnd == numStart) {
+    if (*numStart == '.') {
+      setUnexpectedTokenError(ctx);
+    } else {
+      setInvalidNumericLiteralError(ctx);
     }
-    if (ctx.parseError) {
-      return nullptr;
-    }
+    return nullptr;
   }
-  const char* numStart = ctx.p;
+
+  if (tryParseInputNumberAsInteger(numStart, numEnd, parsedUInt)) {
+    ctx.p = numEnd;
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = (parsedUInt <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
+        ? makeScalarInt(static_cast<long long>(parsedUInt))
+        : makeScalarUInt(parsedUInt);
+    return lit;
+  }
+
   char* end = nullptr;
-  const double d = std::strtod(ctx.p, &end);
-  if (end == ctx.p) {
-    if (*ctx.p == '.') {
+  const double d = std::strtod(numStart, &end);
+  if (end == numStart) {
+    if (*numStart == '.') {
       setUnexpectedTokenError(ctx);
     } else {
       setInvalidNumericLiteralError(ctx);
@@ -5155,12 +5287,6 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
   auto lit = std::make_unique<Expr>();
   lit->tag = Expr::Tag::Literal;
   lit->literalValue = makeScalar(d);
-
-  if (tryParseInputNumberAsInteger(numStart, end, parsedUInt)) {
-    lit->literalValue = (parsedUInt <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
-      ? makeScalarInt(static_cast<long long>(parsedUInt))
-      : makeScalarUInt(parsedUInt);
-  }
   return lit;
 }
 
@@ -5785,7 +5911,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExprScalar(*e.child, ctx, scopedVars);
       if (ctx.parseError) return v;
-      if (MathParser::scalarValueIsTime(v.scalarValue)) {
+      if (scalarValueIsTime(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
@@ -5900,8 +6026,8 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::CmpGe:
         case Expr::BinaryOp::CmpEq:
         case Expr::BinaryOp::CmpNe: {
-          const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
-          const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
+          const bool lTime = scalarValueIsTime(l.scalarValue);
+          const bool rTime = scalarValueIsTime(r.scalarValue);
           const bool lIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(l.scalarValue);
           const bool rIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(r.scalarValue);
           const bool orderingOp = e.binaryOp == Expr::BinaryOp::CmpLt || e.binaryOp == Expr::BinaryOp::CmpLe ||
@@ -6047,7 +6173,7 @@ MathParser::EvalValue MathParser::evalExpr(
         setPercentageRequiresScalarValueError(ctx);
         return makeScalar(0);
       }
-      if (MathParser::scalarValueIsTime(v.scalarValue)) {
+      if (scalarValueIsTime(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
@@ -6090,7 +6216,7 @@ MathParser::EvalValue MathParser::evalExpr(
         if (fv.kind != ValueKind::Scalar) {
           continue;
         }
-        if (MathParser::scalarValueIsTime(fv.scalarValue)) {
+        if (scalarValueIsTime(fv.scalarValue)) {
           anyTimeArr = true;
         } else {
           anyNonTimeArr = true;
@@ -6159,8 +6285,8 @@ MathParser::EvalValue MathParser::evalExpr(
           }
         }
         auto cmpScalarPair = [this, &ctx](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
-          const bool ta = MathParser::scalarValueIsTime(sa);
-          const bool tb = MathParser::scalarValueIsTime(sb);
+          const bool ta = scalarValueIsTime(sa);
+          const bool tb = scalarValueIsTime(sb);
           const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
           const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
           if ((ha || hb) && (ta || tb)) {
@@ -6304,14 +6430,14 @@ MathParser::EvalValue MathParser::evalExpr(
             return makeScalar(0);
           }
           if ((valueHasComplex(l) || valueHasComplex(r)) &&
-              (MathParser::evalValueInvolvesTime(l) || MathParser::evalValueInvolvesTime(r))) {
+              (evalValueInvolvesTime(l) || evalValueInvolvesTime(r))) {
             setIncompatibleOperandsError(ctx);
             return makeScalar(0);
           }
         }
         if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
-          const bool lTime = MathParser::scalarValueIsTime(l.scalarValue);
-          const bool rTime = MathParser::scalarValueIsTime(r.scalarValue);
+          const bool lTime = scalarValueIsTime(l.scalarValue);
+          const bool rTime = scalarValueIsTime(r.scalarValue);
           if (!lTime && !rTime) {
             if (supportComplexNumbers_) {
               double lr = 0.0;
@@ -6581,7 +6707,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         [](const EvalValue& v) { return MathParser::evalValueHasNonzeroImaginary(v); });
     if (anyComplex) {
       const bool anyTimeAgg =
-          std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); });
+          std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
       if (anyTimeAgg) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
@@ -6658,7 +6784,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       return makeScalar(0);
     }
     const bool anyTimeAgg =
-        std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); });
+        std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
     if (anyTimeAgg && id == BuiltinFunctionId::Product) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
@@ -6681,7 +6807,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         if (!okAgg) {
           return;
         }
-        if (!MathParser::scalarValueIsTime(s)) {
+        if (!scalarValueIsTime(s)) {
           setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
           okAgg = false;
           return;
@@ -6886,7 +7012,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         }
       }
       const bool anyTimeMed =
-          std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); });
+          std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
       if (anyTimeMed) {
         std::vector<double> flatMs;
         bool okM = true;
@@ -6894,7 +7020,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
           if (!okM) {
             return;
           }
-          if (!MathParser::scalarValueIsTime(s)) {
+          if (!scalarValueIsTime(s)) {
             setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
             okM = false;
             return;
@@ -6935,7 +7061,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     case BuiltinFunctionId::Variance:
     case BuiltinFunctionId::Stddev: {
-      if (std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueInvolvesTime(v); })) {
+      if (std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); })) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
@@ -7017,15 +7143,15 @@ bool MathParser::isSortbyEligibleFunctionName(
 }
 
 bool MathParser::scalarSortLess(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
-  if (scalarValueIsTime(a) || scalarValueIsTime(b)) {
+  if (a.scalarKind == ScalarKind::Time || b.scalarKind == ScalarKind::Time) {
     long long am = 0;
     long long bm = 0;
-    if (scalarValueIsTime(a)) {
+    if (a.scalarKind == ScalarKind::Time) {
       am = timeTotalMsFromScalarValue(a);
     } else {
       am = static_cast<long long>(std::llround(a.scalar * 1000.0));
     }
-    if (scalarValueIsTime(b)) {
+    if (b.scalarKind == ScalarKind::Time) {
       bm = timeTotalMsFromScalarValue(b);
     } else {
       bm = static_cast<long long>(std::llround(b.scalar * 1000.0));
@@ -7082,16 +7208,88 @@ MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64
 
 namespace {
 
-double ratioRationalApproxErr(double v, long long p, std::uint64_t q) {
-  const double qd = static_cast<double>(q);
-  return std::fabs(v * qd - static_cast<double>(p)) / qd;
+inline double ratioApproxAbsNumerator(double v, long long p, std::uint64_t q) {
+  return std::fabs(v * static_cast<double>(q) - static_cast<double>(p));
 }
 
-bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, double& ratErr) {
-  bool found = false;
-  ratErr = 1e300;
+inline bool ratioApproxErrLess(double n1, std::uint64_t q1, double n2, std::uint64_t q2) {
+  return n1 * static_cast<double>(q2) < n2 * static_cast<double>(q1);
+}
+
+struct RatioRationalSearch {
+  const double v;
+  long long bestP = 0;
+  std::uint64_t bestQ = 1;
+  double bestAbsNum = 1e300;
+
+  explicit RatioRationalSearch(double vIn) : v(vIn) {}
+
+  bool consider(long long p, std::uint64_t q) {
+    if (q == 0 || q > static_cast<std::uint64_t>(RATIO_MAX_DENOMINATOR)) {
+      return false;
+    }
+    const double absNum = ratioApproxAbsNumerator(v, p, q);
+    if (ratioApproxErrLess(absNum, q, bestAbsNum, bestQ)) {
+      bestAbsNum = absNum;
+      bestP = p;
+      bestQ = q;
+      return absNum == 0.0;
+    }
+    return false;
+  }
+
+  bool semiconvergentAbsNumLess(long long p1, long long q1, long long p0, long long q0, long long h1,
+                                long long h2) const {
+    const long long qh1 = q1 + h1 * q0;
+    const long long qh2 = q1 + h2 * q0;
+    if (qh1 <= 0 || qh2 <= 0) {
+      return false;
+    }
+    const long long ph1 = p1 + h1 * p0;
+    const long long ph2 = p1 + h2 * p0;
+    const double n1 = ratioApproxAbsNumerator(v, ph1, static_cast<std::uint64_t>(qh1));
+    const double n2 = ratioApproxAbsNumerator(v, ph2, static_cast<std::uint64_t>(qh2));
+    return ratioApproxErrLess(n1, static_cast<std::uint64_t>(qh1), n2, static_cast<std::uint64_t>(qh2));
+  }
+
+  void scanSemiconvergentRange(long long p1, long long q1, long long p0, long long q0, long long hMax) {
+    if (hMax < 0) {
+      return;
+    }
+    if (hMax <= RATIO_SEMICONV_LINEAR_THRESH) {
+      for (long long h = 0; h <= hMax; ++h) {
+        if (consider(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0))) {
+          return;
+        }
+      }
+      return;
+    }
+    long long lo = 0;
+    long long hi = hMax;
+    if (consider(p1, static_cast<std::uint64_t>(q1))) {
+      return;
+    }
+    while (hi - lo > 2) {
+      const long long span = hi - lo;
+      const long long m1 = lo + span / 3;
+      const long long m2 = hi - span / 3;
+      if (semiconvergentAbsNumLess(p1, q1, p0, q0, m1, m2)) {
+        hi = m2;
+      } else {
+        lo = m1;
+      }
+    }
+    for (long long h = lo; h <= hi; ++h) {
+      if (consider(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0))) {
+        return;
+      }
+    }
+  }
+};
+
+bool tryExactPower10Rational(double v, RatioRationalSearch& search) {
   for (int k = 1; k <= RATIO_MAX_POWER10_EXP; ++k) {
-    const std::uint64_t denPow = mult10_N_times(1ull, k);
+    const std::uint64_t denPow = pow10_u64[k];
     const double scaled = v * static_cast<double>(denPow);
     const long long n = static_cast<long long>(std::llround(scaled));
     if (n == 0) {
@@ -7108,62 +7306,21 @@ bool tryExactPower10Rational(double v, long long& num, std::uint64_t& den, doubl
     const long long denPowLong = static_cast<long long>(denPow);
     const long long g = gcdInt64(nAbs, denPowLong);
     const long long candNum = n / g;
-    const long long candDenLong = denPowLong / g;
-    const std::uint64_t candDen = static_cast<std::uint64_t>(candDenLong);
-    const double candErr = ratioRationalApproxErr(v, candNum, candDen);
-    if (candErr < ratErr) {
-      ratErr = candErr;
-      num = candNum;
-      den = candDen;
-      found = true;
+    const std::uint64_t candDen = static_cast<std::uint64_t>(denPowLong / g);
+    if (candDen == 0) {
+      continue;
+    }
+    const double absNum = ratioApproxAbsNumerator(v, candNum, candDen);
+    if (ratioApproxErrLess(absNum, candDen, search.bestAbsNum, search.bestQ)) {
+      search.bestAbsNum = absNum;
+      search.bestP = candNum;
+      search.bestQ = candDen;
+      if (absNum == 0.0) {
+        return true;
+      }
     }
   }
-  return found;
-}
-
-double ratioSemiconvergentApproxErr(double v, long long p1, long long q1, long long p0, long long q0,
-                                    long long h) {
-  if (h < 0) {
-    return 1e300;
-  }
-  const long long qh = q1 + h * q0;
-  if (qh <= 0) {
-    return 1e300;
-  }
-  const long long ph = p1 + h * p0;
-  return ratioRationalApproxErr(v, ph, static_cast<std::uint64_t>(qh));
-}
-
-template <typename ConsiderFn>
-void scanSemiconvergentRange(double v, long long p1, long long q1, long long p0, long long q0, long long hMax,
-                             const ConsiderFn& considerCandidate) {
-  if (hMax < 0) {
-    return;
-  }
-  if (hMax <= RATIO_SEMICONV_LINEAR_THRESH) {
-    for (long long h = 0; h <= hMax; ++h) {
-      considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
-    }
-    return;
-  }
-  long long lo = 0;
-  long long hi = hMax;
-  considerCandidate(p1, static_cast<std::uint64_t>(q1));
-  while (hi - lo > 2) {
-    const long long span = hi - lo;
-    const long long m1 = lo + span / 3;
-    const long long m2 = hi - span / 3;
-    const double e1 = ratioSemiconvergentApproxErr(v, p1, q1, p0, q0, m1);
-    const double e2 = ratioSemiconvergentApproxErr(v, p1, q1, p0, q0, m2);
-    if (e1 <= e2) {
-      hi = m2;
-    } else {
-      lo = m1;
-    }
-  }
-  for (long long h = lo; h <= hi; ++h) {
-    considerCandidate(p1 + h * p0, static_cast<std::uint64_t>(q1 + h * q0));
-  }
+  return false;
 }
 
 }  // namespace
@@ -7184,38 +7341,28 @@ bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t&
     den = 1;
     return true;
   }
-  long long bestNum = 0;
-  std::uint64_t bestDen = 1;
-  double bestErr = 1e300;
-  const auto considerCandidate = [&](long long p, std::uint64_t q) {
-    if (q == 0 || q > static_cast<std::uint64_t>(RATIO_MAX_DENOMINATOR)) {
-      return;
-    }
-    const double ratErr = ratioRationalApproxErr(v, p, q);
-    if (ratErr < bestErr) {
-      bestErr = ratErr;
-      bestNum = p;
-      bestDen = q;
-    }
-  };
+  RatioRationalSearch search(v);
   long long p0 = 0;
   long long p1 = 1;
   long long q0 = 1;
   long long q1 = 0;
   double frac = v;
   for (int i = 0; i < 64; ++i) {
-    const long long a = static_cast<long long>(std::floor(frac));
+    double ipart = 0.0;
+    const double t = std::modf(frac, &ipart);
+    const long long a = static_cast<long long>(ipart);
     const long long p = a * p1 + p0;
     const long long q = a * q1 + q0;
     if (q > RATIO_MAX_DENOMINATOR) {
       if (q1 > 0 && q0 > 0) {
         const long long hMax = (RATIO_MAX_DENOMINATOR - q1) / q0;
-        scanSemiconvergentRange(v, p1, q1, p0, q0, hMax, considerCandidate);
+        search.scanSemiconvergentRange(p1, q1, p0, q0, hMax);
       }
       break;
     }
-    considerCandidate(p, static_cast<std::uint64_t>(q));
-    const double t = frac - static_cast<double>(a);
+    if (search.consider(p, static_cast<std::uint64_t>(q))) {
+      break;
+    }
     if (t <= RATIO_APPROX_EPS) {
       break;
     }
@@ -7225,23 +7372,17 @@ bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t&
     q0 = q1;
     q1 = q;
   }
-  long long p10Num = 0;
-  std::uint64_t p10Den = 0;
-  double p10Err = 1e300;
-  if (v <= 1.0 / static_cast<double>(RATIO_MAX_DENOMINATOR) &&
-      tryExactPower10Rational(v, p10Num, p10Den, p10Err) && p10Err < bestErr) {
-    bestNum = p10Num;
-    bestDen = p10Den;
-    bestErr = p10Err;
+  if (v <= 1.0 / static_cast<double>(RATIO_MAX_DENOMINATOR)) {
+    tryExactPower10Rational(v, search);
   }
-  if (bestNum == 0) {
+  if (search.bestP == 0) {
     num = 0;
     den = 1;
     return true;
   }
-  const long long g = gcdInt64(std::llabs(bestNum), static_cast<long long>(bestDen));
-  num = bestNum / g;
-  den = static_cast<std::uint64_t>(static_cast<long long>(bestDen) / g);
+  const long long g = gcdInt64(std::llabs(search.bestP), static_cast<long long>(search.bestQ));
+  num = search.bestP / g;
+  den = static_cast<std::uint64_t>(static_cast<long long>(search.bestQ) / g);
   if (neg) {
     num = -num;
   }
@@ -7610,8 +7751,8 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     return bits;
   };
   const auto cmpScalarsForUnique = [this](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
-    const bool ta = MathParser::scalarValueIsTime(sa);
-    const bool tb = MathParser::scalarValueIsTime(sb);
+    const bool ta = scalarValueIsTime(sa);
+    const bool tb = scalarValueIsTime(sb);
     const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
     const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
     if ((ha || hb) && (ta || tb)) {
@@ -7735,8 +7876,8 @@ MathParser::EvalValue MathParser::builtinSortFamily(
         values.begin(),
         values.end(),
         [](const EvalValue& lhs, const EvalValue& rhs) {
-          const bool lTime = MathParser::scalarValueIsTime(lhs.scalarValue);
-          const bool rTime = MathParser::scalarValueIsTime(rhs.scalarValue);
+          const bool lTime = lhs.scalarValue.scalarKind == ScalarKind::Time;
+          const bool rTime = rhs.scalarValue.scalarKind == ScalarKind::Time;
           if (lTime && rTime) {
             const long long a = timeTotalMsFromScalarValue(lhs.scalarValue);
             const long long b = timeTotalMsFromScalarValue(rhs.scalarValue);
@@ -7782,7 +7923,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
   bool seenTimeSort = false;
   bool seenNonTimeSort = false;
   for (const auto& ev : flat) {
-    if (MathParser::scalarValueIsTime(ev.scalarValue)) {
+    if (scalarValueIsTime(ev.scalarValue)) {
       seenTimeSort = true;
     } else {
       seenNonTimeSort = true;
@@ -8765,7 +8906,7 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     setScalarMinMaxError(ctx, getFunctionName(BuiltinFunctionId::Clamp));
     return makeScalar(0);
   }
-  if (evalValueInvolvesTime(valueV) || MathParser::scalarValueIsTime(minV.scalarValue) || MathParser::scalarValueIsTime(maxV.scalarValue)) {
+  if (evalValueInvolvesTime(valueV) || scalarValueIsTime(minV.scalarValue) || scalarValueIsTime(maxV.scalarValue)) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
@@ -8916,6 +9057,10 @@ MathParser::EvalValue MathParser::evalFunctionCall(
 
   if (id == BuiltinFunctionId::Milliseconds || id == BuiltinFunctionId::Seconds || id == BuiltinFunctionId::Minutes ||
       id == BuiltinFunctionId::Hours || id == BuiltinFunctionId::Days) {
+    if (!supportTimeValues_) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
     if (args.size() != 1U) {
       setExactArgCountError(ctx, fnName, 1);
       return makeScalar(0);
@@ -8937,7 +9082,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
       return makeScalarMaybeExact(static_cast<double>(ms) / 86400000.0);
     };
     if (a0.kind == ValueKind::Scalar) {
-      if (!MathParser::scalarValueIsTime(a0.scalarValue)) {
+      if (!scalarValueIsTime(a0.scalarValue)) {
         setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
         return makeScalar(0);
       }
@@ -8947,7 +9092,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
       std::vector<EvalValue> outs;
       outs.reserve(a0.arr.size());
       for (const auto& item : a0.arr) {
-        if (!MathParser::scalarValueIsTime(item)) {
+        if (!scalarValueIsTime(item)) {
           setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
           return makeScalar(0);
         }

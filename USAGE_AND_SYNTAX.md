@@ -201,6 +201,10 @@ Use parentheses for operations with complex numbers:
   - `mix(a,b)=a*2+b*3; mix(2,4)` -> `16`
   - `f(a,b,c)=a+b*c; f(2,3,4)` -> `14`
   - `f(a,b,c)=a+b*c; v=(2,3,4); f(unpack(v))` -> `14`
+- Array result:
+  - `d(x)=(ratio(x), x-ratio(x))`
+  - `d(seconds(20ms))` -> `(1/50, 0)`
+  - `f(x)=x*(2,3,4); f(10)` -> `(20, 30, 40)`
 - Recursive functions are not supported.
 
 #### Late Binding of Referenced Functions
@@ -227,6 +231,10 @@ Set **`_`** before the definition so the check uses a better dummy, e.g. **`_=2`
 
 - `_=2; f(x)=(x/2)<<2` -> OK (`(2/2)<<2`).
 - `_=2; f(x,y)=x%(y-1)` -> OK (`2%(2-1)`).
+
+For a body that calls time converters on a parameter (for example `rd(t)=ratio(days(t))`), set **`_`** to a duration before the definition so validation sees a duration dummy:
+
+- `_=0:00; rd(t)=ratio(days(t)); rd(1h)` -> `1/24`.
 
 ### Comments
 
@@ -803,6 +811,7 @@ Example:
 ### Parser runtime flags (plugin / reference API)
 
 - **Complex number support (off by default):** `Parser_SetSupportComplexNumbers` / `Parser_GetSupportComplexNumbers` in the FreeBASIC plugin parser. Default is off: behavior stays real-only (non-real domains keep producing `NaN` or an error as they do today). When set on, the parser registers the imaginary unit as the reserved constant **`i`** (lowercase), accepts Cartesian-style complex literals and expressions such as `10+5i`, `-1+3i`, `2-3*i`, and `-i+5` (including implicit multiplication before `i`, for example `5i`).
+- **Time value support (on by default):** `Parser_SetSupportTimeValues` / `Parser_GetSupportTimeValues`. Default is on: colon and compact unit-suffix duration literals (`1:30`, `1d2h3m4s5ms`), duration constants (`millisecond`, `second`, `minute`, `hour`, `day`), and duration-aware arithmetic, comparisons, aggregates, and converter builtins (`milliseconds`, `seconds`, etc.) are active. When set off, the parser skips time-literal parsing and time-specific evaluation paths (plain numeric parsing only), and duration constants/converters are unavailable.
 
 ## SmartMath Options
 

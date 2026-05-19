@@ -85,6 +85,11 @@ int main(int argc, char** argv) {
   for (std::uint64_t run = 0; run < totalRuns; ++run) {
     const bool isWarmup = (run < warmupRuns);
     MathParser parser;
+    // Note:
+    // On my machine, I get around 408_000 ops_per_sec with SupportTimeValues enabled.
+    // With them disabled, I get around 412_000 ops_per_sec.
+    parser.setSupportTimeValues(false);
+    parser.setSupportComplexNumbers(false);
     parser.addConst("myconst1", 123LL);
     parser.addConst("myconst2", 345LL);
 
