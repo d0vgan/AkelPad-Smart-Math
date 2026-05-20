@@ -189,11 +189,6 @@ Use parentheses for operations with complex numbers:
 
 - Define:
   - `f(x)=x*x+1`
-- Reserved names cannot be used for function names:
-  - `hex(x)=x` -> error (`reserved function name`)
-  - `e(x)=x` -> error (`reserved constant name`)
-  - `ans(x)=x` or `_(x)=x` -> error (`reserved built-in variable name`) - these names are reserved for the last-result variable `ans` and the formal-validation probe variable `_` (see below)
-  - `nan=1` -> error (`reserved constant name`)
 - Call:
   - `f(5)` -> `26`
   - `f((10,20))` -> `(101, 401)`
@@ -205,6 +200,17 @@ Use parentheses for operations with complex numbers:
   - `d(x)=(ratio(x), x-ratio(x))`
   - `d(seconds(20ms))` -> `(1/50, 0)`
   - `f(x)=x*(2,3,4); f(10)` -> `(20, 30, 40)`
+  - `rev(x,y)=(y,x); rev(10,20)` -> `(20, 10)`
+  - `f(a)=(a[0],a[-1]); f((1,2,3,4))` -> `(1, 4)`
+- Define lambda-style:
+  - `f=x:x*x+1` (same arity and body rules as `f(x)=...`; spaces optional)
+  - Wrapped form: `f=(x:1/x)`, `f=(x):1/x`, or nested `f=((x):(1/x))`
+  - Zero parameters: `f=():42` then call `f()`
+- Reserved names cannot be used for function names:
+  - `hex(x)=x` -> error (`reserved function name`)
+  - `e(x)=x` -> error (`reserved constant name`)
+  - `ans(x)=x` or `_(x)=x` -> error (`reserved built-in variable name`) - these names are reserved for the last-result variable `ans` and the formal-validation probe variable `_` (see below)
+  - `nan=1` -> error (`reserved constant name`)
 - Recursive functions are not supported.
 
 #### Late Binding of Referenced Functions
@@ -605,7 +611,12 @@ Purpose: aggregate and transform values/lists.
   - `sort(3,1,2)` -> `(1,2,3)`
   - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
   - `sortby((3,-1,2), abs)` -> `(-1,2,3)` (stable on equal keys)
+  - `sortby((2,1), polar)` -> `(1,2)` (tuple keys `(r, angle)`, lexicographic order)
+  - `f(x)=x*(10,20); sortby((3,1,2), f)` -> `(1,2,3)`
   - `f(x)=1/x; sortby((1,-1,-2,0,2), f)` -> `(-1, -2, 2, 1, 0)`
+  - `sortby((3,1,2), x:-x)` -> `(3,2,1)` (anonymous lambda key; parentheses optional around the lambda)
+  - `sortby((1,2), (x):(1/x))` -> `(2,1)` (parenthesized lambda body; keys `0.5`, `1`; ascending order)
+  - `sortby((5,1), ():1)` -> error (`sortby expects a function that takes 1 parameter`; zero-parameter lambdas are not allowed as the sort key)
   - `unique(3,1,3,2,1,2)` -> `(3,1,2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
 

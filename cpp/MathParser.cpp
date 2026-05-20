@@ -15,6 +15,114 @@ namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr int kMaxEvalDepth = 128;
 
+const char* skipAsciiSpacesPtr(const char* p) {
+  while (*p && std::isspace(static_cast<unsigned char>(*p))) {
+    ++p;
+  }
+  return p;
+}
+
+bool localIsIdentStart(char c) {
+  return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
+}
+
+bool localIsIdentChar(char c) {
+  return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+const char* endOfIdentTokenPtr(const char* p) {
+  if (!localIsIdentStart(*p)) {
+    return p;
+  }
+  ++p;
+  while (localIsIdentChar(*p)) {
+    ++p;
+  }
+  return p;
+}
+
+bool peekIdentFollowedByChar(const char* p, char ch) {
+  p = skipAsciiSpacesPtr(endOfIdentTokenPtr(p));
+  return *p == ch;
+}
+
+bool peekIdentFollowedByAssignEquals(const char* p) {
+  p = skipAsciiSpacesPtr(endOfIdentTokenPtr(p));
+  return *p == '=' && p[1] != '=';
+}
+
+bool peekUnwrappedLambdaParamsThenColon(const char* p) {
+  p = skipAsciiSpacesPtr(p);
+  if (!localIsIdentStart(*p)) {
+    return false;
+  }
+  p = skipAsciiSpacesPtr(endOfIdentTokenPtr(p));
+  while (*p == ',') {
+    p = skipAsciiSpacesPtr(p + 1);
+    if (!localIsIdentStart(*p)) {
+      return false;
+    }
+    p = skipAsciiSpacesPtr(endOfIdentTokenPtr(p));
+  }
+  return *p == ':';
+}
+
+bool peekParenParamListThenColon(const char* p) {
+  p = skipAsciiSpacesPtr(p);
+  if (*p != '(') {
+    return false;
+  }
+  p = skipAsciiSpacesPtr(p + 1);
+  if (*p == ')') {
+    p = skipAsciiSpacesPtr(p + 1);
+    return *p == ':';
+  }
+  if (!localIsIdentStart(*p)) {
+    return false;
+  }
+  for (;;) {
+    p = skipAsciiSpacesPtr(endOfIdentTokenPtr(p));
+    if (*p == ',') {
+      p = skipAsciiSpacesPtr(p + 1);
+      if (!localIsIdentStart(*p)) {
+        return false;
+      }
+      continue;
+    }
+    if (*p == ')') {
+      p = skipAsciiSpacesPtr(p + 1);
+      return *p == ':';
+    }
+    return false;
+  }
+}
+
+bool peekRhsMayBeLambdaDefinition(const char* p) {
+  p = skipAsciiSpacesPtr(p);
+  if (*p == '(') {
+    // (x,y):body, ():body, or one extra grouping paren around those forms
+    if (peekParenParamListThenColon(p)) {
+      return true;
+    }
+    return peekRhsMayBeLambdaDefinition(p + 1);
+  }
+  // x:body, x,y:body, x,y,z:body
+  return peekUnwrappedLambdaParamsThenColon(p);
+}
+
+void stripTrailingSemicolonsForTopLevelInput(std::string& s) {
+  for (;;) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+      s.pop_back();
+    }
+    if (!s.empty() && s.back() == ';') {
+      s.pop_back();
+      continue;
+    }
+    break;
+  }
+}
+
 double calcAtan2Basic(double y, double x) {
   if (x > 0.0) {
     return std::atan(y / x);
@@ -325,7 +433,7 @@ constexpr const char* STR_RATIO = "ratio";
 constexpr const char* STR_SORTED = "sorted";
 constexpr const char* STR_SORTBY_EXPECTS_ONE_FUNCTION = "sortby expects exactly one function";
 constexpr const char* STR_SORTBY_EXPECTS_UNARY_FUNCTION = "sortby expects a function that takes 1 parameter";
-constexpr const char* STR_SORTBY_KEY_MUST_RETURN_SCALAR = "sortby key function must return a scalar";
+constexpr const char* STR_SORTBY_KEY_MUST_BE_SCALAR_OR_ARRAY = "sortby key function must return a scalar or an array";
 constexpr const char* STR_PAR_ARRAY_COMMA_FUNC = "(array, func)";
 constexpr double RATIO_APPROX_EPS = 1e-14;
 constexpr long long RATIO_MAX_DENOMINATOR = 10000000LL;
@@ -395,6 +503,7 @@ constexpr double K_MAX_EXACT_INT_FROM_DOUBLE = 9007199254740992.0;  // 2^53
 constexpr const char* STR_PREFIX_HEX = "0x";
 constexpr const char* STR_PREFIX_OCT = "0o";
 constexpr const char* STR_PREFIX_BIN = "0b";
+constexpr const char* STR_EMPTY_STATEMENT = "empty statement";
 constexpr const char* STR_UNEXPECTED_COMMA = "unexpected comma";
 constexpr const char* STR_MISSING_CLOSING_PARENTHESIS = "missing closing parenthesis";
 constexpr const char* STR_INVALID_HEX_LITERAL = "invalid hex literal";
@@ -453,6 +562,7 @@ constexpr const char* STR_ARGUMENT_PAR_S = " argument(s)";
 constexpr const char* STR_MAX_EVALUATION_DEPTH_REACHED = "max evaluation depth reached";
 constexpr const char* STR_USER_FUNCTION_CALL_STACK_OVERFLOW = "function call stack overflow";
 constexpr const char* STR_FAILED_TO_PARSE_USER_FUNCTION_BODY = "failed to parse user function body";
+constexpr const char* STR_FUNCTION_BODY_IS_EMPTY = "function body is empty";
 constexpr const char* STR_UNEXPECTED_INPUT = "unexpected characters";
 constexpr const char* STR_PARSE_FAILED = "parse failed";
 constexpr const char* STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR = "nothing compiled; call compile() first";
@@ -1228,6 +1338,65 @@ std::string stripLineComments(const std::string& s) {
   return s;
 }
 
+bool parseSourceHasLineComment(const char* text, std::size_t len) {
+  for (std::size_t i = 0; i < len; ++i) {
+    if (text[i] == '#') {
+      return true;
+    }
+    if (text[i] == '/' && (i + 1) < len && text[i + 1] == '/') {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool parseSourceNeedsTrailingSemicolonStrip(const char* text, std::size_t len) {
+  if (len == 0) {
+    return false;
+  }
+  std::size_t end = len;
+  while (end > 0 && std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return end > 0 && text[end - 1] == ';';
+}
+
+bool identHasDigitOrUnderscore(const char* begin, const char* end) {
+  for (const char* q = begin; q < end; ++q) {
+    const unsigned char c = static_cast<unsigned char>(*q);
+    if (c == '_' || (c >= '0' && c <= '9')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Builtins are lowercase a-z except atan2. Skip hash lookup for other idents with digit/_ (e.g. myconst1).
+bool identMayBeBareBuiltinName(const char* begin, const char* end) {
+  if (!identHasDigitOrUnderscore(begin, end)) {
+    return true;
+  }
+  const std::size_t len = static_cast<std::size_t>(end - begin);
+  return len == 5 && begin[0] == 'a' && begin[1] == 't' && begin[2] == 'a' && begin[3] == 'n' && begin[4] == '2';
+}
+
+bool identMayBeBareBuiltinName(const std::string& ident) {
+  return identMayBeBareBuiltinName(ident.data(), ident.data() + ident.size());
+}
+
+void assignLowerIdentFromRange(std::string& out, const char* begin, const char* end) {
+  out.clear();
+  out.reserve(static_cast<std::size_t>(end - begin));
+  for (const char* q = begin; q < end; ++q) {
+    const unsigned char c = static_cast<unsigned char>(*q);
+    if (c >= 'A' && c <= 'Z') {
+      out.push_back(static_cast<char>(std::tolower(c)));
+    } else {
+      out.push_back(*q);
+    }
+  }
+}
+
 bool checkedAddLL(long long a, long long b, long long& out) {
   if ((b > 0 && a > (std::numeric_limits<long long>::max)() - b) ||
       (b < 0 && a < (std::numeric_limits<long long>::min)() - b)) {
@@ -1991,14 +2160,63 @@ bool MathParser::isTrailingFormatterFunctionName(const std::string& nameText) {
       || id == BuiltinFunctionId::Rad || id == BuiltinFunctionId::Deg;
 }
 
-bool MathParser::trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const {
+bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const {
+  if (!ctx.p || !identStart || !ctx.start) {
+    return false;
+  }
+  if (identStart != ctx.start) {
+    return false;
+  }
+  skipSpaces(ctx);
+  const char c = *ctx.p;
+  return c == '\0' || c == ';' || c == ')' || c == ']' || c == '}';
+}
+
+bool MathParser::trySetMissingFunctionCallError(
+    EvalContext& ctx,
+    const std::string& ident,
+    const char* identStart) const {
   BuiltinFunctionId bid = BuiltinFunctionId::Count;
   if (!tryGetBuiltinFunctionId(ident, bid)) {
     return false;
   }
+  if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
+    setError(ctx, buildUnknownVariableErrorText(ident));
+    return true;
+  }
   std::string hint = getBuiltinFunctionMissingCallHint(bid);
   if (!hint.empty()) setFunctionHintError(ctx, hint);
   else setFunctionHintError(ctx, ident + STR_PAR_DOTDOTDOT);
+  return true;
+}
+
+bool MathParser::trySetBareUserFunctionNameError(
+    EvalContext& ctx,
+    const std::string& ident,
+    const char* identStart) const {
+  const UserFunction* uf = findUserFunction(ident);
+  const std::vector<std::string>* compilingParams = nullptr;
+  if (!uf && ctx.compilingUserFunctionParams) {
+    const auto it = ctx.compilingUserFunctionParams->find(ident);
+    if (it != ctx.compilingUserFunctionParams->end()) {
+      compilingParams = &it->second;
+    }
+  }
+  if (!uf && !compilingParams) {
+    return false;
+  }
+  if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
+    setError(ctx, buildUnknownVariableErrorText(ident));
+    return true;
+  }
+  if (uf) {
+    setError(ctx, std::string(STR_USER_DEFINED_FUNCTION_COLON) + formatUserFunctionSignature(*uf));
+  } else {
+    UserFunction stub;
+    stub.name = ident;
+    stub.params = *compilingParams;
+    setError(ctx, std::string(STR_USER_DEFINED_FUNCTION_COLON) + formatUserFunctionSignature(stub));
+  }
   return true;
 }
 
@@ -2019,16 +2237,14 @@ bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& id
     setUnexpectedTokenError(ctx);
     return true;
   }
-  if (trySetMissingFunctionCallError(ctx, ident)) {
-    return true;
-  }
-  if (const UserFunction* uf = findUserFunction(ident)) {
-    if (ctx.allowBareUserFunctionNameHint && userFunctionCallStack_.empty()) {
-      setError(ctx, std::string(STR_USER_DEFINED_FUNCTION_COLON) + formatUserFunctionSignature(*uf));
+  if (!ident.empty()) {
+    if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, nullptr)) {
       return true;
     }
-    setError(ctx, buildUnknownVariableErrorText(ident));
-    return true;
+    if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
+        && trySetBareUserFunctionNameError(ctx, ident, nullptr)) {
+      return true;
+    }
   }
   appendUniqueName(unknownList, ident);
   return false;
@@ -2132,6 +2348,9 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   if (const char* udfNameErr = validateUserFunctionDefinitionNames(fnName, fnParams)) {
     return udfNameErr;
   }
+  if (trim(fnExpr).empty() || udfBodyIsEmptyTupleLiteral(fnExpr)) {
+    return STR_FUNCTION_BODY_IS_EMPTY;
+  }
   if (udfBodyCallsDefinedFunction(fnExpr, fnName)) {
     return STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName;
   }
@@ -2139,6 +2358,9 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   bodyCtx.sourceExpr = fnExpr;
   bodyCtx.p = fnExpr.c_str();
   bodyCtx.start = bodyCtx.p;
+  std::unordered_map<std::string, std::vector<std::string>> validatingUserFunctionParams;
+  validatingUserFunctionParams[fnName] = fnParams;
+  bodyCtx.compilingUserFunctionParams = &validatingUserFunctionParams;
   std::unique_ptr<Expr> ex = parseExpression(bodyCtx);
   if (bodyCtx.parseError || !ex) {
     if (!bodyCtx.errorText.empty()) {
@@ -2165,8 +2387,6 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   bodyCtx.errorText.clear();
   bodyCtx.unknownVarsText.clear();
   bodyCtx.unknownFuncsText.clear();
-  bodyCtx.allowBareUserFunctionNameHint = false;
-
   (void)evalExpr(*ex, bodyCtx, &formalScoped);
 
   if (bodyCtx.parseError) {
@@ -2186,8 +2406,7 @@ bool MathParser::trySetUserFunctionDefinitionError(
     const std::vector<std::string>& fnParams,
     const std::string& fnExpr) {
   // Parse-only here: formal-probe evaluation needs variables from earlier statements in the
-  // same program, which are not applied until runCompiledProgram (Basic evaluates top-level
-  // statements sequentially before the next).
+  // same program, which are not applied until runCompiledProgram (Basic validates the body now).
   const std::string err = getUserFunctionDefinitionErrorText(fnName, fnParams, fnExpr, false);
   if (err.empty()) {
     return false;
@@ -2270,16 +2489,29 @@ bool MathParser::tryAppendFunctionDefinitionStatement(EvalContext& ctx, std::vec
 
 bool MathParser::tryAppendAssignOrExpressionStatement(EvalContext& ctx, std::vector<AstStatement>& out) {
   const char* assignSave = ctx.p;
-  if (isIdentStart(*ctx.p)) {
+  if (peekIdentFollowedByAssignEquals(assignSave)) {
     std::string ident = consumeLowerIdentToken(ctx);
     skipSpaces(ctx);
-    // Single '=' is assignment; '==' is equality (do not steal first '=').
     if (*ctx.p == '=' && ctx.p[1] != '=') {
       if (const char* assignNameErr = validateAssignmentTargetName(ident)) {
         setValidationError(ctx, assignNameErr);
         return false;
       }
       ++ctx.p;
+      const char* afterEq = ctx.p;
+      std::vector<std::string> lamParams;
+      std::string lamBody;
+      if (peekRhsMayBeLambdaDefinition(afterEq) && tryParseLambdaRhsAfterEquals(ctx, lamParams, lamBody)) {
+        if (trySetUserFunctionDefinitionError(ctx, ident, lamParams, lamBody)) {
+          return false;
+        }
+        AstStatement st;
+        st.kind = AstStatement::Kind::FunDef;
+        st.fun = UserFunction{ident, lamParams, lamBody};
+        out.emplace_back(std::move(st));
+        return true;
+      }
+      ctx.p = afterEq;
       auto ex = parseExpression(ctx);
       if (ctx.parseError || !ex) {
         return false;
@@ -2513,7 +2745,10 @@ std::string MathParser::consumeLowerIdentToken(EvalContext& ctx) {
   while (isIdentChar(*ctx.p)) {
     ++ctx.p;
   }
-  return toLower(std::string(start, static_cast<std::size_t>(ctx.p - start)));
+  const char* const end = ctx.p;
+  std::string out;
+  assignLowerIdentFromRange(out, start, end);
+  return out;
 }
 
 bool MathParser::tryConsumeCommaArgSeparator(EvalContext& ctx, bool& hasComma) const {
@@ -2822,6 +3057,19 @@ std::string MathParser::trim(const std::string& s) {
     --r;
   }
   return s.substr(l, r - l);
+}
+
+bool MathParser::udfBodyIsEmptyTupleLiteral(const std::string& bodyExpr) {
+  const std::string t = trim(bodyExpr);
+  if (t.size() < 2 || t.front() != '(' || t.back() != ')') {
+    return false;
+  }
+  for (std::size_t i = 1; i + 1 < t.size(); ++i) {
+    if (!std::isspace(static_cast<unsigned char>(t[i]))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool MathParser::nearlyInt(double v, long long& out) {
@@ -3137,6 +3385,9 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
 std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) const {
   if (v.kind == ValueKind::Scalar) {
     return formatScalar(v, forcedBase);
+  }
+  if (v.kind == ValueKind::InlineLambda) {
+    return "";
   }
   std::string out = "(";
   for (std::size_t i = 0; i < v.arr.size(); ++i) {
@@ -4890,6 +5141,382 @@ bool MathParser::parseFunctionDefinition(
   return true;
 }
 
+bool MathParser::lambdaBodyConsumeUntilWrappedParenCloses(EvalContext& ctx, std::string& outBody) {
+  outBody.clear();
+  int g = 0;
+  while (*ctx.p) {
+    const char c = *ctx.p;
+    if (g == 0 && c == ')') {
+      return true;
+    }
+    switch (c) {
+      case '(':
+      case '[':
+      case '{':
+        ++g;
+        break;
+      case ')':
+      case ']':
+      case '}':
+        --g;
+        if (g < 0) {
+          return false;
+        }
+        break;
+      default:
+        break;
+    }
+    outBody.push_back(c);
+    ++ctx.p;
+  }
+  return false;
+}
+
+namespace {
+
+int netRoundParenDepthBetween(const char* lo, const char* hiExclusive) {
+  int d = 0;
+  for (const char* q = lo; q < hiExclusive; ++q) {
+    if (*q == '(') {
+      ++d;
+    } else if (*q == ')') {
+      --d;
+    }
+  }
+  return d;
+}
+
+}  // namespace
+
+bool MathParser::lambdaBodyConsumeUntilSortbyArgDelim(
+    EvalContext& ctx,
+    const char* lambdaKeySegmentStart,
+    std::string& outBody) {
+  outBody.clear();
+  int g = 0;
+  while (*ctx.p) {
+    const char c = *ctx.p;
+    if (g == 0 && (c == ',' || c == ')')) {
+      if (lambdaKeySegmentStart != nullptr &&
+          netRoundParenDepthBetween(lambdaKeySegmentStart, ctx.p) == 0) {
+        return true;
+      }
+    }
+    switch (c) {
+      case '(':
+      case '[':
+      case '{':
+        ++g;
+        break;
+      case ')':
+      case ']':
+      case '}':
+        --g;
+        if (g < 0) {
+          return false;
+        }
+        break;
+      default:
+        break;
+    }
+    outBody.push_back(c);
+    ++ctx.p;
+  }
+  return false;
+}
+
+bool MathParser::lambdaBodyConsumeUntilTopLevelSemicolonOrEof(EvalContext& ctx, std::string& outBody) {
+  outBody.clear();
+  int g = 0;
+  while (*ctx.p) {
+    const char c = *ctx.p;
+    if (g == 0 && c == ';') {
+      return true;
+    }
+    switch (c) {
+      case '(':
+      case '[':
+      case '{':
+        ++g;
+        break;
+      case ')':
+      case ']':
+      case '}':
+        --g;
+        if (g < 0) {
+          return false;
+        }
+        break;
+      default:
+        break;
+    }
+    outBody.push_back(c);
+    ++ctx.p;
+  }
+  return true;
+}
+
+bool MathParser::lambdaBodyConsumeToEof(EvalContext& ctx, std::string& outBody) {
+  outBody.clear();
+  int g = 0;
+  while (*ctx.p) {
+    const char c = *ctx.p;
+    switch (c) {
+      case '(':
+      case '[':
+      case '{':
+        ++g;
+        break;
+      case ')':
+      case ']':
+      case '}':
+        --g;
+        if (g < 0) {
+          return false;
+        }
+        break;
+      default:
+        break;
+    }
+    outBody.push_back(c);
+    ++ctx.p;
+  }
+  return true;
+}
+
+MathParser::EvalValue MathParser::makeInlineLambdaValue(std::vector<std::string> params, std::string body) {
+  EvalValue v;
+  v.kind = ValueKind::InlineLambda;
+  v.lambdaParams = std::move(params);
+  v.lambdaBody = std::move(body);
+  return v;
+}
+
+bool MathParser::tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const {
+  outParams.clear();
+  skipSpaces(ctx);
+  if (*ctx.p == '(') {
+    ++ctx.p;
+    skipSpaces(ctx);
+    if (*ctx.p == ')') {
+      ++ctx.p;
+      return true;
+    }
+    while (true) {
+      if (!isIdentStart(*ctx.p)) {
+        if (!quiet) {
+          setUnexpectedTokenError(ctx);
+        }
+        return false;
+      }
+      outParams.emplace_back(consumeLowerIdentToken(ctx));
+      skipSpaces(ctx);
+      if (*ctx.p == ',') {
+        ++ctx.p;
+        skipSpaces(ctx);
+        continue;
+      }
+      if (*ctx.p == ')') {
+        ++ctx.p;
+        return true;
+      }
+      if (!quiet) {
+        setUnexpectedTokenError(ctx);
+      }
+      return false;
+    }
+  }
+  if (!isIdentStart(*ctx.p)) {
+    return false;
+  }
+  outParams.emplace_back(consumeLowerIdentToken(ctx));
+  skipSpaces(ctx);
+  while (*ctx.p == ',') {
+    ++ctx.p;
+    skipSpaces(ctx);
+    if (!isIdentStart(*ctx.p)) {
+      if (!quiet) {
+        setUnexpectedTokenError(ctx);
+      }
+      return false;
+    }
+    outParams.emplace_back(consumeLowerIdentToken(ctx));
+    skipSpaces(ctx);
+  }
+  return true;
+}
+
+bool MathParser::tryParseLambdaInnerUnwrappedSuffix(
+    EvalContext& ctx,
+    std::vector<std::string>& outParams,
+    std::string& outBody,
+    bool bodyUntilClosingWrap,
+    bool bodyUntilCommaOrParenAtGroupedDepthZero,
+    bool bodyUntilTopLevelSemicolonOrEof,
+    const char* sortbyLambdaKeyStart,
+    bool quiet) const {
+  if (!tryConsumeLambdaParameterList(ctx, outParams, quiet)) {
+    return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p != ':') {
+    return false;
+  }
+  ++ctx.p;
+  skipSpaces(ctx);
+  if (bodyUntilClosingWrap) {
+    return lambdaBodyConsumeUntilWrappedParenCloses(ctx, outBody);
+  }
+  if (bodyUntilCommaOrParenAtGroupedDepthZero) {
+    return lambdaBodyConsumeUntilSortbyArgDelim(ctx, sortbyLambdaKeyStart, outBody);
+  }
+  if (bodyUntilTopLevelSemicolonOrEof) {
+    return lambdaBodyConsumeUntilTopLevelSemicolonOrEof(ctx, outBody);
+  }
+  return lambdaBodyConsumeToEof(ctx, outBody);
+}
+
+bool MathParser::tryParseLambdaRhsAfterEquals(
+    EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const {
+  const char* const saveOuter = ctx.p;
+  if (!peekRhsMayBeLambdaDefinition(saveOuter)) {
+    return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p == '(') {
+    ++ctx.p;
+    if (tryParseLambdaInnerUnwrappedSuffix(ctx, outParams, outExpr, true, false, false, nullptr, true)) {
+      skipSpaces(ctx);
+      if (*ctx.p == ')') {
+        ++ctx.p;
+        skipSpaces(ctx);
+        if (*ctx.p == '\0' || *ctx.p == ';') {
+          return true;
+        }
+      }
+    }
+    ctx.p = saveOuter;
+    outParams.clear();
+    outExpr.clear();
+  }
+  skipSpaces(ctx);
+  if (!tryParseLambdaInnerUnwrappedSuffix(ctx, outParams, outExpr, false, false, true, nullptr, true)) {
+    return false;
+  }
+  skipSpaces(ctx);
+  return *ctx.p == '\0' || *ctx.p == ';';
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx) {
+  ctx.parseError = false;
+  ctx.errorText.clear();
+  const char* const save = ctx.p;
+  skipSpaces(ctx);
+  std::vector<std::string> params;
+  std::string body;
+  auto makeLit = [&]() -> std::unique_ptr<Expr> {
+    if (params.size() != 1U) {
+      setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+      return nullptr;
+    }
+    if (trim(body).empty()) {
+      setValidationError(ctx, STR_FUNCTION_BODY_IS_EMPTY);
+      return nullptr;
+    }
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = makeInlineLambdaValue(std::move(params), std::move(body));
+    return lit;
+  };
+  if (*ctx.p == '(') {
+    ++ctx.p;
+    if (peekRhsMayBeLambdaDefinition(ctx.p) &&
+        tryParseLambdaInnerUnwrappedSuffix(ctx, params, body, true, false, false, nullptr, true)) {
+      skipSpaces(ctx);
+      if (*ctx.p == ',' || *ctx.p == ')') {
+        return makeLit();
+      }
+    }
+  }
+  ctx.p = save;
+  skipSpaces(ctx);
+  params.clear();
+  body.clear();
+  if (!peekRhsMayBeLambdaDefinition(ctx.p)) {
+    return parseSortbyFunctionRef(ctx);
+  }
+  if (!tryParseLambdaInnerUnwrappedSuffix(ctx, params, body, false, true, false, save, true)) {
+    ctx.p = save;
+    return parseSortbyFunctionRef(ctx);
+  }
+  skipSpaces(ctx);
+  if (*ctx.p != ',' && *ctx.p != ')') {
+    ctx.p = save;
+    return parseSortbyFunctionRef(ctx);
+  }
+  return makeLit();
+}
+
+MathParser::EvalValue MathParser::evalInlineLambdaCall(
+    EvalContext& ctx,
+    const std::vector<std::string>& paramNames,
+    const std::string& bodyExpr,
+    std::vector<EvalValue>&& args,
+    const std::unordered_map<std::string, EvalValue>* /*scopedVars*/) {
+  static const std::string kLambda = "lambda";
+  if (args.size() != paramNames.size()) {
+    setExactArgCountError(ctx, kLambda, paramNames.size());
+    return makeScalar(0);
+  }
+  if (ctx.evalDepth >= kMaxEvalDepth) {
+    setMaxEvaluationDepthReachedError(ctx);
+    return makeScalar(0);
+  }
+
+  std::unordered_map<std::string, EvalValue> localVars;
+  localVars.reserve(paramNames.size());
+  for (std::size_t i = 0; i < paramNames.size(); ++i) {
+    localVars.emplace(paramNames[i], std::move(args[i]));
+  }
+
+  const std::string trimmedBody = trim(bodyExpr);
+  if (trimmedBody.empty() || udfBodyIsEmptyTupleLiteral(trimmedBody)) {
+    setValidationError(ctx, STR_FUNCTION_BODY_IS_EMPTY);
+    return makeScalar(0);
+  }
+
+  EvalContext parseCtx;
+  parseCtx.p = trimmedBody.c_str();
+  parseCtx.start = parseCtx.p;
+  parseCtx.sourceExpr = trimmedBody;
+  parseCtx.compilingUserFunctionParams = ctx.compilingUserFunctionParams;
+  std::vector<AstStatement> compiledBody;
+  if (!parseProgram(parseCtx, compiledBody)) {
+    setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
+    return makeScalar(0);
+  }
+  skipSpaces(parseCtx);
+  if (!parseCtx.parseError && *parseCtx.p != '\0') {
+    setUnexpectedInputError(ctx);
+    return makeScalar(0);
+  }
+
+  EvalContext sub;
+  sub.evalDepth = ctx.evalDepth + 1;
+  EvalValue v = runCompiledProgram(sub, compiledBody, &localVars, false);
+  if (!sub.unknownVarsText.empty()) {
+    setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
+    return makeScalar(0);
+  }
+  if (sub.parseError) {
+    setError(ctx, sub.errorText);
+    return makeScalar(0);
+  }
+  mergeUnknownNameList(ctx.unknownVarsText, sub.unknownVarsText);
+  mergeUnknownNameList(ctx.unknownFuncsText, sub.unknownFuncsText);
+  return v;
+}
+
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
   skipSpaces(ctx);
   if (*ctx.p == '(') {
@@ -4987,19 +5614,38 @@ NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
   if (isDecimalRadixPrefixedAt(p)) {
     return NumericLiteralRoute::Plain;
   }
-  const char* colonEnd = nullptr;
-  if (scanColonTimeLiteralEnd(p, colonEnd)) {
-    return NumericLiteralRoute::ColonTime;
-  }
   const char* q = p;
   while (*q >= '0' && *q <= '9') {
     ++q;
   }
+  if (*q == '.') {
+    ++q;
+    while (*q >= '0' && *q <= '9') {
+      ++q;
+    }
+  }
   if (*q == 'e' || *q == 'E') {
+    ++q;
+    if (*q == '+' || *q == '-') {
+      ++q;
+    }
+    while (*q >= '0' && *q <= '9') {
+      ++q;
+    }
+  }
+  if (*q != ':') {
+    const char* digitEnd = p;
+    while (*digitEnd >= '0' && *digitEnd <= '9') {
+      ++digitEnd;
+    }
+    if (peekCompactTimeSuffixAfterDigitRun(digitEnd)) {
+      return NumericLiteralRoute::CompactTime;
+    }
     return NumericLiteralRoute::Plain;
   }
-  if (peekCompactTimeSuffixAfterDigitRun(q)) {
-    return NumericLiteralRoute::CompactTime;
+  const char* colonEnd = nullptr;
+  if (scanColonTimeLiteralEnd(p, colonEnd)) {
+    return NumericLiteralRoute::ColonTime;
   }
   return NumericLiteralRoute::Plain;
 }
@@ -5291,14 +5937,34 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalContext& ctx) {
-  std::string ident = consumeLowerIdentToken(ctx);
+  const char* identStart = ctx.p;
+  if (!isIdentStart(*ctx.p)) {
+    setUnexpectedTokenError(ctx);
+    return nullptr;
+  }
+  const char* identEnd = ctx.p + 1;
+  while (isIdentChar(*identEnd)) {
+    ++identEnd;
+  }
+  ctx.p = identEnd;
   skipSpaces(ctx);
   if (*ctx.p != '(') {
+    std::string ident;
+    assignLowerIdentFromRange(ident, identStart, identEnd);
+    if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, identStart)) {
+      return nullptr;
+    }
+    if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
+        && trySetBareUserFunctionNameError(ctx, ident, identStart)) {
+      return nullptr;
+    }
     auto v = std::make_unique<Expr>();
     v->tag = Expr::Tag::Variable;
     v->name = std::move(ident);
     return v;
   }
+  std::string ident;
+  assignLowerIdentFromRange(ident, identStart, identEnd);
   ++ctx.p;
   std::vector<std::unique_ptr<Expr>> args;
   const bool isSortbyCall = (ident == STR_SORTBY);
@@ -5495,6 +6161,8 @@ std::unique_ptr<MathParser::Expr> MathParser::parseOr(EvalContext& ctx) {
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseExpression(EvalContext& ctx) {
+  skipSpaces(ctx);
+  ctx.start = ctx.p;
   return parseOr(ctx);
 }
 
@@ -5561,33 +6229,88 @@ bool MathParser::tryAppendTrailingFormatterSugarStatement(
   return true;
 }
 
+bool MathParser::tryCompileSingleExpressionProgram(EvalContext& ctx, std::vector<AstStatement>& out) {
+  out.clear();
+  ctx.compilingUserFunctionParams = nullptr;
+  skipSpaces(ctx);
+  if (*ctx.p == '\0') {
+    return false;
+  }
+  if (*ctx.p == ';') {
+    setError(ctx, STR_EMPTY_STATEMENT);
+    return false;
+  }
+  if (std::strchr(ctx.p, ';') != nullptr) {
+    return false;
+  }
+  if (peekIdentFollowedByChar(ctx.p, '(')) {
+    return false;
+  }
+  bool statementHandled = false;
+  if (!tryAppendTrailingFormatterSugarStatement(ctx, out, statementHandled)) {
+    return false;
+  }
+  if (!statementHandled && !tryAppendAssignOrExpressionStatement(ctx, out)) {
+    return false;
+  }
+  skipSpaces(ctx);
+  if (!ctx.parseError && *ctx.p != '\0') {
+    setUnexpectedInputError(ctx);
+    return false;
+  }
+  return !ctx.parseError && !out.empty();
+}
+
 bool MathParser::parseProgram(EvalContext& ctx, std::vector<AstStatement>& out) {
   out.clear();
+  std::unique_ptr<std::unordered_map<std::string, std::vector<std::string>>> compilingUserFunctionParams;
+  ctx.compilingUserFunctionParams = nullptr;
   while (true) {
     skipSpaces(ctx);
     if (*ctx.p == '\0') {
       break;
     }
+    if (*ctx.p == ';') {
+      setError(ctx, STR_EMPTY_STATEMENT);
+      ctx.compilingUserFunctionParams = nullptr;
+      return false;
+    }
+    const std::size_t stmtBefore = out.size();
     const char* save = ctx.p;
-    if (tryAppendFunctionDefinitionStatement(ctx, out)) {
+    if (peekIdentFollowedByChar(save, '(') && tryAppendFunctionDefinitionStatement(ctx, out)) {
       // handled above
     } else {
       ctx.p = save;
       skipSpaces(ctx);
       bool statementHandled = false;
       if (!tryAppendTrailingFormatterSugarStatement(ctx, out, statementHandled)) {
+        ctx.compilingUserFunctionParams = nullptr;
         return false;
       }
       if (!statementHandled) {
         if (!tryAppendAssignOrExpressionStatement(ctx, out)) {
+          ctx.compilingUserFunctionParams = nullptr;
           return false;
         }
       }
     }
+    if (out.size() > stmtBefore) {
+      if (out.back().kind == AstStatement::Kind::FunDef) {
+        if (!compilingUserFunctionParams) {
+          compilingUserFunctionParams = std::make_unique<std::unordered_map<std::string, std::vector<std::string>>>();
+          ctx.compilingUserFunctionParams = compilingUserFunctionParams.get();
+        }
+        (*compilingUserFunctionParams)[out.back().fun.name] = out.back().fun.params;
+      } else if (out.back().kind == AstStatement::Kind::Assign && compilingUserFunctionParams) {
+        compilingUserFunctionParams->erase(out.back().assignName);
+      }
+    }
     if (consumeProgramStatementSeparator(ctx)) continue;
     if (*ctx.p == '\0') break;
+    ctx.compilingUserFunctionParams = nullptr;
     return false;
   }
+  ctx.compilingUserFunctionParams = nullptr;
   return true;
 }
 
@@ -5607,6 +6330,10 @@ bool MathParser::exprIsDirectPostfixPercent(const Expr& e) {
 bool MathParser::exprIsScalarOnly(const Expr& e) const {
   switch (e.tag) {
     case Expr::Tag::Literal:
+      if (e.literalValue.kind == ValueKind::InlineLambda) {
+        return false;
+      }
+      return true;
     case Expr::Tag::Variable:
       return true;
     case Expr::Tag::Unary:
@@ -6242,10 +6969,6 @@ MathParser::EvalValue MathParser::evalExpr(
     case Expr::Tag::Index: {
       EvalValue base = evalExpr(*e.left, ctx, scopedVars);
       if (ctx.parseError) return base;
-      if (base.kind != ValueKind::Array) {
-        setIndexingRequiresArrayError(ctx);
-        return makeScalar(0);
-      }
       EvalValue idxv = evalExpr(*e.right, ctx, scopedVars);
       if (ctx.parseError) return idxv;
       if (idxv.kind != ValueKind::Scalar) {
@@ -6257,8 +6980,26 @@ MathParser::EvalValue MathParser::evalExpr(
         setArrayIndexMustBeIntegerError(ctx);
         return makeScalar(0);
       }
+      bool formalParamIndexBase = (base.kind == ValueKind::UdfFormalValidationDummy);
+      if (!formalParamIndexBase && scopedVars && e.left && e.left->tag == Expr::Tag::Variable) {
+        const auto sit = scopedVars->find(e.left->name);
+        formalParamIndexBase =
+            (sit != scopedVars->end() && sit->second.kind == ValueKind::UdfFormalValidationDummy);
+      }
+      if (formalParamIndexBase) {
+        // UDF body validation only: argument length is unknown; bounds are checked at call time.
+        auto pit = variables_.find(STR_FORMAL_VALIDATION_PROBE);
+        if (pit != variables_.end() && pit->second.kind == ValueKind::Scalar) {
+          return pit->second;
+        }
+        return makeScalarInt(0);
+      }
+      if (base.kind != ValueKind::Array) {
+        setIndexingRequiresArrayError(ctx);
+        return makeScalar(0);
+      }
       const long long n = static_cast<long long>(base.arr.size());
-      long long realIdx = (idx >= 0) ? idx : (n + idx);
+      const long long realIdx = (idx >= 0) ? idx : (n + idx);
       if (realIdx < 0 || realIdx >= n) {
         setArrayIndexOutOfRangeError(ctx);
         return makeScalar(0);
@@ -6266,104 +7007,6 @@ MathParser::EvalValue MathParser::evalExpr(
       return scalarFromArrayAt(base, static_cast<std::size_t>(realIdx));
     }
     case Expr::Tag::Binary: {
-      auto compareValues = [this, &ctx](const EvalValue& a, const EvalValue& b) -> int {
-        const auto evalValueHasNonzeroImaginary = [](const EvalValue& vv) -> bool {
-          if (vv.kind == ValueKind::Scalar) {
-            return scalarHasNonzeroImaginaryPart(vv.scalarValue);
-          }
-          for (const auto& el : vv.arr) {
-            if (scalarHasNonzeroImaginaryPart(el)) {
-              return true;
-            }
-          }
-          return false;
-        };
-        if (!supportComplexNumbers_) {
-          if (evalValueHasNonzeroImaginary(a) || evalValueHasNonzeroImaginary(b)) {
-            setIncompatibleOperandsError(ctx);
-            return 0;
-          }
-        }
-        auto cmpScalarPair = [this, &ctx](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
-          const bool ta = scalarValueIsTime(sa);
-          const bool tb = scalarValueIsTime(sb);
-          const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
-          const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
-          if ((ha || hb) && (ta || tb)) {
-            setIncompatibleOperandsError(ctx);
-            return 0;
-          }
-          if (ta || tb) {
-            const long long ams =
-                ta ? timeTotalMsFromScalarValue(sa) : roundHalfUpDoubleToLongLong(sa.scalar * 1000.0);
-            const long long bms =
-                tb ? timeTotalMsFromScalarValue(sb) : roundHalfUpDoubleToLongLong(sb.scalar * 1000.0);
-            if (ams < bms) {
-              return -1;
-            }
-            if (ams > bms) {
-              return 1;
-            }
-            return 0;
-          }
-          if (ha || hb) {
-            double ar = 0.0;
-            double ai = 0.0;
-            double br = 0.0;
-            double bi = 0.0;
-            scalarLoadCartesian(sa, ar, ai);
-            scalarLoadCartesian(sb, br, bi);
-            if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
-              return 1;
-            }
-            if (ar < br) {
-              return -1;
-            }
-            if (ar > br) {
-              return 1;
-            }
-            if (ai < bi) {
-              return -1;
-            }
-            if (ai > bi) {
-              return 1;
-            }
-            return 0;
-          }
-          if (sa.scalar < sb.scalar) {
-            return -1;
-          }
-          if (sa.scalar > sb.scalar) {
-            return 1;
-          }
-          return 0;
-        };
-        if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
-          return cmpScalarPair(a.scalarValue, b.scalarValue);
-        }
-        auto refAt = [](const EvalValue& v, std::size_t i) -> const EvalValue::ScalarValue& {
-          return (v.kind == ValueKind::Scalar) ? v.scalarValue : v.arr[i];
-        };
-        const std::size_t na = (a.kind == ValueKind::Scalar) ? 1U : a.arr.size();
-        const std::size_t nb = (b.kind == ValueKind::Scalar) ? 1U : b.arr.size();
-        const std::size_t n = (na < nb) ? na : nb;
-        for (std::size_t i = 0; i < n; ++i) {
-          const int c = cmpScalarPair(refAt(a, i), refAt(b, i));
-          if (ctx.parseError) {
-            return 0;
-          }
-          if (c != 0) {
-            return c;
-          }
-        }
-        if (na < nb) {
-          return -1;
-        }
-        if (na > nb) {
-          return 1;
-        }
-        return 0;
-      };
       const auto returnIntegerOperandError = [&](const char* msg) -> EvalValue {
         setValidationError(ctx, msg);
         return makeScalar(0);
@@ -6458,8 +7101,8 @@ MathParser::EvalValue MathParser::evalExpr(
             }
           }
         }
-        const int cmp = compareValues(l, r);
-        if (ctx.parseError) {
+        int cmp = 0;
+        if (!tryLexicographicCompareEvalValues(ctx, l, r, cmp)) {
           return makeScalar(0);
         }
         return makeScalarInt(evalComparisonByOp(e.binaryOp, cmp) ? 1LL : 0LL);
@@ -7142,49 +7785,138 @@ bool MathParser::isSortbyEligibleFunctionName(
   return true;
 }
 
-bool MathParser::scalarSortLess(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
-  if (a.scalarKind == ScalarKind::Time || b.scalarKind == ScalarKind::Time) {
-    long long am = 0;
-    long long bm = 0;
-    if (a.scalarKind == ScalarKind::Time) {
-      am = timeTotalMsFromScalarValue(a);
-    } else {
-      am = static_cast<long long>(std::llround(a.scalar * 1000.0));
+bool MathParser::tryLexicographicCompareEvalValues(
+    EvalContext& ctx,
+    const EvalValue& a,
+    const EvalValue& b,
+    int& cmpOut) const {
+  const auto evalValueHasNonzeroImaginary = [](const EvalValue& vv) -> bool {
+    if (vv.kind == ValueKind::Scalar) {
+      return scalarHasNonzeroImaginaryPart(vv.scalarValue);
     }
-    if (b.scalarKind == ScalarKind::Time) {
-      bm = timeTotalMsFromScalarValue(b);
-    } else {
-      bm = static_cast<long long>(std::llround(b.scalar * 1000.0));
+    for (const auto& el : vv.arr) {
+      if (scalarHasNonzeroImaginaryPart(el)) {
+        return true;
+      }
     }
-    return am < bm;
-  }
-  const bool aNan = std::isnan(a.scalar);
-  const bool bNan = std::isnan(b.scalar);
-  if (aNan) {
-    return !bNan;
-  }
-  if (bNan) {
     return false;
+  };
+  if (!supportComplexNumbers_) {
+    if (evalValueHasNonzeroImaginary(a) || evalValueHasNonzeroImaginary(b)) {
+      setIncompatibleOperandsError(ctx);
+      cmpOut = 0;
+      return false;
+    }
   }
-  return a.scalar < b.scalar;
+  const auto cmpScalarPair = [this, &ctx](const EvalValue::ScalarValue& sa, const EvalValue::ScalarValue& sb) -> int {
+    const bool ta = scalarValueIsTime(sa);
+    const bool tb = scalarValueIsTime(sb);
+    const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
+    const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
+    if ((ha || hb) && (ta || tb)) {
+      setIncompatibleOperandsError(ctx);
+      return 0;
+    }
+    if (ta || tb) {
+      const long long ams =
+          ta ? timeTotalMsFromScalarValue(sa) : roundHalfUpDoubleToLongLong(sa.scalar * 1000.0);
+      const long long bms =
+          tb ? timeTotalMsFromScalarValue(sb) : roundHalfUpDoubleToLongLong(sb.scalar * 1000.0);
+      if (ams < bms) {
+        return -1;
+      }
+      if (ams > bms) {
+        return 1;
+      }
+      return 0;
+    }
+    if (ha || hb) {
+      double ar = 0.0;
+      double ai = 0.0;
+      double br = 0.0;
+      double bi = 0.0;
+      scalarLoadCartesian(sa, ar, ai);
+      scalarLoadCartesian(sb, br, bi);
+      if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
+        return 1;
+      }
+      if (ar < br) {
+        return -1;
+      }
+      if (ar > br) {
+        return 1;
+      }
+      if (ai < bi) {
+        return -1;
+      }
+      if (ai > bi) {
+        return 1;
+      }
+      return 0;
+    }
+    if (sa.scalar < sb.scalar) {
+      return -1;
+    }
+    if (sa.scalar > sb.scalar) {
+      return 1;
+    }
+    return 0;
+  };
+  if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
+    cmpOut = cmpScalarPair(a.scalarValue, b.scalarValue);
+    return !ctx.parseError;
+  }
+  const auto refAt = [](const EvalValue& v, std::size_t i) -> const EvalValue::ScalarValue& {
+    return (v.kind == ValueKind::Scalar) ? v.scalarValue : v.arr[i];
+  };
+  const std::size_t na = (a.kind == ValueKind::Scalar) ? 1U : a.arr.size();
+  const std::size_t nb = (b.kind == ValueKind::Scalar) ? 1U : b.arr.size();
+  const std::size_t n = (na < nb) ? na : nb;
+  for (std::size_t i = 0; i < n; ++i) {
+    const int c = cmpScalarPair(refAt(a, i), refAt(b, i));
+    if (ctx.parseError) {
+      cmpOut = 0;
+      return false;
+    }
+    if (c != 0) {
+      cmpOut = c;
+      return true;
+    }
+  }
+  if (na < nb) {
+    cmpOut = -1;
+  } else if (na > nb) {
+    cmpOut = 1;
+  } else {
+    cmpOut = 0;
+  }
+  return true;
 }
 
-void MathParser::sortbyStableSortIndices(
-    const std::vector<EvalValue::ScalarValue>& sortKeys,
-    std::vector<int>& orderIdx) {
+bool MathParser::sortbyStableSortIndicesFromKeys(
+    EvalContext& ctx,
+    const std::vector<EvalValue>& sortKeys,
+    std::vector<int>& orderIdx) const {
   const int count = static_cast<int>(sortKeys.size());
   orderIdx.resize(static_cast<std::size_t>(count));
   for (int i = 0; i < count; ++i) {
     orderIdx[static_cast<std::size_t>(i)] = i;
   }
   if (count <= 1) {
-    return;
+    return true;
   }
   for (int i = 1; i < count; ++i) {
     int j = i;
     while (j > 0) {
-      if (scalarSortLess(sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j)])],
-              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j - 1)])])) {
+      int cmp = 0;
+      if (!tryLexicographicCompareEvalValues(
+              ctx,
+              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j)])],
+              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j - 1)])],
+              cmp)) {
+        return false;
+      }
+      if (cmp < 0) {
         const int t = orderIdx[static_cast<std::size_t>(j)];
         orderIdx[static_cast<std::size_t>(j)] = orderIdx[static_cast<std::size_t>(j - 1)];
         orderIdx[static_cast<std::size_t>(j - 1)] = t;
@@ -7194,6 +7926,7 @@ void MathParser::sortbyStableSortIndices(
       }
     }
   }
+  return true;
 }
 
 MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64_t den) {
@@ -7609,7 +8342,9 @@ MathParser::EvalValue MathParser::builtinSortby(
     setExactArgCountError(ctx, fnName, 2);
     return makeScalar(0);
   }
-  if (args[1].kind != ValueKind::FunctionRef) {
+  const bool keyIsLambda = (args[1].kind == ValueKind::InlineLambda);
+  const bool keyIsRef = (args[1].kind == ValueKind::FunctionRef);
+  if (!keyIsLambda && !keyIsRef) {
     if (args[1].kind == ValueKind::Array) {
       setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
     } else {
@@ -7617,9 +8352,14 @@ MathParser::EvalValue MathParser::builtinSortby(
     }
     return makeScalar(0);
   }
-  std::string errText;
-  if (!isSortbyEligibleFunctionName(*this, args[1].funcRefName, errText)) {
-    setValidationError(ctx, errText.c_str());
+  if (keyIsRef) {
+    std::string errText;
+    if (!isSortbyEligibleFunctionName(*this, args[1].funcRefName, errText)) {
+      setValidationError(ctx, errText.c_str());
+      return makeScalar(0);
+    }
+  } else if (args[1].lambdaParams.size() != 1U) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
     return makeScalar(0);
   }
   std::vector<EvalValue> flat;
@@ -7632,24 +8372,33 @@ MathParser::EvalValue MathParser::builtinSortby(
   for (const auto& item : flat) {
     vals.push_back(item.scalarValue);
   }
-  std::vector<EvalValue::ScalarValue> keys(vals.size());
+  std::vector<EvalValue> keys;
+  keys.reserve(vals.size());
   for (std::size_t i = 0; i < vals.size(); ++i) {
-    const EvalValue keyV = sortbyInvokeKeyFunction(ctx, args[1].funcRefName, vals[i], scopedVars);
+    EvalValue keyV;
+    if (keyIsLambda) {
+      std::vector<EvalValue> lamArgs;
+      if (args[1].lambdaParams.size() == 1U) {
+        lamArgs.push_back(scalarFromScalarValue(vals[i]));
+      }
+      keyV = evalInlineLambdaCall(ctx, args[1].lambdaParams, args[1].lambdaBody, std::move(lamArgs), scopedVars);
+    } else {
+      keyV = sortbyInvokeKeyFunction(ctx, args[1].funcRefName, vals[i], scopedVars);
+    }
     if (ctx.parseError) {
       return makeScalar(0);
     }
-    if (keyV.kind == ValueKind::Array) {
-      setValidationError(ctx, STR_SORTBY_KEY_MUST_RETURN_SCALAR);
+    if (keyV.kind == ValueKind::FunctionRef || keyV.kind == ValueKind::InlineLambda ||
+        (keyV.kind != ValueKind::Scalar && keyV.kind != ValueKind::Array)) {
+      setValidationError(ctx, STR_SORTBY_KEY_MUST_BE_SCALAR_OR_ARRAY);
       return makeScalar(0);
     }
-    if (keyV.kind != ValueKind::Scalar) {
-      setValidationError(ctx, STR_SORTBY_KEY_MUST_RETURN_SCALAR);
-      return makeScalar(0);
-    }
-    keys[i] = keyV.scalarValue;
+    keys.push_back(keyV);
   }
   std::vector<int> order;
-  sortbyStableSortIndices(keys, order);
+  if (!sortbyStableSortIndicesFromKeys(ctx, keys, order)) {
+    return makeScalar(0);
+  }
   std::vector<EvalValue::ScalarValue> sorted(vals.size());
   for (std::size_t i = 0; i < vals.size(); ++i) {
     sorted[i] = vals[static_cast<std::size_t>(order[i])];
@@ -7721,11 +8470,11 @@ bool MathParser::parseSortbyCallArguments(EvalContext& ctx, std::vector<std::uni
     setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
     return false;
   }
-  auto fnRef = parseSortbyFunctionRef(ctx);
-  if (ctx.parseError || !fnRef) {
+  auto keyArg = parseSortbyKeyArg(ctx);
+  if (ctx.parseError || !keyArg) {
     return false;
   }
-  outArgs.push_back(std::move(fnRef));
+  outArgs.push_back(std::move(keyArg));
   skipSpaces(ctx);
   if (!tryConsumeCommaArgSeparator(ctx, hasComma)) {
     return false;
@@ -9017,7 +9766,6 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
 
   EvalContext sub;
   sub.evalDepth = ctx.evalDepth + 1;
-  sub.allowBareUserFunctionNameHint = false;
   EvalValue v = runCompiledProgram(sub, uf->compiledProgram, &localVars, false);
   if (!sub.unknownVarsText.empty()) {
     setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
@@ -9189,16 +9937,55 @@ MathParser::EvalValue MathParser::evalFunctionCall(
   return makeScalar(0);
 }
 
+bool MathParser::prepareCompileParseSource(const std::string& mathExpression, EvalContext& ctx) {
+  compileParseStorage_.clear();
+  ctx.sourceExpr.clear();
+  const char* text = mathExpression.data();
+  const std::size_t len = mathExpression.size();
+  const bool hadLineComment = parseSourceHasLineComment(text, len);
+  if (hadLineComment || parseSourceNeedsTrailingSemicolonStrip(text, len)) {
+    if (hadLineComment) {
+      compileParseStorage_ = stripLineComments(mathExpression);
+    } else {
+      compileParseStorage_ = mathExpression;
+    }
+    stripTrailingSemicolonsForTopLevelInput(compileParseStorage_);
+    if (compileParseStorage_.empty()) {
+      return false;
+    }
+    ctx.sourceExpr = compileParseStorage_;
+    ctx.p = compileParseStorage_.c_str();
+  } else {
+    if (len == 0) {
+      return false;
+    }
+    ctx.p = mathExpression.c_str();
+  }
+  ctx.start = ctx.p;
+  return true;
+}
+
 bool MathParser::compile(const std::string& mathExpression) {
   resetCompileState();
 
   EvalContext ctx;
-  ctx.sourceExpr = stripLineComments(mathExpression);
-  ctx.p = ctx.sourceExpr.c_str();
-  ctx.start = ctx.p;
+  if (!prepareCompileParseSource(mathExpression, ctx)) {
+    if (parseSourceHasLineComment(mathExpression.data(), mathExpression.size())) {
+      compiledProgram_.clear();
+      compiledHasAssignments_ = false;
+      compiledScalarOnly_ = true;
+      hasCompiledProgram_ = true;
+      boundVariablesVersion_ = variablesVersion_;
+      return true;
+    }
+    if (!mathExpression.empty()) {
+      lastError_ = STR_EMPTY_STATEMENT;
+    }
+    return false;
+  }
 
   std::vector<AstStatement> program;
-  if (!parseProgram(ctx, program)) {
+  if (!tryCompileSingleExpressionProgram(ctx, program) && !parseProgram(ctx, program)) {
     if (!ctx.parseError) {
       setParseFailedError(ctx);
     }
@@ -9232,6 +10019,9 @@ void MathParser::evaluate() {
   if (!prepareEvaluate(ctx)) {
     return;
   }
+  if (compiledProgram_.empty()) {
+    return;
+  }
   EvalValue out = runCompiledProgram(ctx, compiledProgram_, nullptr, compiledScalarOnly_);
   finalizeEvaluate(ctx, std::move(out));
 }
@@ -9262,9 +10052,6 @@ bool MathParser::prepareEvaluate(EvalContext& ctx) {
   }
   if (boundVariablesVersion_ != variablesVersion_) {
     bindCompiledVariableRefs();
-  }
-  if (compiledProgram_.empty()) {
-    return false;
   }
   return true;
 }
@@ -9303,6 +10090,13 @@ MathParser::RawResult MathParser::parseAndEvaluateRaw(const std::string& mathExp
 std::string MathParser::addUserFunction(const std::string& mathExpression) {
   EvalContext ctx;
   ctx.sourceExpr = stripLineComments(mathExpression);
+  const bool nonemptyAfterLineComment = !ctx.sourceExpr.empty();
+  stripTrailingSemicolonsForTopLevelInput(ctx.sourceExpr);
+  if (ctx.sourceExpr.empty()) {
+    if (nonemptyAfterLineComment) {
+      return STR_EMPTY_STATEMENT;
+    }
+  }
   ctx.p = ctx.sourceExpr.c_str();
   ctx.start = ctx.p;
 

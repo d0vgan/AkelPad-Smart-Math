@@ -186,7 +186,7 @@ const RATIO_APPROX_EPS as Double = 1e-14
 const RATIO_MAX_DENOMINATOR as LongInt = 10000000
 const RATIO_MAX_POWER10_EXP as Integer = 18
 const RATIO_SEMICONV_LINEAR_THRESH as Integer = 64
-const FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR as string = "sortby key function must return a scalar"
+const FB_STR_SORTBY_KEY_MUST_BE_SCALAR_OR_ARRAY as string = "sortby key function must return a scalar or an array"
 const FB_STR_PAR_ARRAY_COMMA_FUNC as string = "(array, func)"
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
@@ -305,6 +305,7 @@ enum ValueKind
   VK_SCALAR = 0
   VK_ARRAY = 1
   VK_FUNCTION_REF = 2
+  VK_INLINE_LAMBDA = 3
 end enum
 
 enum ScalarStorageKind
@@ -355,6 +356,8 @@ type EvalValue
   scalarValue as ScalarValue
   arr(any) as ScalarValue
   funcRefName as String
+  lambdaParams(any) as String
+  lambdaBody as String
   declare property renderBase() as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
   declare property renderBase(byval v as Integer)
   ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
@@ -564,7 +567,6 @@ dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
 dim shared sortbyKeysArgStartCol as Integer = 0
-dim shared allowUdfBareNameHint as Boolean = TRUE
 dim shared Parser_ShowErrorLine as Boolean = FALSE
 dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 dim shared Parser_SupportTimeValues as Boolean = TRUE
@@ -649,7 +651,8 @@ end function
 
 private function SortbyKeyFunctionFailureMessage(byref innerMsg as String) as String
   if innerMsg = "" then return FB_STR_INCOMPATIBLE_OPERANDS
-  if instr(innerMsg, FB_STR_USER_DEFINED_FUNCTION_COLON) > 0 then return FB_STR_INCOMPATIBLE_OPERANDS
+  if instr(innerMsg, FB_STR_USER_DEFINED_FUNCTION_COLON) > 0 then return innerMsg
+  if instr(innerMsg, FB_STR_HINT_PREFIX) > 0 then return innerMsg
   return innerMsg
 end function
 
@@ -1447,7 +1450,14 @@ private sub ScalarLoadCartesian(byref sv as ScalarValue, byref ar as Double, byr
   end if
 end sub
 
+private sub ValueClearLambdaPayload(byref v as EvalValue)
+  erase v.lambdaParams
+  v.lambdaBody = ""
+end sub
+
 private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
+  ValueClearLambdaPayload(v)
+  v.funcRefName = ""
   v.kind = VK_SCALAR
   v.scalarStorageKind = SSK_FLOATINGPOINT
   v.scalar = n
@@ -1492,6 +1502,8 @@ private sub EvalScalarFromScalarValue(byref s as ScalarValue, byref outV as Eval
 end sub
 
 private sub ValueSetArray(byref v as EvalValue, a() as Double)
+  ValueClearLambdaPayload(v)
+  v.funcRefName = ""
   v.kind = VK_ARRAY
   v.scalarStorageKind = SSK_FLOATINGPOINT
   v.scalar = 0
@@ -2145,6 +2157,9 @@ private function ValueToString(byref v as EvalValue) as String
     if v.exactUInt64Valid then return ltrim(ULongIntToString(v.exactUInt64))
     return ltrim(str(v.scalar))
   end if
+  if v.kind = VK_INLINE_LAMBDA orelse v.kind = VK_FUNCTION_REF then
+    return ""
+  end if
 
   dim s as String = "("
   dim i as Integer
@@ -2343,6 +2358,26 @@ private function StripLineComment(byref s as String) as String
   next i
   return s
 end function
+
+private sub NormalizeTrailingStatementSemicolons(byref s as string)
+  dim progressing as Boolean = TRUE
+  while progressing <> FALSE
+    progressing = FALSE
+    while Len(s) > 0
+      dim lastCp as Integer = Asc(Mid(s, Len(s), 1))
+      if lastCp = CHAR_SPACE orelse lastCp = CHAR_TAB orelse lastCp = CHAR_LF orelse lastCp = CHAR_CR then
+        s = Left(s, Len(s) - 1)
+        progressing = TRUE
+      else
+        exit while
+      end if
+    wend
+    if Len(s) > 0 andalso Asc(Mid(s, Len(s), 1)) = CHAR_SEMICOLON then
+      s = Left(s, Len(s) - 1)
+      progressing = TRUE
+    end if
+  wend
+end sub
 
 private function IsBuiltinConstantName(byref n as String) as Boolean
   dim cid as Integer = TryFindBuiltinConstId(n)
@@ -2643,11 +2678,23 @@ end function
 
 declare function TryValidateUserFunctionBodyExpression(byref body as String, fnParams() as String, byref errText as String) as Boolean
 
+private function UdfBodyIsEmptyTupleLiteral(byref body as string) as Boolean
+  dim t as string = trim(body)
+  if len(t) < 2 then return FALSE
+  if left(t, 1) <> "(" orelse right(t, 1) <> ")" then return FALSE
+  dim i as Integer
+  for i = 2 to len(t) - 1
+    dim ch as Integer = asc(mid(t, i, 1))
+    if ch <> CHAR_SPACE andalso ch <> CHAR_TAB then return FALSE
+  next i
+  return TRUE
+end function
+
 private function TryValidateUserFunctionDefinition(byref fnName as String, fnParams() as String, byref body as String, byref errText as String) as Boolean
   if TryValidateUserFunctionDefinitionNames(fnName, fnParams(), errText) = FALSE then
     return FALSE
   end if
-  if len(trim(body)) = 0 then
+  if len(trim(body)) = 0 orelse UdfBodyIsEmptyTupleLiteral(body) then
     errText = FB_STR_FUNCTION_BODY_IS_EMPTY
     return FALSE
   end if
@@ -2736,24 +2783,120 @@ private sub ApplyUnknownNameErrors()
   end if
 end sub
 
-private function TryHandleUnknownIdentifier(byref nam as String, byref outV as EvalValue, byref canIndex as Boolean) as Boolean
+private function SkipAsciiSpacesPtr(byval p as ZString ptr) as ZString ptr
+  while p[0] = CHAR_SPACE orelse p[0] = CHAR_TAB
+    p += 1
+  wend
+  return p
+end function
+
+private function EndOfIdentTokenPtr(byval p as ZString ptr) as ZString ptr
+  if IsIdentStartChar(asc(p[0])) = FALSE then return p
+  p += 1
+  while IsIdentChar(asc(p[0]))
+    p += 1
+  wend
+  return p
+end function
+
+private function PeekIdentFollowedByChar(byval p as ZString ptr, byval ch as UByte) as Boolean
+  p = SkipAsciiSpacesPtr(EndOfIdentTokenPtr(p))
+  return (p[0] = ch)
+end function
+
+private function PeekIdentFollowedByAssignEquals(byval p as ZString ptr) as Boolean
+  p = SkipAsciiSpacesPtr(EndOfIdentTokenPtr(p))
+  return (p[0] = CHAR_EQUALS) andalso (p[1] <> CHAR_EQUALS)
+end function
+
+private function PeekUnwrappedLambdaParamsThenColon(byval p as ZString ptr) as Boolean
+  p = SkipAsciiSpacesPtr(p)
+  if IsIdentStartChar(asc(p[0])) = FALSE then return FALSE
+  p = SkipAsciiSpacesPtr(EndOfIdentTokenPtr(p))
+  while p[0] = CHAR_COMMA
+    p = SkipAsciiSpacesPtr(p + 1)
+    if IsIdentStartChar(asc(p[0])) = FALSE then return FALSE
+    p = SkipAsciiSpacesPtr(EndOfIdentTokenPtr(p))
+  wend
+  return (p[0] = CHAR_COLON)
+end function
+
+private function PeekParenParamListThenColon(byval p as ZString ptr) as Boolean
+  p = SkipAsciiSpacesPtr(p)
+  if p[0] <> CHAR_LPAREN then return FALSE
+  p = SkipAsciiSpacesPtr(p + 1)
+  if p[0] = CHAR_RPAREN then
+    p = SkipAsciiSpacesPtr(p + 1)
+    return (p[0] = CHAR_COLON)
+  end if
+  if IsIdentStartChar(asc(p[0])) = FALSE then return FALSE
+  do
+    p = SkipAsciiSpacesPtr(EndOfIdentTokenPtr(p))
+    if p[0] = CHAR_COMMA then
+      p = SkipAsciiSpacesPtr(p + 1)
+      if IsIdentStartChar(asc(p[0])) = FALSE then return FALSE
+    elseif p[0] = CHAR_RPAREN then
+      p = SkipAsciiSpacesPtr(p + 1)
+      return (p[0] = CHAR_COLON)
+    else
+      return FALSE
+    end if
+  loop
+end function
+
+private function PeekRhsMayBeLambdaDefinition(byval p as ZString ptr) as Boolean
+  p = SkipAsciiSpacesPtr(p)
+  if p[0] = CHAR_LPAREN then
+    if PeekParenParamListThenColon(p) then return TRUE
+    return PeekRhsMayBeLambdaDefinition(p + 1)
+  end if
+  return PeekUnwrappedLambdaParamsThenColon(p)
+end function
+
+private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString ptr) as Boolean
+  if identStart <> exprStart then return FALSE
+  SkipSpaces()
+  dim cu as UByte = pStream[0]
+  return (cu = CHAR_NUL orelse cu = CHAR_SEMICOLON orelse cu = CHAR_RPAREN orelse cu = CHAR_RBRACKET orelse cu = CHAR_RBRACE)
+end function
+
+private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
+  dim i as Integer
+  dim hasDigitOrUnderscore as Boolean = FALSE
+  for i = 1 to len(nam)
+    dim ch as Integer = asc(mid(nam, i, 1))
+    if (ch >= CHAR_DIGIT_0 andalso ch <= CHAR_DIGIT_9) orelse ch = CHAR_UNDERSCORE then
+      hasDigitOrUnderscore = TRUE
+      exit for
+    end if
+  next i
+  if hasDigitOrUnderscore = FALSE then return TRUE
+  return (lcase(nam) = FB_STR_ATAN2)
+end function
+
+private function TryHandleUnknownIdentifier(byref nam as String, byref outV as EvalValue, byref canIndex as Boolean, byval identStart as ZString ptr) as Boolean
   dim lowNam as String = lcase(nam)
   if IsLogicalBinaryOperatorKeyword(lowNam) then
     SetUnexpectedTokenError()
     return FALSE
   end if
   dim fnHint as String
-  if TryGetBuiltinSignatureHint(nam, fnHint) then
-    SetParseError(FB_STR_HINT_PREFIX & fnHint)
+  if IdentMayBeBareBuiltinName(nam) andalso TryGetBuiltinSignatureHint(nam, fnHint) then
+    if IsBareFunctionNameAtExpressionTail(identStart) then
+      SetParseError(FB_STR_HINT_PREFIX & fnHint)
+    else
+      SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
+    end if
     return FALSE
   end if
-  dim udfIdx as Integer = FindFunctionIndex(nam)
+  dim udfIdx as Integer = -1
+  if lbound(userFunctions) <= ubound(userFunctions) then udfIdx = FindFunctionIndex(nam)
   if udfIdx >= 0 then
-    if allowUdfBareNameHint andalso udfCallStackSp = 0 then
+    if IsBareFunctionNameAtExpressionTail(identStart) then
       SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
-      return FALSE
+    else
+      SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
     end if
-    SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
     return FALSE
   end if
   AppendUniqueName(unknownVarsText, nam)
@@ -3062,14 +3205,34 @@ end function
 private function ClassifyNumericLiteralAtCursor() as Integer
   if pStream[0] < CHAR_DIGIT_0 orelse pStream[0] > CHAR_DIGIT_9 then return NLK_PLAIN
   if IsDecimalRadixPrefixedAt(pStream) then return NLK_PLAIN
+  dim q as ZString ptr = pStream
+  while q[0] >= CHAR_DIGIT_0 andalso q[0] <= CHAR_DIGIT_9
+    q += 1
+  wend
+  if q[0] = CHAR_DOT then
+    q += 1
+    while q[0] >= CHAR_DIGIT_0 andalso q[0] <= CHAR_DIGIT_9
+      q += 1
+    wend
+  end if
+  if q[0] = CHAR_LC_E orelse q[0] = CHAR_E then
+    q += 1
+    if q[0] = CHAR_PLUS orelse q[0] = CHAR_MINUS then q += 1
+    while q[0] >= CHAR_DIGIT_0 andalso q[0] <= CHAR_DIGIT_9
+      q += 1
+    wend
+  end if
+  if q[0] <> CHAR_COLON then
+    dim digitEnd as ZString ptr = pStream
+    while digitEnd[0] >= CHAR_DIGIT_0 andalso digitEnd[0] <= CHAR_DIGIT_9
+      digitEnd += 1
+    wend
+    if digitEnd[0] = CHAR_LC_E orelse digitEnd[0] = CHAR_E then return NLK_PLAIN
+    if PeekCompactTimeSuffixAfterDigitRun(digitEnd) then return NLK_COMPACT_TIME
+    return NLK_PLAIN
+  end if
   dim colonEnd as ZString ptr = 0
   if ScanColonTimeLiteralEnd(pStream, colonEnd) then return NLK_COLON_TIME
-  dim qq as ZString ptr = pStream
-  while qq[0] >= CHAR_DIGIT_0 andalso qq[0] <= CHAR_DIGIT_9
-    qq += 1
-  wend
-  if qq[0] = CHAR_LC_E orelse qq[0] = CHAR_E then return NLK_PLAIN
-  if PeekCompactTimeSuffixAfterDigitRun(qq) then return NLK_COMPACT_TIME
   return NLK_PLAIN
 end function
 
@@ -3340,6 +3503,10 @@ private sub SetFunctionBodyIsEmptyError()
   SetParseError(FB_STR_FUNCTION_BODY_IS_EMPTY)
 end sub
 
+private function InlineLambdaBodyIsEffectivelyEmpty(byref body as string) as Boolean
+  return (len(trim(body)) = 0) orelse UdfBodyIsEmptyTupleLiteral(body)
+end function
+
 private sub SetValidationError(byref errText as String)
   SetParseError(errText)
 end sub
@@ -3352,11 +3519,6 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
   outValue = baseValue
   SkipSpaces()
   if pStream[0] <> CHAR_LBRACKET then return TRUE
-
-  if baseValue.kind <> VK_ARRAY then
-    SetIndexingRequiresArrayError()
-    return FALSE
-  end if
 
   pStream += 1
   SkipSpaces()
@@ -3390,6 +3552,24 @@ private function TryParseArrayIndex(byref baseValue as EvalValue, byref outValue
     return FALSE
   end if
   pStream += 1
+
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+  if functionVariableCount > 0 andalso baseValue.kind = VK_SCALAR then
+    '' UDF body syntax validation: formal parameters are scalar probes; bounds checked at call time.
+    dim probeIdx as Integer = FindVariableIndex(FB_STR_FORMAL_VALIDATION_PROBE)
+    if probeIdx >= 0 andalso variables(probeIdx).value.kind = VK_SCALAR then
+      outValue = variables(probeIdx).value
+    else
+      ValueSetInt64(outValue, 1)
+    end if
+    return TRUE
+  end if
+#endif
+
+  if baseValue.kind <> VK_ARRAY then
+    SetIndexingRequiresArrayError()
+    return FALSE
+  end if
 
   dim arrLen as Integer = ValueArrayLen(baseValue)
   if idxInt < 0 then idxInt = arrLen + idxInt
@@ -3460,13 +3640,10 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   dim savedWasPercentage as Boolean = wasPercentage
   dim savedExprStart as ZString ptr = exprStart
   dim savedBaseCol as Integer = errorBaseCol
-  dim savedAllowUdfBareNameHint as Boolean = allowUdfBareNameHint
-
   dim body as String = userFunctions(idx).expr
   pStream = strptr(body)
   exprStart = pStream
   errorBaseCol = 1
-  allowUdfBareNameHint = FALSE
   parseError = 0
   outV = ParseExpression()
   SkipSpaces()
@@ -3478,7 +3655,6 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   errorBaseCol = savedBaseCol
   parseError = savedParseError
   wasPercentage = savedWasPercentage
-  allowUdfBareNameHint = savedAllowUdfBareNameHint
 
   for i = 0 to pCount - 1
     dim pName as String = userFunctions(idx).params(i)
@@ -3491,6 +3667,76 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   next i
 
   udfCallStackSp -= 1
+
+  if evalError <> 0 then parseError = 1
+  return TRUE
+end function
+
+private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt as string, args() as EvalValue, byref outV as EvalValue) as Boolean
+  dim pCount as Integer = 0
+  if ubound(fnParams) >= lbound(fnParams) then pCount = ubound(fnParams) - lbound(fnParams) + 1
+  dim aCount as Integer = 0
+  if ubound(args) >= lbound(args) then aCount = ubound(args) - lbound(args) + 1
+  dim lamErrName as string = "lambda"
+  if pCount <> aCount then
+    SetExactArgCountError(lamErrName, pCount, aCount)
+    return TRUE
+  end if
+  if InlineLambdaBodyIsEffectivelyEmpty(lambdaBodyTxt) then
+    SetFunctionBodyIsEmptyError()
+    return TRUE
+  end if
+
+  dim oldExists() as Integer
+  dim oldValues() as EvalValue
+  if pCount > 0 then
+    redim oldExists(0 to pCount - 1)
+    redim oldValues(0 to pCount - 1)
+  end if
+
+  dim i as Integer
+  for i = 0 to pCount - 1
+    dim pName as String = fnParams(lbound(fnParams) + i)
+    dim vIdx as Integer = FindVariableIndex(pName)
+    if vIdx >= 0 then
+      oldExists(i) = 1
+      oldValues(i) = variables(vIdx).value
+    else
+      oldExists(i) = 0
+    end if
+    SetVariable(pName, args(lbound(args) + i))
+  next i
+
+  dim savedStream as ZString ptr = pStream
+  dim savedParseError as Integer = parseError
+  dim savedWasPercentage as Boolean = wasPercentage
+  dim savedExprStart as ZString ptr = exprStart
+  dim savedBaseCol as Integer = errorBaseCol
+  dim body as String = lambdaBodyTxt
+  pStream = StrPtr(body)
+  exprStart = pStream
+  errorBaseCol = 1
+  parseError = 0
+  outV = ParseExpression()
+  SkipSpaces()
+  if pStream[0] <> CHAR_NUL then SetParseError(FB_STR_UNEXPECTED_INPUT)
+  dim evalError as Integer = parseError
+
+  pStream = savedStream
+  exprStart = savedExprStart
+  errorBaseCol = savedBaseCol
+  parseError = savedParseError
+  wasPercentage = savedWasPercentage
+
+  for i = 0 to pCount - 1
+    dim pNameRestore as String = fnParams(lbound(fnParams) + i)
+    if oldExists(i) = 1 then
+      SetVariable(pNameRestore, oldValues(i))
+    else
+      dim vx as Integer = FindVariableIndex(pNameRestore)
+      if vx >= 0 then RemoveVariableAtIndex(vx)
+    end if
+  next i
 
   if evalError <> 0 then parseError = 1
   return TRUE
@@ -5787,6 +6033,7 @@ declare sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongIn
 declare function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TryBuiltinRatio(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TryParseSortbyCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
+declare function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
 declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnName as String, byval reverseSingleArray as Boolean, byref outV as EvalValue, vals() as ScalarValue, byref c as Integer) as Integer
 
 private function CountFlattenedArgs(args() as EvalValue) as Integer
@@ -6168,14 +6415,33 @@ private function TryParseCallArguments(args() as EvalValue, byref argsCount as I
 end function
 
 private sub ValueSetFunctionRef(byref outV as EvalValue, byref nameText as String)
+  ValueClearLambdaPayload(outV)
   outV.kind = VK_FUNCTION_REF
   outV.flags = 0
   outV.funcRefName = lcase(nameText)
 end sub
 
+private sub ValueSetInlineLambda(byref outV as EvalValue, fnParams() as string, byref lamBody as string)
+  erase outV.arr
+  outV.funcRefName = ""
+  outV.kind = VK_INLINE_LAMBDA
+  outV.flags = 0
+  if ubound(fnParams) >= lbound(fnParams) then
+    redim outV.lambdaParams(lbound(fnParams) to ubound(fnParams))
+    dim i as Integer
+    for i = lbound(fnParams) to ubound(fnParams)
+      outV.lambdaParams(i) = fnParams(i)
+    next i
+  else
+    erase outV.lambdaParams
+  end if
+  outV.lambdaBody = lamBody
+end sub
+
 private function EvalValueIsScalarResult(byref v as EvalValue) as Boolean
   if v.kind = VK_ARRAY then return FALSE
   if v.kind = VK_FUNCTION_REF then return FALSE
+  if v.kind = VK_INLINE_LAMBDA then return FALSE
   return TRUE
 end function
 
@@ -6215,6 +6481,254 @@ private function IsSortbyEligibleFunctionName(byref funcName as String, byref er
     errText = FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION
     return FALSE
   end if
+  return TRUE
+end function
+
+private function LambdaBodyTakeClosingWrap(byref body as string) as Boolean
+  body = ""
+  dim g as Integer = 0
+  while pStream[0] <> CHAR_NUL
+    dim cu as UByte = pStream[0]
+    if g = 0 andalso cu = CHAR_RPAREN then
+      return TRUE
+    end if
+    select case cu
+    case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
+      g += 1
+    case CHAR_RPAREN, CHAR_RBRACKET, CHAR_RBRACE
+      g -= 1
+      if g < 0 then return FALSE
+    end select
+    body &= chr(cu)
+    pStream += 1
+  wend
+  return FALSE
+end function
+
+private function NetRoundParenDepthBetween(byval lo as ZString ptr, byval hiEx as ZString ptr) as Integer
+  dim d as Integer = 0
+  dim q as ZString ptr = lo
+  while q < hiEx
+    dim cu as UByte = q[0]
+    if cu = CHAR_LPAREN then
+      d += 1
+    elseif cu = CHAR_RPAREN then
+      d -= 1
+    end if
+    q += 1
+  wend
+  return d
+end function
+
+private function LambdaBodyTakeUntilSortbyDelim(byref body as string, byval lambdaKeySegmentStart as ZString ptr) as Boolean
+  body = ""
+  dim g as Integer = 0
+  while pStream[0] <> CHAR_NUL
+    dim cu as UByte = pStream[0]
+    if g = 0 andalso (cu = CHAR_COMMA orelse cu = CHAR_RPAREN) then
+      if NetRoundParenDepthBetween(lambdaKeySegmentStart, pStream) = 0 then return TRUE
+    end if
+    select case cu
+    case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
+      g += 1
+    case CHAR_RPAREN, CHAR_RBRACKET, CHAR_RBRACE
+      g -= 1
+      if g < 0 then return FALSE
+    end select
+    body &= chr(cu)
+    pStream += 1
+  wend
+  return FALSE
+end function
+
+private function LambdaBodyTakeUntilTopLevelSemicolonOrEof(byref body as string) as Boolean
+  body = ""
+  dim g as Integer = 0
+  while pStream[0] <> CHAR_NUL
+    dim cu as UByte = pStream[0]
+    if g = 0 andalso cu = CHAR_SEMICOLON then
+      return TRUE
+    end if
+    select case cu
+    case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
+      g += 1
+    case CHAR_RPAREN, CHAR_RBRACKET, CHAR_RBRACE
+      g -= 1
+      if g < 0 then return FALSE
+    end select
+    body &= chr(cu)
+    pStream += 1
+  wend
+  return TRUE
+end function
+
+private function TryConsumeLambdaParamList(fnParams() as string, byval quiet as Boolean) as Boolean
+  erase fnParams
+  SkipSpaces()
+  if pStream[0] = CHAR_LPAREN then
+    pStream += 1
+    SkipSpaces()
+    if pStream[0] = CHAR_RPAREN then
+      pStream += 1
+      return TRUE
+    end if
+    do
+      if IsIdentStartChar(asc(pStream[0])) = FALSE then
+        if quiet = FALSE then SetUnexpectedTokenError()
+        return FALSE
+      end if
+      dim nm as string = ConsumeIdentTokenFromStream()
+      if ubound(fnParams) < lbound(fnParams) then
+        redim fnParams(0 to 0)
+        fnParams(0) = nm
+      else
+        redim preserve fnParams(lbound(fnParams) to ubound(fnParams) + 1)
+        fnParams(ubound(fnParams)) = nm
+      end if
+      SkipSpaces()
+      if pStream[0] = CHAR_COMMA then
+        pStream += 1
+        SkipSpaces()
+      elseif pStream[0] = CHAR_RPAREN then
+        pStream += 1
+        return TRUE
+      else
+        if quiet = FALSE then SetUnexpectedTokenError()
+        return FALSE
+      end if
+    loop
+  elseif IsIdentStartChar(asc(pStream[0])) then
+    redim fnParams(0 to 0)
+    fnParams(0) = ConsumeIdentTokenFromStream()
+    SkipSpaces()
+    while pStream[0] = CHAR_COMMA
+      pStream += 1
+      SkipSpaces()
+      if IsIdentStartChar(asc(pStream[0])) = FALSE then
+        if quiet = FALSE then SetUnexpectedTokenError()
+        return FALSE
+      end if
+      redim preserve fnParams(lbound(fnParams) to ubound(fnParams) + 1)
+      fnParams(ubound(fnParams)) = ConsumeIdentTokenFromStream()
+      SkipSpaces()
+    wend
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryParseLambdaInnerSuffix(fnParams() as string, byref body as string, byval bodyMode as Integer, byval sortbyLambdaKeySeg as ZString ptr) as Boolean
+  if TryConsumeLambdaParamList(fnParams(), TRUE) = FALSE then return FALSE
+  SkipSpaces()
+  if pStream[0] <> CHAR_COLON then return FALSE
+  pStream += 1
+  SkipSpaces()
+  select case bodyMode
+  case 1
+    return LambdaBodyTakeClosingWrap(body)
+  case 2
+    return LambdaBodyTakeUntilTopLevelSemicolonOrEof(body)
+  case 3
+    return LambdaBodyTakeUntilSortbyDelim(body, sortbyLambdaKeySeg)
+  case else
+    return FALSE
+  end select
+end function
+
+private function TryParseLambdaAssignmentRhs(fnParams() as string, byref lamBody as string) as Boolean
+  erase fnParams
+  lamBody = ""
+  dim saveOuter as ZString ptr = pStream
+  if PeekRhsMayBeLambdaDefinition(saveOuter) = FALSE then return FALSE
+  SkipSpaces()
+  if pStream[0] = CHAR_LPAREN then
+    pStream += 1
+    if TryParseLambdaInnerSuffix(fnParams(), lamBody, 1, 0) then
+      SkipSpaces()
+      if pStream[0] = CHAR_RPAREN then
+        pStream += 1
+        SkipSpaces()
+        if pStream[0] = CHAR_NUL orelse pStream[0] = CHAR_SEMICOLON then
+          if InlineLambdaBodyIsEffectivelyEmpty(lamBody) then
+            SetFunctionBodyIsEmptyError()
+            return FALSE
+          end if
+          return TRUE
+        end if
+      end if
+    end if
+    pStream = saveOuter
+    erase fnParams
+    lamBody = ""
+  end if
+  SkipSpaces()
+  if TryParseLambdaInnerSuffix(fnParams(), lamBody, 2, 0) = FALSE then return FALSE
+  SkipSpaces()
+  if pStream[0] = CHAR_NUL orelse pStream[0] = CHAR_SEMICOLON then
+    if InlineLambdaBodyIsEffectivelyEmpty(lamBody) then
+      SetFunctionBodyIsEmptyError()
+      return FALSE
+    end if
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
+  dim save as ZString ptr = pStream
+  parseError = 0
+  SkipSpaces()
+  dim fnParams() as string
+  dim body as string = ""
+  if pStream[0] = CHAR_LPAREN then
+    pStream += 1
+    if PeekRhsMayBeLambdaDefinition(pStream) andalso TryParseLambdaInnerSuffix(fnParams(), body, 1, 0) then
+      SkipSpaces()
+      if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN then
+        dim pcount as Integer = 0
+        if ubound(fnParams) >= lbound(fnParams) then pcount = ubound(fnParams) - lbound(fnParams) + 1
+        if pcount <> 1 then
+          SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+          return FALSE
+        end if
+        if InlineLambdaBodyIsEffectivelyEmpty(body) then
+          SetFunctionBodyIsEmptyError()
+          return FALSE
+        end if
+        ValueSetInlineLambda(outV, fnParams(), body)
+        return TRUE
+      end if
+    end if
+  end if
+  pStream = save
+  SkipSpaces()
+  erase fnParams
+  body = ""
+  if PeekRhsMayBeLambdaDefinition(pStream) = FALSE then
+    return TryParseSortbyFunctionRef(outV)
+  end if
+  if TryParseLambdaInnerSuffix(fnParams(), body, 3, save) = FALSE then
+    pStream = save
+    erase fnParams
+    body = ""
+    return TryParseSortbyFunctionRef(outV)
+  end if
+  SkipSpaces()
+  if pStream[0] <> CHAR_COMMA and pStream[0] <> CHAR_RPAREN then
+    pStream = save
+    return TryParseSortbyFunctionRef(outV)
+  end if
+  dim pcount2 as Integer = 0
+  if ubound(fnParams) >= lbound(fnParams) then pcount2 = ubound(fnParams) - lbound(fnParams) + 1
+  if pcount2 <> 1 then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+    return FALSE
+  end if
+  if InlineLambdaBodyIsEffectivelyEmpty(body) then
+    SetFunctionBodyIsEmptyError()
+    return FALSE
+  end if
+  ValueSetInlineLambda(outV, fnParams(), body)
   return TRUE
 end function
 
@@ -6272,9 +6786,9 @@ private function TryParseSortbyCallArguments(args() as EvalValue, byref argsCoun
     SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
     return FALSE
   end if
-  dim fnRef as EvalValue
-  if TryParseSortbyFunctionRef(fnRef) = FALSE then return FALSE
-  AppendEvalArg(args(), argsCount, argsCap, fnRef)
+  dim keyArg as EvalValue
+  if TryParseSortbyKeyArg(keyArg) = FALSE then return FALSE
+  AppendEvalArg(args(), argsCount, argsCap, keyArg)
   SkipSpaces()
   if TryConsumeCommaArgSeparator(hasComma) = FALSE then return FALSE
   if hasComma then
@@ -6677,27 +7191,40 @@ private function ScalarSortGreater(byref a as ScalarValue, byref b as ScalarValu
   return a.scalar > b.scalar
 end function
 
-private sub SortbyStableSortIndices(sortKeys() as ScalarValue, orderIdx() as Integer, byval count as Integer)
+private function SortbyTryLexicoLess(byref ka as EvalValue, byref kb as EvalValue, byref outLess as Boolean) as Boolean
+  dim cmp as Integer
+  if CompareEvalValues(ka, kb, cmp) = FALSE then
+    SetIncompatibleOperandsError()
+    return FALSE
+  end if
+  outLess = (cmp < 0)
+  return TRUE
+end function
+
+private function SortbyStableSortIndicesFromEvalKeys(sortKeys() as EvalValue, orderIdx() as Integer, byval count as Integer) as Boolean
   dim i as Integer
   for i = 0 to count - 1
     orderIdx(i) = i
   next i
-  if count <= 1 then exit sub
+  if count <= 1 then return TRUE
   dim j as Integer
+  dim cmpLess as Boolean
   for i = 1 to count - 1
     j = i
     do while j > 0
-      if ScalarSortLess(sortKeys(orderIdx(j)), sortKeys(orderIdx(j - 1))) then
-        dim t as Integer = orderIdx(j)
+      if SortbyTryLexicoLess(sortKeys(orderIdx(j)), sortKeys(orderIdx(j - 1)), cmpLess) = FALSE then return FALSE
+      if cmpLess then
+        dim ts as Integer = orderIdx(j)
         orderIdx(j) = orderIdx(j - 1)
-        orderIdx(j - 1) = t
+        orderIdx(j - 1) = ts
         j -= 1
       else
         exit do
       end if
     loop
   next i
-end sub
+  return TRUE
+end function
 
 private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
   dim savedSortbyKeysArgCol as Integer = sortbyKeysArgStartCol
@@ -6705,7 +7232,9 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     SetExactArgCountError(fnName, 2, ubound(args) - lbound(args) + 1)
     return TRUE
   end if
-  if args(1).kind <> VK_FUNCTION_REF then
+  dim keyIsLambda as Boolean = (args(1).kind = VK_INLINE_LAMBDA)
+  dim keyIsRef as Boolean = (args(1).kind = VK_FUNCTION_REF)
+  if keyIsLambda = FALSE and keyIsRef = FALSE then
     if args(1).kind = VK_ARRAY then
       SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
     else
@@ -6713,10 +7242,21 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     end if
     return TRUE
   end if
-  dim errText as String
-  if IsSortbyEligibleFunctionName(args(1).funcRefName, errText) = FALSE then
-    SetParseError(errText)
-    return TRUE
+  dim lamParamCount as Integer = 0
+  if keyIsLambda then
+    if ubound(args(1).lambdaParams) >= lbound(args(1).lambdaParams) then
+      lamParamCount = ubound(args(1).lambdaParams) - lbound(args(1).lambdaParams) + 1
+    end if
+    if lamParamCount <> 1 then
+      SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
+      return TRUE
+    end if
+  else
+    dim errText as String
+    if IsSortbyEligibleFunctionName(args(1).funcRefName, errText) = FALSE then
+      SetParseError(errText)
+      return TRUE
+    end if
   end if
   dim vals() as ScalarValue
   dim c as Integer = CopySingleArgToScalarValues(args(0), vals(), FALSE)
@@ -6724,29 +7264,52 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     SetAtLeastOneArgError(fnName)
     return TRUE
   end if
-  dim keys(0 to c - 1) as ScalarValue
+  dim keys(0 to c - 1) as EvalValue
   dim i as Integer
   for i = 0 to c - 1
     dim keyV as EvalValue
-    SortbyInvokeKeyFunction(args(1).funcRefName, vals(i), keyV)
+    if keyIsLambda then
+      dim la() as EvalValue
+      if lamParamCount = 1 then
+        redim la(0 to 0)
+        la(0).kind = VK_SCALAR
+        la(0).scalarValue = vals(i)
+        la(0).flags = 0
+      else
+        erase la
+      end if
+      dim inlineLamP() as string
+      dim inlineLamB as string = args(1).lambdaBody
+      if ubound(args(1).lambdaParams) >= lbound(args(1).lambdaParams) then
+        redim inlineLamP(lbound(args(1).lambdaParams) to ubound(args(1).lambdaParams))
+        dim lk as Integer
+        for lk = lbound(args(1).lambdaParams) to ubound(args(1).lambdaParams)
+          inlineLamP(lk) = args(1).lambdaParams(lk)
+        next
+      else
+        erase inlineLamP
+      end if
+      EvaluateInlineLambda(inlineLamP(), inlineLamB, la(), keyV)
+    else
+      SortbyInvokeKeyFunction(args(1).funcRefName, vals(i), keyV)
+    end if
     if parseError then
       RemapParseErrorToSortbyKeysArgColumn()
       sortbyKeysArgStartCol = savedSortbyKeysArgCol
       return TRUE
     end if
-    if EvalValueIsScalarResult(keyV) = FALSE then
-      SetParseError(FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR)
+    if keyV.kind = VK_FUNCTION_REF orelse keyV.kind = VK_INLINE_LAMBDA orelse (keyV.kind <> VK_SCALAR andalso keyV.kind <> VK_ARRAY) then
+      SetParseError(FB_STR_SORTBY_KEY_MUST_BE_SCALAR_OR_ARRAY)
       return TRUE
     end if
-    if keyV.kind = VK_SCALAR then
-      keys(i) = keyV.scalarValue
-    else
-      SetParseError(FB_STR_SORTBY_KEY_MUST_RETURN_SCALAR)
-      return TRUE
-    end if
+    keys(i) = keyV
   next i
   dim order(0 to c - 1) as Integer
-  SortbyStableSortIndices(keys(), order(), c)
+  if SortbyStableSortIndicesFromEvalKeys(keys(), order(), c) = FALSE then
+    RemapParseErrorToSortbyKeysArgColumn()
+    sortbyKeysArgStartCol = savedSortbyKeysArgCol
+    return TRUE
+  end if
   dim sorted(0 to c - 1) as ScalarValue
   for i = 0 to c - 1
     sorted(i) = vals(order(i))
@@ -7871,6 +8434,7 @@ private function ParseFactor() as EvalValue
     end if
   elseif IsIdentStartChar(asc(pStream[0])) then
     dim firstIdentB as UByte = pStream[0]
+    dim identStart as ZString ptr = pStream
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
     if pStream[0] = CHAR_LPAREN then
@@ -7883,7 +8447,7 @@ private function ParseFactor() as EvalValue
       dim canIndex as Boolean = TRUE
       if TryGetConstant(nam, n) = FALSE then
         if GetVariable(nam, n) = FALSE then
-          if TryHandleUnknownIdentifier(nam, n, canIndex) = FALSE then return n
+          if TryHandleUnknownIdentifier(nam, n, canIndex, identStart) = FALSE then return n
         end if
       end if
       if Parser_SupportComplexNumbers then
@@ -8801,13 +9365,18 @@ private function FinishParserEvaluateEx(byval ok as Boolean) as Boolean
 end function
 
 function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
-  dim exprInput as String = StripLineComment(sExpr)
+  dim exprAfterLineComment as String = StripLineComment(sExpr)
+  dim exprInput as String = exprAfterLineComment
+  NormalizeTrailingStatementSemicolons(exprInput)
   const PARSER_MAX_EXPR_LEN as Integer = 32760
   evalDepth += 1
   if evalDepth = 1 then
     ResetTopLevelEvaluationState(exprInput)
   end if
   if Len(exprInput) = 0 then
+    if Len(exprAfterLineComment) > 0 then
+      SetEmptyStatementError()
+    end if
     return FinishParserEvaluateEx(FALSE)
   end if
   if Len(exprInput) > PARSER_MAX_EXPR_LEN then
@@ -8844,9 +9413,69 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
 
   SkipSpaces()
   if IsIdentStartChar(asc(pStream[0])) then
-    dim varName as String = ConsumeIdentTokenFromStream()
-    SkipSpaces()
-    if pStream[0] = CHAR_LPAREN then
+    dim stmtStart as ZString ptr = pStream
+    if PeekIdentFollowedByAssignEquals(stmtStart) then
+      dim varName as String = ConsumeIdentTokenFromStream()
+      SkipSpaces()
+      if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
+        pStream += 1
+        dim afterEq as ZString ptr = pStream
+        dim lamP() as string
+        dim lamB as string = ""
+        if PeekRhsMayBeLambdaDefinition(afterEq) andalso TryParseLambdaAssignmentRhs(lamP(), lamB) then
+          dim lamUdfErr as string = ""
+          if TryValidateUserFunctionDefinition(varName, lamP(), lamB, lamUdfErr) = FALSE then
+            SetValidationError(lamUdfErr)
+            return FinishParserEvaluateEx(FALSE)
+          end if
+          SetUserFunction(varName, lamP(), lamB)
+          dim sigL as String = varName & "("
+          if ubound(lamP) >= lbound(lamP) then
+            dim lk as Integer
+            for lk = lbound(lamP) to ubound(lamP)
+              if lk > lbound(lamP) then sigL &= FB_STR_COMMA
+              sigL &= lamP(lk)
+            next lk
+          end if
+          sigL &= ")"
+          resultText = FB_STR_DEFINED & sigL
+          isArray = FALSE
+          result = 0
+          InvalidateLastRawResult()
+          return FinishParserEvaluateEx(TRUE)
+        end if
+        pStream = afterEq
+        dim exprV as EvalValue
+        exprV = ParseExpression()
+        if parseError then
+          return FinishParserEvaluateEx(FALSE)
+        end if
+        SkipSpaces()
+        ApplyUnknownNameErrors()
+        if pStream[0] = CHAR_NUL andalso parseError = 0 then
+          dim assignNameErr as String
+          if TryValidateAssignmentTargetName(varName, assignNameErr) = FALSE then
+            SetValidationError(assignNameErr)
+            return FinishParserEvaluateEx(FALSE)
+          end if
+          RemoveUserFunctionByName(varName)
+          SetVariable(varName, exprV)
+          SetAnsValue(exprV)
+          resultText = ValueToString(exprV)
+          isArray = (exprV.kind = VK_ARRAY)
+          if exprV.kind = VK_SCALAR then result = exprV.scalar
+          CommitLastRawResult(exprV)
+          return FinishParserEvaluateEx(TRUE)
+        end if
+        if parseError = 0 then SetUnexpectedTokenError()
+        return FinishParserEvaluateEx(FALSE)
+      end if
+      pStream = stmtStart
+    end if
+    if PeekIdentFollowedByChar(stmtStart, CHAR_LPAREN) then
+      dim varName as String = ConsumeIdentTokenFromStream()
+      SkipSpaces()
+      if pStream[0] = CHAR_LPAREN then
       dim savedPos as ZString ptr = pStream
       pStream += 1
       SkipSpaces()
@@ -8907,35 +9536,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         end if
       end if
       pStream = savedPos
-    end if
-
-    ' Single '=' is assignment; '==' is equality (do not consume the first '=' of '==').
-    if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
-      pStream += 1
-      dim exprV as EvalValue
-      exprV = ParseExpression()
-      if parseError then
-        return FinishParserEvaluateEx(FALSE)
       end if
-      SkipSpaces()
-      ApplyUnknownNameErrors()
-      if pStream[0] = CHAR_NUL andalso parseError = 0 then
-        dim assignNameErr as String
-        if TryValidateAssignmentTargetName(varName, assignNameErr) = FALSE then
-          SetValidationError(assignNameErr)
-          return FinishParserEvaluateEx(FALSE)
-        end if
-        RemoveUserFunctionByName(varName)
-        SetVariable(varName, exprV)
-        SetAnsValue(exprV)
-        resultText = ValueToString(exprV)
-        isArray = (exprV.kind = VK_ARRAY)
-        if exprV.kind = VK_SCALAR then result = exprV.scalar
-        CommitLastRawResult(exprV)
-        return FinishParserEvaluateEx(TRUE)
-      end if
-      if parseError = 0 then SetUnexpectedTokenError()
-      return FinishParserEvaluateEx(FALSE)
     end if
   end if
 

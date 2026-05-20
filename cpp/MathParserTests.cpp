@@ -217,6 +217,14 @@ bool expectEval(
   return true;
 }
 
+bool errorContainsExpectedPart(const std::string& err, const std::string& part) {
+  if (part == "unexpected token") {
+    return err.find("unexpected token") != std::string::npos ||
+           err.find("unexpected characters") != std::string::npos;
+  }
+  return err.find(part) != std::string::npos;
+}
+
 bool expectEvalErrorContains(
     MathParser& p,
     const std::string& expr,
@@ -238,7 +246,7 @@ bool expectEvalErrorContains(
     why = "expected error containing \"" + expectedErrPart + "\", got success";
     return false;
   }
-  if (err.find(expectedErrPart) == std::string::npos) {
+  if (!errorContainsExpectedPart(err, expectedErrPart)) {
     why = "expected error containing \"" + expectedErrPart + "\", got \"" + err + "\"";
     return false;
   }
@@ -2485,6 +2493,66 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "f(2)", "unknown function: newfn", why)) return false;
                 return expectEval(p, "newfn(x)=x**(1/3); f(8)", "16", why);
               }});
+  t.push_back({"regression/udf reject empty tuple body", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "f=():()", "function body is empty", why)) return false;
+                if (!expectEvalErrorContains(p, "f()=( )", "function body is empty", why)) return false;
+                if (!expectEval(p, "f=():100; f()", "100", why)) return false;
+                p.parseAndEvaluate("g=():(); g()");
+                if (p.getError().empty()) {
+                  why = "expected error after defining g=():()";
+                  return false;
+                }
+                return true;
+              }});
+  t.push_back({"regression/udf formal parameter array indexing", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "_=(1,2,3,4); ff(a)=(a[1],a[-1]); ff(_)", "(2,4)", why)) return false;
+                return expectEval(p, "t=(1,2,3,4,5,6); fff(a)=(a[0],a[-3]); fff(t)", "(1,4)", why);
+              }});
+  t.push_back({"regression/ident with digit: atan2 bare hint and UDF f1", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "atan2", "function:", why)) return false;
+                if (!expectEvalErrorContains(p, "atan2+1", "unknown variable: atan2", why)) return false;
+                if (!expectEval(p, "f1(x)=x+1", "0", why)) return false;
+                if (!expectEvalErrorContains(p, "f1", "user-defined function:", why)) return false;
+                if (!expectEvalErrorContains(p, "f1+2", "unknown variable: f1", why)) return false;
+                if (!expectEvalErrorContains(p, "x_1+2", "unknown variable: x_1", why)) return false;
+                return true;
+              }});
+  t.push_back({"regression/bare function name tail hint vs middle unknown variable", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "polar", "function:", why)) return false;
+                if (!expectEvalErrorContains(p, "polar+123", "unknown variable: polar", why)) return false;
+                if (!expectEvalErrorContains(p, "1+2; polar", "function:", why)) return false;
+                if (!expectEvalErrorContains(p, "1+2; polar+2", "unknown variable: polar", why)) return false;
+                if (!expectEvalErrorContains(p, "qqq(x)=polar", "function:", why)) return false;
+                if (!expectEvalErrorContains(p, "qqq=x:polar", "function:", why)) return false;
+                if (!expectEvalErrorContains(p, "qqq(x)=polar+2", "unknown variable: polar", why)) return false;
+                if (!expectEvalErrorContains(p, "qqq(x)=sin+cos", "unknown variable: sin", why)) return false;
+                if (!expectEvalErrorContains(p, "sortby((1:30,1:00),x:polar)", "function:", why)) return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1:30,1:00),x:polar+2)", "unknown variable: polar", why))
+                  return false;
+                MathParser pf;
+                pf.parseAndEvaluate("h(x)=x+1; h+2");
+                if (pf.getError().find("unknown variable: h") == std::string::npos) {
+                  why = "h(x)=x+1; h+2: expected unknown variable: h, got \"" + pf.getError() +
+                        "\" res=\"" + pf.getResult() + "\"";
+                  return false;
+                }
+                pf.parseAndEvaluate("h(x)=h+1");
+                if (pf.getError().find("unknown variable: h") == std::string::npos) {
+                  why = "h(x)=h+1: expected unknown variable: h, got \"" + pf.getError() + "\"";
+                  return false;
+                }
+                MathParser pg;
+                if (!expectEvalErrorContains(
+                        pg, "g(x)=x; sortby((3,1,2),x:g)", "user-defined function: g(x)", why))
+                  return false;
+                return expectEvalErrorContains(
+                    pg, "g(x)=x; sortby((3,1,2),x:g+1)", "unknown variable: g", why);
+              }});
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown function", why);
@@ -2695,11 +2763,37 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  if (!expectEval(p, "sortby((3,1,2), f)", "(1,2,3)", why)) return false;
                  return true;
                }});
-  t.push_back({"sortby/ratio: sortby key must return scalar",
+  t.push_back({"sortby/ratio: sortby polar and UDF array keys (lexicographic compare)",
                [](std::string& why) {
                  MathParser p;
-                 return expectEvalErrorContains(
-                     p, "sortby((1,2), polar)", "sortby key function must return a scalar", why);
+                 if (!expectEval(p, "sortby((2,1), polar)", "(1,2)", why)) return false;
+                 if (!expectEval(p, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)", why)) return false;
+                 return true;
+               }});
+  t.push_back({"sortby/ratio: lambda assignment and sortby anonymous lambdas",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "f=x:x+2; f(3)", "5", why)) return false;
+                 if (!expectEval(p, "f=(x):x+2; f(4)", "6", why)) return false;
+                 if (!expectEval(p, "f=():42; f()", "42", why)) return false;
+                 if (!expectEval(p, "f=():100; f()", "100", why)) return false;
+                 if (!expectEval(p, "f=x,y:x+y; f(1,2)", "3", why)) return false;
+                 if (!expectEval(p, "f=x,y,z:x+y+z; f(1,2,3)", "6", why)) return false;
+                 if (!expectEval(p, "f=(x,y,z):(x+y+z); f(1,2,3)", "6", why)) return false;
+                 if (!expectEval(p, "a=10; a", "10", why)) return false;
+                 if (!expectEval(p, "sortby((3,1,2), x:-x)", "(3,2,1)", why)) return false;
+                 if (!expectEvalErrorContains(
+                         p, "sortby((5,1), ():1)", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 if (!expectEvalErrorContains(
+                         p, "sortby((1,2), x,y:x+y)", "sortby expects a function that takes 1 parameter", why))
+                   return false;
+                 if (!expectEval(p, "g=((x):(1/x)); g(2)", "0.5", why)) return false;
+                 if (!expectEval(p, "sortby((2,1), (x):(1/x))", "(2,1)", why)) return false;
+                 if (!expectEvalErrorContains(
+                         p, "sortby((1:30,1:00),x:)", "function body is empty", why))
+                   return false;
+                 return true;
                }});
   t.push_back({"sortby/ratio: sortby time and milliseconds keys",
                [](std::string& why) {
@@ -3362,7 +3456,14 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "0xAA; foo()", "unknown function"} ,
     {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
     {ParityBasicCase::Kind::Expected, "d(x)=(ratio(x), x-ratio(x)); d(seconds(20ms))", "(1/50, 0)" } ,
-    {ParityBasicCase::Kind::Expected, "f(x)=x*(2,3,4); f(10)", "(20, 30, 40)" }
+    {ParityBasicCase::Kind::Expected, "f(x)=x*(2,3,4); f(10)", "(20, 30, 40)" } ,
+    {ParityBasicCase::Kind::Expected, "1+2;", "3"} ,
+    {ParityBasicCase::Kind::Expected, "   1+2 ; ", "3"} ,
+    {ParityBasicCase::Kind::ErrorContains, ";", "empty statement"} ,
+    {ParityBasicCase::Kind::ErrorContains, " ; ", "empty statement"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1;;2", "empty statement"} ,
+    {ParityBasicCase::Kind::Expected, "sortby((2,1), polar)", "(1,2)"} ,
+    {ParityBasicCase::Kind::Expected, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)"}
 };
 
 static const ParityBasicCase kParityTimeFromSmokeCases[] = {
@@ -3522,7 +3623,9 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  std::string el = p.getError();
                  std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                  const bool okParse =
-                     el.find("unexpected token") != std::string::npos || el.find("invalid numeric") != std::string::npos ||
+                     el.find("unexpected token") != std::string::npos ||
+                     el.find("unexpected characters") != std::string::npos ||
+                     el.find("invalid numeric") != std::string::npos ||
                      el.find("invalid segment") != std::string::npos;
                  if (!okParse) {
                    why = std::string("unexpected error for colon literal: ") + p.getError();
@@ -3676,7 +3779,8 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  std::string el = p.getError();
                  std::transform(el.begin(), el.end(), el.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                  const bool okUnknown = el.find("unknown variable") != std::string::npos && el.find("i") != std::string::npos;
-                 const bool okUnexpected = el.find("unexpected token") != std::string::npos;
+                 const bool okUnexpected = el.find("unexpected token") != std::string::npos ||
+                                           el.find("unexpected characters") != std::string::npos;
                  if (!okUnknown && !okUnexpected) {
                    why = std::string("unexpected error text: ") + p.getError();
                    return false;
@@ -3976,6 +4080,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    const char* expect;
                  } kRows[] = {
                      {"sortby((3+4i, 1+2i), abs)", "(1+2i,3+4i)"},
+                     {"sortby((3+4i, 1+2i), polar)", "(1+2i,3+4i)"},
                      {"ratio(1+2i)", "1+2i"},
                      {"ratio(0.5+0.25i)", "1/2+1/4*i"},
                      {"ratio(2+3i)", "2+3i"},

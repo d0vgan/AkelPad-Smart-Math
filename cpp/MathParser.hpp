@@ -207,7 +207,7 @@ private:
     ArrayFunc
   };
 
-  enum class ValueKind { Scalar, Array, FunctionRef, UdfFormalValidationDummy };
+  enum class ValueKind { Scalar, Array, FunctionRef, InlineLambda, UdfFormalValidationDummy };
   enum class ScalarKind { FloatingPoint, Int64, UInt64, Time };
 
   enum class RenderBase { Dec = 10, Hex = 16, Oct = 8, Bin = 2 };
@@ -265,6 +265,9 @@ private:
     ScalarValue scalarValue{};
     std::vector<ScalarValue> arr;
     std::string funcRefName;
+    /** Only when ``kind`` is InlineLambda (anonymous lambdas inside ``sortby``). */
+    std::vector<std::string> lambdaParams;
+    std::string lambdaBody;
     /// When true with hex/oct/bin output, format negative integers as unsigned (two's complement) bit pattern.
     bool hasExpandArgs() const { return (flags & fExpandArgs) != 0; }
     void setExpandArgs(bool v) { flags = v ? (flags | fExpandArgs) : (flags & ~fExpandArgs); }
@@ -357,8 +360,8 @@ private:
     /** Collected like FreeBASIC (non-fatal until end of eval). */
     std::string unknownVarsText;
     std::string unknownFuncsText;
-    /** When false, a known UDF name used like a variable reports unknown variable, not a bare-name hint. */
-    bool allowBareUserFunctionNameHint = true;
+    /** Params of UDFs seen earlier in the program currently being compiled (not yet in userFunctions_). */
+    const std::unordered_map<std::string, std::vector<std::string>>* compilingUserFunctionParams = nullptr;
   };
 
   EvalValue lastResult_;
@@ -380,7 +383,10 @@ private:
   bool compiledScalarOnly_ = false;
   bool supportComplexNumbers_ = false;
   bool supportTimeValues_ = true;
+  /** Owned compile buffer when input needs comment/semicolon stripping; otherwise compile borrows input. */
+  std::string compileParseStorage_;
 
+  bool prepareCompileParseSource(const std::string& mathExpression, EvalContext& ctx);
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
   static bool isIdentChar(char c);
@@ -408,8 +414,35 @@ private:
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   bool parseSortbyCallArguments(EvalContext& ctx, std::vector<std::unique_ptr<Expr>>& outArgs);
   std::unique_ptr<Expr> parseSortbyFunctionRef(EvalContext& ctx);
+  bool tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const;
+  static bool lambdaBodyConsumeUntilWrappedParenCloses(EvalContext& ctx, std::string& outBody);
+  static bool lambdaBodyConsumeUntilSortbyArgDelim(
+      EvalContext& ctx,
+      const char* lambdaKeySegmentStart,
+      std::string& outBody);
+  static bool lambdaBodyConsumeUntilTopLevelSemicolonOrEof(EvalContext& ctx, std::string& outBody);
+  static bool lambdaBodyConsumeToEof(EvalContext& ctx, std::string& outBody);
+  bool tryParseLambdaInnerUnwrappedSuffix(
+      EvalContext& ctx,
+      std::vector<std::string>& outParams,
+      std::string& outBody,
+      bool bodyUntilClosingWrap,
+      bool bodyUntilCommaOrParenAtGroupedDepthZero,
+      bool bodyUntilTopLevelSemicolonOrEof,
+      const char* sortbyLambdaKeyStart,
+      bool quiet) const;
+  bool tryParseLambdaRhsAfterEquals(EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const;
+  std::unique_ptr<Expr> parseSortbyKeyArg(EvalContext& ctx);
+  EvalValue evalInlineLambdaCall(
+      EvalContext& ctx,
+      const std::vector<std::string>& paramNames,
+      const std::string& bodyExpr,
+      std::vector<EvalValue>&& args,
+      const std::unordered_map<std::string, EvalValue>* scopedVars);
+  static EvalValue makeInlineLambdaValue(std::vector<std::string> params, std::string body);
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
+  static bool udfBodyIsEmptyTupleLiteral(const std::string& bodyExpr);
   static bool nearlyInt(double v, long long& out);
   static bool parseUInt64FromDouble(double v, std::uint64_t& out);
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
@@ -464,7 +497,15 @@ private:
   static bool isReservedFunctionName(const std::string& nameText);
   const char* getReservedIdentifierError(const std::string& ident) const;
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
-  bool trySetMissingFunctionCallError(EvalContext& ctx, const std::string& ident) const;
+  bool isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const;
+  bool trySetMissingFunctionCallError(
+      EvalContext& ctx,
+      const std::string& ident,
+      const char* identStart) const;
+  bool trySetBareUserFunctionNameError(
+      EvalContext& ctx,
+      const std::string& ident,
+      const char* identStart) const;
   static std::string formatUserFunctionSignature(const UserFunction& uf);
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
   bool tryResolveVariableValue(
@@ -553,6 +594,7 @@ private:
 
   void setError(EvalContext& ctx, const std::string& msg) const;
 
+  bool tryCompileSingleExpressionProgram(EvalContext& ctx, std::vector<AstStatement>& out);
   bool parseProgram(EvalContext& ctx, std::vector<AstStatement>& out);
   std::unique_ptr<Expr> parseExpression(EvalContext& ctx);
   std::unique_ptr<Expr> parseOr(EvalContext& ctx);
@@ -647,10 +689,15 @@ private:
       const MathParser& parser,
       const std::string& funcName,
       std::string& outErr);
-  static bool scalarSortLess(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b);
-  static void sortbyStableSortIndices(
-      const std::vector<EvalValue::ScalarValue>& sortKeys,
-      std::vector<int>& orderIdx);
+  bool tryLexicographicCompareEvalValues(
+      EvalContext& ctx,
+      const EvalValue& a,
+      const EvalValue& b,
+      int& cmpOut) const;
+  bool sortbyStableSortIndicesFromKeys(
+      EvalContext& ctx,
+      const std::vector<EvalValue>& sortKeys,
+      std::vector<int>& orderIdx) const;
   static bool tryApproximateRational(double x, long long& num, std::uint64_t& den);
   static EvalValue makeRationalReduced(long long num, std::uint64_t den);
   bool tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const;

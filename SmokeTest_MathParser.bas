@@ -810,15 +810,16 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next uei
 
-  dim cxSortRatioOk(1 to 5) as String
-  dim cxSortRatioExpect(1 to 5) as String
+  dim cxSortRatioOk(1 to 6) as String
+  dim cxSortRatioExpect(1 to 6) as String
   cxSortRatioOk(1) = "sortby((3+4i, 1+2i), abs)": cxSortRatioExpect(1) = "(1+2i, 3+4i)"
+  cxSortRatioOk(6) = "sortby((3+4i, 1+2i), polar)": cxSortRatioExpect(6) = "(1+2i, 3+4i)"
   cxSortRatioOk(2) = "ratio(1+2i)": cxSortRatioExpect(2) = "1+2i"
   cxSortRatioOk(3) = "ratio(0.5+0.25i)": cxSortRatioExpect(3) = "1/2+1/4*i"
   cxSortRatioOk(4) = "ratio(2+3i)": cxSortRatioExpect(4) = "2+3i"
   cxSortRatioOk(5) = "ratio(e+10i)": cxSortRatioExpect(5) = "14665106/5394991+10i"
   dim sri as Integer
-  for sri = 1 to 5
+  for sri = 1 to 6
     if Parser_TryEvaluateEx(cxSortRatioOk(sri), r, rt, ia) = FALSE orelse rt <> cxSortRatioExpect(sri) then
       print "[complex-opt] FAIL: """ & cxSortRatioOk(sri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       print "[complex-opt]      want: """ & cxSortRatioExpect(sri) & """"
@@ -1021,7 +1022,7 @@ private sub RunTimeValuesSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1091) as SmokeCase
+  dim tests(1 to 1127) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2129,7 +2130,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1049).expr = "f(x)=x*x; sortby((3,1,2), f)": tests(1049).expected = "(1,2,3)" ' [ok-func]
   tests(1050).expr = "sortby((1,2), abs())": tests(1050).expectedErrContains = "sortby expects exactly one function" ' [err]
   tests(1051).expr = "sortby((1,2), pow)": tests(1051).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err]
-  tests(1052).expr = "sortby((1,2), polar)": tests(1052).expectedErrContains = "sortby key function must return a scalar" ' [err]
+  tests(1052).expr = "sortby((2,1), polar)": tests(1052).expected = "(1,2)"                 ' tuple keys (r, angle), lexicographic order
   tests(1053).expr = "sortby((1:30,0:30,1:00), milliseconds)": tests(1053).expected = "(00:30,01:00,01:30)" ' [time]
   tests(1054).expr = "ratio(5)": tests(1054).expected = "5" ' [ok-func]
   tests(1055).expr = "ratio(0)": tests(1055).expected = "0" ' [ok-func]
@@ -2169,6 +2170,42 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1089).expr = "100000000000000000000": tests(1089).expected = "1.0000000000000000e+20" ' [numeric] long decimal integer, not compact time
   tests(1090).expr = "d(x)=(ratio(x), x-ratio(x)); d(seconds(20ms))": tests(1090).expected = "(1/50, 0)"
   tests(1091).expr = "f(x)=x*(2,3,4); f(10)": tests(1091).expected = "(20, 30, 40)"
+  tests(1092).expr = "1+2;": tests(1092).expected = "3"                   ' trailing semicolon (top-level)
+  tests(1093).expr = "   1+2 ; ": tests(1093).expected = "3"
+  tests(1094).expr = ";": tests(1094).expectedErrContains = "empty statement"
+  tests(1095).expr = " ; ": tests(1095).expectedErrContains = "empty statement"
+  tests(1096).expr = "1;;2": tests(1096).expectedErrContains = "empty statement"  ' interior empty stmt
+  tests(1097).expr = "f(x)=x*(10,20); sortby((3,1,2), f)": tests(1097).expected = "(1,2,3)" ' UDF returns array key
+  tests(1098).expr = "f=x:x+2; f(3)": tests(1098).expected = "5"                               ' lambda UDF
+  tests(1099).expr = "f=(x):x+2; f(4)": tests(1099).expected = "6"                           ' parens around parameter
+  tests(1100).expr = "f=():42; f()": tests(1100).expected = "42"                            ' zero-parameter lambda / UDF
+  tests(1101).expr = "sortby((3,1,2), x:-x)": tests(1101).expected = "(3,2,1)"
+  tests(1102).expr = "sortby((5,1), ():1)": tests(1102).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err] zero-param lambda in sortby
+  tests(1103).expr = "sortby((1,2), x,y:x+y)": tests(1103).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err] multi-param lambda in sortby
+  tests(1104).expr = "g=((x):(1/x)); g(2)": tests(1104).expected = "0.5"                     ' nested wrapping on rhs
+  tests(1105).expr = "sortby((2,1), (x):(1/x))": tests(1105).expected = "(2,1)"
+  tests(1106).expr = "sortby((1:30,1:00),x:)": tests(1106).expectedErrContains = "function body is empty" ' [err] empty sortby lambda body
+  tests(1107).expr = "qqq(x)=polar": tests(1107).expectedErrContains = "function:" ' [udf] bare builtin at body tail
+  tests(1108).expr = "qqq=x:polar": tests(1108).expectedErrContains = "function:" ' [udf] lambda bare builtin at tail
+  tests(1109).expr = "qqq(x)=polar+x": tests(1109).expectedErrContains = "unknown variable: polar" ' [udf] bare builtin mid-body
+  tests(1110).expr = "qqq(x)=sin+cos": tests(1110).expectedErrContains = "unknown variable: sin" ' [udf] bare builtin mid-body
+  tests(1111).expr = "polar+123": tests(1111).expectedErrContains = "unknown variable: polar" ' [err] bare builtin mid-expr
+  tests(1112).expr = "sortby((1:30,1:00),x:polar)": tests(1112).expectedErrContains = "function:" ' [sortby] lambda body tail
+  tests(1113).expr = "sortby((1:30,1:00),x:polar+2)": tests(1113).expectedErrContains = "unknown variable: polar" ' [sortby] lambda body mid
+  tests(1114).expr = "1+2; polar+2": tests(1114).expectedErrContains = "unknown variable: polar" ' [err] statement mid-expr
+  tests(1115).expr = "h(x)=x+1; h+2": tests(1115).expectedErrContains = "unknown variable: h" ' [udf] bare name mid-expr
+  tests(1116).expr = "h(x)=h+1": tests(1116).expectedErrContains = "unknown variable: h" ' [udf] bare name mid-body
+  tests(1117).expr = "g(x)=x; sortby((3,1,2),x:g)": tests(1117).expectedErrContains = "user-defined function: g(x)" ' [sortby] lambda body tail
+  tests(1118).expr = "g(x)=x; sortby((3,1,2),x:g+1)": tests(1118).expectedErrContains = "unknown variable: g" ' [sortby] lambda body mid
+  tests(1119).expr = "f=x,y:x+y; f(1,2)": tests(1119).expected = "3" ' [udf] lambda two unwrapped params
+  tests(1120).expr = "f=x,y,z:x+y+z; f(1,2,3)": tests(1120).expected = "6" ' [udf] lambda three unwrapped params
+  tests(1121).expr = "f=(x,y,z):(x+y+z); f(1,2,3)": tests(1121).expected = "6" ' [udf] lambda paren param list
+  tests(1122).expr = "f=():100; f()": tests(1122).expected = "100" ' [udf] lambda zero params
+  tests(1123).expr = "_=(1,2,3,4); ff(a)=(a[1],a[-1]); ff(_)": tests(1123).expected = "(2,4)" ' [udf] formal array indexing
+  tests(1124).expr = "t=(1,2,3,4,5,6); fff(a)=(a[0],a[-3]); fff(t)": tests(1124).expected = "(1,4)" ' [udf] formal index bounds deferred to call
+  tests(1125).expr = "f=():()": tests(1125).expectedErrContains = "function body is empty" ' [udf] reject empty tuple body
+  tests(1126).expr = "f()=( )": tests(1126).expectedErrContains = "function body is empty" ' [udf] reject whitespace-only tuple body
+  tests(1127).expr = "f=():100; f()": tests(1127).expected = "100" ' [udf] zero-param lambda body still allowed
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
