@@ -131,22 +131,31 @@ private function SmokeCaseSignature(byref c as SmokeCase) as String
     kind = "expected"
     payload = c.expected
   end if
-  SmokeCaseSignature = kind & "|" & c.expr & "|" & payload
+  SmokeCaseSignature = kind & "|" & c.setup & "|" & c.expr & "|" & payload
 end function
 
 sub RunCase(byref c as SmokeCase)
   g_idx += 1
-  print "[" & g_idx & "/" & g_total & "] RUN  : " & c.expr
-
-  dim evalExpr as String = c.expr
   if len(c.setup) > 0 then
-    evalExpr = c.setup & "; " & c.expr
+    print "[" & g_idx & "/" & g_total & "] RUN  : " & c.setup & "  ->  " & c.expr
+  else
+    print "[" & g_idx & "/" & g_total & "] RUN  : " & c.expr
   end if
 
   dim result as Double
   dim resultText as String
   dim isArray as Boolean
-  dim ok as Boolean = Parser_TryEvaluateEx(evalExpr, result, resultText, isArray)
+  dim ok as Boolean = FALSE
+  if len(c.setup) > 0 then
+    dim setupOk as Boolean = Parser_TryEvaluateEx(c.setup, result, resultText, isArray)
+    if setupOk = FALSE then
+      g_failed += 1
+      print "          FAIL : setup """ & c.setup & """ failed: """ & Parser_GetLastError() & """"
+      print ""
+      exit sub
+    end if
+  end if
+  ok = Parser_TryEvaluateEx(c.expr, result, resultText, isArray)
 
   dim actual as String
   dim errText as String
@@ -1022,7 +1031,7 @@ private sub RunTimeValuesSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1127) as SmokeCase
+  dim tests(1 to 1131) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2205,7 +2214,11 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1124).expr = "t=(1,2,3,4,5,6); fff(a)=(a[0],a[-3]); fff(t)": tests(1124).expected = "(1,4)" ' [udf] formal index bounds deferred to call
   tests(1125).expr = "f=():()": tests(1125).expectedErrContains = "function body is empty" ' [udf] reject empty tuple body
   tests(1126).expr = "f()=( )": tests(1126).expectedErrContains = "function body is empty" ' [udf] reject whitespace-only tuple body
-  tests(1127).expr = "f=():100; f()": tests(1127).expected = "100" ' [udf] zero-param lambda body still allowed
+  tests(1127).expr = "f=():1+99; f()": tests(1127).expected = "100" ' [udf] zero-param lambda body still allowed (distinct from 1122)
+  tests(1128).expr = "atan2;": tests(1128).expectedErrContains = "unexpected token" ' [err] bare builtin before semicolon
+  tests(1129).expr = "atan2;(2,3)": tests(1129).expectedErrContains = "unexpected token" ' [err] first statement bare builtin;
+  tests(1130).setup = "nnnn=5": tests(1130).expr = "atan2;": tests(1130).expectedErrContains = "unexpected token" ' [err] error location not from prior expr
+  tests(1131).setup = "nnnn=5": tests(1131).expr = "atan2;(2,3)": tests(1131).expectedErrContains = "unexpected token" ' [err] error location not from prior expr
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

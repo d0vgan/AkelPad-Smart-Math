@@ -110,19 +110,6 @@ bool peekRhsMayBeLambdaDefinition(const char* p) {
   return peekUnwrappedLambdaParamsThenColon(p);
 }
 
-void stripTrailingSemicolonsForTopLevelInput(std::string& s) {
-  for (;;) {
-    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
-      s.pop_back();
-    }
-    if (!s.empty() && s.back() == ';') {
-      s.pop_back();
-      continue;
-    }
-    break;
-  }
-}
-
 double calcAtan2Basic(double y, double x) {
   if (x > 0.0) {
     return std::atan(y / x);
@@ -2169,7 +2156,64 @@ bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char
   }
   skipSpaces(ctx);
   const char c = *ctx.p;
-  return c == '\0' || c == ';' || c == ')' || c == ']' || c == '}';
+  return c == '\0' || c == ')' || c == ']' || c == '}';
+}
+
+bool MathParser::identIsBareFunctionOrUdfName(const std::string& ident, const EvalContext& ctx) const {
+  BuiltinFunctionId bid = BuiltinFunctionId::Count;
+  if (tryGetBuiltinFunctionId(ident, bid)) {
+    return true;
+  }
+  if (findUserFunction(ident)) {
+    return true;
+  }
+  if (ctx.compilingUserFunctionParams) {
+    return ctx.compilingUserFunctionParams->find(ident) != ctx.compilingUserFunctionParams->end();
+  }
+  return false;
+}
+
+bool MathParser::trimmedStmtIsBareFunctionOrUdfName(const std::string& stmt) const {
+  return trimmedStmtIsBareFunctionOrUdfName(stmt.data(), stmt.data() + stmt.size());
+}
+
+bool MathParser::trimmedStmtIsBareFunctionOrUdfName(const char* begin, const char* end) const {
+  while (begin < end && std::isspace(static_cast<unsigned char>(*begin))) {
+    ++begin;
+  }
+  while (end > begin && std::isspace(static_cast<unsigned char>(end[-1]))) {
+    --end;
+  }
+  if (begin >= end || !isIdentStart(*begin)) {
+    return false;
+  }
+  const char* identEnd = begin + 1;
+  while (identEnd < end && isIdentChar(*identEnd)) {
+    ++identEnd;
+  }
+  if (identEnd != end) {
+    return false;
+  }
+  std::string ident;
+  assignLowerIdentFromRange(ident, begin, identEnd);
+  EvalContext ctx;
+  return identIsBareFunctionOrUdfName(ident, ctx);
+}
+
+void MathParser::stripTrailingSemicolonsForTopLevelInput(std::string& s) const {
+  for (;;) {
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
+      s.pop_back();
+    }
+    if (!s.empty() && s.back() == ';') {
+      if (trimmedStmtIsBareFunctionOrUdfName(s.data(), s.data() + s.size() - 1)) {
+        return;
+      }
+      s.pop_back();
+      continue;
+    }
+    break;
+  }
 }
 
 bool MathParser::trySetMissingFunctionCallError(
@@ -2179,6 +2223,11 @@ bool MathParser::trySetMissingFunctionCallError(
   BuiltinFunctionId bid = BuiltinFunctionId::Count;
   if (!tryGetBuiltinFunctionId(ident, bid)) {
     return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p == ';') {
+    setUnexpectedTokenError(ctx);
+    return true;
   }
   if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
     setError(ctx, buildUnknownVariableErrorText(ident));
@@ -2204,6 +2253,11 @@ bool MathParser::trySetBareUserFunctionNameError(
   }
   if (!uf && !compilingParams) {
     return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p == ';') {
+    setUnexpectedTokenError(ctx);
+    return true;
   }
   if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
     setError(ctx, buildUnknownVariableErrorText(ident));
@@ -5949,8 +6003,19 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
   ctx.p = identEnd;
   skipSpaces(ctx);
   if (*ctx.p != '(') {
+    if (!identMayBeBareBuiltinName(identStart, identEnd) && userFunctionIndex_.empty()
+        && ctx.compilingUserFunctionParams == nullptr) {
+      auto v = std::make_unique<Expr>();
+      v->tag = Expr::Tag::Variable;
+      assignLowerIdentFromRange(v->name, identStart, identEnd);
+      return v;
+    }
     std::string ident;
     assignLowerIdentFromRange(ident, identStart, identEnd);
+    if (*ctx.p == ';' && identIsBareFunctionOrUdfName(ident, ctx)) {
+      setUnexpectedTokenError(ctx);
+      return nullptr;
+    }
     if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, identStart)) {
       return nullptr;
     }

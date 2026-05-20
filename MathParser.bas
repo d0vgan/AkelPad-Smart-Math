@@ -580,10 +580,13 @@ private function ExprStartPointsIntoRootInput() as Boolean
 end function
 
 private function ExprTextForErrorSnippet() as String
-  if ExprStartPointsIntoRootInput() then
-    return rootInputExpr
+  if len(rootInputExpr) > 0 then
+    if exprStart = 0 orelse ExprStartPointsIntoRootInput() then
+      return rootInputExpr
+    end if
   end if
   if exprStart = 0 then return ""
+  if len(rootInputExpr) > 0 then return rootInputExpr
   return *exprStart
 end function
 
@@ -618,7 +621,8 @@ end function
 private sub SetParseErrorAtColumn(byref msg as String, byval col as Integer)
   if parseError = 0 then parseError = 1
   if lastErrorText <> "" then exit sub
-  dim exprText as String = ExprTextForErrorSnippet()
+  dim exprText as String = rootInputExpr
+  if len(exprText) = 0 then exprText = ExprTextForErrorSnippet()
   if len(exprText) = 0 then
     lastErrorText = msg
     exit sub
@@ -668,7 +672,8 @@ end sub
 private sub SetParseError(byref msg as String)
   if parseError = 0 then parseError = 1
   if lastErrorText = "" then
-    if (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart) then
+    dim isExpr as Boolean = (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart)
+    if isExpr andalso ExprStartPointsIntoRootInput() then
       dim col as Integer = errorBaseCol + (pStream - exprStart)
       dim exprText as String = ExprTextForErrorSnippet()
       if len(exprText) = 0 then
@@ -2359,26 +2364,6 @@ private function StripLineComment(byref s as String) as String
   return s
 end function
 
-private sub NormalizeTrailingStatementSemicolons(byref s as string)
-  dim progressing as Boolean = TRUE
-  while progressing <> FALSE
-    progressing = FALSE
-    while Len(s) > 0
-      dim lastCp as Integer = Asc(Mid(s, Len(s), 1))
-      if lastCp = CHAR_SPACE orelse lastCp = CHAR_TAB orelse lastCp = CHAR_LF orelse lastCp = CHAR_CR then
-        s = Left(s, Len(s) - 1)
-        progressing = TRUE
-      else
-        exit while
-      end if
-    wend
-    if Len(s) > 0 andalso Asc(Mid(s, Len(s), 1)) = CHAR_SEMICOLON then
-      s = Left(s, Len(s) - 1)
-      progressing = TRUE
-    end if
-  wend
-end sub
-
 private function IsBuiltinConstantName(byref n as String) as Boolean
   dim cid as Integer = TryFindBuiltinConstId(n)
   if cid < 0 then return FALSE
@@ -2853,13 +2838,6 @@ private function PeekRhsMayBeLambdaDefinition(byval p as ZString ptr) as Boolean
   return PeekUnwrappedLambdaParamsThenColon(p)
 end function
 
-private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString ptr) as Boolean
-  if identStart <> exprStart then return FALSE
-  SkipSpaces()
-  dim cu as UByte = pStream[0]
-  return (cu = CHAR_NUL orelse cu = CHAR_SEMICOLON orelse cu = CHAR_RPAREN orelse cu = CHAR_RBRACKET orelse cu = CHAR_RBRACE)
-end function
-
 private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
   dim i as Integer
   dim hasDigitOrUnderscore as Boolean = FALSE
@@ -2874,6 +2852,55 @@ private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
   return (lcase(nam) = FB_STR_ATAN2)
 end function
 
+private function TrimmedStmtIsBareBuiltinOrUdfName(byref stmt as String) as Boolean
+  dim t as String = trim(stmt)
+  dim lenT as Integer = len(t)
+  if lenT = 0 then return FALSE
+  if IsIdentStartChar(asc(left(t, 1))) = FALSE then return FALSE
+  dim identEnd as Integer = 2
+  while identEnd <= lenT
+    if IsIdentChar(asc(mid(t, identEnd, 1))) = FALSE then exit while
+    identEnd += 1
+  wend
+  if identEnd <= lenT then return FALSE
+  dim nam as String = left(t, identEnd - 1)
+  dim fnHint as String
+  if IdentMayBeBareBuiltinName(nam) andalso TryGetBuiltinSignatureHint(nam, fnHint) then return TRUE
+  if FindFunctionIndex(nam) >= 0 then return TRUE
+  return FALSE
+end function
+
+private sub NormalizeTrailingStatementSemicolons(byref s as string)
+  dim progressing as Boolean = TRUE
+  while progressing <> FALSE
+    progressing = FALSE
+    while Len(s) > 0
+      dim lastCp as Integer = Asc(Mid(s, Len(s), 1))
+      if lastCp = CHAR_SPACE orelse lastCp = CHAR_TAB orelse lastCp = CHAR_LF orelse lastCp = CHAR_CR then
+        s = Left(s, Len(s) - 1)
+        progressing = TRUE
+      else
+        exit while
+      end if
+    wend
+    if Len(s) > 0 andalso Asc(Mid(s, Len(s), 1)) = CHAR_SEMICOLON then
+      dim beforeSemi as String = trim(left(s, Len(s) - 1))
+      if TrimmedStmtIsBareBuiltinOrUdfName(beforeSemi) then
+        exit sub
+      end if
+      s = Left(s, Len(s) - 1)
+      progressing = TRUE
+    end if
+  wend
+end sub
+
+private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString ptr) as Boolean
+  if identStart <> exprStart then return FALSE
+  SkipSpaces()
+  dim cu as UByte = pStream[0]
+  return (cu = CHAR_NUL orelse cu = CHAR_RPAREN orelse cu = CHAR_RBRACKET orelse cu = CHAR_RBRACE)
+end function
+
 private function TryHandleUnknownIdentifier(byref nam as String, byref outV as EvalValue, byref canIndex as Boolean, byval identStart as ZString ptr) as Boolean
   dim lowNam as String = lcase(nam)
   if IsLogicalBinaryOperatorKeyword(lowNam) then
@@ -2882,6 +2909,11 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
   end if
   dim fnHint as String
   if IdentMayBeBareBuiltinName(nam) andalso TryGetBuiltinSignatureHint(nam, fnHint) then
+    SkipSpaces()
+    if pStream[0] = CHAR_SEMICOLON then
+      SetUnexpectedTokenError()
+      return FALSE
+    end if
     if IsBareFunctionNameAtExpressionTail(identStart) then
       SetParseError(FB_STR_HINT_PREFIX & fnHint)
     else
@@ -2892,6 +2924,11 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
   dim udfIdx as Integer = -1
   if lbound(userFunctions) <= ubound(userFunctions) then udfIdx = FindFunctionIndex(nam)
   if udfIdx >= 0 then
+    SkipSpaces()
+    if pStream[0] = CHAR_SEMICOLON then
+      SetUnexpectedTokenError()
+      return FALSE
+    end if
     if IsBareFunctionNameAtExpressionTail(identStart) then
       SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
     else
@@ -8988,6 +9025,9 @@ private sub ResetTopLevelEvaluationState(byref exprInput as String)
   udfCallStackSp = 0
   errorBaseCol = 1
   rootInputExpr = exprInput
+  parseError = 0
+  pStream = 0
+  exprStart = 0
   lastRawResultValid = FALSE
   RawResultClear(lastRawResult)
 end sub
@@ -9338,6 +9378,12 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
       wend
       dim savedBaseCol as Integer = errorBaseCol
       errorBaseCol = stmtStart + leadWs
+      dim isSemicolon as Boolean = iStmt <= len(exprInput) andalso chByte = CHAR_SEMICOLON
+      if isSemicolon andalso TrimmedStmtIsBareBuiltinOrUdfName(stmt) then
+        parseError = 0
+        SetParseErrorAtColumn(FB_STR_UNEXPECTED_TOKEN, iStmt)
+        return FALSE
+      end if
       dim stmtToEval as String = stmt
       if hasPrevStmtResult then
         dim rewrittenStmt as String
@@ -9367,12 +9413,12 @@ end function
 function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
   dim exprAfterLineComment as String = StripLineComment(sExpr)
   dim exprInput as String = exprAfterLineComment
-  NormalizeTrailingStatementSemicolons(exprInput)
   const PARSER_MAX_EXPR_LEN as Integer = 32760
   evalDepth += 1
   if evalDepth = 1 then
-    ResetTopLevelEvaluationState(exprInput)
+    ResetTopLevelEvaluationState(exprAfterLineComment)
   end if
+  NormalizeTrailingStatementSemicolons(exprInput)
   if Len(exprInput) = 0 then
     if Len(exprAfterLineComment) > 0 then
       SetEmptyStatementError()

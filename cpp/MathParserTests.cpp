@@ -2520,6 +2520,24 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "x_1+2", "unknown variable: x_1", why)) return false;
                 return true;
               }});
+  t.push_back({"regression/bare function name before semicolon is syntax error", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "atan2;", "unexpected token", why)) return false;
+                if (!expectEvalErrorContains(p, "atan2;(2,3)", "unexpected token", why)) return false;
+                if (!expectEval(p, "nnnn=5", "5", why)) return false;
+                if (!expectEvalErrorContains(p, "atan2;", "unexpected token", why)) return false;
+                if (p.getError().find("nnnn") != std::string::npos) {
+                  why = "atan2; error must not reference a prior expression";
+                  return false;
+                }
+                if (!expectEval(p, "f=():100; f()", "100", why)) return false;
+                p.parseAndEvaluate("f=():100; f;");
+                if (p.getError().find("unexpected token") == std::string::npos) {
+                  why = "f; after define: expected unexpected token, got \"" + p.getError() + "\"";
+                  return false;
+                }
+                return true;
+              }});
   t.push_back({"regression/bare function name tail hint vs middle unknown variable", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "polar", "function:", why)) return false;
