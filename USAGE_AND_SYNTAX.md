@@ -22,16 +22,16 @@ Copy/paste examples:
 
 - `2+3*4` -> `14`
 - `a=10; a*3` -> `30`
-- `(1,2,3)+10` -> `(11,12,13)`
+- `(1,2,3)+10` -> `(11, 12, 13)`
 - `sum(1,2,3,10)` -> `16`
-- `sort(3,1,2)` -> `(1,2,3)`
-- `sortby((3,-1,2), abs)` -> `(-1,2,3)`
+- `sort(3,1,2)` -> `(1, 2, 3)`
+- `sortby((-3,-1,2), abs)` -> `(-1, 2, -3)`
 - `ratio(0.5)` -> `1/2`
 - `hex(255)` -> `0xFF`
 - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
 - `2+3; ans/10` -> `0.5`
 - `f(x)=x*x+1; f(5)` -> `26`
-- `clamp((1,9),0,7)` -> `(1,7)`
+- `clamp((1,9),0,7)` -> `(1, 7)`
 - `1:30 + 2:45` -> `04:15`
 - `seconds(2:00)` -> `120`
 
@@ -141,7 +141,7 @@ Use parentheses for operations with complex numbers:
   - `(5)` behaves like scalar `5`
   - `((5))` also behaves like scalar `5` (still just grouping)
 - Use element-wise math:
-  - `(1,2,3)*10` -> `(10,20,30)`
+  - `(1,2,3)*10` -> `(10, 20, 30)`
   - `(1,2,3)+(10,20,30)` -> `(11, 22, 33)`
   - `2**(3,5,6)` -> `(8, 32, 64)`
 - Index arrays with `[index]`:
@@ -152,7 +152,7 @@ Use parentheses for operations with complex numbers:
   - `pow((3,2), 4)` -> `(81, 16)`
   - `sin((pi/4,pi/2))` -> `(0.707107, 1)`
 - Use array utilities:
-  - `reverse((1,2,3),(4,5))` -> `(5,4,3,2,1)`
+  - `reverse((1,2,3),(4,5))` -> `(5, 4, 3, 2, 1)`
 
 ### Variables and `ans`
 
@@ -367,8 +367,8 @@ Recommendation: parenthesize when using `not` in complex expressions.
   - If an operand is an array, the result is an array.
   - If both operands are arrays and their shapes/lengths are incompatible, you may get `incompatible operands`.
   - Bitwise operators require integer inputs (use `int(...)` to convert floats).
-  - Example: `(1,2,3) & 1` -> `(1,0,1)`
-  - Example: `(1,2,3) | 1` -> `(1,3,3)`
+  - Example: `(1,2,3) & 1` -> `(1, 0, 1)`
+  - Example: `(1,2,3) | 1` -> `(1, 3, 3)`
 
 ### Arrays and Comparisons
 
@@ -608,16 +608,16 @@ Purpose: aggregate and transform values/lists.
   - `sum(1,2,3,10)` -> `16`
   - `product(18446744073709551615,1)` -> `18446744073709551615`
   - `avg(1,2,3,4)` -> `2.5`
-  - `sort(3,1,2)` -> `(1,2,3)`
-  - `sort(nan,inf,2,-inf,nan,-2)` -> `(nan,nan,-inf,-2,2,inf)`
-  - `sortby((3,-1,2), abs)` -> `(-1,2,3)` (stable on equal keys)
-  - `sortby((2,1), polar)` -> `(1,2)` (tuple keys `(r, angle)`, lexicographic order)
-  - `f(x)=x*(10,20); sortby((3,1,2), f)` -> `(1,2,3)`
+  - `sort(3,1,2)` -> `(1, 2, 3)`
+  - `sort(nan,inf,2,-inf,nan,-2)` -> `(NaN, NaN, -Inf, -2, 2, Inf)`
+  - `sortby((-3,-1,2), abs)` -> `(-1, 2, -3)` (stable on equal keys)
+  - `sortby((2,1), polar)` -> `(1, 2)` (tuple keys `(r, angle)`, lexicographic order)
+  - `f(x)=x*(10,20); sortby((3,1,2), f)` -> `(1, 2, 3)`
   - `f(x)=1/x; sortby((1,-1,-2,0,2), f)` -> `(-1, -2, 2, 1, 0)`
-  - `sortby((3,1,2), x:-x)` -> `(3,2,1)` (anonymous lambda key; parentheses optional around the lambda)
-  - `sortby((1,2), (x):(1/x))` -> `(2,1)` (parenthesized lambda body; keys `0.5`, `1`; ascending order)
+  - `sortby((3,1,2), x:-x)` -> `(3, 2, 1)` (anonymous lambda key; parentheses optional around the lambda)
+  - `sortby((1,2), (x):(1/x))` -> `(2, 1)` (parenthesized lambda body; keys `0.5`, `1`; ascending order)
   - `sortby((5,1), ():1)` -> error (`sortby expects a function that takes 1 parameter`; zero-parameter lambdas are not allowed as the sort key)
-  - `unique(3,1,3,2,1,2)` -> `(3,1,2)`
+  - `unique(3,1,3,2,1,2)` -> `(3, 1, 2)`
   - `a=(5,2); pow(unpack(a))` -> `25`
 
 Notes:
