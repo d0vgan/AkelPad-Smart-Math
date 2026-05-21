@@ -11,6 +11,7 @@ namespace {
 
 long long rawCartesianToInt64(const MathParser::RawResult::CartesianScalar& s) {
   switch (s.kind) {
+    case MathParser::RawResult::ScalarKind::Time:
     case MathParser::RawResult::ScalarKind::Int64:
       return s.intValue;
     case MathParser::RawResult::ScalarKind::UInt64:

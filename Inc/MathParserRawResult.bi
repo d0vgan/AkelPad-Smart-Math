@@ -16,16 +16,20 @@ enum RawScalarKind
   RSK_TIME = 5
 end enum
 
+'' One real or imaginary component. Only the fields for ``kind`` are meaningful.
 type RawCartesianScalar
   kind as RawScalarKind
-  floatValue as Double
-  intValue as LongInt
-  uintValue as ULongInt
-  ratNum as LongInt
-  ratDen as ULongInt
+  floatValue as Double   '' for RSK_FLOATING
+  intValue as LongInt    '' for RSK_INT64 and RSK_TIME (total milliseconds)
+  uintValue as ULongInt  '' for RSK_UINT64
+  ratNum as LongInt      '' for RSK_RATIONAL (ratNum / ratDen)
+  ratDen as ULongInt     '' for RSK_RATIONAL
 end type
 
-'' Non-complex payload lives in real; imag is zero for pure real. kind = RSK_COMPLEX when imag is active.
+'' Non-complex values: payload in ``real`` only; ``imag`` cleared; ``kind`` mirrors ``real.kind``.
+'' Complex: ``kind = RSK_COMPLEX``; each part's storage is in ``real`` / ``imag``.
+'' Rational -> real.ratNum/ratDen.
+'' time -> real.intValue ms.
 type RawScalar
   kind as RawScalarKind
   real as RawCartesianScalar

@@ -425,6 +425,45 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+  t.push_back({"unit/getRawResult scalar time (ms in intValue, parity with Basic RSK_TIME)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 p.parseAndEvaluate("1:30");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 MathParser::RawResult r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.isTime() || r.scalar.real.intValue != 90000LL) {
+                   why = "expected scalar time 1:30 -> 90000 ms";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("1h");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isScalar() || !r.scalar.real.isTime() || r.scalar.real.intValue != 3600000LL) {
+                   why = "expected scalar time 1h -> 3600000 ms";
+                   return false;
+                 }
+
+                 p.parseAndEvaluate("milliseconds((0:01:00,0:02:00))");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 r = p.getRawResult();
+                 if (!r.isArray() || r.array.size() != 2 || !r.array[0].real.isInt64() || r.array[0].real.intValue != 60000LL ||
+                     !r.array[1].real.isInt64() || r.array[1].real.intValue != 120000LL) {
+                   why = "expected time array converted to int64 ms via milliseconds()";
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"unit/getRawResult array and error state", [](std::string& why) {
                  MathParser p;
                  p.parseAndEvaluate("(1,2.5,3)");

@@ -1,4 +1,4 @@
-'' RawResult helpers (types in Inc/MathParserRawResult.bi).
+'' RawResult helpers (types and payload layout comments in Inc\MathParserRawResult.bi).
 
 #include once "Inc\MathParserRawResult.bi"
 

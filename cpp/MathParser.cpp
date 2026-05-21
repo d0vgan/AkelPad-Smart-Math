@@ -4487,8 +4487,8 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
   RawResult::CartesianScalar out;
   if (!imagPart) {
     if (v.scalarKind == ScalarKind::Time) {
-      out.kind = RawResult::ScalarKind::FloatingPoint;
-      out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
+      out.kind = RawResult::ScalarKind::Time;
+      out.intValue = timeTotalMsFromScalarValue(v);
       return out;
     }
     if (v.hasRenderRational() && (v.hasExactUInt64() || v.exactUInt64 != 0)) {

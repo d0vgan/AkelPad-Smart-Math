@@ -10,19 +10,19 @@ class MathParser {
 public:
   struct RawResult {
     enum class Kind { None, Scalar, Array };
-    enum class ScalarKind { FloatingPoint, Int64, UInt64, Rational, Complex };
+    enum class ScalarKind { FloatingPoint, Int64, UInt64, Rational, Complex, Time };
 
-    /// Real-only component (also used for each part of a complex value).
+    /// One real or imaginary component. Only the union member for ``kind`` is meaningful.
     struct CartesianScalar {
       ScalarKind kind = ScalarKind::FloatingPoint;
       union {
-        double floatingPoint;
-        long long intValue;
-        std::uint64_t uintValue;
+        double floatingPoint;    // valid for FloatingPoint
+        long long intValue;      // valid for Int64 and Time (total milliseconds)
+        std::uint64_t uintValue; // valid for UInt64
         struct {
           long long numerator;
           std::uint64_t denominator;
-        } rational;
+        } rational;              // valid for Rational
       };
 
       CartesianScalar() : floatingPoint(0.0) {}
@@ -31,9 +31,13 @@ public:
       bool isInt64() const { return kind == ScalarKind::Int64; }
       bool isUInt64() const { return kind == ScalarKind::UInt64; }
       bool isRational() const { return kind == ScalarKind::Rational; }
+      bool isTime() const { return kind == ScalarKind::Time; }
     };
 
-    /// Non-complex payload lives in real; imag is zero for pure real. kind == Complex when imaginary part is active.
+    /// Non-complex: payload in ``real`` only; ``imag`` cleared; ``kind`` mirrors ``real.kind``.
+    /// Complex: ``kind == Complex``; each part uses ``real`` / ``imag``.
+    /// Rational -> real.rational member.
+    /// Time -> real.intValue ms.
     struct Scalar {
       ScalarKind kind = ScalarKind::FloatingPoint;
       CartesianScalar real{};
@@ -44,6 +48,7 @@ public:
       bool isInt64() const { return !isComplex() && real.isInt64(); }
       bool isUInt64() const { return !isComplex() && real.isUInt64(); }
       bool isRational() const { return !isComplex() && real.isRational(); }
+      bool isTime() const { return !isComplex() && real.isTime(); }
     };
 
     /// None: no value available (for example, after evaluation error).
