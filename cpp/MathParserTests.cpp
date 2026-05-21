@@ -407,7 +407,7 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  MathParser::RawResult r = p.getRawResult();
-                 if (!r.isScalar() || r.scalar.kind != MathParser::RawResult::ScalarKind::Int64 || r.scalar.intValue != 5LL) {
+                 if (!r.isScalar() || !r.scalar.real.isInt64() || r.scalar.real.intValue != 5LL) {
                    why = "expected scalar int64=5";
                    return false;
                  }
@@ -418,8 +418,8 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  r = p.getRawResult();
-                 if (!r.isScalar() || r.scalar.kind != MathParser::RawResult::ScalarKind::FloatingPoint ||
-                     std::fabs(r.scalar.floatingPoint - 0.5) > 1e-12) {
+                 if (!r.isScalar() || !r.scalar.real.isFloatingPoint() ||
+                     std::fabs(r.scalar.real.floatingPoint - 0.5) > 1e-12) {
                    why = "expected scalar float=0.5";
                    return false;
                  }
@@ -437,16 +437,16 @@ std::vector<TestCase> buildUnitCases() {
                    why = "expected array[3]";
                    return false;
                  }
-                 if (r.array[0].kind != MathParser::RawResult::ScalarKind::Int64 || r.array[0].intValue != 1LL) {
+                 if (!r.array[0].real.isInt64() || r.array[0].real.intValue != 1LL) {
                    why = "array[0] mismatch";
                    return false;
                  }
-                 if (r.array[1].kind != MathParser::RawResult::ScalarKind::FloatingPoint ||
-                     std::fabs(r.array[1].floatingPoint - 2.5) > 1e-12) {
+                 if (!r.array[1].real.isFloatingPoint() ||
+                     std::fabs(r.array[1].real.floatingPoint - 2.5) > 1e-12) {
                    why = "array[1] mismatch";
                    return false;
                  }
-                 if (r.array[2].kind != MathParser::RawResult::ScalarKind::Int64 || r.array[2].intValue != 3LL) {
+                 if (!r.array[2].real.isInt64() || r.array[2].real.intValue != 3LL) {
                    why = "array[2] mismatch";
                    return false;
                  }
@@ -468,8 +468,8 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  MathParser::RawResult r = p.getRawResult();
-                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.rational.numerator != 1LL ||
-                     r.scalar.rational.denominator != 2ULL) {
+                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.real.rational.numerator != 1LL ||
+                     r.scalar.real.rational.denominator != 2ULL) {
                    why = "expected scalar rational 1/2";
                    return false;
                  }
@@ -480,8 +480,8 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  r = p.getRawResult();
-                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.rational.numerator != 13250218LL ||
-                     r.scalar.rational.denominator != 9369319ULL) {
+                 if (!r.isScalar() || !r.scalar.isRational() || r.scalar.real.rational.numerator != 13250218LL ||
+                     r.scalar.real.rational.denominator != 9369319ULL) {
                    why = "expected scalar rational sqrt(2) convergent";
                    return false;
                  }
@@ -496,11 +496,13 @@ std::vector<TestCase> buildUnitCases() {
                    why = "expected rational array[2]";
                    return false;
                  }
-                 if (!r.array[0].isRational() || r.array[0].rational.numerator != 1LL || r.array[0].rational.denominator != 2ULL) {
+                 if (!r.array[0].isRational() || r.array[0].real.rational.numerator != 1LL ||
+                     r.array[0].real.rational.denominator != 2ULL) {
                    why = "array[0] expected 1/2";
                    return false;
                  }
-                 if (!r.array[1].isRational() || r.array[1].rational.numerator != 1LL || r.array[1].rational.denominator != 3ULL) {
+                 if (!r.array[1].isRational() || r.array[1].real.rational.numerator != 1LL ||
+                     r.array[1].real.rational.denominator != 3ULL) {
                    why = "array[1] expected 1/3";
                    return false;
                  }
@@ -513,7 +515,7 @@ std::vector<TestCase> buildUnitCases() {
                    why = p.getError();
                    return false;
                  }
-                 if (!r.isScalar() || r.scalar.kind != MathParser::RawResult::ScalarKind::Int64 || r.scalar.intValue != 30LL) {
+                 if (!r.isScalar() || !r.scalar.real.isInt64() || r.scalar.real.intValue != 30LL) {
                    why = "expected scalar int64=30";
                    return false;
                  }

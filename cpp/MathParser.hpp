@@ -33,28 +33,17 @@ public:
       bool isRational() const { return kind == ScalarKind::Rational; }
     };
 
+    /// Non-complex payload lives in real; imag is zero for pure real. kind == Complex when imaginary part is active.
     struct Scalar {
       ScalarKind kind = ScalarKind::FloatingPoint;
-      union {
-        double floatingPoint;
-        long long intValue;
-        std::uint64_t uintValue;
-        struct {
-          long long numerator;
-          std::uint64_t denominator;
-        } rational;
-      };
-      /// Valid when kind == Complex.
       CartesianScalar real{};
       CartesianScalar imag{};
 
-      Scalar() : floatingPoint(0.0) {}
-
-      bool isFloatingPoint() const { return kind == ScalarKind::FloatingPoint; }
-      bool isInt64() const { return kind == ScalarKind::Int64; }
-      bool isUInt64() const { return kind == ScalarKind::UInt64; }
-      bool isRational() const { return kind == ScalarKind::Rational; }
       bool isComplex() const { return kind == ScalarKind::Complex; }
+      bool isFloatingPoint() const { return !isComplex() && real.isFloatingPoint(); }
+      bool isInt64() const { return !isComplex() && real.isInt64(); }
+      bool isUInt64() const { return !isComplex() && real.isUInt64(); }
+      bool isRational() const { return !isComplex() && real.isRational(); }
     };
 
     /// None: no value available (for example, after evaluation error).

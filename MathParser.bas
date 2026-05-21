@@ -9475,22 +9475,7 @@ private sub ScalarValueFromRawScalar(byref s as RawScalar, byref sv as ScalarVal
     ScalarValueLoadFromRawCartesian(s.imag, sv, TRUE)
     exit sub
   end if
-  dim cart as RawCartesianScalar
-  cart.kind = s.kind
-  select case s.kind
-  case RSK_TIME
-    cart.intValue = s.intValue
-  case RSK_INT64
-    cart.intValue = s.intValue
-  case RSK_UINT64
-    cart.uintValue = s.uintValue
-  case RSK_RATIONAL
-    cart.ratNum = s.ratNum
-    cart.ratDen = s.ratDen
-  case else
-    cart.floatValue = s.floatValue
-  end select
-  ScalarValueLoadFromRawCartesian(cart, sv, FALSE)
+  ScalarValueLoadFromRawCartesian(s.real, sv, FALSE)
 end sub
 
 function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String
@@ -9515,22 +9500,9 @@ private sub RawScalarFromScalarValue(byref sv as ScalarValue, byref outS as RawS
     RawCartesianFromScalarValue(sv, TRUE, outS.imag)
     exit sub
   end if
-  dim cart as RawCartesianScalar
-  RawCartesianFromScalarValue(sv, FALSE, cart)
-  outS.kind = cart.kind
-  select case cart.kind
-  case RSK_TIME
-    outS.intValue = cart.intValue
-  case RSK_INT64
-    outS.intValue = cart.intValue
-  case RSK_UINT64
-    outS.uintValue = cart.uintValue
-  case RSK_RATIONAL
-    outS.ratNum = cart.ratNum
-    outS.ratDen = cart.ratDen
-  case else
-    outS.floatValue = cart.floatValue
-  end select
+  RawCartesianFromScalarValue(sv, FALSE, outS.real)
+  outS.kind = outS.real.kind
+  RawCartesianScalarClear(outS.imag)
 end sub
 
 private sub EvalValueToRawResult(byref v as EvalValue, byref outR as RawResult)

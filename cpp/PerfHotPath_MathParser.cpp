@@ -25,28 +25,7 @@ long long rawCartesianToInt64(const MathParser::RawResult::CartesianScalar& s) {
 }
 
 long long rawScalarToInt64(const MathParser::RawResult::Scalar& s) {
-  if (s.isComplex()) {
-    return rawCartesianToInt64(s.real);
-  }
-  MathParser::RawResult::CartesianScalar cart;
-  cart.kind = s.kind;
-  switch (s.kind) {
-    case MathParser::RawResult::ScalarKind::Int64:
-      cart.intValue = s.intValue;
-      break;
-    case MathParser::RawResult::ScalarKind::UInt64:
-      cart.uintValue = s.uintValue;
-      break;
-    case MathParser::RawResult::ScalarKind::Rational:
-      cart.rational.numerator = s.rational.numerator;
-      cart.rational.denominator = s.rational.denominator;
-      break;
-    case MathParser::RawResult::ScalarKind::FloatingPoint:
-    default:
-      cart.floatingPoint = s.floatingPoint;
-      break;
-  }
-  return rawCartesianToInt64(cart);
+  return rawCartesianToInt64(s.real);
 }
 
 long long benchResultChecksum(const MathParser::RawResult& r) {

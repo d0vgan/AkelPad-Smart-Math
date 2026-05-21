@@ -437,25 +437,13 @@ private function RawCartesianScalarToString(byref scalar as RawCartesianScalar) 
   return s
 end function
 
-private function RawScalarToString(byref scalar as RawScalar) as String
-  dim s as String = "kind=" & ltrim(str(scalar.kind))
-  select case scalar.kind
-    case RSK_INT64: s &= " int64=" & ltrim(str(scalar.intValue))
-    case RSK_UINT64: s &= " uint64=" & ltrim(str(scalar.uintValue))
-    case RSK_FLOATING: s &= " float=" & ltrim(str(scalar.floatValue))
-    case RSK_RATIONAL: s &= " ratio=" & ltrim(str(scalar.ratNum)) & "/" & ltrim(str(scalar.ratDen))
-    case else: s &= " ..."
-  end select
-  return s
-end function
-
 private sub LogInfo_InputAndResult(byref sLine as String, byref sRes as String, byref raw as RawResult)
   dim rawDbg as String = "; "
-  if raw.scalar.kind = RSK_COMPLEX then
+  if RawScalarIsComplex(raw.scalar) then
     rawDbg &= "real: " & RawCartesianScalarToString(raw.scalar.real)
     rawDbg &= ", imag: " & RawCartesianScalarToString(raw.scalar.imag)
   else
-    rawDbg &= RawScalarToString(raw.scalar)
+    rawDbg &= "real: " & RawCartesianScalarToString(raw.scalar.real)
   end if
   LogInfo("`" & sLine & "` -> `" & sRes & "`" & rawDbg)
 end sub

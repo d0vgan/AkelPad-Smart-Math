@@ -25,13 +25,9 @@ type RawCartesianScalar
   ratDen as ULongInt
 end type
 
+'' Non-complex payload lives in real; imag is zero for pure real. kind = RSK_COMPLEX when imag is active.
 type RawScalar
   kind as RawScalarKind
-  floatValue as Double
-  intValue as LongInt
-  uintValue as ULongInt
-  ratNum as LongInt
-  ratDen as ULongInt
   real as RawCartesianScalar
   imag as RawCartesianScalar
   '' Non-decimal display from parser (hex/oct/bin); 0 = decimal.
@@ -45,6 +41,7 @@ type RawResult
   arr(any) as RawScalar
 end type
 
+declare sub RawCartesianScalarClear(byref c as RawCartesianScalar)
 declare sub RawResultClear(byref r as RawResult)
 declare function RawResultHasValue(byref r as RawResult) as Boolean
 declare function RawScalarIsComplex(byref s as RawScalar) as Boolean

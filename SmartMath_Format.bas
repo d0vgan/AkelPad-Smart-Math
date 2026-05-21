@@ -478,23 +478,8 @@ private function FormatRawComplexDisplay(byref s as RawScalar) as String
 end function
 
 private function FormatRawScalarDisplay(byref s as RawScalar) as String
-  if s.kind = RSK_COMPLEX then return FormatRawComplexDisplay(s)
-  dim c as RawCartesianScalar
-  c.kind = s.kind
-  select case s.kind
-  case RSK_TIME
-    c.intValue = s.intValue
-  case RSK_INT64
-    c.intValue = s.intValue
-  case RSK_UINT64
-    c.uintValue = s.uintValue
-  case RSK_RATIONAL
-    c.ratNum = s.ratNum
-    c.ratDen = s.ratDen
-  case else
-    c.floatValue = s.floatValue
-  end select
-  return FormatRawCartesianDisplay(c)
+  if RawScalarIsComplex(s) then return FormatRawComplexDisplay(s)
+  return FormatRawCartesianDisplay(s.real)
 end function
 
 private function FormatRawComplexDisplayWithDecimalOptions(byref s as RawScalar) as String
@@ -553,10 +538,10 @@ private function FormatRawScalarForDisplayContext(byref s as RawScalar) as Strin
     if Len(baseText) > 0 then return baseText
   end if
   if g_nDecimals >= 0 orelse g_bUseThousandsSeparator then
-    if s.kind = RSK_FLOATING then
-      return FormatNumericValue(s.floatValue)
+    if s.real.kind = RSK_FLOATING andalso RawScalarIsComplex(s) = FALSE then
+      return FormatNumericValue(s.real.floatValue)
     end if
-    if s.kind = RSK_COMPLEX then
+    if RawScalarIsComplex(s) then
       return FormatRawComplexDisplayWithDecimalOptions(s)
     end if
   end if

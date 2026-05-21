@@ -216,7 +216,7 @@ private sub RunRawResultApiTests()
     print "[raw] FAIL: ratio(0.5) eval"
     subFail += 1
   elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_RATIONAL _
-    orelse raw.scalar.ratNum <> 1 orelse raw.scalar.ratDen <> 2 then
+    orelse raw.scalar.real.ratNum <> 1 orelse raw.scalar.real.ratDen <> 2 then
     print "[raw] FAIL: ratio(0.5) raw rational"
     subFail += 1
   else
@@ -227,7 +227,7 @@ private sub RunRawResultApiTests()
   if Parser_TryEvaluateEx("2+3", r, rt, ia) = FALSE then
     print "[raw] FAIL: 2+3 eval"
     subFail += 1
-  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_INT64 orelse raw.scalar.intValue <> 5 then
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_INT64 orelse raw.scalar.real.intValue <> 5 then
     print "[raw] FAIL: 2+3 raw int64"
     subFail += 1
   else
@@ -283,7 +283,7 @@ private sub RunRawResultApiTests()
   if Parser_TryEvaluateExRaw("ratio(0.5)", raw) = FALSE then
     print "[raw] FAIL: Parser_TryEvaluateExRaw ratio(0.5)"
     subFail += 1
-  elseif raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_RATIONAL then
+  elseif raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_RATIONAL then
     print "[raw] FAIL: Parser_TryEvaluateExRaw rational kind"
     subFail += 1
   else

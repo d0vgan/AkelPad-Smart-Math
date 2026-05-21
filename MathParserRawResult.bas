@@ -2,10 +2,20 @@
 
 #include once "Inc\MathParserRawResult.bi"
 
+sub RawCartesianScalarClear(byref c as RawCartesianScalar)
+  c.kind = RSK_FLOATING
+  c.floatValue = 0.0
+  c.intValue = 0
+  c.uintValue = 0
+  c.ratNum = 0
+  c.ratDen = 0
+end sub
+
 sub RawResultClear(byref r as RawResult)
   r.kind = RRK_NONE
   r.scalar.kind = RSK_FLOATING
-  r.scalar.floatValue = 0.0
+  RawCartesianScalarClear(r.scalar.real)
+  RawCartesianScalarClear(r.scalar.imag)
   r.scalar.renderBase = 0
   r.scalar.renderUnsigned = FALSE
   erase r.arr
@@ -20,7 +30,8 @@ function RawScalarIsComplex(byref s as RawScalar) as Boolean
 end function
 
 function RawScalarIsRational(byref s as RawScalar) as Boolean
-  return s.kind = RSK_RATIONAL
+  if RawScalarIsComplex(s) then return FALSE
+  return s.real.kind = RSK_RATIONAL
 end function
 
 function RawCartesianIsRational(byref c as RawCartesianScalar) as Boolean

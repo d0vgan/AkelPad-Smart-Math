@@ -4549,33 +4549,16 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
 }
 
 MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarValue& v) {
+  RawResult::Scalar out;
   if (scalarHasNonzeroImaginaryPart(v)) {
-    RawResult::Scalar out;
     out.kind = RawResult::ScalarKind::Complex;
     out.real = toRawCartesianScalar(v, false);
     out.imag = toRawCartesianScalar(v, true);
     return out;
   }
-  const RawResult::CartesianScalar cart = toRawCartesianScalar(v, false);
-  RawResult::Scalar out;
-  out.kind = cart.kind;
-  switch (cart.kind) {
-    case RawResult::ScalarKind::FloatingPoint:
-      out.floatingPoint = cart.floatingPoint;
-      break;
-    case RawResult::ScalarKind::Int64:
-      out.intValue = cart.intValue;
-      break;
-    case RawResult::ScalarKind::UInt64:
-      out.uintValue = cart.uintValue;
-      break;
-    case RawResult::ScalarKind::Rational:
-      out.rational.numerator = cart.rational.numerator;
-      out.rational.denominator = cart.rational.denominator;
-      break;
-    default:
-      break;
-  }
+  out.real = toRawCartesianScalar(v, false);
+  out.kind = out.real.kind;
+  out.imag = RawResult::CartesianScalar{};
   return out;
 }
 

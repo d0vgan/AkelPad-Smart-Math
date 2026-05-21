@@ -81,14 +81,18 @@ end function
 
 private sub FormatterTestInitRawScalarFloat(byref s as RawScalar, byval v as Double)
   s.kind = RSK_FLOATING
-  s.floatValue = v
+  s.real.kind = RSK_FLOATING
+  s.real.floatValue = v
+  RawCartesianScalarClear(s.imag)
   s.renderBase = 0
   s.renderUnsigned = FALSE
 end sub
 
 private sub FormatterTestInitRawScalarInt64(byref s as RawScalar, byval v as LongInt)
   s.kind = RSK_INT64
-  s.intValue = v
+  s.real.kind = RSK_INT64
+  s.real.intValue = v
+  RawCartesianScalarClear(s.imag)
   s.renderBase = 0
   s.renderUnsigned = FALSE
 end sub
@@ -321,8 +325,10 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
   RawResultClear(r)
   r.kind = RRK_SCALAR
   r.scalar.kind = RSK_RATIONAL
-  r.scalar.ratNum = 1
-  r.scalar.ratDen = 2
+  r.scalar.real.kind = RSK_RATIONAL
+  r.scalar.real.ratNum = 1
+  r.scalar.real.ratDen = 2
+  RawCartesianScalarClear(r.scalar.imag)
   AssertEq("raw format rational scalar", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "1/2", failCount)
 
   RawResultClear(r)
@@ -365,10 +371,14 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
   r.kind = RRK_ARRAY
   redim r.arr(0 to 1)
   r.arr(0).kind = RSK_RATIONAL
-  r.arr(0).ratNum = 1
-  r.arr(0).ratDen = 2
+  r.arr(0).real.kind = RSK_RATIONAL
+  r.arr(0).real.ratNum = 1
+  r.arr(0).real.ratDen = 2
+  RawCartesianScalarClear(r.arr(0).imag)
   r.arr(1).kind = RSK_INT64
-  r.arr(1).intValue = 3
+  r.arr(1).real.kind = RSK_INT64
+  r.arr(1).real.intValue = 3
+  RawCartesianScalarClear(r.arr(1).imag)
   AssertEq("raw format array mix", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "(1/2, 3)", failCount)
 end sub
 
