@@ -100,6 +100,8 @@ public:
   bool getSupportComplexNumbers() const;
   void setSupportTimeValues(bool enabled);
   bool getSupportTimeValues() const;
+  void setSupportLambdaFunctions(bool enabled);
+  bool getSupportLambdaFunctions() const;
 
   void addConst(const std::string& constName, long long intValue);
   void addConst(const std::string& constName, double dblValue);
@@ -383,6 +385,8 @@ private:
   bool compiledScalarOnly_ = false;
   bool supportComplexNumbers_ = false;
   bool supportTimeValues_ = true;
+  bool supportLambdaFunctions_ = true;
+  std::unique_ptr<Expr> (MathParser::*parseSortbyKeyArgImpl_)(EvalContext&);
   /** Owned compile buffer when input needs comment/semicolon stripping; otherwise compile borrows input. */
   std::string compileParseStorage_;
 
@@ -414,25 +418,34 @@ private:
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   bool parseSortbyCallArguments(EvalContext& ctx, std::vector<std::unique_ptr<Expr>>& outArgs);
   std::unique_ptr<Expr> parseSortbyFunctionRef(EvalContext& ctx);
+  enum class LambdaBodyStop {
+    WrappedParenClose,
+    SortbyArgDelim,
+    TopLevelSemicolonOrEof,
+    ToEof
+  };
   bool tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const;
-  static bool lambdaBodyConsumeUntilWrappedParenCloses(EvalContext& ctx, std::string& outBody);
-  static bool lambdaBodyConsumeUntilSortbyArgDelim(
+  static bool lambdaBodyConsume(
       EvalContext& ctx,
-      const char* lambdaKeySegmentStart,
-      std::string& outBody);
-  static bool lambdaBodyConsumeUntilTopLevelSemicolonOrEof(EvalContext& ctx, std::string& outBody);
-  static bool lambdaBodyConsumeToEof(EvalContext& ctx, std::string& outBody);
+      std::string& outBody,
+      LambdaBodyStop stop,
+      const char* sortbyLambdaKeyStart);
   bool tryParseLambdaInnerUnwrappedSuffix(
       EvalContext& ctx,
       std::vector<std::string>& outParams,
       std::string& outBody,
-      bool bodyUntilClosingWrap,
-      bool bodyUntilCommaOrParenAtGroupedDepthZero,
-      bool bodyUntilTopLevelSemicolonOrEof,
+      LambdaBodyStop bodyStop,
       const char* sortbyLambdaKeyStart,
       bool quiet) const;
   bool tryParseLambdaRhsAfterEquals(EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const;
+  std::unique_ptr<Expr> makeUnarySortbyInlineLambdaExpr(
+      EvalContext& ctx,
+      std::vector<std::string>&& params,
+      std::string&& body);
   std::unique_ptr<Expr> parseSortbyKeyArg(EvalContext& ctx);
+  std::unique_ptr<Expr> parseSortbyKeyArgWithLambda(EvalContext& ctx);
+  std::unique_ptr<Expr> parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx);
+  void syncLambdaSupportDispatch();
   EvalValue evalInlineLambdaCall(
       EvalContext& ctx,
       const std::vector<std::string>& paramNames,
@@ -465,10 +478,25 @@ private:
       EvalValue& outV);
   static bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool argsContainNonFinite(const std::vector<EvalValue>& args);
-  static bool isFormatBuiltin(BuiltinFunctionId id);
-  static bool isIntegerOnlyBuiltin(BuiltinFunctionId id);
-  static bool isNonCalculatingBuiltin(BuiltinFunctionId id);
-  static bool isFiniteRequiredBuiltin(BuiltinFunctionId id);
+  // Builtin validation flags (keep in sync with BUILTIN_FLAG_* / GetBuiltinFlags in MathParser.bas).
+  enum class BuiltinFlags : unsigned {
+    None = 0,
+    Unary = 1u << 0,
+    Format = 1u << 1,
+    IntegerOnly = 1u << 2,
+    NonCalculating = 1u << 3,
+    FiniteRequired = 1u << 4,
+    TrailingFormatter = 1u << 5,
+  };
+  static BuiltinFlags getBuiltinFlags(BuiltinFunctionId id);
+  static bool hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag);
+  static constexpr uint8_t kBuiltinArityUnbounded = 255;
+  static bool getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs);
+  bool validateBuiltinCallArity(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args) const;
   bool validateIntegerRepresentableArgs(
       EvalContext& ctx,
       const std::string& fnName,
@@ -557,6 +585,35 @@ private:
   void setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const;
   void setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const;
   void setExactArgCountError(EvalContext& ctx, const std::string& fnName, size_t expectedCount) const;
+  bool requireBuiltinExactArgCount(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const std::vector<EvalValue>& args,
+      std::size_t expectedCount) const;
+  bool rejectBinaryBuiltinTimeOperands(EvalContext& ctx, const EvalValue& left, const EvalValue& right) const;
+  EvalValue builtinMapBinaryTwoArg(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args,
+      bool rejectComplexOperands,
+      bool numericErrorOnMapFailure) const;
+  template <typename Visitor>
+  static std::size_t forEachCallArgScalarValues(const std::vector<EvalValue>& args, Visitor&& visit) {
+    std::size_t count = 0;
+    for (const auto& a : args) {
+      if (a.kind == ValueKind::Scalar) {
+        visit(a.scalarValue);
+        ++count;
+      } else {
+        for (const auto& item : a.arr) {
+          visit(item);
+          ++count;
+        }
+      }
+    }
+    return count;
+  }
   void setScalarValuesError(EvalContext& ctx, const std::string& fnName) const;
   void setIntegerValuesError(EvalContext& ctx, const std::string& fnName) const;
   void setScalarMinMaxError(EvalContext& ctx, const std::string& fnName) const;
@@ -781,6 +838,7 @@ private:
     std::uint64_t uintV = 0;
   };
   static void exactCartesianComponentClear(ExactCartesianComponent& c);
+  static void exactCartesianComponentAssignFromSignedInt64(ExactCartesianComponent& c, long long n);
   static void exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n);
   static void exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u);
   static bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
@@ -789,6 +847,9 @@ private:
                                      double& outI);
   static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
+  static void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
+                                                       const ExactCartesianComponent& c);
   static void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
                                                  const ExactCartesianComponent& im);
   static bool tryAddExactCartesianComponents(const ExactCartesianComponent& a,
@@ -801,6 +862,7 @@ private:
                                                   EvalValue& outV);
   static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
   static bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
+  static bool tryFlipScalarImagSignExact(EvalValue::ScalarValue& sv);
   static bool tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out);
   static bool tryFoldExactComplexCartesian(const std::vector<EvalValue>& args, char op, EvalValue& out);
   static bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out);
@@ -822,6 +884,9 @@ private:
   static EvalValue scalarFromArrayAt(const EvalValue& arrV, std::size_t idx);
   static bool applyBinary(double a, double b, char op, double& out);
   static EvalValue mapUnaryFn(const EvalValue& in, double (*fn)(double));
+  /** Apply scalar unary logic to one element; broadcast over arrays (same pattern as mapUnaryFn). */
+  template <typename ScalarFn>
+  static EvalValue mapUnaryEvalValue(const EvalValue& in, ScalarFn&& applyScalar);
   template <typename ScalarFn>
   EvalValue mapBinaryBroadcast(const EvalValue& left, const EvalValue& right, ScalarFn&& scalarFn, bool& ok) const;
   EvalValue mapBinaryBuiltinMathFunction(
@@ -841,5 +906,6 @@ private:
   UserFunction* findUserFunction(const std::string& fnName);
   const UserFunction* findUserFunction(const std::string& fnName) const;
   void upsertUserFunction(UserFunction uf);
+  static EvalValue applyAbsScalarValue(const EvalValue::ScalarValue& s);
   static EvalValue calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s);
 };

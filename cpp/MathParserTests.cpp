@@ -2019,6 +2019,65 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEvalErrorContains(p, "log(5)", "log() expects 2 argument(s)", why);
               }});
+  t.push_back({"regression/builtin arity table: ratio wrong count", [](std::string& why) {
+                MathParser p;
+                return expectEvalErrorContains(p, "ratio(1,2)", "ratio() expects 1 argument(s)", why);
+              }});
+  t.push_back({"regression/builtin arity table: sortby wrong counts are parse errors", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(
+                        p, "sortby()", "sortby expects a function that takes 1 parameter", why)) {
+                  return false;
+                }
+                if (!expectEvalErrorContains(
+                        p, "sortby(1)", "sortby expects a function that takes 1 parameter", why)) {
+                  return false;
+                }
+                return expectEvalErrorContains(p, "sortby(1,2,3)", "sortby expects", why);
+              }});
+  t.push_back({"regression/builtin arity table: lcm and npr require two args", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "lcm()", "lcm() expects 2 argument(s)", why)) {
+                  return false;
+                }
+                return expectEvalErrorContains(p, "npr(1)", "npr() expects 2 argument(s)", why);
+              }});
+  t.push_back({"regression/builtin arity table: variadic deg hex sum unpack", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "deg(1,2)", "(57.29577951308232, 114.5915590261646)", why)) {
+                  return false;
+                }
+                if (!expectEval(p, "hex(1,2,3)", "(0x1,0x2,0x3)", why)) {
+                  return false;
+                }
+                if (!expectEval(p, "sum(1,2,3)", "6", why)) {
+                  return false;
+                }
+                return expectEval(p, "unpack(1,2)", "(1,2)", why);
+              }});
+  t.push_back({"regression/abs preserves exact uint64 above int64 max", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "abs(0x7FFFFFFFFFFFFFFF+20)", "9223372036854775827", why)) {
+                  return false;
+                }
+                return expectEval(p, "hex(abs(0x7FFFFFFFFFFFFFFF+20))", "0x8000000000000013", why);
+              }});
+  t.push_back({"regression/abs preserves exact signed int64", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "abs(-14)", "14", why)) {
+                  return false;
+                }
+                return expectEval(p, "abs(-9223372036854775808)", "9223372036854775808", why);
+              }});
+  t.push_back({"regression/builtin arity table: time converters exact one arg", [](std::string& why) {
+                MathParser p;
+                p.setSupportTimeValues(true);
+                if (!expectEvalErrorContains(p, "milliseconds()", "milliseconds() expects 1 argument(s)", why)) {
+                  return false;
+                }
+                return expectEvalErrorContains(
+                    p, "seconds(1:00,2:00)", "seconds() expects 1 argument(s)", why);
+              }});
   t.push_back({"regression/log array with scalar base stays elementwise", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "log((8,64),2)", "(3,6)", why);
@@ -3703,6 +3762,15 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"time-opt: time converter arity enforced by table",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 if (!expectEvalErrorContains(p, "hours()", "hours() expects 1 argument(s)", why)) {
+                   return false;
+                 }
+                 return expectEvalErrorContains(p, "days(1:00,2:00)", "days() expects 1 argument(s)", why);
+               }});
   t.push_back({"time-opt: sin still rejects duration argument",
                [](std::string& why) {
                  MathParser p;
@@ -3717,6 +3785,87 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  if (el.find("incompatible operands") == std::string::npos) {
                    why = std::string("unexpected error: ") + p.getError();
                    return false;
+                 }
+                 return true;
+               }});
+  return t;
+}
+
+std::vector<TestCase> buildLambdaFunctionsSupportOptionCases() {
+  std::vector<TestCase> t;
+  t.push_back({"lambda-opt: flag and lambda eval under enabled mode",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportLambdaFunctions(true);
+                 if (!p.getSupportLambdaFunctions()) {
+                   why = "expected true after setSupportLambdaFunctions(true)";
+                   return false;
+                 }
+                 p.parseAndEvaluate("sortby((3,1,2), x:-x)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "(3,2,1)") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 p.parseAndEvaluate("f=x:x+2; f(3)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "5") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 p.setSupportLambdaFunctions(false);
+                 if (p.getSupportLambdaFunctions()) {
+                   why = "expected false after setSupportLambdaFunctions(false)";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"lambda-opt: fresh parser defaults to on",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!p.getSupportLambdaFunctions()) {
+                   why = "expected default true";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"lambda-opt: lambda syntax disabled when support off",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportLambdaFunctions(false);
+                 p.parseAndEvaluate("sortby((-3,-1,2), abs)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 if (p.getResult() != "(-1,2,-3)" && p.getResult() != "(-1, 2, -3)") {
+                   why = std::string("got ") + p.getResult();
+                   return false;
+                 }
+                 const char* const rejects[] = {
+                     "f=x:x+1",
+                     "f=(x,y):(x+y)",
+                     "sortby((3,1,2), x:-x)",
+                     "sortby((1,2), (x):(1/x))"};
+                 for (const char* expr : rejects) {
+                   p.parseAndEvaluate(expr);
+                   if (p.getError().empty()) {
+                     why = std::string("expected failure for ") + expr;
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(),
+                                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find("unexpected token") == std::string::npos) {
+                     why = std::string("unexpected error for ") + expr + ": " + p.getError();
+                     return false;
+                   }
                  }
                  return true;
                }});
@@ -3746,6 +3895,75 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  if (p.getSupportComplexNumbers()) {
                    why = "expected false after setSupportComplexNumbers(false)";
                    return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: abs preserves exact integers when complex mode on",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 if (!expectEval(p, "abs(0x7FFFFFFFFFFFFFFF+20)", "9223372036854775827", why)) {
+                   return false;
+                 }
+                 return expectEval(p, "hex(abs(0x7FFFFFFFFFFFFFFF+20))", "0x8000000000000013", why);
+               }});
+  t.push_back({"complex-opt: real/imag/cart/conj preserve exact integers",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"real(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi)", "9223372036854775807"},
+                     {"imag(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi)", "9223372036854775807"},
+                     {"cart(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi)",
+                      "9223372036854775807+9223372036854775807i"},
+                     {"conj(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi)",
+                      "9223372036854775807-9223372036854775807i"},
+                     {"hex(real(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi))", "0x7FFFFFFFFFFFFFFF"},
+                     {"hex(imag(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi))", "0x7FFFFFFFFFFFFFFF"},
+                     {"hex(cart(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi))",
+                      "0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi"},
+                     {"hex(conj(0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi))",
+                      "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"},
+                 };
+                 for (const auto& row : kRows) {
+                   if (!expectEval(p, row.expr, row.expect, why)) {
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: unary components with negative exact integers",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"real(0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)", "9223372036854775807"},
+                     {"imag(0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)", "-9223372036854775807"},
+                     {"0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi",
+                      "9223372036854775807-9223372036854775807i"},
+                     {"cart(0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)",
+                      "9223372036854775807-9223372036854775807i"},
+                     {"conj(0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)",
+                      "9223372036854775807+9223372036854775807i"},
+                     {"-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi",
+                      "-9223372036854775807-9223372036854775807i"},
+                     {"conj(-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)",
+                      "-9223372036854775807+9223372036854775807i"},
+                     {"real(-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)", "-9223372036854775807"},
+                     {"imag(-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)", "-9223372036854775807"},
+                     {"cart(-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi)",
+                      "-9223372036854775807-9223372036854775807i"},
+                 };
+                 for (const auto& row : kRows) {
+                   if (!expectEval(p, row.expr, row.expect, why)) {
+                     return false;
+                   }
                  }
                  return true;
                }});
@@ -4451,6 +4669,7 @@ int main() {
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
   const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
+  const auto lambdaFunctionsSupportOption = buildLambdaFunctionsSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
 
   runSuite("Unit", unit, s);
@@ -4461,6 +4680,7 @@ int main() {
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
   runSuite("Time value support (parser option)", timeValuesSupportOption, s);
+  runSuite("Lambda function support (parser option)", lambdaFunctionsSupportOption, s);
   runSuite("Sortby/Ratio", sortbyRatio, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";

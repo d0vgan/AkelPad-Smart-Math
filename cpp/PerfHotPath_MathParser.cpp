@@ -49,12 +49,79 @@ long long rawScalarToInt64(const MathParser::RawResult::Scalar& s) {
   return rawCartesianToInt64(cart);
 }
 
+long long benchResultChecksum(const MathParser::RawResult& r) {
+  if (!r.hasValue()) {
+    return 0;
+  }
+  if (r.isScalar()) {
+    return rawScalarToInt64(r.scalar);
+  }
+  long long sum = 0;
+  for (const auto& item : r.array) {
+    sum += rawScalarToInt64(item);
+  }
+  return sum;
+}
+
+double benchParseAndEvaluateRaw(MathParser& parser, const std::string& expr, std::uint64_t& errors) {
+  const MathParser::RawResult r = parser.parseAndEvaluateRaw(expr);
+  if (!r.hasValue()) {
+    ++errors;
+    return 0.0;
+  }
+  return static_cast<double>(benchResultChecksum(r));
+}
+
+void runLambdaFlagStressBench(std::uint64_t iterations) {
+  std::cout << "=== lambda-stress (sortby/assign paths that differ by lambda flag) ===\n";
+  std::cout << "Default hot-path expressions (myconst1 +/- i, etc.) never hit assignment or sortby key parsing,\n";
+  std::cout << "so toggling setSupportLambdaFunctions() there usually shows no ops/sec difference.\n\n";
+
+  for (const bool lambdaOn : {true, false}) {
+    MathParser parser;
+    parser.setSupportTimeValues(false);
+    parser.setSupportComplexNumbers(false);
+    parser.setSupportLambdaFunctions(lambdaOn);
+    parser.addConst("myconst1", 123LL);
+
+    const char* const exprsLambdaOn[] = {
+        "sortby((3,1,2), x:-x)",
+        "f=x:x+2; f(3)",
+        "sortby((1,2), (x):(1/x))",
+    };
+    const char* const exprsLambdaOff[] = {
+        "sortby((-3,-1,2), abs)",
+        "myconst1 + 3",
+        "sortby((3,1,2), abs)",
+    };
+
+    std::uint64_t errors = 0;
+    long long checksum = 0;
+    const auto t0 = std::chrono::steady_clock::now();
+    for (std::uint64_t i = 0; i < iterations; ++i) {
+      const char* expr = lambdaOn ? exprsLambdaOn[i % 3] : exprsLambdaOff[i % 3];
+      checksum += static_cast<long long>(benchParseAndEvaluateRaw(parser, expr, errors));
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    const auto elapsedNs = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    const double elapsedSec = static_cast<double>(elapsedNs) / 1e9;
+    const double opsPerSec = (elapsedSec > 0.0) ? (static_cast<double>(iterations) / elapsedSec) : 0.0;
+
+    std::cout << "lambda_support=" << (lambdaOn ? "true" : "false") << "\n";
+    std::cout << "elapsed_sec: " << elapsedSec << "\n";
+    std::cout << "ops_per_sec: " << opsPerSec << "\n";
+    std::cout << "checksum: " << checksum << "\n";
+    std::cout << "errors: " << errors << "\n\n";
+  }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
   std::uint64_t iterations = 200000;
   std::uint64_t repeats = 1;
   std::uint64_t warmupRuns = 0;
+  bool lambdaStress = false;
   if (argc > 1) {
     const std::uint64_t parsed = static_cast<std::uint64_t>(_strtoui64(argv[1], nullptr, 10));
     if (parsed > 0) {
@@ -69,6 +136,14 @@ int main(int argc, char** argv) {
   }
   if (argc > 3) {
     warmupRuns = static_cast<std::uint64_t>(_strtoui64(argv[3], nullptr, 10));
+  }
+  if (argc > 4 && std::string(argv[4]) == "lambda-stress") {
+    lambdaStress = true;
+  }
+
+  if (lambdaStress) {
+    runLambdaFlagStressBench(iterations);
+    return 0;
   }
 
   double totalElapsedSec = 0.0;
@@ -86,9 +161,13 @@ int main(int argc, char** argv) {
     const bool isWarmup = (run < warmupRuns);
     MathParser parser;
     // Note:
-    // On my machine, I get around 408_000 ops_per_sec with SupportTimeValues enabled.
-    // With them disabled, I get around 412_000 ops_per_sec.
+    // On my machine, I get around 396_000 ops_per_sec with SupportTimeValues enabled.
+    // With them disabled, I get around 402_000 ops_per_sec.
+    // Toggling setSupportLambdaFunctions() here usually does NOT change this number: the
+    // expressions below are plain arithmetic (no assignment RHS, no sortby lambda keys).
+    // Use: PerfHotPath_MathParser.exe <iterations> <repeats> <warmup> lambda-stress
     parser.setSupportTimeValues(false);
+    parser.setSupportLambdaFunctions(false);
     parser.setSupportComplexNumbers(false);
     parser.addConst("myconst1", 123LL);
     parser.addConst("myconst2", 345LL);
@@ -122,12 +201,14 @@ int main(int argc, char** argv) {
         expr = "((myconst1 & 0xFFFF) + (myconst2 | 0x07)) << (2 + 3)";
       }
 
+      // Keep this inline: the benchmark measures parser throughput, not helper wrappers.
+      // benchParseAndEvaluateRaw() adds extra calls/branches per iteration and skews ops/sec.
       const MathParser::RawResult r = parser.parseAndEvaluateRaw(expr);
       if (!r.hasValue() || !r.isScalar()) {
         ++errors;
-        continue;
+      } else {
+        checksum += rawScalarToInt64(r.scalar);
       }
-      checksum += rawScalarToInt64(r.scalar);
     }
     const auto t1 = std::chrono::steady_clock::now();
 

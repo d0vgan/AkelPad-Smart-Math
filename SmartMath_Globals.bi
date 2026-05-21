@@ -6,6 +6,7 @@
 #include once "Inc\AkelEdit.bi"
 #include once "Inc\AkelDLL.bi"
 #include once "Inc\MathParser.bi"
+#include once "Inc\MathParserRawResult.bi"
 
 #ifndef EM_GETFIRSTVISIBLELINE
   const EM_GETFIRSTVISIBLELINE = &h00CE

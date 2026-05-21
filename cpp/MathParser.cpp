@@ -97,14 +97,14 @@ bool peekParenParamListThenColon(const char* p) {
   }
 }
 
-bool peekRhsMayBeLambdaDefinition(const char* p) {
+bool peekRhsMayBeLambdaSyntaxAt(const char* p) {
   p = skipAsciiSpacesPtr(p);
   if (*p == '(') {
     // (x,y):body, ():body, or one extra grouping paren around those forms
     if (peekParenParamListThenColon(p)) {
       return true;
     }
-    return peekRhsMayBeLambdaDefinition(p + 1);
+    return peekRhsMayBeLambdaSyntaxAt(p + 1);
   }
   // x:body, x,y:body, x,y,z:body
   return peekUnwrappedLambdaParamsThenColon(p);
@@ -944,11 +944,13 @@ bool tryPowUInt64Checked(std::uint64_t base, std::uint64_t exp, std::uint64_t& o
 }
 
 bool tryAddInt64Checked(long long a, long long b, long long& out) {
-  if ((b > 0 && a > (std::numeric_limits<long long>::max)() - b) ||
-      (b < 0 && a < (std::numeric_limits<long long>::min)() - b)) {
+  out = a + b;
+  if (b > 0 && out < a) {
     return false;
   }
-  out = a + b;
+  if (b < 0 && out > a) {
+    return false;
+  }
   return true;
 }
 
@@ -1385,20 +1387,24 @@ void assignLowerIdentFromRange(std::string& out, const char* begin, const char* 
 }
 
 bool checkedAddLL(long long a, long long b, long long& out) {
-  if ((b > 0 && a > (std::numeric_limits<long long>::max)() - b) ||
-      (b < 0 && a < (std::numeric_limits<long long>::min)() - b)) {
+  out = a + b;
+  if (b > 0 && out < a) {
     return false;
   }
-  out = a + b;
+  if (b < 0 && out > a) {
+    return false;
+  }
   return true;
 }
 
 bool checkedSubLL(long long a, long long b, long long& out) {
-  if ((b < 0 && a > (std::numeric_limits<long long>::max)() + b) ||
-      (b > 0 && a < (std::numeric_limits<long long>::min)() + b)) {
+  out = a - b;
+  if (b > 0 && out > a) {
     return false;
   }
-  out = a - b;
+  if (b < 0 && out < a) {
+    return false;
+  }
   return true;
 }
 
@@ -1933,6 +1939,7 @@ MathParser::MathParser() {
   setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
   setVariable(STR_ANS, makeScalarInt(0));
   setVariable(STR_FORMAL_VALIDATION_PROBE, makeScalarInt(1));
+  syncLambdaSupportDispatch();
 }
 
 std::string MathParser::toLower(std::string s) {
@@ -2142,9 +2149,7 @@ bool MathParser::isTrailingFormatterFunctionName(const std::string& nameText) {
   if (!tryGetBuiltinFunctionId(nameText, id)) {
     return false;
   }
-  return id == BuiltinFunctionId::Hex || id == BuiltinFunctionId::Oct || id == BuiltinFunctionId::Bin
-      || id == BuiltinFunctionId::Uhex || id == BuiltinFunctionId::Uoct || id == BuiltinFunctionId::Ubin
-      || id == BuiltinFunctionId::Rad || id == BuiltinFunctionId::Deg;
+  return hasBuiltinFlag(id, BuiltinFlags::TrailingFormatter);
 }
 
 bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const {
@@ -2553,17 +2558,23 @@ bool MathParser::tryAppendAssignOrExpressionStatement(EvalContext& ctx, std::vec
       }
       ++ctx.p;
       const char* afterEq = ctx.p;
-      std::vector<std::string> lamParams;
-      std::string lamBody;
-      if (peekRhsMayBeLambdaDefinition(afterEq) && tryParseLambdaRhsAfterEquals(ctx, lamParams, lamBody)) {
-        if (trySetUserFunctionDefinitionError(ctx, ident, lamParams, lamBody)) {
-          return false;
+      if (supportLambdaFunctions_) {
+        std::vector<std::string> lamParams;
+        std::string lamBody;
+        if (peekRhsMayBeLambdaSyntaxAt(afterEq) &&
+            tryParseLambdaRhsAfterEquals(ctx, lamParams, lamBody)) {
+          if (trySetUserFunctionDefinitionError(ctx, ident, lamParams, lamBody)) {
+            return false;
+          }
+          AstStatement st;
+          st.kind = AstStatement::Kind::FunDef;
+          st.fun = UserFunction{ident, lamParams, lamBody};
+          out.emplace_back(std::move(st));
+          return true;
         }
-        AstStatement st;
-        st.kind = AstStatement::Kind::FunDef;
-        st.fun = UserFunction{ident, lamParams, lamBody};
-        out.emplace_back(std::move(st));
-        return true;
+      } else if (peekRhsMayBeLambdaSyntaxAt(afterEq)) {
+        setUnexpectedTokenError(ctx);
+        return false;
       }
       ctx.p = afterEq;
       auto ex = parseExpression(ctx);
@@ -2612,6 +2623,57 @@ void MathParser::setExactArgCountError(
     const std::string& fnName,
     size_t expectedCount) const {
   setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(expectedCount) + STR_ARGUMENT_PAR_S);
+}
+
+bool MathParser::requireBuiltinExactArgCount(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const std::vector<EvalValue>& args,
+    const std::size_t expectedCount) const {
+  if (args.size() == expectedCount) {
+    return true;
+  }
+  setExactArgCountError(ctx, fnName, expectedCount);
+  return false;
+}
+
+bool MathParser::rejectBinaryBuiltinTimeOperands(
+    EvalContext& ctx,
+    const EvalValue& left,
+    const EvalValue& right) const {
+  if (evalValueInvolvesTime(left) || evalValueInvolvesTime(right)) {
+    setIncompatibleOperandsError(ctx);
+    return true;
+  }
+  return false;
+}
+
+MathParser::EvalValue MathParser::builtinMapBinaryTwoArg(
+    EvalContext& ctx,
+    const std::string& fnName,
+    BuiltinFunctionId id,
+    const std::vector<EvalValue>& args,
+    const bool rejectComplexOperands,
+    const bool numericErrorOnMapFailure) const {
+  if (rejectBinaryBuiltinTimeOperands(ctx, args[0], args[1])) {
+    return makeScalar(0);
+  }
+  if (rejectComplexOperands && supportComplexNumbers_ &&
+      (evalValueHasNonzeroImaginary(args[0]) || evalValueHasNonzeroImaginary(args[1]))) {
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
+  bool ok = false;
+  EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
+  if (!ok) {
+    if (numericErrorOnMapFailure) {
+      setNumericErrorInFunction(ctx, fnName);
+    } else {
+      setIncompatibleOperandsError(ctx);
+    }
+    return makeScalar(0);
+  }
+  return out;
 }
 
 void MathParser::setScalarValuesError(EvalContext& ctx, const std::string& fnName) const {
@@ -3544,6 +3606,21 @@ bool MathParser::getSupportTimeValues() const {
   return supportTimeValues_;
 }
 
+void MathParser::setSupportLambdaFunctions(bool enabled) {
+  supportLambdaFunctions_ = enabled;
+  syncLambdaSupportDispatch();
+}
+
+bool MathParser::getSupportLambdaFunctions() const {
+  return supportLambdaFunctions_;
+}
+
+void MathParser::syncLambdaSupportDispatch() {
+  parseSortbyKeyArgImpl_ = supportLambdaFunctions_
+      ? &MathParser::parseSortbyKeyArgWithLambda
+      : &MathParser::parseSortbyKeyArgFunctionRefOnly;
+}
+
 void MathParser::addConst(const std::string& constName, long long intValue) {
   EvalValue v = makeScalarInt(intValue);
   setVariable(toLower(constName), v);
@@ -3656,14 +3733,16 @@ void MathParser::exactCartesianComponentClear(ExactCartesianComponent& c) {
   c.uintV = 0;
 }
 
-void MathParser::exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n) {
+void MathParser::exactCartesianComponentAssignFromSignedInt64(ExactCartesianComponent& c, long long n) {
   exactCartesianComponentClear(c);
   c.hasInt = true;
   c.intV = n;
-  if (n >= 0) {
-    c.hasUInt = true;
-    c.uintV = static_cast<std::uint64_t>(n);
-  }
+  c.hasUInt = true;
+  c.uintV = static_cast<std::uint64_t>(n);
+}
+
+void MathParser::exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n) {
+  exactCartesianComponentAssignFromSignedInt64(c, n);
 }
 
 void MathParser::exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u) {
@@ -3781,29 +3860,31 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
   return false;
 }
 
-void MathParser::setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
-                                                    const ExactCartesianComponent& im) {
+void MathParser::setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c) {
   v.kind = ValueKind::Scalar;
-  if (re.hasInt) {
+  if (c.hasInt) {
     v.scalarValue.scalarKind = ScalarKind::Int64;
-    v.scalarValue.scalar = static_cast<double>(re.intV);
+    v.scalarValue.scalar = static_cast<double>(c.intV);
     v.scalarValue.setExactInt64Valid(true);
-    v.scalarValue.exactInt64 = re.intV;
-    if (re.intV >= 0) {
+    v.scalarValue.exactInt64 = c.intV;
+    if (c.intV >= 0) {
       v.scalarValue.setExactUInt64Valid(true);
-      v.scalarValue.exactUInt64 = static_cast<std::uint64_t>(re.intV);
+      v.scalarValue.exactUInt64 = static_cast<std::uint64_t>(c.intV);
+    } else if (c.hasUInt) {
+      v.scalarValue.setExactUInt64Valid(true);
+      v.scalarValue.exactUInt64 = c.uintV;
     } else {
       v.scalarValue.setExactUInt64Valid(false);
       v.scalarValue.exactUInt64 = 0;
     }
-  } else if (re.hasUInt) {
+  } else if (c.hasUInt) {
     v.scalarValue.scalarKind = ScalarKind::UInt64;
-    v.scalarValue.scalar = static_cast<double>(re.uintV);
+    v.scalarValue.scalar = static_cast<double>(c.uintV);
     v.scalarValue.setExactUInt64Valid(true);
-    v.scalarValue.exactUInt64 = re.uintV;
-    if (re.uintV <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    v.scalarValue.exactUInt64 = c.uintV;
+    if (c.uintV <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
       v.scalarValue.setExactInt64Valid(true);
-      v.scalarValue.exactInt64 = static_cast<long long>(re.uintV);
+      v.scalarValue.exactInt64 = static_cast<long long>(c.uintV);
     } else {
       v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.exactInt64 = 0;
@@ -3815,30 +3896,41 @@ void MathParser::setScalarComplexFromExactCartesian(EvalValue& v, const ExactCar
     v.scalarValue.setExactUInt64Valid(false);
   }
   v.scalarValue.setDecScientificPow63High(false);
-  v.scalarValue.imag = 0.0;
-  v.scalarValue.imagExactInt64 = 0;
-  v.scalarValue.imagExactUInt64 = 0;
-  v.scalarValue.setImagExactInt64Valid(false);
-  v.scalarValue.setImagExactUInt64Valid(false);
-  if (im.hasInt || im.hasUInt) {
-    if (im.hasInt) {
-      v.scalarValue.setImagExactInt64Valid(true);
-      v.scalarValue.imagExactInt64 = im.intV;
-      v.scalarValue.imag = static_cast<double>(im.intV);
-      if (im.intV >= 0) {
-        v.scalarValue.setImagExactUInt64Valid(true);
-        v.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(im.intV);
-      } else if (im.hasUInt) {
-        v.scalarValue.setImagExactUInt64Valid(true);
-        v.scalarValue.imagExactUInt64 = im.uintV;
-        v.scalarValue.imag = static_cast<double>(im.uintV);
-      }
-    } else {
-      v.scalarValue.setImagExactUInt64Valid(true);
-      v.scalarValue.imagExactUInt64 = im.uintV;
-      v.scalarValue.imag = static_cast<double>(im.uintV);
+  scalarClearImaginary(v.scalarValue);
+}
+
+void MathParser::scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
+                                                          const ExactCartesianComponent& c) {
+  sv.imag = 0.0;
+  sv.imagExactInt64 = 0;
+  sv.imagExactUInt64 = 0;
+  sv.setImagExactInt64Valid(false);
+  sv.setImagExactUInt64Valid(false);
+  if (!c.hasInt && !c.hasUInt) {
+    return;
+  }
+  if (c.hasInt) {
+    sv.setImagExactInt64Valid(true);
+    sv.imagExactInt64 = c.intV;
+    sv.imag = static_cast<double>(c.intV);
+    sv.setImagExactUInt64Valid(true);
+    sv.imagExactUInt64 = c.hasUInt ? c.uintV : static_cast<std::uint64_t>(c.intV);
+  } else {
+    sv.setImagExactUInt64Valid(true);
+    sv.imagExactUInt64 = c.uintV;
+    sv.imag = static_cast<double>(c.uintV);
+    if (c.uintV <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      sv.setImagExactInt64Valid(true);
+      sv.imagExactInt64 = static_cast<long long>(c.uintV);
     }
   }
+}
+
+void MathParser::setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
+                                                    const ExactCartesianComponent& im) {
+  setScalarFromExactCartesianComponent(v, re);
+  v.scalarValue.imag = 0.0;
+  scalarApplyExactImagFromCartesianComponent(v.scalarValue, im);
   if (!scalarHasNonzeroImaginaryPart(v.scalarValue)) {
     scalarClearImaginary(v.scalarValue);
   }
@@ -3983,9 +4075,35 @@ MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const Ev
 }
 
 bool MathParser::tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC) {
-  ExactCartesianComponent z{};
-  exactCartesianComponentClear(z);
-  return trySubExactCartesianComponents(z, c, outC);
+  long long i = 0;
+  if (tryExactCartesianComponentToInt64(c, i)) {
+    if (i == (std::numeric_limits<long long>::min)()) {
+      return false;
+    }
+    exactCartesianComponentAssignFromSignedInt64(outC, -i);
+    return true;
+  }
+  if (c.hasUInt) {
+    return false;
+  }
+  exactCartesianComponentAssignFromSignedInt64(outC, 0);
+  return true;
+}
+
+bool MathParser::tryFlipScalarImagSignExact(EvalValue::ScalarValue& sv) {
+  ExactCartesianComponent c{};
+  ExactCartesianComponent cNeg{};
+  if (!tryExtractExactImagComponent(sv, c)) {
+    return false;
+  }
+  if (!scalarHasNonzeroImaginaryPart(sv)) {
+    return true;
+  }
+  if (!tryNegateExactCartesianComponent(c, cNeg)) {
+    return false;
+  }
+  scalarApplyExactImagFromCartesianComponent(sv, cNeg);
+  return true;
 }
 
 bool MathParser::tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out) {
@@ -4373,10 +4491,20 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
       out.floatingPoint = static_cast<double>(timeTotalMsFromScalarValue(v)) / 1000.0;
       return out;
     }
-    if (v.hasRenderRational() && v.hasExactUInt64()) {
+    if (v.hasRenderRational() && (v.hasExactUInt64() || v.exactUInt64 != 0)) {
       out.kind = RawResult::ScalarKind::Rational;
       out.rational.numerator = v.exactInt64;
       out.rational.denominator = v.exactUInt64;
+      return out;
+    }
+    if (v.hasExactInt64()) {
+      out.kind = RawResult::ScalarKind::Int64;
+      out.intValue = v.exactInt64;
+      return out;
+    }
+    if (v.hasExactUInt64()) {
+      out.kind = RawResult::ScalarKind::UInt64;
+      out.uintValue = v.exactUInt64;
       return out;
     }
     if (v.scalarKind == ScalarKind::Int64) {
@@ -4394,7 +4522,7 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
     return out;
   }
 
-  if (v.hasImagRenderRational() && v.hasImagExactUInt64()) {
+  if (v.hasImagRenderRational() && (v.hasImagExactUInt64() || v.imagExactUInt64 != 0)) {
     out.kind = RawResult::ScalarKind::Rational;
     out.rational.numerator = v.imagExactInt64;
     out.rational.denominator = v.imagExactUInt64;
@@ -4403,6 +4531,16 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
   if (v.hasImagExactInt64()) {
     out.kind = RawResult::ScalarKind::Int64;
     out.intValue = v.imagExactInt64;
+    return out;
+  }
+  if (v.hasImagExactUInt64()) {
+    if (v.imagExactUInt64 <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+      out.kind = RawResult::ScalarKind::Int64;
+      out.intValue = static_cast<std::int64_t>(v.imagExactUInt64);
+    } else {
+      out.kind = RawResult::ScalarKind::UInt64;
+      out.uintValue = v.imagExactUInt64;
+    }
     return out;
   }
   out.kind = RawResult::ScalarKind::FloatingPoint;
@@ -4614,16 +4752,23 @@ bool MathParser::applyBinary(double a, double b, char op, double& out) {
   return false;
 }
 
-MathParser::EvalValue MathParser::mapUnaryFn(const EvalValue& in, double (*fn)(double)) {
+template <typename ScalarFn>
+MathParser::EvalValue MathParser::mapUnaryEvalValue(const EvalValue& in, ScalarFn&& applyScalar) {
   if (in.kind == ValueKind::Scalar) {
-    return makeScalarMaybeExact(fn(in.scalarValue.scalar));
+    return applyScalar(in.scalarValue);
   }
   std::vector<EvalValue> outVals;
   outVals.reserve(in.arr.size());
   for (const auto& e : in.arr) {
-    outVals.emplace_back(makeScalarMaybeExact(fn(e.scalar)));
+    outVals.emplace_back(applyScalar(e));
   }
   return makeArrayFromScalars(outVals);
+}
+
+MathParser::EvalValue MathParser::mapUnaryFn(const EvalValue& in, double (*fn)(double)) {
+  return mapUnaryEvalValue(in, [fn](const EvalValue::ScalarValue& s) {
+    return makeScalarMaybeExact(fn(s.scalar));
+  });
 }
 
 MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
@@ -5195,37 +5340,6 @@ bool MathParser::parseFunctionDefinition(
   return true;
 }
 
-bool MathParser::lambdaBodyConsumeUntilWrappedParenCloses(EvalContext& ctx, std::string& outBody) {
-  outBody.clear();
-  int g = 0;
-  while (*ctx.p) {
-    const char c = *ctx.p;
-    if (g == 0 && c == ')') {
-      return true;
-    }
-    switch (c) {
-      case '(':
-      case '[':
-      case '{':
-        ++g;
-        break;
-      case ')':
-      case ']':
-      case '}':
-        --g;
-        if (g < 0) {
-          return false;
-        }
-        break;
-      default:
-        break;
-    }
-    outBody.push_back(c);
-    ++ctx.p;
-  }
-  return false;
-}
-
 namespace {
 
 int netRoundParenDepthBetween(const char* lo, const char* hiExclusive) {
@@ -5242,18 +5356,35 @@ int netRoundParenDepthBetween(const char* lo, const char* hiExclusive) {
 
 }  // namespace
 
-bool MathParser::lambdaBodyConsumeUntilSortbyArgDelim(
+bool MathParser::lambdaBodyConsume(
     EvalContext& ctx,
-    const char* lambdaKeySegmentStart,
-    std::string& outBody) {
+    std::string& outBody,
+    LambdaBodyStop stop,
+    const char* sortbyLambdaKeyStart) {
   outBody.clear();
   int g = 0;
   while (*ctx.p) {
     const char c = *ctx.p;
-    if (g == 0 && (c == ',' || c == ')')) {
-      if (lambdaKeySegmentStart != nullptr &&
-          netRoundParenDepthBetween(lambdaKeySegmentStart, ctx.p) == 0) {
-        return true;
+    if (g == 0) {
+      switch (stop) {
+        case LambdaBodyStop::WrappedParenClose:
+          if (c == ')') {
+            return true;
+          }
+          break;
+        case LambdaBodyStop::SortbyArgDelim:
+          if ((c == ',' || c == ')') && sortbyLambdaKeyStart != nullptr &&
+              netRoundParenDepthBetween(sortbyLambdaKeyStart, ctx.p) == 0) {
+            return true;
+          }
+          break;
+        case LambdaBodyStop::TopLevelSemicolonOrEof:
+          if (c == ';') {
+            return true;
+          }
+          break;
+        case LambdaBodyStop::ToEof:
+          break;
       }
     }
     switch (c) {
@@ -5276,66 +5407,7 @@ bool MathParser::lambdaBodyConsumeUntilSortbyArgDelim(
     outBody.push_back(c);
     ++ctx.p;
   }
-  return false;
-}
-
-bool MathParser::lambdaBodyConsumeUntilTopLevelSemicolonOrEof(EvalContext& ctx, std::string& outBody) {
-  outBody.clear();
-  int g = 0;
-  while (*ctx.p) {
-    const char c = *ctx.p;
-    if (g == 0 && c == ';') {
-      return true;
-    }
-    switch (c) {
-      case '(':
-      case '[':
-      case '{':
-        ++g;
-        break;
-      case ')':
-      case ']':
-      case '}':
-        --g;
-        if (g < 0) {
-          return false;
-        }
-        break;
-      default:
-        break;
-    }
-    outBody.push_back(c);
-    ++ctx.p;
-  }
-  return true;
-}
-
-bool MathParser::lambdaBodyConsumeToEof(EvalContext& ctx, std::string& outBody) {
-  outBody.clear();
-  int g = 0;
-  while (*ctx.p) {
-    const char c = *ctx.p;
-    switch (c) {
-      case '(':
-      case '[':
-      case '{':
-        ++g;
-        break;
-      case ')':
-      case ']':
-      case '}':
-        --g;
-        if (g < 0) {
-          return false;
-        }
-        break;
-      default:
-        break;
-    }
-    outBody.push_back(c);
-    ++ctx.p;
-  }
-  return true;
+  return stop == LambdaBodyStop::TopLevelSemicolonOrEof || stop == LambdaBodyStop::ToEof;
 }
 
 MathParser::EvalValue MathParser::makeInlineLambdaValue(std::vector<std::string> params, std::string body) {
@@ -5404,9 +5476,7 @@ bool MathParser::tryParseLambdaInnerUnwrappedSuffix(
     EvalContext& ctx,
     std::vector<std::string>& outParams,
     std::string& outBody,
-    bool bodyUntilClosingWrap,
-    bool bodyUntilCommaOrParenAtGroupedDepthZero,
-    bool bodyUntilTopLevelSemicolonOrEof,
+    LambdaBodyStop bodyStop,
     const char* sortbyLambdaKeyStart,
     bool quiet) const {
   if (!tryConsumeLambdaParameterList(ctx, outParams, quiet)) {
@@ -5418,28 +5488,20 @@ bool MathParser::tryParseLambdaInnerUnwrappedSuffix(
   }
   ++ctx.p;
   skipSpaces(ctx);
-  if (bodyUntilClosingWrap) {
-    return lambdaBodyConsumeUntilWrappedParenCloses(ctx, outBody);
-  }
-  if (bodyUntilCommaOrParenAtGroupedDepthZero) {
-    return lambdaBodyConsumeUntilSortbyArgDelim(ctx, sortbyLambdaKeyStart, outBody);
-  }
-  if (bodyUntilTopLevelSemicolonOrEof) {
-    return lambdaBodyConsumeUntilTopLevelSemicolonOrEof(ctx, outBody);
-  }
-  return lambdaBodyConsumeToEof(ctx, outBody);
+  return lambdaBodyConsume(ctx, outBody, bodyStop, sortbyLambdaKeyStart);
 }
 
 bool MathParser::tryParseLambdaRhsAfterEquals(
     EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const {
   const char* const saveOuter = ctx.p;
-  if (!peekRhsMayBeLambdaDefinition(saveOuter)) {
+  if (!peekRhsMayBeLambdaSyntaxAt(saveOuter)) {
     return false;
   }
   skipSpaces(ctx);
   if (*ctx.p == '(') {
     ++ctx.p;
-    if (tryParseLambdaInnerUnwrappedSuffix(ctx, outParams, outExpr, true, false, false, nullptr, true)) {
+    if (tryParseLambdaInnerUnwrappedSuffix(
+            ctx, outParams, outExpr, LambdaBodyStop::WrappedParenClose, nullptr, true)) {
       skipSpaces(ctx);
       if (*ctx.p == ')') {
         ++ctx.p;
@@ -5454,52 +5516,76 @@ bool MathParser::tryParseLambdaRhsAfterEquals(
     outExpr.clear();
   }
   skipSpaces(ctx);
-  if (!tryParseLambdaInnerUnwrappedSuffix(ctx, outParams, outExpr, false, false, true, nullptr, true)) {
+  if (!tryParseLambdaInnerUnwrappedSuffix(
+          ctx, outParams, outExpr, LambdaBodyStop::TopLevelSemicolonOrEof, nullptr, true)) {
     return false;
   }
   skipSpaces(ctx);
   return *ctx.p == '\0' || *ctx.p == ';';
 }
 
+std::unique_ptr<MathParser::Expr> MathParser::makeUnarySortbyInlineLambdaExpr(
+    EvalContext& ctx,
+    std::vector<std::string>&& params,
+    std::string&& body) {
+  if (params.size() != 1U) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+    return nullptr;
+  }
+  if (trim(body).empty()) {
+    setValidationError(ctx, STR_FUNCTION_BODY_IS_EMPTY);
+    return nullptr;
+  }
+  auto lit = std::make_unique<Expr>();
+  lit->tag = Expr::Tag::Literal;
+  lit->literalValue = makeInlineLambdaValue(std::move(params), std::move(body));
+  return lit;
+}
+
 std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx) {
+  return (this->*parseSortbyKeyArgImpl_)(ctx);
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx) {
+  ctx.parseError = false;
+  ctx.errorText.clear();
+  skipSpaces(ctx);
+  if (peekRhsMayBeLambdaSyntaxAt(ctx.p)) {
+    setUnexpectedTokenError(ctx);
+    return nullptr;
+  }
+  return parseSortbyFunctionRef(ctx);
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalContext& ctx) {
   ctx.parseError = false;
   ctx.errorText.clear();
   const char* const save = ctx.p;
   skipSpaces(ctx);
-  std::vector<std::string> params;
-  std::string body;
-  auto makeLit = [&]() -> std::unique_ptr<Expr> {
-    if (params.size() != 1U) {
-      setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
-      return nullptr;
-    }
-    if (trim(body).empty()) {
-      setValidationError(ctx, STR_FUNCTION_BODY_IS_EMPTY);
-      return nullptr;
-    }
-    auto lit = std::make_unique<Expr>();
-    lit->tag = Expr::Tag::Literal;
-    lit->literalValue = makeInlineLambdaValue(std::move(params), std::move(body));
-    return lit;
-  };
-  if (*ctx.p == '(') {
+
+  if (*ctx.p == '(' && peekRhsMayBeLambdaSyntaxAt(ctx.p + 1)) {
     ++ctx.p;
-    if (peekRhsMayBeLambdaDefinition(ctx.p) &&
-        tryParseLambdaInnerUnwrappedSuffix(ctx, params, body, true, false, false, nullptr, true)) {
+    std::vector<std::string> params;
+    std::string body;
+    if (tryParseLambdaInnerUnwrappedSuffix(
+            ctx, params, body, LambdaBodyStop::WrappedParenClose, nullptr, true)) {
       skipSpaces(ctx);
       if (*ctx.p == ',' || *ctx.p == ')') {
-        return makeLit();
+        return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
       }
     }
   }
+
   ctx.p = save;
   skipSpaces(ctx);
-  params.clear();
-  body.clear();
-  if (!peekRhsMayBeLambdaDefinition(ctx.p)) {
+  if (!peekRhsMayBeLambdaSyntaxAt(ctx.p)) {
     return parseSortbyFunctionRef(ctx);
   }
-  if (!tryParseLambdaInnerUnwrappedSuffix(ctx, params, body, false, true, false, save, true)) {
+
+  std::vector<std::string> params;
+  std::string body;
+  if (!tryParseLambdaInnerUnwrappedSuffix(
+          ctx, params, body, LambdaBodyStop::SortbyArgDelim, save, true)) {
     ctx.p = save;
     return parseSortbyFunctionRef(ctx);
   }
@@ -5508,7 +5594,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx
     ctx.p = save;
     return parseSortbyFunctionRef(ctx);
   }
-  return makeLit();
+  return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
 }
 
 MathParser::EvalValue MathParser::evalInlineLambdaCall(
@@ -7254,25 +7340,176 @@ bool MathParser::argsContainNonFinite(const std::vector<EvalValue>& args) {
   return false;
 }
 
-bool MathParser::isFormatBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Hex || id == BuiltinFunctionId::Oct || id == BuiltinFunctionId::Bin ||
-      id == BuiltinFunctionId::Uhex || id == BuiltinFunctionId::Uoct || id == BuiltinFunctionId::Ubin;
+MathParser::BuiltinFlags MathParser::getBuiltinFlags(BuiltinFunctionId id) {
+  using F = BuiltinFlags;
+  switch (id) {
+    case BuiltinFunctionId::Sin:
+    case BuiltinFunctionId::Cos:
+    case BuiltinFunctionId::Tan:
+    case BuiltinFunctionId::Asin:
+    case BuiltinFunctionId::Acos:
+    case BuiltinFunctionId::Atan:
+    case BuiltinFunctionId::Sinh:
+    case BuiltinFunctionId::Cosh:
+    case BuiltinFunctionId::Tanh:
+    case BuiltinFunctionId::Acosh:
+    case BuiltinFunctionId::Asinh:
+    case BuiltinFunctionId::Atanh:
+    case BuiltinFunctionId::Exp:
+    case BuiltinFunctionId::Ln:
+    case BuiltinFunctionId::Log10:
+    case BuiltinFunctionId::Sqrt:
+    case BuiltinFunctionId::Sqr:
+    case BuiltinFunctionId::Int:
+    case BuiltinFunctionId::Floor:
+    case BuiltinFunctionId::Ceil:
+    case BuiltinFunctionId::Trunc:
+    case BuiltinFunctionId::Round:
+    case BuiltinFunctionId::Frac:
+    case BuiltinFunctionId::Abs:
+    case BuiltinFunctionId::Sign:
+    case BuiltinFunctionId::Real:
+    case BuiltinFunctionId::Imag:
+    case BuiltinFunctionId::Phase:
+    case BuiltinFunctionId::Polar:
+    case BuiltinFunctionId::Cart:
+    case BuiltinFunctionId::Conj:
+      return F::Unary;
+    case BuiltinFunctionId::Deg:
+    case BuiltinFunctionId::Rad:
+      return F::TrailingFormatter;
+    case BuiltinFunctionId::Hex:
+    case BuiltinFunctionId::Oct:
+    case BuiltinFunctionId::Bin:
+    case BuiltinFunctionId::Uhex:
+    case BuiltinFunctionId::Uoct:
+    case BuiltinFunctionId::Ubin:
+      return static_cast<F>(
+          static_cast<unsigned>(F::Format) | static_cast<unsigned>(F::NonCalculating) |
+          static_cast<unsigned>(F::TrailingFormatter));
+    case BuiltinFunctionId::Gcd:
+    case BuiltinFunctionId::Lcm:
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr:
+    case BuiltinFunctionId::Mod:
+      return F::IntegerOnly;
+    case BuiltinFunctionId::Fact:
+      return static_cast<F>(static_cast<unsigned>(F::Unary) | static_cast<unsigned>(F::IntegerOnly));
+    case BuiltinFunctionId::Unpack:
+    case BuiltinFunctionId::Sort:
+    case BuiltinFunctionId::Sortby:
+    case BuiltinFunctionId::Reverse:
+    case BuiltinFunctionId::Unique:
+    case BuiltinFunctionId::Rand:
+      return F::NonCalculating;
+    case BuiltinFunctionId::Ratio:
+      return F::Unary;
+    case BuiltinFunctionId::Random:
+      return F::FiniteRequired;
+    default:
+      return F::None;
+  }
 }
 
-bool MathParser::isIntegerOnlyBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Ncr ||
-      id == BuiltinFunctionId::Npr || id == BuiltinFunctionId::Mod ||
-      id == BuiltinFunctionId::Fact;
+bool MathParser::hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag) {
+  const unsigned combined = static_cast<unsigned>(getBuiltinFlags(id));
+  const unsigned mask = static_cast<unsigned>(flag);
+  return (combined & mask) == mask;
 }
 
-bool MathParser::isNonCalculatingBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Unpack || id == BuiltinFunctionId::Sort ||
-      id == BuiltinFunctionId::Sortby || id == BuiltinFunctionId::Reverse ||
-      id == BuiltinFunctionId::Unique || id == BuiltinFunctionId::Rand || isFormatBuiltin(id);
+bool MathParser::getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs) {
+  if (hasBuiltinFlag(id, BuiltinFlags::Unary)) {
+    minArgs = 1;
+    maxArgs = 1;
+    return true;
+  }
+  switch (id) {
+    case BuiltinFunctionId::Rand:
+      minArgs = 0;
+      maxArgs = 0;
+      return true;
+    case BuiltinFunctionId::Clamp:
+      minArgs = 3;
+      maxArgs = 3;
+      return true;
+    case BuiltinFunctionId::Random:
+    case BuiltinFunctionId::Pow:
+    case BuiltinFunctionId::Atan2:
+    case BuiltinFunctionId::Hypot:
+    case BuiltinFunctionId::Mod:
+    case BuiltinFunctionId::Log:
+    case BuiltinFunctionId::Gcd:
+    case BuiltinFunctionId::Lcm:
+    case BuiltinFunctionId::Ncr:
+    case BuiltinFunctionId::Npr:
+    case BuiltinFunctionId::Sortby:
+      minArgs = 2;
+      maxArgs = 2;
+      return true;
+    case BuiltinFunctionId::Milliseconds:
+    case BuiltinFunctionId::Seconds:
+    case BuiltinFunctionId::Minutes:
+    case BuiltinFunctionId::Hours:
+    case BuiltinFunctionId::Days:
+      minArgs = 1;
+      maxArgs = 1;
+      return true;
+    case BuiltinFunctionId::Sum:
+    case BuiltinFunctionId::Product:
+    case BuiltinFunctionId::Min:
+    case BuiltinFunctionId::Max:
+    case BuiltinFunctionId::Avg:
+    case BuiltinFunctionId::Mean:
+    case BuiltinFunctionId::Median:
+    case BuiltinFunctionId::Variance:
+    case BuiltinFunctionId::Stddev:
+    case BuiltinFunctionId::Sort:
+    case BuiltinFunctionId::Reverse:
+    case BuiltinFunctionId::Unique:
+    case BuiltinFunctionId::Unpack:
+    case BuiltinFunctionId::Hex:
+    case BuiltinFunctionId::Oct:
+    case BuiltinFunctionId::Bin:
+    case BuiltinFunctionId::Uhex:
+    case BuiltinFunctionId::Uoct:
+    case BuiltinFunctionId::Ubin:
+    case BuiltinFunctionId::Deg:
+    case BuiltinFunctionId::Rad:
+      minArgs = 1;
+      maxArgs = kBuiltinArityUnbounded;
+      return true;
+    default:
+      return false;
+  }
 }
 
-bool MathParser::isFiniteRequiredBuiltin(BuiltinFunctionId id) {
-  return id == BuiltinFunctionId::Random;
+bool MathParser::validateBuiltinCallArity(
+    EvalContext& ctx,
+    const std::string& fnName,
+    BuiltinFunctionId id,
+    const std::vector<EvalValue>& args) const {
+  uint8_t minArgs = 0;
+  uint8_t maxArgs = 0;
+  if (!getBuiltinArity(id, minArgs, maxArgs)) {
+    return true;
+  }
+  const std::size_t argc = args.size();
+  if (minArgs == maxArgs) {
+    if (argc != minArgs) {
+      setExactArgCountError(ctx, fnName, minArgs);
+      return false;
+    }
+    return true;
+  }
+  if (argc < minArgs) {
+    setAtLeastOneArgError(ctx, fnName);
+    return false;
+  }
+  if (maxArgs != kBuiltinArityUnbounded && argc > maxArgs) {
+    setExactArgCountError(ctx, fnName, maxArgs);
+    return false;
+  }
+  return true;
 }
 
 bool MathParser::validateIntegerRepresentableArgs(
@@ -7337,16 +7574,16 @@ bool MathParser::validateBuiltinArgs(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  if (isFormatBuiltin(id)) {
+  if (hasBuiltinFlag(id, BuiltinFlags::Format)) {
     return validateIntegerRepresentableArgs(ctx, fnName, args, true);
   }
-  if (isIntegerOnlyBuiltin(id)) {
+  if (hasBuiltinFlag(id, BuiltinFlags::IntegerOnly)) {
     return validateIntegerRepresentableArgs(ctx, fnName, args, false);
   }
-  if (isNonCalculatingBuiltin(id)) {
+  if (hasBuiltinFlag(id, BuiltinFlags::NonCalculating)) {
     return true;
   }
-  if (isFiniteRequiredBuiltin(id) && argsContainNonFinite(args)) {
+  if (hasBuiltinFlag(id, BuiltinFlags::FiniteRequired) && argsContainNonFinite(args)) {
     setNumericErrorInFunction(ctx, fnName);
     return false;
   }
@@ -7354,11 +7591,6 @@ bool MathParser::validateBuiltinArgs(
 }
 
 MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vector<EvalValue>& args) const {
-  const std::string fnName = getFunctionName(BuiltinFunctionId::Unpack);
-  if (args.empty()) {
-    setAtLeastOneArgError(ctx, fnName);
-    return makeScalar(0);
-  }
   const auto markExpanded = [](EvalValue v) {
     v.setExpandArgs(true);
     return v;
@@ -7368,7 +7600,7 @@ MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vec
   }
   std::vector<EvalValue> elems;
   if (!flattenArgsToScalars(args, elems)) {
-    setAtLeastOneArgError(ctx, fnName);
+    setAtLeastOneArgError(ctx, getFunctionName(BuiltinFunctionId::Unpack));
     return makeScalar(0);
   }
   return markExpanded(makeArrayFromScalars(elems));
@@ -7380,34 +7612,10 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   const auto forEachArgScalar = [&](const auto& fn) -> std::size_t {
-    std::size_t count = 0;
-    for (const auto& a : args) {
-      if (a.kind == ValueKind::Scalar) {
-        fn(a.scalarValue.scalar);
-        ++count;
-      } else {
-        for (const auto& item : a.arr) {
-          fn(item.scalar);
-          ++count;
-        }
-      }
-    }
-    return count;
+    return forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& sv) { fn(sv.scalar); });
   };
   const auto forEachArgScalarValue = [&](const auto& fn) -> std::size_t {
-    std::size_t count = 0;
-    for (const auto& a : args) {
-      if (a.kind == ValueKind::Scalar) {
-        fn(a.scalarValue);
-        ++count;
-      } else {
-        for (const auto& item : a.arr) {
-          fn(item);
-          ++count;
-        }
-      }
-    }
-    return count;
+    return forEachCallArgScalarValues(args, fn);
   };
   if (supportComplexNumbers_) {
     const bool anyComplex = std::any_of(
@@ -7487,10 +7695,6 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
   }
   if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
       id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
-    if (args.empty()) {
-      setAtLeastOneArgError(ctx, fnName);
-      return makeScalar(0);
-    }
     const bool anyTimeAgg =
         std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
     if (anyTimeAgg && id == BuiltinFunctionId::Product) {
@@ -8311,10 +8515,6 @@ MathParser::EvalValue MathParser::builtinRatio(
     EvalContext& ctx,
     const std::string& fnName,
     const std::vector<EvalValue>& args) const {
-  if (args.size() != 1U) {
-    setExactArgCountError(ctx, fnName, 1);
-    return makeScalar(0);
-  }
   EvalContext sub;
   std::vector<EvalValue> flat;
   if (!flattenArgsToScalars({args[0]}, flat)) {
@@ -8403,10 +8603,6 @@ MathParser::EvalValue MathParser::builtinSortby(
     const std::string& fnName,
     const std::vector<EvalValue>& args,
     const std::unordered_map<std::string, EvalValue>* scopedVars) {
-  if (args.size() != 2U) {
-    setExactArgCountError(ctx, fnName, 2);
-    return makeScalar(0);
-  }
   const bool keyIsLambda = (args[1].kind == ValueKind::InlineLambda);
   const bool keyIsRef = (args[1].kind == ValueKind::FunctionRef);
   if (!keyIsLambda && !keyIsRef) {
@@ -8501,6 +8697,10 @@ std::unique_ptr<MathParser::Expr> MathParser::parseSortbyFunctionRef(EvalContext
   }
   const std::string nameText(start, static_cast<std::size_t>(ctx.p - start));
   skipSpaces(ctx);
+  if (*ctx.p == ':') {
+    setUnexpectedTokenError(ctx);
+    return nullptr;
+  }
   if (*ctx.p == '(') {
     setValidationError(ctx, STR_SORTBY_EXPECTS_ONE_FUNCTION);
     return nullptr;
@@ -8661,10 +8861,6 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     values.resize(writePos);
   };
 
-  if (args.empty()) {
-    setAtLeastOneArgError(ctx, fnName);
-    return makeScalar(0);
-  }
   if (supportComplexNumbers_ && id == BuiltinFunctionId::Sort &&
       std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueHasNonzeroImaginary(v); })) {
     setIncompatibleOperandsError(ctx);
@@ -8762,10 +8958,6 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  if (args.empty()) {
-    setAtLeastOneArgError(ctx, fnName);
-    return makeScalar(0);
-  }
   EvalValue out;
   if (args.size() == 1) {
     out = args[0];
@@ -8797,10 +8989,6 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
 
 MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Pow);
-  if (args.size() != 2) {
-    setExactArgCountError(ctx, fnName, 2);
-    return makeScalar(0);
-  }
   if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
@@ -8834,51 +9022,13 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (id == BuiltinFunctionId::Atan2) {
-    if (args.size() != 2) {
-      setExactArgCountError(ctx, fnName, 2);
-      return makeScalar(0);
-    }
-    if (supportComplexNumbers_ &&
-        (evalValueHasNonzeroImaginary(args[0]) || evalValueHasNonzeroImaginary(args[1]))) {
-      setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
-      setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    bool ok = false;
-    EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
-    if (!ok) {
-      setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    return out;
+    return builtinMapBinaryTwoArg(ctx, fnName, id, args, true, false);
   }
-
   if (id == BuiltinFunctionId::Hypot) {
-    if (args.size() != 2) {
-      setExactArgCountError(ctx, fnName, 2);
-      return makeScalar(0);
-    }
-    if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
-      setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    bool ok = false;
-    EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
-    if (!ok) {
-      setNumericErrorInFunction(ctx, fnName);
-      return makeScalar(0);
-    }
-    return out;
+    return builtinMapBinaryTwoArg(ctx, fnName, id, args, false, true);
   }
 
   if (id == BuiltinFunctionId::Clamp) {
-    if (args.size() != 3) {
-      setExactArgCountError(ctx, fnName, 3);
-      return makeScalar(0);
-    }
     if (args[1].kind != ValueKind::Scalar || args[2].kind != ValueKind::Scalar) {
       setScalarMinMaxError(ctx, fnName);
       return makeScalar(0);
@@ -8886,10 +9036,6 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     return builtinApplyClamp(ctx, args[0], args[1], args[2]);
   }
 
-  if (args.size() != 2) {
-    setExactArgCountError(ctx, fnName, 2);
-    return makeScalar(0);
-  }
   const bool hasNonScalarArg = std::any_of(args.begin(), args.end(), [](const EvalValue& v) {
     return v.kind != ValueKind::Scalar;
   });
@@ -8898,10 +9044,6 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     return makeScalar(0);
   }
   switch (id) {
-    case BuiltinFunctionId::Atan2:
-      return makeScalar(std::atan2(args[0].scalarValue.scalar, args[1].scalarValue.scalar));
-    case BuiltinFunctionId::Hypot:
-      return makeScalar(std::hypot(args[0].scalarValue.scalar, args[1].scalarValue.scalar));
     case BuiltinFunctionId::Random:
       return makeScalar(
           args[0].scalarValue.scalar + (args[1].scalarValue.scalar - args[0].scalarValue.scalar) *
@@ -8987,21 +9129,12 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
   return makeScalar(0);
 }
 
-MathParser::EvalValue MathParser::builtinRand(EvalContext& ctx, const std::vector<EvalValue>& args) const {
-  const std::string fnName = getFunctionName(BuiltinFunctionId::Rand);
-  if (!args.empty()) {
-    setExactArgCountError(ctx, fnName, 0);
-    return makeScalar(0);
-  }
+MathParser::EvalValue MathParser::builtinRand(EvalContext& /*ctx*/, const std::vector<EvalValue>& /*args*/) const {
   return makeScalar(randomUnitScalar());
 }
 
 MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Mod);
-  if (args.size() != 2) {
-    setExactArgCountError(ctx, fnName, 2);
-    return makeScalar(0);
-  }
   if (supportComplexNumbers_ &&
       (MathParser::evalValueHasNonzeroImaginary(args[0]) || MathParser::evalValueHasNonzeroImaginary(args[1]))) {
     setIncompatibleOperandsError(ctx);
@@ -9090,10 +9223,6 @@ MathParser::EvalValue MathParser::builtinFactorial(
       6402373705728000LL,
       121645100408832000LL,
       2432902008176640000LL};
-  if (args.size() != 1) {
-    setExactArgCountError(ctx, fnName, 1);
-    return makeScalar(0);
-  }
   long long n = 0;
   if (args[0].kind != ValueKind::Scalar || !nearlyInt(args[0].scalarValue.scalar, n) || n < 0) {
     setNonNegativeIntegerError(ctx, fnName);
@@ -9114,10 +9243,6 @@ MathParser::EvalValue MathParser::builtinDegRad(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  if (args.empty()) {
-    setAtLeastOneArgError(ctx, fnName);
-    return makeScalar(0);
-  }
   if (supportComplexNumbers_) {
     for (const auto& a : args) {
       if (evalValueHasNonzeroImaginary(a)) {
@@ -9128,17 +9253,10 @@ MathParser::EvalValue MathParser::builtinDegRad(
   }
   const bool toDeg = (id == BuiltinFunctionId::Deg);
   if (args.size() == 1) {
-    if (args[0].kind == ValueKind::Scalar) {
-      const double x = args[0].scalarValue.scalar;
+    return mapUnaryEvalValue(args[0], [&](const EvalValue::ScalarValue& s) -> EvalValue {
+      const double x = s.scalar;
       return makeScalarMaybeExact(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0));
-    }
-    std::vector<EvalValue> outVals;
-    outVals.reserve(args[0].arr.size());
-    for (const auto& item : args[0].arr) {
-      const double x = item.scalar;
-      outVals.emplace_back(makeScalarMaybeExact(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0)));
-    }
-    return makeArrayFromScalars(outVals);
+    });
   }
   std::vector<EvalValue> inVals;
   if (!flattenArgsToScalars(args, inVals)) {
@@ -9152,6 +9270,29 @@ MathParser::EvalValue MathParser::builtinDegRad(
     outVals.emplace_back(makeScalarMaybeExact(toDeg ? (x * 180.0 / kPi) : (x * kPi / 180.0)));
   }
   return makeArrayFromScalars(outVals);
+}
+
+MathParser::EvalValue MathParser::applyAbsScalarValue(const EvalValue::ScalarValue& s) {
+  const double x = s.scalar;
+  if (std::isnan(x)) {
+    return makeScalar(std::numeric_limits<double>::quiet_NaN());
+  }
+  if (s.hasExactUInt64() && !s.hasExactInt64()) {
+    return makeScalarUInt(s.exactUInt64);
+  }
+  if (s.hasExactInt64()) {
+    if (s.exactInt64 >= 0) {
+      return makeScalarInt(s.exactInt64);
+    }
+    if (s.exactInt64 == (std::numeric_limits<long long>::min)()) {
+      return makeScalarUInt(1ull << 63);
+    }
+    return makeScalarInt(-s.exactInt64);
+  }
+  if (s.hasExactUInt64()) {
+    return makeScalarUInt(s.exactUInt64);
+  }
+  return makeScalarMaybeExact(std::fabs(x));
 }
 
 MathParser::EvalValue MathParser::calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s)
@@ -9214,10 +9355,6 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  if (args.size() != 1) {
-    setExactArgCountError(ctx, fnName, 1);
-    return makeScalar(0);
-  }
   if (evalValueInvolvesTime(args[0])) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
@@ -9262,29 +9399,23 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     };
     switch (bid) {
       case BuiltinFunctionId::Real: {
-        out = makeScalarMaybeExact(ar);
-        if (sv.hasExactInt64()) {
-          out.scalarValue.setExactInt64Valid(true);
-          out.scalarValue.exactInt64 = sv.exactInt64;
-          if (sv.hasExactUInt64()) {
-            out.scalarValue.setExactUInt64Valid(true);
-            out.scalarValue.exactUInt64 = sv.exactUInt64;
-          }
+        ExactCartesianComponent cRe{};
+        if (tryExtractExactRealComponent(sv, cRe)) {
+          setScalarFromExactCartesianComponent(out, cRe);
+        } else {
+          out = makeScalarMaybeExact(ar);
+          scalarClearImaginary(out.scalarValue);
         }
-        scalarClearImaginary(out.scalarValue);
         return true;
       }
       case BuiltinFunctionId::Imag: {
-        out = makeScalarMaybeExact(ai);
-        if (sv.hasImagExactInt64()) {
-          out.scalarValue.setExactInt64Valid(true);
-          out.scalarValue.exactInt64 = sv.imagExactInt64;
-          if (sv.hasImagExactUInt64()) {
-            out.scalarValue.setExactUInt64Valid(true);
-            out.scalarValue.exactUInt64 = sv.imagExactUInt64;
-          }
+        ExactCartesianComponent cIm{};
+        if (tryExtractExactImagComponent(sv, cIm)) {
+          setScalarFromExactCartesianComponent(out, cIm);
+        } else {
+          out = makeScalarMaybeExact(ai);
+          scalarClearImaginary(out.scalarValue);
         }
-        scalarClearImaginary(out.scalarValue);
         return true;
       }
       case BuiltinFunctionId::Phase:
@@ -9297,16 +9428,28 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         out = makeArrayFromScalars(elems);
         return true;
       }
-      case BuiltinFunctionId::Cart:
-        out = makeScalarComplexFromDoubles(ar, ai);
+      case BuiltinFunctionId::Cart: {
+        ExactCartesianComponent cReCart{};
+        ExactCartesianComponent cImCart{};
+        if (tryExtractExactRealComponent(sv, cReCart) && tryExtractExactImagComponent(sv, cImCart)) {
+          setScalarComplexFromExactCartesian(out, cReCart, cImCart);
+        } else {
+          out = makeScalarComplexFromDoubles(ar, ai);
+        }
         return true;
+      }
       case BuiltinFunctionId::Conj: {
         ExactCartesianComponent cRe{};
         ExactCartesianComponent cIm{};
-        ExactCartesianComponent cImNeg{};
-        if (tryExtractExactRealComponent(sv, cRe) && tryExtractExactImagComponent(sv, cIm) &&
-            tryNegateExactCartesianComponent(cIm, cImNeg)) {
-          setScalarComplexFromExactCartesian(out, cRe, cImNeg);
+        ExactCartesianComponent cImConj{};
+        if (tryExtractExactRealComponent(sv, cRe) && tryExtractExactImagComponent(sv, cIm)) {
+          if (scalarHasNonzeroImaginaryPart(sv) && !tryNegateExactCartesianComponent(cIm, cImConj)) {
+            out = makeScalarComplexFromDoubles(ar, -ai);
+          } else if (scalarHasNonzeroImaginaryPart(sv)) {
+            setScalarComplexFromExactCartesian(out, cRe, cImConj);
+          } else {
+            setScalarComplexFromExactCartesian(out, cRe, cIm);
+          }
         } else {
           out = makeScalarComplexFromDoubles(ar, -ai);
         }
@@ -9342,6 +9485,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         return true;
       }
       case BuiltinFunctionId::Abs:
+        if (!scalarHasNonzeroImaginaryPart(sv)) {
+          out = applyAbsScalarValue(sv);
+          return true;
+        }
         if (!std::isfinite(ar) || !std::isfinite(ai)) {
           out = makeScalar(std::numeric_limits<double>::quiet_NaN());
         } else {
@@ -9388,23 +9535,13 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     }
   };
   const auto mapUnaryComplexSupport = [&](const EvalValue& inV) -> EvalValue {
-    EvalValue out = makeScalar(0);
-    if (inV.kind == ValueKind::Scalar) {
-      if (tryUnaryComplexSupport(inV.scalarValue, out)) {
+    return mapUnaryEvalValue(inV, [&](const EvalValue::ScalarValue& sv) -> EvalValue {
+      EvalValue out = makeScalar(0);
+      if (tryUnaryComplexSupport(sv, out)) {
         return out;
       }
-    } else {
-      std::vector<EvalValue> outVals;
-      outVals.reserve(inV.arr.size());
-      for (const auto& e : inV.arr) {
-        if (!tryUnaryComplexSupport(e, out)) {
-          out = makeScalar(0);
-        }
-        outVals.push_back(out);
-      }
-      return makeArrayFromScalars(outVals);
-    }
-    return makeScalar(0);
+      return makeScalar(0);
+    });
   };
   switch (id) {
     case BuiltinFunctionId::Real:
@@ -9484,8 +9621,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     }
     return makeScalarMaybeExact(std::log10(xv));
   };
-  if (args[0].kind == ValueKind::Scalar) {
-    const EvalValue::ScalarValue& s = args[0].scalarValue;
+  bool realUnaryOk = true;
+  const auto applyRealUnaryScalarValue = [&](const EvalValue::ScalarValue& s) -> EvalValue {
     if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s) &&
         (id == BuiltinFunctionId::Sqrt || id == BuiltinFunctionId::Sqr)) {
       double ar = 0.0;
@@ -9541,7 +9678,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         }
         return makeScalarMaybeExact(std::sqrt(x));
       case BuiltinFunctionId::Sqr: return makeScalarMaybeExact(x * x);
-      case BuiltinFunctionId::Abs: return makeScalarMaybeExact(std::fabs(x));
+      case BuiltinFunctionId::Abs: return applyAbsScalarValue(s);
       case BuiltinFunctionId::Floor:
       case BuiltinFunctionId::Ceil:
       case BuiltinFunctionId::Trunc:
@@ -9552,163 +9689,18 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         if (s.hasExactUInt64()) return makeScalarInt((s.exactUInt64 == 0u) ? 0LL : 1LL);
         return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
       case BuiltinFunctionId::Frac: return makeScalarMaybeExact(x - std::trunc(x));
-      default: break;
+      default:
+        realUnaryOk = false;
+        break;
     }
+    return makeScalar(0);
+  };
+  const EvalValue result = mapUnaryEvalValue(args[0], applyRealUnaryScalarValue);
+  if (!realUnaryOk) {
+    setInternalUnaryMathBuiltinError(ctx);
+    return makeScalar(0);
   }
-  switch (id) {
-    case BuiltinFunctionId::Sin:
-    case BuiltinFunctionId::Cos:
-    case BuiltinFunctionId::Tan:
-    case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Sinh:
-    case BuiltinFunctionId::Cosh:
-    case BuiltinFunctionId::Tanh:
-    case BuiltinFunctionId::Acosh:
-    case BuiltinFunctionId::Asinh:
-    case BuiltinFunctionId::Atanh: {
-      const auto applyTrigScalar = [&](const EvalValue::ScalarValue& sItem) -> EvalValue {
-        if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sItem)) {
-          double ar = 0.0;
-          double ai = 0.0;
-          scalarLoadCartesian(sItem, ar, ai);
-          double or_ = 0.0;
-          double oi = 0.0;
-          if (!complexUnaryTrigCartesian(id, ar, ai, or_, oi)) {
-            return makeScalarComplexFromDoubles(nanv, nanv);
-          }
-          snapComplexNearZeroAxis(or_, oi);
-          return makeScalarComplexFromDoubles(or_, oi);
-        }
-        const double x = sItem.scalar;
-        switch (id) {
-          case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
-          case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
-          case BuiltinFunctionId::Tan: return makeScalarMaybeExact(calcTan(x));
-          case BuiltinFunctionId::Asin: return makeScalarMaybeExact(std::asin(x));
-          case BuiltinFunctionId::Acos: return makeScalarMaybeExact(std::acos(x));
-          case BuiltinFunctionId::Atan: return makeScalarMaybeExact(std::atan(x));
-          case BuiltinFunctionId::Sinh: return makeScalarMaybeExact(std::sinh(x));
-          case BuiltinFunctionId::Cosh: return makeScalarMaybeExact(std::cosh(x));
-          case BuiltinFunctionId::Tanh: return makeScalarMaybeExact(std::tanh(x));
-          case BuiltinFunctionId::Acosh: return makeScalarMaybeExact(std::acosh(x));
-          case BuiltinFunctionId::Asinh: return makeScalarMaybeExact(std::asinh(x));
-          case BuiltinFunctionId::Atanh: return makeScalarMaybeExact(std::atanh(x));
-          default: break;
-        }
-        return makeScalar(0);
-      };
-      if (args[0].kind == ValueKind::Scalar) {
-        return applyTrigScalar(args[0].scalarValue);
-      }
-      std::vector<EvalValue> outVals;
-      outVals.reserve(args[0].arr.size());
-      for (const auto& e : args[0].arr) {
-        outVals.emplace_back(applyTrigScalar(e));
-      }
-      return makeArrayFromScalars(outVals);
-    }
-    case BuiltinFunctionId::Exp:
-    case BuiltinFunctionId::Ln:
-    case BuiltinFunctionId::Log10: {
-      if (args[0].kind == ValueKind::Scalar) {
-        return unaryExpLnLog10ForScalarValue(args[0].scalarValue);
-      }
-      std::vector<EvalValue> outVals;
-      outVals.reserve(args[0].arr.size());
-      for (const auto& e : args[0].arr) {
-        outVals.emplace_back(unaryExpLnLog10ForScalarValue(e));
-      }
-      return makeArrayFromScalars(outVals);
-    }
-    case BuiltinFunctionId::Sqrt:
-    case BuiltinFunctionId::Sqr: {
-      if (!supportComplexNumbers_) {
-        return id == BuiltinFunctionId::Sqrt ? mapUnaryFn(args[0], std::sqrt) : mapUnaryFn(args[0], squareScalar);
-      }
-      std::vector<EvalValue> outVals;
-      outVals.reserve(args[0].arr.size());
-      for (const auto& e : args[0].arr) {
-        if (scalarHasNonzeroImaginaryPart(e)) {
-          double ar = 0.0;
-          double ai = 0.0;
-          scalarLoadCartesian(e, ar, ai);
-          if (!std::isfinite(ar) || !std::isfinite(ai)) {
-            outVals.emplace_back(makeScalarComplexFromDoubles(
-                std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()));
-            continue;
-          }
-          if (id == BuiltinFunctionId::Sqr) {
-            outVals.emplace_back(makeScalarComplexFromDoubles(ar * ar - ai * ai, 2.0 * ar * ai));
-          } else {
-            const double mag = std::hypot(ar, ai);
-            if (mag == 0.0) {
-              outVals.emplace_back(makeScalarComplexFromDoubles(0.0, 0.0));
-            } else {
-              const double halfAng = std::atan2(ai, ar) * 0.5;
-              const double rm = std::sqrt(mag);
-              outVals.emplace_back(
-                  makeScalarComplexFromDoubles(rm * std::cos(halfAng), rm * std::sin(halfAng)));
-            }
-          }
-        } else {
-          if (id == BuiltinFunctionId::Sqrt && supportComplexNumbers_ && !scalarHasNonzeroImaginaryPart(e) &&
-              std::isfinite(e.scalar) && e.scalar < 0.0) {
-            outVals.emplace_back(makeScalarComplexFromDoubles(0.0, std::sqrt(-e.scalar)));
-          } else {
-            outVals.emplace_back(id == BuiltinFunctionId::Sqrt ? makeScalarMaybeExact(std::sqrt(e.scalar))
-                                                               : makeScalarMaybeExact(squareScalar(e.scalar)));
-          }
-        }
-      }
-      return makeArrayFromScalars(outVals);
-    }
-    case BuiltinFunctionId::Abs:
-      {
-        std::vector<EvalValue> outVals;
-        outVals.reserve(args[0].arr.size());
-        for (const auto& e : args[0].arr) {
-          if (e.hasExactUInt64()) {
-            outVals.emplace_back(makeScalarUInt(e.exactUInt64));
-          } else {
-            outVals.emplace_back(makeScalarMaybeExact(std::fabs(e.scalar)));
-          }
-        }
-        return makeArrayFromScalars(outVals);
-      }
-    case BuiltinFunctionId::Floor:
-    case BuiltinFunctionId::Ceil:
-    case BuiltinFunctionId::Trunc:
-    case BuiltinFunctionId::Int:
-    case BuiltinFunctionId::Round:
-    case BuiltinFunctionId::Sign: {
-      auto applyIntLikeUnaryToScalar = [&](const EvalValue::ScalarValue& sItem) -> EvalValue {
-        const double x = sItem.scalar;
-        if (id == BuiltinFunctionId::Sign) {
-          if (sItem.hasExactInt64()) return makeScalarInt((sItem.exactInt64 > 0) ? 1LL : ((sItem.exactInt64 < 0) ? -1LL : 0LL));
-          if (sItem.hasExactUInt64()) return makeScalarInt((sItem.exactUInt64 == 0u) ? 0LL : 1LL);
-          return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
-        }
-        return calcRoundingFn(id, sItem);
-      };
-      if (args[0].kind == ValueKind::Scalar) {
-        return applyIntLikeUnaryToScalar(args[0].scalarValue);
-      }
-      std::vector<EvalValue> outVals;
-      outVals.reserve(args[0].arr.size());
-      for (const auto& e : args[0].arr) {
-        outVals.emplace_back(applyIntLikeUnaryToScalar(e));
-      }
-      return makeArrayFromScalars(outVals);
-    }
-    case BuiltinFunctionId::Frac:
-      return mapUnaryFn(args[0], fracScalar);
-    default:
-      break;
-  }
-  setInternalUnaryMathBuiltinError(ctx);
-  return makeScalar(0);
+  return result;
 }
 
 MathParser::EvalValue MathParser::builtinApplyClamp(
@@ -9750,22 +9742,8 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
 }
 
 MathParser::EvalValue MathParser::builtinLog(EvalContext& ctx, const std::vector<EvalValue>& args) const {
-  const std::string fnName = getFunctionName(BuiltinFunctionId::Log);
-  if (args.size() != 2) {
-    setExactArgCountError(ctx, fnName, 2);
-    return makeScalar(0);
-  }
-  if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
-    setIncompatibleOperandsError(ctx);
-    return makeScalar(0);
-  }
-  bool ok = false;
-  EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], BuiltinFunctionId::Log, ok);
-  if (!ok) {
-    setNumericErrorInFunction(ctx, fnName);
-    return makeScalar(0);
-  }
-  return out;
+  return builtinMapBinaryTwoArg(
+      ctx, getFunctionName(BuiltinFunctionId::Log), BuiltinFunctionId::Log, args, false, true);
 }
 
 MathParser::EvalValue MathParser::evalUserFunctionCall(
@@ -9860,6 +9838,9 @@ MathParser::EvalValue MathParser::evalFunctionCall(
   if (!validateBuiltinArgs(ctx, fnName, id, args)) {
     return makeScalar(0);
   }
+  if (!validateBuiltinCallArity(ctx, fnName, id, args)) {
+    return makeScalar(0);
+  }
 
   if (id == BuiltinFunctionId::Sortby) {
     return builtinSortby(ctx, fnName, args, scopedVars);
@@ -9872,10 +9853,6 @@ MathParser::EvalValue MathParser::evalFunctionCall(
       id == BuiltinFunctionId::Hours || id == BuiltinFunctionId::Days) {
     if (!supportTimeValues_) {
       setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    if (args.size() != 1U) {
-      setExactArgCountError(ctx, fnName, 1);
       return makeScalar(0);
     }
     const EvalValue& a0 = args[0];

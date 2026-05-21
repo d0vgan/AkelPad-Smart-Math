@@ -187,6 +187,9 @@ const RATIO_MAX_DENOMINATOR as LongInt = 10000000
 const RATIO_MAX_POWER10_EXP as Integer = 18
 const RATIO_SEMICONV_LINEAR_THRESH as Integer = 64
 const FB_STR_SORTBY_KEY_MUST_BE_SCALAR_OR_ARRAY as string = "sortby key function must return a scalar or an array"
+const LAMBDA_BODY_UNTIL_RPAREN as Integer = 1
+const LAMBDA_BODY_UNTIL_SEMICOLON_EOF as Integer = 2
+const LAMBDA_BODY_UNTIL_SORTBY_DELIM as Integer = 3
 const FB_STR_PAR_ARRAY_COMMA_FUNC as string = "(array, func)"
 const FB_STR_SEMICOLON_UNKNOWN_FUNCTION_COLON as string = "; unknown function: "
 
@@ -570,6 +573,7 @@ dim shared sortbyKeysArgStartCol as Integer = 0
 dim shared Parser_ShowErrorLine as Boolean = FALSE
 dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 dim shared Parser_SupportTimeValues as Boolean = TRUE
+dim shared Parser_SupportLambdaFunctions as Boolean = TRUE
 
 private function ExprStartPointsIntoRootInput() as Boolean
   if len(rootInputExpr) = 0 then return FALSE
@@ -1039,6 +1043,9 @@ private function IsOpKeyword(byref nameText as String, byval id as OperatorNameI
   return lcase(nameText) = OpName(id)
 end function
 
+' Keep flag assignments and GetBuiltinFlags cases in sync with BuiltinFlags in cpp/MathParser.hpp.
+' Keep GetBuiltinArity cases in sync with getBuiltinArity in cpp/MathParser.cpp.
+private const BUILTIN_ARITY_UNBOUNDED as Integer = 255
 private const BUILTIN_FLAG_UNARY as UInteger = 1u shl 0
 private const BUILTIN_FLAG_FORMAT as UInteger = 1u shl 1
 private const BUILTIN_FLAG_INTEGER_ONLY as UInteger = 1u shl 2
@@ -1054,11 +1061,13 @@ private function GetBuiltinFlags(byval id as Integer) as UInteger
          FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CART, FUNC_CONJ
       return BUILTIN_FLAG_UNARY
     case FUNC_DEG, FUNC_RAD
-      return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_TRAILING_FORMATTER
+      return BUILTIN_FLAG_TRAILING_FORMATTER
     case FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
       return BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER
-    case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD, FUNC_FACT
+    case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD
       return BUILTIN_FLAG_INTEGER_ONLY
+    case FUNC_FACT
+      return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY
     case FUNC_UNPACK, FUNC_SORT, FUNC_SORTBY, FUNC_REVERSE, FUNC_UNIQUE, FUNC_RAND
       return BUILTIN_FLAG_NON_CALCULATING
     case FUNC_RATIO
@@ -1422,11 +1431,84 @@ private function ScalarImagExactUInt64Valid(byref sv as ScalarValue) as Boolean
   return (sv.flags and SVF_IMAG_EXACT_UINT64_VALID) <> 0
 end function
 
+'' Direct flag access (x86_64 -gen gcc builds: property accessors can drop exact-int metadata).
+private function ScalarExactInt64Valid(byref sv as ScalarValue) as Boolean
+  return (sv.flags and SVF_EXACT_INT64_VALID) <> 0
+end function
+
+private sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+  if v then
+    sv.flags or= SVF_EXACT_INT64_VALID
+  else
+    sv.flags and= not CUInt(SVF_EXACT_INT64_VALID)
+  end if
+end sub
+
+private function ScalarExactUInt64Valid(byref sv as ScalarValue) as Boolean
+  return (sv.flags and SVF_EXACT_UINT64_VALID) <> 0
+end function
+
+private sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+  if v then
+    sv.flags or= SVF_EXACT_UINT64_VALID
+  else
+    sv.flags and= not CUInt(SVF_EXACT_UINT64_VALID)
+  end if
+end sub
+
 private sub ScalarSetImagExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
   if v then
     sv.flags or= SVF_IMAG_EXACT_UINT64_VALID
   else
     sv.flags and= not CUInt(SVF_IMAG_EXACT_UINT64_VALID)
+  end if
+end sub
+
+'' Keep SVF_* flags aligned with scalarStorageKind and exact* fields (stale flags break exact complex ops).
+private sub ScalarRepairExactMetadata(byref sv as ScalarValue)
+  select case sv.scalarStorageKind
+  case SSK_INT64
+    ScalarSetExactInt64Valid(sv, TRUE)
+    if sv.exactInt64 >= 0 then
+      ScalarSetExactUInt64Valid(sv, TRUE)
+      sv.exactUInt64 = CULngInt(sv.exactInt64)
+    elseif sv.exactUInt64 <> 0 then
+      ScalarSetExactUInt64Valid(sv, TRUE)
+    else
+      ScalarSetExactUInt64Valid(sv, FALSE)
+      sv.exactUInt64 = 0
+    end if
+  case SSK_UINT64
+    ScalarSetExactUInt64Valid(sv, TRUE)
+    if sv.exactUInt64 <= FB_I64_MAX_U then
+      ScalarSetExactInt64Valid(sv, TRUE)
+      sv.exactInt64 = CLngInt(sv.exactUInt64)
+    else
+      ScalarSetExactInt64Valid(sv, FALSE)
+      sv.exactInt64 = 0
+    end if
+  case else
+    '' Rationals keep num/den in exactInt64/exactUInt64 with SVF_RENDER_RATIONAL (not SSK_INT64).
+    if (sv.flags and SVF_RENDER_RATIONAL) <> 0 then
+      ScalarSetExactInt64Valid(sv, TRUE)
+      ScalarSetExactUInt64Valid(sv, TRUE)
+    else
+      ScalarSetExactInt64Valid(sv, FALSE)
+      ScalarSetExactUInt64Valid(sv, FALSE)
+    end if
+  end select
+  if ScalarImagExactInt64Valid(sv) = FALSE andalso sv.imagExactInt64 <> 0 then
+    ScalarSetImagExactInt64Valid(sv, TRUE)
+    if sv.imagExactInt64 >= 0 then
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+      sv.imagExactUInt64 = CULngInt(sv.imagExactInt64)
+    end if
+  elseif ScalarImagExactUInt64Valid(sv) = FALSE andalso sv.imagExactUInt64 <> 0 then
+    ScalarSetImagExactUInt64Valid(sv, TRUE)
+    if sv.imagExactUInt64 <= FB_I64_MAX_U then
+      ScalarSetImagExactInt64Valid(sv, TRUE)
+      sv.imagExactInt64 = CLngInt(sv.imagExactUInt64)
+    end if
   end if
 end sub
 
@@ -1443,13 +1525,22 @@ private sub ScalarNormalizeIfPureReal(byref sv as ScalarValue)
 end sub
 
 private sub ScalarLoadCartesian(byref sv as ScalarValue, byref ar as Double, byref ai as Double)
-  if sv.exactInt64Valid then
+  ScalarRepairExactMetadata(sv)
+  if ScalarExactInt64Valid(sv) then
     ar = CDbl(sv.exactInt64)
+  elseif sv.scalarStorageKind = SSK_INT64 then
+    ar = CDbl(sv.exactInt64)
+  elseif ScalarExactUInt64Valid(sv) then
+    ar = CDbl(sv.exactUInt64)
+  elseif sv.scalarStorageKind = SSK_UINT64 then
+    ar = CDbl(sv.exactUInt64)
   else
     ar = sv.scalar
   end if
   if ScalarImagExactInt64Valid(sv) then
     ai = CDbl(sv.imagExactInt64)
+  elseif ScalarImagExactUInt64Valid(sv) then
+    ai = CDbl(sv.imagExactUInt64)
   else
     ai = sv.imag
   end if
@@ -1464,16 +1555,16 @@ private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
   ValueClearLambdaPayload(v)
   v.funcRefName = ""
   v.kind = VK_SCALAR
-  v.scalarStorageKind = SSK_FLOATINGPOINT
-  v.scalar = n
+  v.scalarValue.scalarStorageKind = SSK_FLOATINGPOINT
+  v.scalarValue.scalar = n
   ScalarClearImag(v.scalarValue)
   v.expandArgs = FALSE
   v.renderBase = 0
   v.renderUnsigned = FALSE
-  v.exactInt64Valid = FALSE
-  v.exactInt64 = 0
-  v.exactUInt64Valid = FALSE
-  v.exactUInt64 = 0
+  ScalarSetExactInt64Valid(v.scalarValue, FALSE)
+  v.scalarValue.exactInt64 = 0
+  ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
+  v.scalarValue.exactUInt64 = 0
   erase v.arr
 end sub
 
@@ -1481,9 +1572,7 @@ private function ScalarValueFromEvalScalar(byref v as EvalValue) as ScalarValue
   dim outV as ScalarValue
   outV.scalarStorageKind = v.scalarStorageKind
   outV.scalar = v.scalar
-  outV.exactInt64Valid = v.exactInt64Valid
   outV.exactInt64 = v.exactInt64
-  outV.exactUInt64Valid = v.exactUInt64Valid
   outV.exactUInt64 = v.exactUInt64
   outV.imag = v.scalarValue.imag
   outV.imagExactInt64 = v.scalarValue.imagExactInt64
@@ -1495,15 +1584,15 @@ end function
 private sub EvalScalarFromScalarValue(byref s as ScalarValue, byref outV as EvalValue)
   ValueSetScalar(outV, s.scalar)
   outV.scalarStorageKind = s.scalarStorageKind
-  outV.exactInt64Valid = s.exactInt64Valid
-  outV.exactInt64 = s.exactInt64
-  outV.exactUInt64Valid = s.exactUInt64Valid
-  outV.exactUInt64 = s.exactUInt64
+  outV.scalarValue.exactInt64 = s.exactInt64
+  outV.scalarValue.exactUInt64 = s.exactUInt64
+  outV.scalarValue.flags = (outV.scalarValue.flags and not (SVF_EXACT_INT64_VALID or SVF_EXACT_UINT64_VALID)) or (s.flags and (SVF_EXACT_INT64_VALID or SVF_EXACT_UINT64_VALID))
   outV.scalarValue.imag = s.imag
   outV.scalarValue.imagExactInt64 = s.imagExactInt64
   outV.scalarValue.imagExactUInt64 = s.imagExactUInt64
   dim extraFlags as UInteger = s.flags and (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)
   outV.scalarValue.flags = (outV.scalarValue.flags and not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)) or extraFlags
+  ScalarRepairExactMetadata(outV.scalarValue)
 end sub
 
 private sub ValueSetArray(byref v as EvalValue, a() as Double)
@@ -1529,19 +1618,20 @@ private sub ValueSetArray(byref v as EvalValue, a() as Double)
       dim t as LongInt = CLngInt(a(i))
       if a(i) = CDbl(t) then
         v.arr(i).scalarStorageKind = SSK_INT64
-        v.arr(i).exactInt64Valid = TRUE
         v.arr(i).exactInt64 = t
+        ScalarSetExactInt64Valid(v.arr(i), TRUE)
         if t >= 0 then
-          v.arr(i).exactUInt64Valid = TRUE
+          ScalarSetExactUInt64Valid(v.arr(i), TRUE)
           v.arr(i).exactUInt64 = CULngInt(t)
         else
-          v.arr(i).exactUInt64Valid = FALSE
+          ScalarSetExactUInt64Valid(v.arr(i), FALSE)
           v.arr(i).exactUInt64 = 0
         end if
+        ScalarRepairExactMetadata(v.arr(i))
       else
-        v.arr(i).exactInt64Valid = FALSE
+        ScalarSetExactInt64Valid(v.arr(i), FALSE)
         v.arr(i).exactInt64 = 0
-        v.arr(i).exactUInt64Valid = FALSE
+        ScalarSetExactUInt64Valid(v.arr(i), FALSE)
         v.arr(i).exactUInt64 = 0
       end if
     next i
@@ -1574,24 +1664,32 @@ end function
 
 private sub ValueSetInt64(byref v as EvalValue, byval n as LongInt)
   ValueSetScalar(v, CDbl(n))
-  v.scalarStorageKind = SSK_INT64
-  v.exactInt64Valid = TRUE
-  v.exactInt64 = n
+  v.scalarValue.scalarStorageKind = SSK_INT64
+  ScalarSetExactInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.exactInt64 = n
   if n >= 0 then
-    v.exactUInt64Valid = TRUE
-    v.exactUInt64 = CULngInt(n)
+    ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
+    v.scalarValue.exactUInt64 = CULngInt(n)
+  else
+    ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
+    v.scalarValue.exactUInt64 = 0
   end if
+  ScalarRepairExactMetadata(v.scalarValue)
 end sub
 
 private sub ValueSetUInt64(byref v as EvalValue, byval n as ULongInt)
   ValueSetScalar(v, CDbl(n))
-  v.scalarStorageKind = SSK_UINT64
-  v.exactUInt64Valid = TRUE
-  v.exactUInt64 = n
+  v.scalarValue.scalarStorageKind = SSK_UINT64
+  ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.exactUInt64 = n
   if n <= FB_I64_MAX_U then
-    v.exactInt64Valid = TRUE
-    v.exactInt64 = CLngInt(n)
+    ScalarSetExactInt64Valid(v.scalarValue, TRUE)
+    v.scalarValue.exactInt64 = CLngInt(n)
+  else
+    ScalarSetExactInt64Valid(v.scalarValue, FALSE)
+    v.scalarValue.exactInt64 = 0
   end if
+  ScalarRepairExactMetadata(v.scalarValue)
 end sub
 
 private function TryGetExactInt64FromDouble(byval n as Double, byref outV as LongInt) as Boolean
@@ -1610,12 +1708,12 @@ private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as D
     exit sub
   end if
   v.kind = VK_SCALAR
-  v.scalarStorageKind = SSK_FLOATINGPOINT
-  v.scalar = re
-  v.exactInt64Valid = FALSE
-  v.exactInt64 = 0
-  v.exactUInt64Valid = FALSE
-  v.exactUInt64 = 0
+  v.scalarValue.scalarStorageKind = SSK_FLOATINGPOINT
+  v.scalarValue.scalar = re
+  ScalarSetExactInt64Valid(v.scalarValue, FALSE)
+  v.scalarValue.exactInt64 = 0
+  ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
+  v.scalarValue.exactUInt64 = 0
   v.scalarValue.imag = im
   ScalarSetImagExactInt64Valid(v.scalarValue, FALSE)
   ScalarSetImagExactUInt64Valid(v.scalarValue, FALSE)
@@ -1627,15 +1725,15 @@ private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as D
   erase v.arr
   dim tri as LongInt, tii as LongInt
   if TryGetExactInt64FromDouble(re, tri) then
-    v.scalarStorageKind = SSK_INT64
-    v.exactInt64Valid = TRUE
-    v.exactInt64 = tri
+    v.scalarValue.scalarStorageKind = SSK_INT64
+    ScalarSetExactInt64Valid(v.scalarValue, TRUE)
+    v.scalarValue.exactInt64 = tri
     if tri >= 0 then
-      v.exactUInt64Valid = TRUE
-      v.exactUInt64 = CULngInt(tri)
+      ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
+      v.scalarValue.exactUInt64 = CULngInt(tri)
     else
-      v.exactUInt64Valid = FALSE
-      v.exactUInt64 = 0
+      ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
+      v.scalarValue.exactUInt64 = 0
     end if
   end if
   if TryGetExactInt64FromDouble(im, tii) then
@@ -1654,16 +1752,16 @@ end sub
 
 private sub ValueSetImagUnit(byref v as EvalValue)
   ValueSetScalarComplexFromDoubles(v, 0.0, 1.0)
-  v.scalarStorageKind = SSK_INT64
-  v.exactInt64Valid = TRUE
-  v.exactInt64 = 0
-  v.exactUInt64Valid = TRUE
-  v.exactUInt64 = 0
+  v.scalarValue.scalarStorageKind = SSK_INT64
+  ScalarSetExactInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.exactInt64 = 0
+  ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
+  v.scalarValue.exactUInt64 = 0
   ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
   v.scalarValue.imagExactInt64 = 1
   ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
   v.scalarValue.imagExactUInt64 = 1
-  v.scalar = 0.0
+  v.scalarValue.scalar = 0.0
   v.scalarValue.imag = 1.0
 end sub
 
@@ -1696,11 +1794,20 @@ private function TryGetExactInt64(byref v as EvalValue, byref outV as LongInt) a
 end function
 
 private function TryGetExactInt64Scalar(byref s as ScalarValue, byref outV as LongInt) as Boolean
-  if s.exactInt64Valid then
+  ScalarRepairExactMetadata(s)
+  if ScalarExactInt64Valid(s) then
     outV = s.exactInt64
     return TRUE
   end if
-  if s.exactUInt64Valid then
+  if s.scalarStorageKind = SSK_INT64 then
+    outV = s.exactInt64
+    return TRUE
+  end if
+  if ScalarExactUInt64Valid(s) then
+    outV = CLngInt(s.exactUInt64)
+    return TRUE
+  end if
+  if s.scalarStorageKind = SSK_UINT64 andalso s.exactUInt64 <= FB_I64_MAX_U then
     outV = CLngInt(s.exactUInt64)
     return TRUE
   end if
@@ -1755,14 +1862,17 @@ private sub SwapDouble(byref a as Double, byref b as Double)
 end sub
 
 private function TryAddInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
-  if (b > 0 andalso a > FB_I64_MAX - b) orelse (b < 0 andalso a < FB_I64_MIN - b) then return FALSE
+  '' Post-hoc signed overflow test (avoids FB_I64_MIN/MAX +/- b on x86_64 -gen gcc).
   outV = a + b
+  if b > 0 andalso outV < a then return FALSE
+  if b < 0 andalso outV > a then return FALSE
   return TRUE
 end function
 
 private function TrySubInt64(byval a as LongInt, byval b as LongInt, byref outV as LongInt) as Boolean
-  if (b < 0 andalso a > FB_I64_MAX + b) orelse (b > 0 andalso a < FB_I64_MIN + b) then return FALSE
   outV = a - b
+  if b > 0 andalso outV > a then return FALSE
+  if b < 0 andalso outV < a then return FALSE
   return TRUE
 end function
 
@@ -2107,6 +2217,30 @@ private function FormatComplexImagCoeffTail(byval ai as Double, byref negUnit as
   return ltrim(str(coeffAbs)) & FB_STR_I
 end function
 
+private function FormatComplexImagCoeffTailFromScalar(byref sv as ScalarValue, byref negUnit as Boolean) as String
+  negUnit = FALSE
+  if ScalarImagExactInt64Valid(sv) then
+    dim ni as LongInt = sv.imagExactInt64
+    if ni = 1 then
+      return FB_STR_I
+    elseif ni = -1 then
+      negUnit = TRUE
+      return FB_STR_I
+    elseif ni <> 0 then
+      return ltrim(str(ni)) & FB_STR_I
+    end if
+  elseif ScalarImagExactUInt64Valid(sv) andalso sv.imagExactUInt64 <= FB_I64_MAX_U then
+    dim ui as LongInt = CLngInt(sv.imagExactUInt64)
+    if ui = 1 then return FB_STR_I
+    if ui = -1 then negUnit = TRUE: return FB_STR_I
+    return ltrim(str(ui)) & FB_STR_I
+  end if
+  dim ar as Double
+  dim ai as Double
+  ScalarLoadCartesian(sv, ar, ai)
+  return FormatComplexImagCoeffTail(ai, negUnit)
+end function
+
 private function FormatComplexScalarValue(byref sv as ScalarValue) as String
   dim ratCx as String
   if TryFormatComplexRationalScalar(sv, ratCx) then return ratCx
@@ -2116,7 +2250,7 @@ private function FormatComplexScalarValue(byref sv as ScalarValue) as String
   dim rePart as String = FormatScalarRealPartPlain(sv)
 
   dim negUnit as Boolean
-  dim tail as String = FormatComplexImagCoeffTail(ai, negUnit)
+  dim tail as String = FormatComplexImagCoeffTailFromScalar(sv, negUnit)
 
   dim reZero as Boolean = FALSE
   if sv.exactInt64Valid andalso sv.exactInt64 = 0 then
@@ -2829,13 +2963,18 @@ private function PeekParenParamListThenColon(byval p as ZString ptr) as Boolean
   loop
 end function
 
-private function PeekRhsMayBeLambdaDefinition(byval p as ZString ptr) as Boolean
+private function PeekRhsMayBeLambdaSyntaxAt(byval p as ZString ptr) as Boolean
   p = SkipAsciiSpacesPtr(p)
   if p[0] = CHAR_LPAREN then
     if PeekParenParamListThenColon(p) then return TRUE
-    return PeekRhsMayBeLambdaDefinition(p + 1)
+    return PeekRhsMayBeLambdaSyntaxAt(p + 1)
   end if
   return PeekUnwrappedLambdaParamsThenColon(p)
+end function
+
+private function PeekRhsMayBeLambdaDefinition(byval p as ZString ptr) as Boolean
+  if Parser_SupportLambdaFunctions = FALSE then return FALSE
+  return PeekRhsMayBeLambdaSyntaxAt(p)
 end function
 
 private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
@@ -2953,6 +3092,61 @@ end sub
 private sub SetExactArgCountError(byref fnName as String, byval expectedCount as Integer, byval actualCount as Integer)
   SetParseError(fnName & FB_STR_PAR_EXPECTS & ltrim(str(expectedCount)) & FB_STR_ARGUMENT_PAR_S_COMMA & ltrim(str(actualCount)) & FB_STR_GIVEN)
 end sub
+
+private sub GetBuiltinArity(byval id as Integer, byref minArgs as Integer, byref maxArgs as Integer)
+  if HasBuiltinFlag(id, BUILTIN_FLAG_UNARY) then
+    minArgs = 1
+    maxArgs = 1
+    exit sub
+  end if
+  select case id
+    case FUNC_RAND
+      minArgs = 0
+      maxArgs = 0
+    case FUNC_CLAMP
+      minArgs = 3
+      maxArgs = 3
+    case FUNC_RANDOM, FUNC_POW, FUNC_ATAN2, FUNC_HYPOT, FUNC_MOD, FUNC_LOG, _
+         FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_SORTBY
+      minArgs = 2
+      maxArgs = 2
+    case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS
+      minArgs = 1
+      maxArgs = 1
+    case FUNC_SUM, FUNC_PRODUCT, FUNC_MIN, FUNC_MAX, FUNC_AVG, FUNC_MEAN, _
+         FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_SORT, FUNC_REVERSE, FUNC_UNIQUE, FUNC_UNPACK, _
+         FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN, FUNC_DEG, FUNC_RAD
+      minArgs = 1
+      maxArgs = BUILTIN_ARITY_UNBOUNDED
+    case else
+      minArgs = -1
+      maxArgs = -1
+  end select
+end sub
+
+private function ValidateBuiltinCallArity(byval fnId as Integer, byref fnName as String, args() as EvalValue) as Boolean
+  dim minArgs as Integer = 0
+  dim maxArgs as Integer = 0
+  GetBuiltinArity(fnId, minArgs, maxArgs)
+  if minArgs < 0 then return TRUE
+  dim argc as Integer = ubound(args) + 1
+  if minArgs = maxArgs then
+    if argc <> minArgs then
+      SetExactArgCountError(fnName, minArgs, argc)
+      return FALSE
+    end if
+    return TRUE
+  end if
+  if argc < minArgs then
+    SetAtLeastOneArgError(fnName)
+    return FALSE
+  end if
+  if (maxArgs <> BUILTIN_ARITY_UNBOUNDED) andalso (argc > maxArgs) then
+    SetExactArgCountError(fnName, maxArgs, argc)
+    return FALSE
+  end if
+  return TRUE
+end function
 
 private sub SetScalarValuesError(byref fnName as String)
   SetParseError(fnName & FB_STR_PAR_EXPECTS_SCALAR_VALUES)
@@ -4118,6 +4312,34 @@ end sub
 declare sub ScalarSnapComplexNearZeroAxis(byref zr as Double, byref zi as Double)
 declare sub ScalarPrincipalLnCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
 
+private function ApplyAbsScalarValue(byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
+  dim x as Double = scalarV.scalar
+  if IsNaNValue(x) then
+    ValueSetScalar(outV, MakeNaN())
+    return TRUE
+  end if
+  if scalarV.exactUInt64Valid andalso scalarV.exactInt64Valid = FALSE then
+    ValueSetUInt64(outV, scalarV.exactUInt64)
+    return TRUE
+  end if
+  if scalarV.exactInt64Valid then
+    if scalarV.exactInt64 >= 0 then
+      ValueSetInt64(outV, scalarV.exactInt64)
+    elseif scalarV.exactInt64 = FB_I64_MIN then
+      ValueSetUInt64(outV, FB_I64_MIN_MAG_U)
+    else
+      ValueSetInt64(outV, -scalarV.exactInt64)
+    end if
+    return TRUE
+  end if
+  if scalarV.exactUInt64Valid then
+    ValueSetUInt64(outV, scalarV.exactUInt64)
+    return TRUE
+  end if
+  ValueSetScalarPromoteExactInt64(outV, abs(x))
+  return TRUE
+end function
+
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   if ApplyUnaryComplexSupportScalars(fnId, scalarV, outV) then return TRUE
   dim x as Double = scalarV.scalar
@@ -4256,13 +4478,7 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
   elseif fnId = FUNC_FRAC then
     ValueSetScalarPromoteExactInt64(outV, x - Fix(x))
   elseif fnId = FUNC_ABS then
-    if IsNaNValue(x) then
-      ValueSetScalar(outV, MakeNaN())
-    elseif scalarV.exactUInt64Valid then
-      ValueSetUInt64(outV, scalarV.exactUInt64)
-    else
-      ValueSetScalarPromoteExactInt64(outV, abs(x))
-    end if
+    return ApplyAbsScalarValue(scalarV, outV)
   elseif fnId = FUNC_SIGN then
     if scalarV.exactInt64Valid then
       if scalarV.exactInt64 > 0 then
@@ -4601,50 +4817,54 @@ private sub ScalarComplexGamma(byval zr as Double, byval zi as Double, byref out
   ScalarSnapComplexNearZeroAxis(outR, outI)
 end sub
 
+'' intV/uintV before flag fields: avoids x86_64 UDT padding bugs with leading Boolean/Integer sentinels.
 private type ExactCartesianComponent
-  hasInt as Boolean
   intV as LongInt
-  hasUInt as Boolean
   uintV as ULongInt
+  hasInt as Integer
+  hasUInt as Integer
 end type
 
 private sub ExactCartesianComponentClear(byref c as ExactCartesianComponent)
-  c.hasInt = FALSE
+  c.hasInt = 0
   c.intV = 0
-  c.hasUInt = FALSE
+  c.hasUInt = 0
   c.uintV = 0
 end sub
 
-private sub ExactCartesianComponentAssignFromInt64(byref c as ExactCartesianComponent, byval n as LongInt)
+'' Signed int64 with two's-complement uint companion (negative values included).
+private sub ExactCartesianComponentAssignFromSignedInt64(byref c as ExactCartesianComponent, byval n as LongInt)
   ExactCartesianComponentClear(c)
-  c.hasInt = TRUE
+  c.hasInt = 1
   c.intV = n
-  if n >= 0 then
-    c.hasUInt = TRUE
-    c.uintV = CULngInt(n)
-  end if
+  c.hasUInt = 1
+  c.uintV = CULngInt(n)
+end sub
+
+private sub ExactCartesianComponentAssignFromInt64(byref c as ExactCartesianComponent, byval n as LongInt)
+  ExactCartesianComponentAssignFromSignedInt64(c, n)
 end sub
 
 private sub ExactCartesianComponentAssignFromUInt64(byref c as ExactCartesianComponent, byval u as ULongInt)
   ExactCartesianComponentClear(c)
-  c.hasUInt = TRUE
+  c.hasUInt = 1
   c.uintV = u
   if u <= FB_I64_MAX_U then
-    c.hasInt = TRUE
+    c.hasInt = 1
     c.intV = CLngInt(u)
   end if
 end sub
 
 private function TryExactCartesianComponentToInt64(byref c as ExactCartesianComponent, byref outI as LongInt) as Boolean
-  if c.hasInt then
+  if c.hasInt <> 0 then
     outI = c.intV
     return TRUE
   end if
-  if c.hasUInt andalso c.uintV <= FB_I64_MAX_U then
+  if c.hasUInt <> 0 andalso c.uintV <= FB_I64_MAX_U then
     outI = CLngInt(c.uintV)
     return TRUE
   end if
-  if c.hasInt = FALSE andalso c.hasUInt = FALSE then
+  if c.hasInt = 0 andalso c.hasUInt = 0 then
     outI = 0
     return TRUE
   end if
@@ -4652,15 +4872,28 @@ private function TryExactCartesianComponentToInt64(byref c as ExactCartesianComp
 end function
 
 private function TryExtractExactRealComponent(byref sv as ScalarValue, byref c as ExactCartesianComponent) as Boolean
-  if sv.exactInt64Valid then
+  ScalarRepairExactMetadata(sv)
+  if ScalarExactInt64Valid(sv) then
     ExactCartesianComponentAssignFromInt64(c, sv.exactInt64)
-    if sv.exactInt64 < 0 andalso sv.exactUInt64Valid then
-      c.hasUInt = TRUE
+    if sv.exactInt64 < 0 andalso ScalarExactUInt64Valid(sv) then
+      c.hasUInt = 1
       c.uintV = sv.exactUInt64
     end if
     return TRUE
   end if
-  if sv.exactUInt64Valid then
+  if sv.scalarStorageKind = SSK_INT64 then
+    ExactCartesianComponentAssignFromInt64(c, sv.exactInt64)
+    if sv.exactInt64 < 0 andalso sv.exactUInt64 <> 0 then
+      c.hasUInt = 1
+      c.uintV = sv.exactUInt64
+    end if
+    return TRUE
+  end if
+  if ScalarExactUInt64Valid(sv) then
+    ExactCartesianComponentAssignFromUInt64(c, sv.exactUInt64)
+    return TRUE
+  end if
+  if sv.scalarStorageKind = SSK_UINT64 then
     ExactCartesianComponentAssignFromUInt64(c, sv.exactUInt64)
     return TRUE
   end if
@@ -4673,15 +4906,28 @@ private function TryExtractExactRealComponent(byref sv as ScalarValue, byref c a
 end function
 
 private function TryExtractExactImagComponent(byref sv as ScalarValue, byref c as ExactCartesianComponent) as Boolean
+  ScalarRepairExactMetadata(sv)
   if ScalarImagExactInt64Valid(sv) then
     ExactCartesianComponentAssignFromInt64(c, sv.imagExactInt64)
     if sv.imagExactInt64 < 0 andalso ScalarImagExactUInt64Valid(sv) then
-      c.hasUInt = TRUE
+      c.hasUInt = 1
       c.uintV = sv.imagExactUInt64
     end if
     return TRUE
   end if
   if ScalarImagExactUInt64Valid(sv) then
+    ExactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64)
+    return TRUE
+  end if
+  if sv.imagExactInt64 <> 0 then
+    ExactCartesianComponentAssignFromInt64(c, sv.imagExactInt64)
+    if sv.imagExactInt64 < 0 andalso sv.imagExactUInt64 <> 0 then
+      c.hasUInt = 1
+      c.uintV = sv.imagExactUInt64
+    end if
+    return TRUE
+  end if
+  if sv.imagExactUInt64 <> 0 then
     ExactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64)
     return TRUE
   end if
@@ -4697,35 +4943,56 @@ private function TryExtractExactImagComponent(byref sv as ScalarValue, byref c a
   return FALSE
 end function
 
-private sub ValueSetScalarComplexFromExactCartesian(byref v as EvalValue, byref re as ExactCartesianComponent, byref im as ExactCartesianComponent)
-  if re.hasInt then
-    ValueSetInt64(v, re.intV)
-  elseif re.hasUInt then
-    ValueSetUInt64(v, re.uintV)
+private sub ValueSetScalarFromExactCartesianComponent(byref v as EvalValue, byref c as ExactCartesianComponent)
+  if c.hasInt <> 0 then
+    ValueSetInt64(v, c.intV)
+    if c.intV < 0 andalso c.hasUInt <> 0 then
+      ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
+      v.scalarValue.exactUInt64 = c.uintV
+    end if
+  elseif c.hasUInt <> 0 then
+    ValueSetUInt64(v, c.uintV)
   else
     ValueSetScalar(v, 0.0)
   end if
   ScalarClearImag(v.scalarValue)
-  v.scalarValue.imag = 0.0
-  if im.hasInt orelse im.hasUInt then
-    if im.hasInt then
-      ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
-      v.scalarValue.imagExactInt64 = im.intV
-      v.scalarValue.imag = CDbl(im.intV)
-      if im.intV >= 0 then
-        ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
-        v.scalarValue.imagExactUInt64 = CULngInt(im.intV)
-      elseif im.hasUInt then
-        ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
-        v.scalarValue.imagExactUInt64 = im.uintV
-        v.scalarValue.imag = CDbl(im.uintV)
-      end if
+end sub
+
+private sub ScalarApplyExactImagFromCartesianComponent(byref sv as ScalarValue, byref c as ExactCartesianComponent)
+  ScalarSetImagExactInt64Valid(sv, FALSE)
+  ScalarSetImagExactUInt64Valid(sv, FALSE)
+  sv.imagExactInt64 = 0
+  sv.imagExactUInt64 = 0
+  sv.imag = 0.0
+  if c.hasInt = 0 andalso c.hasUInt = 0 then exit sub
+  if c.hasInt <> 0 then
+    ScalarSetImagExactInt64Valid(sv, TRUE)
+    sv.imagExactInt64 = c.intV
+    sv.imag = CDbl(c.intV)
+    if c.hasUInt <> 0 then
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+      sv.imagExactUInt64 = c.uintV
     else
-      ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
-      v.scalarValue.imagExactUInt64 = im.uintV
-      v.scalarValue.imag = CDbl(im.uintV)
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+      sv.imagExactUInt64 = CULngInt(c.intV)
+    end if
+  else
+    ScalarSetImagExactUInt64Valid(sv, TRUE)
+    sv.imagExactUInt64 = c.uintV
+    sv.imag = CDbl(c.uintV)
+    if c.uintV <= FB_I64_MAX_U then
+      ScalarSetImagExactInt64Valid(sv, TRUE)
+      sv.imagExactInt64 = CLngInt(c.uintV)
     end if
   end if
+  ScalarRepairExactMetadata(sv)
+end sub
+
+private sub ValueSetScalarComplexFromExactCartesian(byref v as EvalValue, byref re as ExactCartesianComponent, byref im as ExactCartesianComponent)
+  ValueSetScalarFromExactCartesianComponent(v, re)
+  v.scalarValue.imag = 0.0
+  ScalarApplyExactImagFromCartesianComponent(v.scalarValue, im)
+  ScalarRepairExactMetadata(v.scalarValue)
   ScalarNormalizeIfPureReal(v.scalarValue)
 end sub
 
@@ -4737,7 +5004,7 @@ private function TryAddExactCartesianComponents(byref a as ExactCartesianCompone
     ExactCartesianComponentAssignFromInt64(result, oi)
     return TRUE
   end if
-  if a.hasUInt andalso b.hasUInt then
+  if a.hasUInt <> 0 andalso b.hasUInt <> 0 then
     dim ou as ULongInt
     if TryAddULongChecked(a.uintV, b.uintV, ou) = FALSE then return FALSE
     ExactCartesianComponentAssignFromUInt64(result, ou)
@@ -4850,9 +5117,26 @@ private sub ValueSetScalarComplexFromEvalRealImagParts(byref outV as EvalValue, 
 end sub
 
 private function TryNegateExactCartesianComponent(byref c as ExactCartesianComponent, byref outC as ExactCartesianComponent) as Boolean
-  dim z as ExactCartesianComponent
-  ExactCartesianComponentClear(z)
-  return TrySubExactCartesianComponents(z, c, outC)
+  dim i as LongInt
+  if TryExactCartesianComponentToInt64(c, i) then
+    if i = FB_I64_MIN then return FALSE
+    ExactCartesianComponentAssignFromSignedInt64(outC, -i)
+    return TRUE
+  end if
+  if c.hasUInt <> 0 then return FALSE
+  ExactCartesianComponentAssignFromSignedInt64(outC, 0)
+  return TRUE
+end function
+
+'' Negate imaginary exact metadata on an already-built complex scalar (conj).
+private function TryFlipScalarImagSignExact(byref sv as ScalarValue) as Boolean
+  dim c as ExactCartesianComponent
+  dim cNeg as ExactCartesianComponent
+  if TryExtractExactImagComponent(sv, c) = FALSE then return FALSE
+  if ScalarHasNonzeroImaginaryPart(sv) = FALSE then return TRUE
+  if TryNegateExactCartesianComponent(c, cNeg) = FALSE then return FALSE
+  ScalarApplyExactImagFromCartesianComponent(sv, cNeg)
+  return TRUE
 end function
 
 private function TryNegateExactComplexScalar(byref sv as ScalarValue, byref outV as EvalValue) as Boolean
@@ -4867,6 +5151,24 @@ private function TryNegateExactComplexScalar(byref sv as ScalarValue, byref outV
   if TryNegateExactCartesianComponent(lIm, oIm) = FALSE then return FALSE
   ValueSetScalarComplexFromExactCartesian(outV, oRe, oIm)
   return TRUE
+end function
+
+'' Unary minus on exact int64/uint64/complex scalars (avoids float multiply for large magnitudes).
+private function TryNegateEvalScalarUnary(byref v as EvalValue, byref outV as EvalValue) as Boolean
+  if v.kind <> VK_SCALAR then return FALSE
+  if TryNegateExactComplexScalar(v.scalarValue, outV) then return TRUE
+  if ScalarExactInt64Valid(v.scalarValue) orelse v.scalarValue.scalarStorageKind = SSK_INT64 then
+    if v.scalarValue.exactInt64 = FB_I64_MIN then return FALSE
+    ValueSetInt64(outV, -v.scalarValue.exactInt64)
+    return TRUE
+  end if
+  if ScalarExactUInt64Valid(v.scalarValue) andalso v.scalarValue.exactUInt64 <= FB_I64_MAX_U then
+    dim ui as LongInt = CLngInt(v.scalarValue.exactUInt64)
+    if ui = FB_I64_MIN then return FALSE
+    ValueSetInt64(outV, -ui)
+    return TRUE
+  end if
+  return FALSE
 end function
 
 private sub CalcRoundingFnCartesian(byval fnId as Integer, byref scalarV as ScalarValue, byval ar as Double, byval ai as Double, byref outV as EvalValue)
@@ -4922,27 +5224,21 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
 
   select case fnId
     case FUNC_REAL
-      ValueSetScalarPromoteExactInt64(outV, ar)
-      if scalarV.exactInt64Valid then
-        outV.exactInt64Valid = TRUE
-        outV.exactInt64 = scalarV.exactInt64
-        if scalarV.exactUInt64Valid then
-          outV.exactUInt64Valid = TRUE
-          outV.exactUInt64 = scalarV.exactUInt64
-        end if
+      dim cRe as ExactCartesianComponent
+      if TryExtractExactRealComponent(scalarV, cRe) then
+        ValueSetScalarFromExactCartesianComponent(outV, cRe)
+      else
+        ValueSetScalarPromoteExactInt64(outV, ar)
+        ScalarClearImag(outV.scalarValue)
       end if
-      ScalarClearImag(outV.scalarValue)
     case FUNC_IMAG
-      ValueSetScalarPromoteExactInt64(outV, ai)
-      if ScalarImagExactInt64Valid(scalarV) then
-        outV.exactInt64Valid = TRUE
-        outV.exactInt64 = scalarV.imagExactInt64
-        if ScalarImagExactUInt64Valid(scalarV) then
-          outV.exactUInt64Valid = TRUE
-          outV.exactUInt64 = scalarV.imagExactUInt64
-        end if
+      dim cIm as ExactCartesianComponent
+      if TryExtractExactImagComponent(scalarV, cIm) then
+        ValueSetScalarFromExactCartesianComponent(outV, cIm)
+      else
+        ValueSetScalarPromoteExactInt64(outV, ai)
+        ScalarClearImag(outV.scalarValue)
       end if
-      ScalarClearImag(outV.scalarValue)
     case FUNC_PHASE
       ValueSetScalarPromoteExactInt64(outV, CalcAtan2(ai, ar))
     case FUNC_POLAR
@@ -4951,14 +5247,27 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       polarVals(1).scalar = CalcAtan2(ai, ar)
       ValueSetArrayFromScalarValues(outV, polarVals())
     case FUNC_CART
-      ValueSetScalarComplexFromDoubles(outV, ar, ai)
+      dim cReCart as ExactCartesianComponent
+      dim cImCart as ExactCartesianComponent
+      if TryExtractExactRealComponent(scalarV, cReCart) andalso TryExtractExactImagComponent(scalarV, cImCart) then
+        ValueSetScalarComplexFromExactCartesian(outV, cReCart, cImCart)
+      else
+        ValueSetScalarComplexFromDoubles(outV, ar, ai)
+      end if
     case FUNC_CONJ
       dim cRe as ExactCartesianComponent
       dim cIm as ExactCartesianComponent
-      dim cImNeg as ExactCartesianComponent
-      if TryExtractExactRealComponent(scalarV, cRe) andalso TryExtractExactImagComponent(scalarV, cIm) andalso _
-         TryNegateExactCartesianComponent(cIm, cImNeg) then
-        ValueSetScalarComplexFromExactCartesian(outV, cRe, cImNeg)
+      dim cImConj as ExactCartesianComponent
+      if TryExtractExactRealComponent(scalarV, cRe) andalso TryExtractExactImagComponent(scalarV, cIm) then
+        if ScalarHasNonzeroImaginaryPart(scalarV) andalso TryNegateExactCartesianComponent(cIm, cImConj) = FALSE then
+          ValueSetScalarComplexFromDoubles(outV, ar, -ai)
+        else
+          if ScalarHasNonzeroImaginaryPart(scalarV) then
+            ValueSetScalarComplexFromExactCartesian(outV, cRe, cImConj)
+          else
+            ValueSetScalarComplexFromExactCartesian(outV, cRe, cIm)
+          end if
+        end if
       else
         ValueSetScalarComplexFromDoubles(outV, ar, -ai)
       end if
@@ -4989,6 +5298,9 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       ValueSetScalar(fracOutIm, ai - fracIntIm.scalar)
       ValueSetScalarComplexFromEvalRealImagParts(outV, fracOutRe, fracOutIm)
     case FUNC_ABS
+      if ScalarHasNonzeroImaginaryPart(scalarV) = FALSE then
+        return ApplyAbsScalarValue(scalarV, outV)
+      end if
       if IsNaNValue(ar) orelse IsNaNValue(ai) then
         ValueSetScalar(outV, MakeNaN())
       else
@@ -5172,8 +5484,8 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   dim lu as ULongInt, ru as ULongInt
   hasUIntL = TryGetExactNonNegativeUInt64Scalar(leftS, lu)
   hasUIntR = TryGetExactNonNegativeUInt64Scalar(rightS, ru)
-  if leftS.exactUInt64Valid andalso rightS.exactUInt64Valid _
-    andalso (leftS.exactInt64Valid = FALSE orelse rightS.exactInt64Valid = FALSE) then
+  if ScalarExactUInt64Valid(leftS) andalso ScalarExactUInt64Valid(rightS) _
+    andalso (ScalarExactInt64Valid(leftS) = FALSE orelse ScalarExactInt64Valid(rightS) = FALSE) then
     select case op
       case CHAR_PLUS
         dim outU as ULongInt
@@ -5195,17 +5507,17 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
     end select
   end if
 
-  dim hasIntL as Boolean = leftS.exactInt64Valid
-  dim hasIntR as Boolean = rightS.exactInt64Valid
+  dim hasIntL as Boolean = ScalarExactInt64Valid(leftS)
+  dim hasIntR as Boolean = ScalarExactInt64Valid(rightS)
   if hasIntL then
     li = leftS.exactInt64
-  elseif leftS.exactUInt64Valid andalso leftS.exactUInt64 <= FB_I64_MAX_U then
+  elseif ScalarExactUInt64Valid(leftS) andalso leftS.exactUInt64 <= FB_I64_MAX_U then
     hasIntL = TRUE
     li = CLngInt(leftS.exactUInt64)
   end if
   if hasIntR then
     ri = rightS.exactInt64
-  elseif rightS.exactUInt64Valid andalso rightS.exactUInt64 <= FB_I64_MAX_U then
+  elseif ScalarExactUInt64Valid(rightS) andalso rightS.exactUInt64 <= FB_I64_MAX_U then
     hasIntR = TRUE
     ri = CLngInt(rightS.exactUInt64)
   end if
@@ -5930,6 +6242,20 @@ private function EnsureExactArgCount(args() as EvalValue, byval expectedCount as
   return TRUE
 end function
 
+private function TryBuiltinMapBinaryTwoArgCore(args() as EvalValue, byref fnName as String, byval fnId as Integer, byval rejectComplex as Boolean, byref outV as EvalValue) as Boolean
+  if EvalValueInvolvesTime(args(0)) orelse EvalValueInvolvesTime(args(1)) then
+    SetIncompatibleOperandsError()
+    return FALSE
+  end if
+  if rejectComplex andalso Parser_SupportComplexNumbers then
+    if EvalValueHasNonzeroImaginary(args(0)) orelse EvalValueHasNonzeroImaginary(args(1)) then
+      SetIncompatibleOperandsError()
+      return FALSE
+    end if
+  end if
+  return ApplyScalarBinaryMathFunctionValues(args(0), args(1), fnId, outV)
+end function
+
 private function ArgsContainNonFinite(args() as EvalValue) as Boolean
   if ubound(args) = -1 then return FALSE
   for i as Integer = lbound(args) to ubound(args)
@@ -6016,7 +6342,7 @@ end function
 private function IsImplicitMulStart() as Boolean
   if pStream[0] = CHAR_LPAREN then return TRUE
   if Parser_SupportComplexNumbers then
-    if pStream[0] = CHAR_LC_I then
+    if pStream[0] = CHAR_LC_I orelse pStream[0] = CHAR_I then
       dim peekIdent as UByte = pStream[1]
       if IsIdentChar(peekIdent) = FALSE then return TRUE
     end if
@@ -6521,27 +6847,6 @@ private function IsSortbyEligibleFunctionName(byref funcName as String, byref er
   return TRUE
 end function
 
-private function LambdaBodyTakeClosingWrap(byref body as string) as Boolean
-  body = ""
-  dim g as Integer = 0
-  while pStream[0] <> CHAR_NUL
-    dim cu as UByte = pStream[0]
-    if g = 0 andalso cu = CHAR_RPAREN then
-      return TRUE
-    end if
-    select case cu
-    case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
-      g += 1
-    case CHAR_RPAREN, CHAR_RBRACKET, CHAR_RBRACE
-      g -= 1
-      if g < 0 then return FALSE
-    end select
-    body &= chr(cu)
-    pStream += 1
-  wend
-  return FALSE
-end function
-
 private function NetRoundParenDepthBetween(byval lo as ZString ptr, byval hiEx as ZString ptr) as Integer
   dim d as Integer = 0
   dim q as ZString ptr = lo
@@ -6557,13 +6862,22 @@ private function NetRoundParenDepthBetween(byval lo as ZString ptr, byval hiEx a
   return d
 end function
 
-private function LambdaBodyTakeUntilSortbyDelim(byref body as string, byval lambdaKeySegmentStart as ZString ptr) as Boolean
+private function LambdaBodyTake(byref body as string, byval stopMode as Integer, byval sortbyLambdaKeySeg as ZString ptr) as Boolean
   body = ""
   dim g as Integer = 0
   while pStream[0] <> CHAR_NUL
     dim cu as UByte = pStream[0]
-    if g = 0 andalso (cu = CHAR_COMMA orelse cu = CHAR_RPAREN) then
-      if NetRoundParenDepthBetween(lambdaKeySegmentStart, pStream) = 0 then return TRUE
+    if g = 0 then
+      select case stopMode
+      case LAMBDA_BODY_UNTIL_RPAREN
+        if cu = CHAR_RPAREN then return TRUE
+      case LAMBDA_BODY_UNTIL_SORTBY_DELIM
+        if (cu = CHAR_COMMA orelse cu = CHAR_RPAREN) andalso sortbyLambdaKeySeg <> 0 then
+          if NetRoundParenDepthBetween(sortbyLambdaKeySeg, pStream) = 0 then return TRUE
+        end if
+      case LAMBDA_BODY_UNTIL_SEMICOLON_EOF
+        if cu = CHAR_SEMICOLON then return TRUE
+      end select
     end if
     select case cu
     case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
@@ -6575,28 +6889,7 @@ private function LambdaBodyTakeUntilSortbyDelim(byref body as string, byval lamb
     body &= chr(cu)
     pStream += 1
   wend
-  return FALSE
-end function
-
-private function LambdaBodyTakeUntilTopLevelSemicolonOrEof(byref body as string) as Boolean
-  body = ""
-  dim g as Integer = 0
-  while pStream[0] <> CHAR_NUL
-    dim cu as UByte = pStream[0]
-    if g = 0 andalso cu = CHAR_SEMICOLON then
-      return TRUE
-    end if
-    select case cu
-    case CHAR_LPAREN, CHAR_LBRACKET, CHAR_LBRACE
-      g += 1
-    case CHAR_RPAREN, CHAR_RBRACKET, CHAR_RBRACE
-      g -= 1
-      if g < 0 then return FALSE
-    end select
-    body &= chr(cu)
-    pStream += 1
-  wend
-  return TRUE
+  return (stopMode = LAMBDA_BODY_UNTIL_SEMICOLON_EOF)
 end function
 
 private function TryConsumeLambdaParamList(fnParams() as string, byval quiet as Boolean) as Boolean
@@ -6660,27 +6953,33 @@ private function TryParseLambdaInnerSuffix(fnParams() as string, byref body as s
   if pStream[0] <> CHAR_COLON then return FALSE
   pStream += 1
   SkipSpaces()
-  select case bodyMode
-  case 1
-    return LambdaBodyTakeClosingWrap(body)
-  case 2
-    return LambdaBodyTakeUntilTopLevelSemicolonOrEof(body)
-  case 3
-    return LambdaBodyTakeUntilSortbyDelim(body, sortbyLambdaKeySeg)
-  case else
+  return LambdaBodyTake(body, bodyMode, sortbyLambdaKeySeg)
+end function
+
+private function TryFinalizeUnarySortbyInlineLambda(fnParams() as string, byref body as string, byref outV as EvalValue) as Boolean
+  dim pcount as Integer = 0
+  if ubound(fnParams) >= lbound(fnParams) then pcount = ubound(fnParams) - lbound(fnParams) + 1
+  if pcount <> 1 then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
     return FALSE
-  end select
+  end if
+  if InlineLambdaBodyIsEffectivelyEmpty(body) then
+    SetFunctionBodyIsEmptyError()
+    return FALSE
+  end if
+  ValueSetInlineLambda(outV, fnParams(), body)
+  return TRUE
 end function
 
 private function TryParseLambdaAssignmentRhs(fnParams() as string, byref lamBody as string) as Boolean
   erase fnParams
   lamBody = ""
   dim saveOuter as ZString ptr = pStream
-  if PeekRhsMayBeLambdaDefinition(saveOuter) = FALSE then return FALSE
+  if PeekRhsMayBeLambdaSyntaxAt(saveOuter) = FALSE then return FALSE
   SkipSpaces()
   if pStream[0] = CHAR_LPAREN then
     pStream += 1
-    if TryParseLambdaInnerSuffix(fnParams(), lamBody, 1, 0) then
+    if TryParseLambdaInnerSuffix(fnParams(), lamBody, LAMBDA_BODY_UNTIL_RPAREN, 0) then
       SkipSpaces()
       if pStream[0] = CHAR_RPAREN then
         pStream += 1
@@ -6699,7 +6998,7 @@ private function TryParseLambdaAssignmentRhs(fnParams() as string, byref lamBody
     lamBody = ""
   end if
   SkipSpaces()
-  if TryParseLambdaInnerSuffix(fnParams(), lamBody, 2, 0) = FALSE then return FALSE
+  if TryParseLambdaInnerSuffix(fnParams(), lamBody, LAMBDA_BODY_UNTIL_SEMICOLON_EOF, 0) = FALSE then return FALSE
   SkipSpaces()
   if pStream[0] = CHAR_NUL orelse pStream[0] = CHAR_SEMICOLON then
     if InlineLambdaBodyIsEffectivelyEmpty(lamBody) then
@@ -6711,29 +7010,31 @@ private function TryParseLambdaAssignmentRhs(fnParams() as string, byref lamBody
   return FALSE
 end function
 
-private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
+private function TryParseSortbyKeyArgFunctionRefOnly(byref outV as EvalValue) as Boolean
+  parseError = 0
+  SkipSpaces()
+  if PeekRhsMayBeLambdaSyntaxAt(pStream) then
+    SetUnexpectedTokenError()
+    return FALSE
+  end if
+  return TryParseSortbyFunctionRef(outV)
+end function
+
+private function TryParseSortbyKeyArgWithLambda(byref outV as EvalValue) as Boolean
   dim save as ZString ptr = pStream
   parseError = 0
   SkipSpaces()
   dim fnParams() as string
   dim body as string = ""
   if pStream[0] = CHAR_LPAREN then
-    pStream += 1
-    if PeekRhsMayBeLambdaDefinition(pStream) andalso TryParseLambdaInnerSuffix(fnParams(), body, 1, 0) then
-      SkipSpaces()
-      if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN then
-        dim pcount as Integer = 0
-        if ubound(fnParams) >= lbound(fnParams) then pcount = ubound(fnParams) - lbound(fnParams) + 1
-        if pcount <> 1 then
-          SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
-          return FALSE
+    dim inner as ZString ptr = pStream + 1
+    if PeekRhsMayBeLambdaSyntaxAt(inner) then
+      pStream += 1
+      if TryParseLambdaInnerSuffix(fnParams(), body, LAMBDA_BODY_UNTIL_RPAREN, 0) then
+        SkipSpaces()
+        if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN then
+          return TryFinalizeUnarySortbyInlineLambda(fnParams(), body, outV)
         end if
-        if InlineLambdaBodyIsEffectivelyEmpty(body) then
-          SetFunctionBodyIsEmptyError()
-          return FALSE
-        end if
-        ValueSetInlineLambda(outV, fnParams(), body)
-        return TRUE
       end if
     end if
   end if
@@ -6741,10 +7042,10 @@ private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
   SkipSpaces()
   erase fnParams
   body = ""
-  if PeekRhsMayBeLambdaDefinition(pStream) = FALSE then
+  if PeekRhsMayBeLambdaSyntaxAt(pStream) = FALSE then
     return TryParseSortbyFunctionRef(outV)
   end if
-  if TryParseLambdaInnerSuffix(fnParams(), body, 3, save) = FALSE then
+  if TryParseLambdaInnerSuffix(fnParams(), body, LAMBDA_BODY_UNTIL_SORTBY_DELIM, save) = FALSE then
     pStream = save
     erase fnParams
     body = ""
@@ -6755,18 +7056,14 @@ private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
     pStream = save
     return TryParseSortbyFunctionRef(outV)
   end if
-  dim pcount2 as Integer = 0
-  if ubound(fnParams) >= lbound(fnParams) then pcount2 = ubound(fnParams) - lbound(fnParams) + 1
-  if pcount2 <> 1 then
-    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
-    return FALSE
+  return TryFinalizeUnarySortbyInlineLambda(fnParams(), body, outV)
+end function
+
+private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
+  if Parser_SupportLambdaFunctions then
+    return TryParseSortbyKeyArgWithLambda(outV)
   end if
-  if InlineLambdaBodyIsEffectivelyEmpty(body) then
-    SetFunctionBodyIsEmptyError()
-    return FALSE
-  end if
-  ValueSetInlineLambda(outV, fnParams(), body)
-  return TRUE
+  return TryParseSortbyKeyArgFunctionRefOnly(outV)
 end function
 
 private function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
@@ -6795,6 +7092,10 @@ private function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
   wend
   dim nameText as String = left(*start, p - start)
   SkipSpaces()
+  if p[0] = CHAR_COLON then
+    SetUnexpectedTokenError()
+    return FALSE
+  end if
   if p[0] = CHAR_LPAREN then
     SetParseError(FB_STR_SORTBY_EXPECTS_ONE_FUNCTION)
     return FALSE
@@ -6874,9 +7175,10 @@ private sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongIn
   ValueSetScalarPromoteExactInt64(outV, CDbl(num) / CDbl(den))
   outV.scalarValue.exactInt64 = num
   outV.scalarValue.exactUInt64 = den
-  outV.scalarValue.exactInt64Valid = TRUE
-  outV.scalarValue.exactUInt64Valid = TRUE
+  ScalarSetExactInt64Valid(outV.scalarValue, TRUE)
+  ScalarSetExactUInt64Valid(outV.scalarValue, TRUE)
   outV.scalarValue.flags or= SVF_RENDER_RATIONAL
+  ScalarRepairExactMetadata(outV.scalarValue)
 end sub
 
 private function RatioApproxAbsNumerator(byval v as Double, byval p as LongInt, byval q as ULongInt) as Double
@@ -7156,10 +7458,7 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
 end function
 
 private function TryBuiltinRatio(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
-  if ubound(args) <> 0 then
-    SetExactArgCountError(fnName, 1, ubound(args) - lbound(args) + 1)
-    return TRUE
-  end if
+  if ValidateBuiltinCallArity(FUNC_RATIO, fnName, args()) = FALSE then return TRUE
   dim vals() as ScalarValue
   dim c as Integer = CopySingleArgToScalarValues(args(0), vals(), FALSE)
   if c <= 0 then
@@ -7265,10 +7564,7 @@ end function
 
 private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
   dim savedSortbyKeysArgCol as Integer = sortbyKeysArgStartCol
-  if ubound(args) <> 1 then
-    SetExactArgCountError(fnName, 2, ubound(args) - lbound(args) + 1)
-    return TRUE
-  end if
+  if ValidateBuiltinCallArity(FUNC_SORTBY, fnName, args()) = FALSE then return TRUE
   dim keyIsLambda as Boolean = (args(1).kind = VK_INLINE_LAMBDA)
   dim keyIsRef as Boolean = (args(1).kind = VK_FUNCTION_REF)
   if keyIsLambda = FALSE and keyIsRef = FALSE then
@@ -7650,7 +7946,6 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
     return FALSE
   end if
   if (fnId = FUNC_MILLISECONDS) orelse (fnId = FUNC_SECONDS) orelse (fnId = FUNC_MINUTES) orelse (fnId = FUNC_HOURS) orelse (fnId = FUNC_DAYS) then
-    if EnsureExactArgCount(args(), 1, fnName) = FALSE then return TRUE
     if args(0).kind = VK_SCALAR then
       if ScalarIsTime(args(0).scalarValue) = FALSE then
         SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
@@ -7818,12 +8113,12 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
   NormalizeCallArgs(args())
   if ValidateBuiltinCallArgs(fnId, fnName, args()) = FALSE then return outV
+  if ValidateBuiltinCallArity(fnId, fnName, args()) = FALSE then return outV
   if TryBuiltinDispatchWithTime(fnId, fnName, args(), outV) then return outV
   if TryBuiltinDispatchWithComplex(fnId, fnName, args(), outV) then return outV
 
   dim isAggSimple as Boolean = (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) orelse (fnId = FUNC_AVG) orelse (fnId = FUNC_MEAN)
   if isAggSimple orelse (fnId = FUNC_MEDIAN) orelse (fnId = FUNC_VARIANCE) orelse (fnId = FUNC_STDDEV) then
-    if ubound(args) = -1 then SetAtLeastOneArgError(fnName): return outV
     if ubound(args) = 0 andalso args(0).kind = VK_SCALAR then
       if isAggSimple then
         outV = args(0)
@@ -7966,10 +8261,6 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_UNPACK then
-    if ubound(args) = -1 then
-      SetAtLeastOneArgError(fnName)
-      return outV
-    end if
     if ubound(args) = 0 then
       outV = args(0)
     else
@@ -8055,33 +8346,27 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_LOG then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if ApplyScalarBinaryMathFunctionValues(args(0), args(1), FUNC_LOG, outV) = FALSE then SetNumericErrorInFunction(fnName)
+    if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_LOG, FALSE, outV) = FALSE andalso parseError = 0 then
+      SetNumericErrorInFunction(fnName)
+    end if
     return outV
   end if
 
   if fnId = FUNC_ATAN2 then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if Parser_SupportComplexNumbers andalso (EvalValueHasNonzeroImaginary(args(0)) orelse EvalValueHasNonzeroImaginary(args(1))) then
-      SetIncompatibleOperandsError()
-      return outV
-    end if
-    if ApplyScalarBinaryMathFunctionValues(args(0), args(1), FUNC_ATAN2, outV) = FALSE then
+    if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_ATAN2, TRUE, outV) = FALSE andalso parseError = 0 then
       SetNumericErrorInFunction(fnName)
     end if
     return outV
   end if
 
   if fnId = FUNC_HYPOT then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-    if ApplyScalarBinaryMathFunctionValues(args(0), args(1), FUNC_HYPOT, outV) = FALSE then
+    if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_HYPOT, FALSE, outV) = FALSE andalso parseError = 0 then
       SetNumericErrorInFunction(fnName)
     end if
     return outV
   end if
 
   if fnId = FUNC_MOD then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if Parser_SupportComplexNumbers andalso (EvalValueHasNonzeroImaginary(args(0)) orelse EvalValueHasNonzeroImaginary(args(1))) then
       SetIncompatibleOperandsError()
       return outV
@@ -8091,7 +8376,6 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_FACT then
-    if EnsureExactArgCount(args(), 1, fnName) = FALSE then return outV
     if Parser_SupportComplexNumbers then
       if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fnName)
     elseif TryApplyFactorial(args(0), outV) = FALSE then
@@ -8101,13 +8385,11 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_RAND then
-    if EnsureExactArgCount(args(), 0, fnName) = FALSE then return outV
     ValueSetScalarPromoteExactInt64(outV, rnd)
     return outV
   end if
 
   if fnId = FUNC_RANDOM then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
       SetScalarValuesError(fnName)
       return outV
@@ -8117,7 +8399,6 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_CLAMP then
-    if EnsureExactArgCount(args(), 3, fnName) = FALSE then return outV
     if args(1).kind <> VK_SCALAR orelse args(2).kind <> VK_SCALAR then
       SetScalarMinMaxError(fnName)
       return outV
@@ -8126,19 +8407,12 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
     return outV
   end if
 
-  if (fnId = FUNC_GCD) orelse (fnId = FUNC_LCM) orelse (fnId = FUNC_NCR) orelse (fnId = FUNC_NPR) then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
-  end if
   if TryApplyScalarBinaryIntegerBuiltin(fnId, fnName, args(), outV) then
     return outV
   end if
 
   if (fnId = FUNC_HEX) orelse (fnId = FUNC_OCT) orelse (fnId = FUNC_BIN) orelse _
      (fnId = FUNC_UHEX) orelse (fnId = FUNC_UOCT) orelse (fnId = FUNC_UBIN) then
-    if ubound(args) = -1 then
-      SetAtLeastOneArgError(fnName)
-      return outV
-    end if
     if ubound(args) = 0 then
       outV = args(0)
     else
@@ -8156,16 +8430,11 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_POW then
-    if EnsureExactArgCount(args(), 2, fnName) = FALSE then return outV
     if ValueApplyBinary(args(0), args(1), CHAR_CARET, outV) = FALSE then SetNumericErrorInFunction(fnName)
     return outV
   end if
 
   if (fnId = FUNC_DEG) orelse (fnId = FUNC_RAD) then
-    if ubound(args) = -1 then
-      SetAtLeastOneArgError(fnName)
-      return outV
-    end if
     if Parser_SupportComplexNumbers andalso CallArgsInvolveComplex(args()) then
       SetIncompatibleOperandsError()
       return outV
@@ -8191,7 +8460,6 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if IsUnaryBuiltin(fnName) then
-    if EnsureExactArgCount(args(), 1, fnName) = FALSE then return outV
     if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fnName)
     return outV
   end if
@@ -8614,7 +8882,9 @@ private function ParseUnary() as EvalValue
     dim v as EvalValue
     v = ParseUnary()
     if parseError then return v
-    dim minusOne as EvalValue, outV as EvalValue
+    dim outV as EvalValue
+    if TryNegateEvalScalarUnary(v, outV) then return outV
+    dim minusOne as EvalValue
     ValueSetInt64(minusOne, -1)
     if ApplyBinaryParserOp(v, minusOne, CHAR_ASTERISK, outV) = FALSE then return outV
     return outV
@@ -9033,6 +9303,7 @@ private sub ResetTopLevelEvaluationState(byref exprInput as String)
 end sub
 
 private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart as Boolean, byref outC as RawCartesianScalar)
+  ScalarRepairExactMetadata(sv)
   outC.kind = RSK_FLOATING
   outC.floatValue = 0.0
   if imagPart = FALSE then
@@ -9041,10 +9312,22 @@ private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart 
       outC.intValue = TimeTotalMsFromScalarValue(sv)
       exit sub
     end if
-    if (sv.flags and SVF_RENDER_RATIONAL) <> 0 andalso sv.exactUInt64Valid then
-      outC.kind = RSK_RATIONAL
-      outC.ratNum = sv.exactInt64
-      outC.ratDen = sv.exactUInt64
+    if (sv.flags and SVF_RENDER_RATIONAL) <> 0 then
+      if ScalarExactUInt64Valid(sv) orelse sv.exactUInt64 <> 0 then
+        outC.kind = RSK_RATIONAL
+        outC.ratNum = sv.exactInt64
+        outC.ratDen = sv.exactUInt64
+        exit sub
+      end if
+    end if
+    if ScalarExactInt64Valid(sv) then
+      outC.kind = RSK_INT64
+      outC.intValue = sv.exactInt64
+      exit sub
+    end if
+    if ScalarExactUInt64Valid(sv) then
+      outC.kind = RSK_UINT64
+      outC.uintValue = sv.exactUInt64
       exit sub
     end if
     if sv.scalarStorageKind = SSK_INT64 then
@@ -9061,15 +9344,40 @@ private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart 
     outC.floatValue = sv.scalar
     exit sub
   end if
-  if (sv.flags and SVF_IMAG_RENDER_RATIONAL) <> 0 andalso ScalarImagExactUInt64Valid(sv) then
-    outC.kind = RSK_RATIONAL
-    outC.ratNum = sv.imagExactInt64
-    outC.ratDen = sv.imagExactUInt64
-    exit sub
+  if (sv.flags and SVF_IMAG_RENDER_RATIONAL) <> 0 then
+    if ScalarImagExactUInt64Valid(sv) orelse sv.imagExactUInt64 <> 0 then
+      outC.kind = RSK_RATIONAL
+      outC.ratNum = sv.imagExactInt64
+      outC.ratDen = sv.imagExactUInt64
+      exit sub
+    end if
   end if
   if ScalarImagExactInt64Valid(sv) then
     outC.kind = RSK_INT64
     outC.intValue = sv.imagExactInt64
+    exit sub
+  end if
+  if ScalarImagExactUInt64Valid(sv) then
+    if sv.imagExactUInt64 <= FB_I64_MAX_U then
+      outC.kind = RSK_INT64
+      outC.intValue = CLngInt(sv.imagExactUInt64)
+    else
+      outC.kind = RSK_UINT64
+      outC.uintValue = sv.imagExactUInt64
+    end if
+    exit sub
+  end if
+  if sv.imagExactInt64 <> 0 orelse sv.imagExactUInt64 <> 0 then
+    if sv.imagExactInt64 <> 0 then
+      outC.kind = RSK_INT64
+      outC.intValue = sv.imagExactInt64
+    elseif sv.imagExactUInt64 <= FB_I64_MAX_U then
+      outC.kind = RSK_INT64
+      outC.intValue = CLngInt(sv.imagExactUInt64)
+    else
+      outC.kind = RSK_UINT64
+      outC.uintValue = sv.imagExactUInt64
+    end if
     exit sub
   end if
   outC.kind = RSK_FLOATING
@@ -9466,9 +9774,10 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
         pStream += 1
         dim afterEq as ZString ptr = pStream
-        dim lamP() as string
-        dim lamB as string = ""
-        if PeekRhsMayBeLambdaDefinition(afterEq) andalso TryParseLambdaAssignmentRhs(lamP(), lamB) then
+        if Parser_SupportLambdaFunctions then
+          dim lamP() as string
+          dim lamB as string = ""
+          if PeekRhsMayBeLambdaDefinition(afterEq) andalso TryParseLambdaAssignmentRhs(lamP(), lamB) then
           dim lamUdfErr as string = ""
           if TryValidateUserFunctionDefinition(varName, lamP(), lamB, lamUdfErr) = FALSE then
             SetValidationError(lamUdfErr)
@@ -9489,6 +9798,10 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           result = 0
           InvalidateLastRawResult()
           return FinishParserEvaluateEx(TRUE)
+          end if
+        elseif PeekRhsMayBeLambdaSyntaxAt(afterEq) then
+          SetUnexpectedTokenError()
+          return FinishParserEvaluateEx(FALSE)
         end if
         pStream = afterEq
         dim exprV as EvalValue
@@ -9667,4 +9980,12 @@ end sub
 
 function Parser_GetSupportTimeValues() as Boolean
   return Parser_SupportTimeValues
+end function
+
+sub Parser_SetSupportLambdaFunctions(byval enabled as Boolean)
+  Parser_SupportLambdaFunctions = enabled
+end sub
+
+function Parser_GetSupportLambdaFunctions() as Boolean
+  return Parser_SupportLambdaFunctions
 end function

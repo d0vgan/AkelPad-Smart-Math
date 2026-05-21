@@ -337,6 +337,122 @@ private sub RunComplexNumberSupportOptionTests()
     subPass += 1
   end if
 
+  if Parser_TryEvaluateEx("abs(0x7FFFFFFFFFFFFFFF+20)", r, rt, ia) = FALSE orelse rt <> "9223372036854775827" then
+    print "[complex-opt] FAIL: abs exact int with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: abs(0x7FFFFFFFFFFFFFFF+20) exact int with flag ON"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("hex(abs(0x7FFFFFFFFFFFFFFF+20))", r, rt, ia) = FALSE orelse rt <> "0x8000000000000013" then
+    print "[complex-opt] FAIL: hex(abs(...)) with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: hex(abs(0x7FFFFFFFFFFFFFFF+20)) with flag ON"
+    subPass += 1
+  end if
+
+  dim cxMaxLit as String = "0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi"
+  dim cxMaxExactExpr(1 to 8) as String
+  dim cxMaxExactExpect(1 to 8) as String
+  cxMaxExactExpr(1) = "real(" & cxMaxLit & ")": cxMaxExactExpect(1) = "9223372036854775807"
+  cxMaxExactExpr(2) = "imag(" & cxMaxLit & ")": cxMaxExactExpect(2) = "9223372036854775807"
+  cxMaxExactExpr(3) = "cart(" & cxMaxLit & ")": cxMaxExactExpect(3) = "9223372036854775807+9223372036854775807i"
+  cxMaxExactExpr(4) = "conj(" & cxMaxLit & ")": cxMaxExactExpect(4) = "9223372036854775807-9223372036854775807i"
+  cxMaxExactExpr(5) = "hex(real(" & cxMaxLit & "))": cxMaxExactExpect(5) = "0x7FFFFFFFFFFFFFFF"
+  cxMaxExactExpr(6) = "hex(imag(" & cxMaxLit & "))": cxMaxExactExpect(6) = "0x7FFFFFFFFFFFFFFF"
+  cxMaxExactExpr(7) = "hex(cart(" & cxMaxLit & "))": cxMaxExactExpect(7) = "0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi"
+  cxMaxExactExpr(8) = "hex(conj(" & cxMaxLit & "))": cxMaxExactExpect(8) = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim rawConj as RawResult
+  if Parser_TryEvaluateExRaw(cxMaxExactExpr(4), rawConj) = FALSE orelse _
+     rawConj.scalar.real.kind <> RSK_INT64 orelse rawConj.scalar.imag.kind <> RSK_INT64 then
+    print "[complex-opt] FAIL: conj raw export not exact int64"
+    subFail += 1
+  else
+    print "[complex-opt] PASS: conj raw export preserves exact int64 components"
+    subPass += 1
+  end if
+  dim cmxi as Integer
+  for cmxi = 1 to 8
+    if Parser_TryEvaluateEx(cxMaxExactExpr(cmxi), r, rt, ia) = FALSE orelse rt <> cxMaxExactExpect(cmxi) then
+      print "[complex-opt] FAIL: """ & cxMaxExactExpr(cmxi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxMaxExactExpr(cmxi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next cmxi
+
+  dim rawNeg as RawResult
+  dim cxNegLit as String = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim cxNegLitExpect as String = "9223372036854775807-9223372036854775807i"
+  if Parser_TryEvaluateEx(cxNegLit, r, rt, ia) = FALSE orelse rt <> cxNegLitExpect then
+    print "[complex-opt] FAIL: bare """ & cxNegLit & """ -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: bare """ & cxNegLit & """"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateExRaw(cxNegLit, rawNeg) = FALSE orelse rawNeg.scalar.kind <> RSK_COMPLEX orelse _
+     rawNeg.scalar.real.kind <> RSK_INT64 orelse rawNeg.scalar.imag.kind <> RSK_INT64 then
+    print "[complex-opt] FAIL: bare raw """ & cxNegLit & """"
+    subFail += 1
+  else
+    print "[complex-opt] PASS: bare raw """ & cxNegLit & """ int64 complex"
+    subPass += 1
+  end if
+
+  dim cxNegLit2 as String = "-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim cxNegLit2Expect as String = "-9223372036854775807-9223372036854775807i"
+  if Parser_TryEvaluateEx(cxNegLit2, r, rt, ia) = FALSE orelse rt <> cxNegLit2Expect then
+    print "[complex-opt] FAIL: bare """ & cxNegLit2 & """ -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: bare """ & cxNegLit2 & """"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateExRaw(cxNegLit2, rawNeg) = FALSE orelse rawNeg.scalar.kind <> RSK_COMPLEX orelse _
+     rawNeg.scalar.real.kind <> RSK_INT64 orelse rawNeg.scalar.imag.kind <> RSK_INT64 then
+    print "[complex-opt] FAIL: bare raw """ & cxNegLit2 & """"
+    subFail += 1
+  else
+    print "[complex-opt] PASS: bare raw """ & cxNegLit2 & """ int64 complex"
+    subPass += 1
+  end if
+
+  dim cxNegExpr(1 to 8) as String
+  dim cxNegExpect(1 to 8) as String
+  cxNegExpr(1) = "real(" & cxNegLit & ")": cxNegExpect(1) = "9223372036854775807"
+  cxNegExpr(2) = "imag(" & cxNegLit & ")": cxNegExpect(2) = "-9223372036854775807"
+  cxNegExpr(3) = "cart(" & cxNegLit & ")": cxNegExpect(3) = cxNegLitExpect
+  cxNegExpr(4) = "conj(" & cxNegLit & ")": cxNegExpect(4) = "9223372036854775807+9223372036854775807i"
+  cxNegExpr(5) = "real(" & cxNegLit2 & ")": cxNegExpect(5) = "-9223372036854775807"
+  cxNegExpr(6) = "imag(" & cxNegLit2 & ")": cxNegExpect(6) = "-9223372036854775807"
+  cxNegExpr(7) = "cart(" & cxNegLit2 & ")": cxNegExpect(7) = cxNegLit2Expect
+  cxNegExpr(8) = "conj(" & cxNegLit2 & ")": cxNegExpect(8) = "-9223372036854775807+9223372036854775807i"
+  dim cni as Integer
+  for cni = 1 to 8
+    if Parser_TryEvaluateEx(cxNegExpr(cni), r, rt, ia) = FALSE orelse rt <> cxNegExpect(cni) then
+      print "[complex-opt] FAIL: """ & cxNegExpr(cni) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxNegExpr(cni) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+    if Parser_TryEvaluateExRaw(cxNegExpr(cni), rawNeg) = FALSE then
+      print "[complex-opt] FAIL: raw """ & cxNegExpr(cni) & """"
+      subFail += 1
+    elseif cni = 1 orelse cni = 2 orelse cni = 5 orelse cni = 6 then
+      if rawNeg.scalar.kind <> RSK_INT64 then
+        print "[complex-opt] FAIL: raw scalar """ & cxNegExpr(cni) & """ kind=" & rawNeg.scalar.kind
+        subFail += 1
+      end if
+    elseif rawNeg.scalar.kind <> RSK_COMPLEX orelse rawNeg.scalar.real.kind <> RSK_INT64 orelse rawNeg.scalar.imag.kind <> RSK_INT64 then
+      print "[complex-opt] FAIL: raw complex """ & cxNegExpr(cni) & """"
+      subFail += 1
+    end if
+  next cni
+
   dim complexCases(1 to 7) as String
   dim complexExpect(1 to 7) as String
   complexCases(1) = "10+5i": complexExpect(1) = "10+5i"
@@ -898,6 +1014,65 @@ private sub RunComplexNumberSupportOptionTests()
   print ""
 end sub
 
+private sub RunBuiltinArityTableTests()
+  print "=== Builtin arity table (central validation) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim errExprs(1 to 6) as String
+  dim errNeed(1 to 6) as String
+  errExprs(1) = "ratio(1,2)": errNeed(1) = "expects 1 argument(s)"
+  errExprs(2) = "sortby()": errNeed(2) = "sortby expects a function that takes 1 parameter"
+  errExprs(3) = "sortby(1)": errNeed(3) = "sortby expects a function that takes 1 parameter"
+  errExprs(4) = "sortby(1,2,3)": errNeed(4) = "sortby expects"
+  errExprs(5) = "lcm()": errNeed(5) = "expects 2 argument(s)"
+  errExprs(6) = "npr(1)": errNeed(6) = "expects 2 argument(s)"
+  dim ei as Integer
+  for ei = 1 to 6
+    if Parser_TryEvaluateEx(errExprs(ei), r, rt, ia) then
+      print "[arity] FAIL: """ & errExprs(ei) & """ expected error containing """ & errNeed(ei) & """ but got """ & rt & """"
+      subFail += 1
+    elseif (instr(lcase(Parser_GetLastError()), lcase(errNeed(ei))) = 0) then
+      print "[arity] FAIL: """ & errExprs(ei) & """ got """ & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[arity] PASS: """ & errExprs(ei) & """ -> """ & errNeed(ei)
+      subPass += 1
+    end if
+  next ei
+
+  Parser_SetSupportTimeValues(TRUE)
+  if Parser_TryEvaluateEx("milliseconds()", r, rt, ia) then
+    print "[arity] FAIL: milliseconds() expected arity error"
+    subFail += 1
+  elseif (instr(lcase(Parser_GetLastError()), "expects 1 argument(s)") = 0) then
+    print "[arity] FAIL: milliseconds() got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[arity] PASS: milliseconds() -> expects 1 argument(s)"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("seconds(1:00,2:00)", r, rt, ia) then
+    print "[arity] FAIL: seconds(1:00,2:00) expected arity error"
+    subFail += 1
+  elseif (instr(lcase(Parser_GetLastError()), "expects 1 argument(s)") = 0) then
+    print "[arity] FAIL: seconds(1:00,2:00) got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[arity] PASS: seconds(1:00,2:00) -> expects 1 argument(s)"
+    subPass += 1
+  end if
+  Parser_SetSupportTimeValues(FALSE)
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Builtin-arity sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunTimeValuesSupportOptionTests()
   print "=== Time value support (parser-wide option) ==="
 
@@ -1030,8 +1205,97 @@ private sub RunTimeValuesSupportOptionTests()
   print ""
 end sub
 
+private sub RunLambdaFunctionsSupportOptionTests()
+  print "=== Lambda function support (parser-wide option) ==="
+
+  Parser_SetSupportLambdaFunctions(TRUE)
+
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+
+  if Parser_GetSupportLambdaFunctions() = FALSE then
+    print "[lambda-opt] FAIL: expected support flag ON after enabling"
+    subFail += 1
+  else
+    print "[lambda-opt] PASS: getter reports enabled after Parser_SetSupportLambdaFunctions(TRUE)"
+    subPass += 1
+  end if
+
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim isOK as Boolean = TRUE
+  if Parser_TryEvaluateEx("sortby((3,1,2), x:-x)", r, rt, ia) = FALSE then
+    isOK = FALSE
+  elseif rt <> "(3,2,1)" andalso rt <> "(3, 2, 1)" then
+    isOK = FALSE
+  end if
+  if not isOK then
+    print "[lambda-opt] FAIL: sortby anonymous lambda with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[lambda-opt] PASS: sortby((3,1,2), x:-x) -> (3,2,1) with support flag ON"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("f=x:x+2; f(3)", r, rt, ia) = FALSE orelse rt <> "5" then
+    print "[lambda-opt] FAIL: lambda UDF with flag ON, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[lambda-opt] PASS: f=x:x+2; f(3) -> 5 with support flag ON"
+    subPass += 1
+  end if
+
+  Parser_SetSupportLambdaFunctions(FALSE)
+  if Parser_GetSupportLambdaFunctions() <> FALSE then
+    print "[lambda-opt] FAIL: expected support flag OFF after disable"
+    subFail += 1
+  else
+    print "[lambda-opt] PASS: getter reports disabled after Parser_SetSupportLambdaFunctions(FALSE)"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("sortby((-3,-1,2), abs)", r, rt, ia) = FALSE orelse rt <> "(-1, 2, -3)" then
+    print "[lambda-opt] FAIL: sortby builtin ref with flag OFF, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[lambda-opt] PASS: sortby((-3,-1,2), abs) still works when lambda support is OFF"
+    subPass += 1
+  end if
+
+  dim rejectExprs(1 to 4) as String
+  rejectExprs(1) = "f=x:x+1"
+  rejectExprs(2) = "f=(x,y):(x+y)"
+  rejectExprs(3) = "sortby((3,1,2), x:-x)"
+  rejectExprs(4) = "sortby((1,2), (x):(1/x))"
+  dim ri as Integer
+  for ri = 1 to 4
+    if Parser_TryEvaluateEx(rejectExprs(ri), r, rt, ia) then
+      print "[lambda-opt] FAIL: expected failure for """ & rejectExprs(ri) & """ with support OFF but got """ & rt & """"
+      subFail += 1
+    else
+      dim errLam as String = lcase(Parser_GetLastError())
+      if instr(errLam, "unexpected token") > 0 then
+        print "[lambda-opt] PASS: """ & rejectExprs(ri) & """ rejected when support is OFF"
+        subPass += 1
+      else
+        print "[lambda-opt] FAIL: """ & rejectExprs(ri) & """ with support OFF expected unexpected token, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next ri
+
+  Parser_SetSupportLambdaFunctions(TRUE)
+  Parser_ClearVariables()
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Lambda-option sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 sub Main()
-  dim tests(1 to 1131) as SmokeCase
+  dim tests(1 to 1149) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2219,6 +2483,24 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1129).expr = "atan2;(2,3)": tests(1129).expectedErrContains = "unexpected token" ' [err] first statement bare builtin;
   tests(1130).setup = "nnnn=5": tests(1130).expr = "atan2;": tests(1130).expectedErrContains = "unexpected token" ' [err] error location not from prior expr
   tests(1131).setup = "nnnn=5": tests(1131).expr = "atan2;(2,3)": tests(1131).expectedErrContains = "unexpected token" ' [err] error location not from prior expr
+  tests(1132).expr = "ratio(1,2)": tests(1132).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
+  tests(1133).expr = "sortby()": tests(1133).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [arity-table] parse-time
+  tests(1134).expr = "sortby(1)": tests(1134).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [arity-table] parse-time
+  tests(1135).expr = "sortby(1,2,3)": tests(1135).expectedErrContains = "sortby expects" ' [arity-table] parse-time (exactly one function or unary function)
+  tests(1136).expr = "lcm()": tests(1136).expectedErrContains = "expects 2 argument(s)" ' [arity-table]
+  tests(1137).expr = "npr()": tests(1137).expectedErrContains = "expects 2 argument(s)" ' [arity-table]
+  tests(1138).expr = "random(1)": tests(1138).expectedErrContains = "expects 2 argument(s)" ' [arity-table]
+  tests(1139).expr = "clamp(1)": tests(1139).expectedErrContains = "expects 3 argument(s)" ' [arity-table]
+  tests(1140).expr = "fact()": tests(1140).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
+  tests(1141).expr = "deg(1,2)": tests(1141).expected = "(57.29577951308232, 114.5915590261647)" ' [arity-table] variadic deg
+  tests(1142).expr = "hex(1,2,3)": tests(1142).expected = "(0x1,0x2,0x3)" ' [arity-table] variadic hex
+  tests(1143).expr = "sum(1,2,3)": tests(1143).expected = "6" ' [arity-table] variadic sum
+  tests(1144).expr = "unpack(1,2)": tests(1144).expected = "(1,2)" ' [arity-table] variadic unpack
+  tests(1145).expr = "sin()": tests(1145).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
+  tests(1146).expr = "abs(0x7FFFFFFFFFFFFFFF+20)": tests(1146).expected = "9223372036854775827" ' [abs-exact-int]
+  tests(1147).expr = "hex(abs(0x7FFFFFFFFFFFFFFF+20))": tests(1147).expected = "0x8000000000000013" ' [abs-exact-int]
+  tests(1148).expr = "abs(-9223372036854775808)": tests(1148).expected = "9223372036854775808" ' [abs-exact-int] |INT64_MIN|
+  tests(1149).expr = "uhex(abs((18446744073709551615,-7)))": tests(1149).expected = "(0xFFFFFFFFFFFFFFFF,0x7)" ' [abs-exact-int]
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -2267,7 +2549,11 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
 
   RunComplexNumberSupportOptionTests()
 
+  RunBuiltinArityTableTests()
+
   RunTimeValuesSupportOptionTests()
+
+  RunLambdaFunctionsSupportOptionTests()
 
   print "=== Result ==="
   print "Passed: " & g_passed

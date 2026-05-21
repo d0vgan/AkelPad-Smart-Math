@@ -224,6 +224,8 @@ sub LoadSettings()
 
   SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0) ' be sure to close the options handle
 
+  Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
+
   g_settingsCache.isInitialized = TRUE
 end sub
 

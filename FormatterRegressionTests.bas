@@ -388,6 +388,181 @@ end if
 RunSeparatorMatrix(failures)
 FormatterTestSetup()
 
+#ifdef PARSER_FORMATTER_INTEGRATION
+
+private function FormatterTryEvaluateAndFormat(byref expr as String, byref fmtOut as String, byref rawOut as RawResult) as Boolean
+  fmtOut = ""
+  RawResultClear(rawOut)
+  if Parser_TryEvaluateExRaw(expr, rawOut) = FALSE then return FALSE
+  fmtOut = FormatRawEvaluationResult(rawOut)
+  return TRUE
+end function
+
+private sub AssertRawComplexInt64Parts(byref caseName as String, byref raw as RawResult, byref failCount as Integer)
+  if raw.scalar.kind <> RSK_COMPLEX then
+    print !"[FAIL] "; caseName; !" — expected RSK_COMPLEX, kind="; raw.scalar.kind
+    failCount += 1
+    exit sub
+  end if
+  if raw.scalar.real.kind <> RSK_INT64 orelse raw.scalar.imag.kind <> RSK_INT64 then
+    print !"[FAIL] "; caseName; !" — expected int64 real/imag, got re="; raw.scalar.real.kind; !" im="; raw.scalar.imag.kind
+    failCount += 1
+  else
+    print !"[PASS] "; caseName; !" raw int64 complex"
+  end if
+end sub
+
+private sub AssertRawScalarInt64(byref caseName as String, byref raw as RawResult, byref failCount as Integer)
+  if raw.scalar.kind <> RSK_INT64 then
+    print !"[FAIL] "; caseName; !" — expected RSK_INT64 scalar, kind="; raw.scalar.kind
+    failCount += 1
+  else
+    print !"[PASS] "; caseName; !" raw int64 scalar"
+  end if
+end sub
+
+private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
+  print !""
+  print !"-- Parser + formatter integration (ComplexNumbers ON, 2 decimal places)"
+
+  Parser_ClearVariables()
+  Parser_SetSupportComplexNumbers(TRUE)
+  FormatterTestSetup()
+  g_nDecimals = 2
+  g_bUseThousandsSeparator = FALSE
+  ApplySeparatorDefaults()
+
+  dim cxLit as String = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim cxLit2 as String = "-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim raw as RawResult
+  dim fmt as String
+
+  dim bareExpr(1 to 2) as String
+  dim bareWant(1 to 2) as String
+  bareExpr(1) = cxLit
+  bareWant(1) = SMARTMATH_RESULT_PREFIX & "9223372036854775807 - 9223372036854775807i"
+  bareExpr(2) = cxLit2
+  bareWant(2) = SMARTMATH_RESULT_PREFIX & "-9223372036854775807 - 9223372036854775807i"
+
+  dim bi as Integer
+  for bi = 1 to 2
+    dim tagBare as String = "parser-fmt/bare/" & bareExpr(bi)
+    if FormatterTryEvaluateAndFormat(bareExpr(bi), fmt, raw) = FALSE then
+      print !"[FAIL] "; tagBare; !" — evaluate failed"
+      failCount += 1
+    else
+      AssertEq(tagBare, fmt, bareWant(bi), failCount)
+      AssertRawComplexInt64Parts(tagBare & "/raw", raw, failCount)
+      AssertNoSubstr(tagBare & "/no-sci", fmt, "e+", failCount)
+      AssertNoSubstr(tagBare & "/no-sci", fmt, "e-", failCount)
+      AssertNoSubstr(tagBare & "/no-sci", fmt, "E+", failCount)
+      AssertNoSubstr(tagBare & "/no-sci", fmt, "E-", failCount)
+    end if
+  next bi
+
+  dim fnExpr(1 to 8) as String
+  dim fnWant(1 to 8) as String
+  fnExpr(1) = "real(" & cxLit & ")": fnWant(1) = SMARTMATH_RESULT_PREFIX & "9223372036854775807"
+  fnExpr(2) = "imag(" & cxLit & ")": fnWant(2) = SMARTMATH_RESULT_PREFIX & "-9223372036854775807"
+  fnExpr(3) = "cart(" & cxLit & ")": fnWant(3) = bareWant(1)
+  fnExpr(4) = "conj(" & cxLit & ")": fnWant(4) = SMARTMATH_RESULT_PREFIX & "9223372036854775807 + 9223372036854775807i"
+  fnExpr(5) = "real(" & cxLit2 & ")": fnWant(5) = SMARTMATH_RESULT_PREFIX & "-9223372036854775807"
+  fnExpr(6) = "imag(" & cxLit2 & ")": fnWant(6) = SMARTMATH_RESULT_PREFIX & "-9223372036854775807"
+  fnExpr(7) = "cart(" & cxLit2 & ")": fnWant(7) = bareWant(2)
+  fnExpr(8) = "conj(" & cxLit2 & ")": fnWant(8) = SMARTMATH_RESULT_PREFIX & "-9223372036854775807 + 9223372036854775807i"
+
+  dim fi as Integer
+  for fi = 1 to 8
+    dim tagFn as String = "parser-fmt/" & fnExpr(fi)
+    if FormatterTryEvaluateAndFormat(fnExpr(fi), fmt, raw) = FALSE then
+      print !"[FAIL] "; tagFn; !" — evaluate failed"
+      failCount += 1
+    else
+      AssertEq(tagFn, fmt, fnWant(fi), failCount)
+      AssertNoSubstr(tagFn & "/no-sci", fmt, "e+", failCount)
+      AssertNoSubstr(tagFn & "/no-sci", fmt, "e-", failCount)
+      if fi = 1 orelse fi = 2 orelse fi = 5 orelse fi = 6 then
+        AssertRawScalarInt64(tagFn & "/raw", raw, failCount)
+      else
+        AssertRawComplexInt64Parts(tagFn & "/raw", raw, failCount)
+      end if
+    end if
+  next fi
+
+  '' Regression guard: float raw export must not be used for these magnitudes (shows sci at 2 decimals).
+  FormatterTestSetup()
+  g_nDecimals = 2
+  RawResultClear(raw)
+  raw.kind = RRK_SCALAR
+  raw.scalar.kind = RSK_COMPLEX
+  raw.scalar.real.kind = RSK_FLOATING
+  raw.scalar.real.floatValue = 9223372036854775808.0
+  raw.scalar.imag.kind = RSK_FLOATING
+  raw.scalar.imag.floatValue = -9223372036854775808.0
+  dim floatFmt as String = FormatRawEvaluationResult(raw)
+  AssertTrue("parser-fmt/float-raw/shows-sci", InStr(1, floatFmt, "e+") > 0 orelse InStr(1, floatFmt, "e-") > 0, failCount)
+
+  '' User SmartMath.ini profile: Decimals=-1, ThousandsSeparator=1, ComplexNumbers=1.
+  print !""
+  print !"-- Parser + formatter integration (user ini: decimals=-1, thousands ON)"
+  Parser_ClearVariables()
+  Parser_SetSupportComplexNumbers(TRUE)
+  FormatterTestSetup()
+  g_nDecimals = -1
+  g_bUseThousandsSeparator = TRUE
+  g_sThousandsSeparator = "'"
+  ApplySeparatorDefaults()
+
+  dim cxLitIni as String = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim cxLitIni2 as String = "-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim iniBareWant(1 to 2) as String
+  iniBareWant(1) = SMARTMATH_RESULT_PREFIX & "9'223'372'036'854'775'807 - 9'223'372'036'854'775'807i"
+  iniBareWant(2) = SMARTMATH_RESULT_PREFIX & "-9'223'372'036'854'775'807 - 9'223'372'036'854'775'807i"
+  dim iniBareExpr(1 to 2) as String
+  iniBareExpr(1) = cxLitIni
+  iniBareExpr(2) = cxLitIni2
+
+  for bi = 1 to 2
+    dim tagIniBare as String = "parser-fmt/ini-bare/" & iniBareExpr(bi)
+    if FormatterTryEvaluateAndFormat(iniBareExpr(bi), fmt, raw) = FALSE then
+      print !"[FAIL] "; tagIniBare; !" — evaluate failed"
+      failCount += 1
+    else
+      AssertEq(tagIniBare, fmt, iniBareWant(bi), failCount)
+      AssertRawComplexInt64Parts(tagIniBare & "/raw", raw, failCount)
+      AssertNoSubstr(tagIniBare & "/no-sci", fmt, "e+", failCount)
+      AssertNoSubstr(tagIniBare & "/no-sci", fmt, "e-", failCount)
+    end if
+  next bi
+
+  dim iniFnExpr(1 to 4) as String
+  dim iniFnWant(1 to 4) as String
+  iniFnExpr(1) = "real(" & cxLitIni & ")": iniFnWant(1) = SMARTMATH_RESULT_PREFIX & "9'223'372'036'854'775'807"
+  iniFnExpr(2) = "imag(" & cxLitIni & ")": iniFnWant(2) = SMARTMATH_RESULT_PREFIX & "-9'223'372'036'854'775'807"
+  iniFnExpr(3) = "real(" & cxLitIni2 & ")": iniFnWant(3) = SMARTMATH_RESULT_PREFIX & "-9'223'372'036'854'775'807"
+  iniFnExpr(4) = "imag(" & cxLitIni2 & ")": iniFnWant(4) = SMARTMATH_RESULT_PREFIX & "-9'223'372'036'854'775'807"
+  for fi = 1 to 4
+    dim tagIniFn as String = "parser-fmt/ini-fn/" & iniFnExpr(fi)
+    if FormatterTryEvaluateAndFormat(iniFnExpr(fi), fmt, raw) = FALSE then
+      print !"[FAIL] "; tagIniFn; !" — evaluate failed"
+      failCount += 1
+    else
+      AssertEq(tagIniFn, fmt, iniFnWant(fi), failCount)
+      AssertRawScalarInt64(tagIniFn & "/raw", raw, failCount)
+      AssertNoSubstr(tagIniFn & "/no-sci", fmt, "e+", failCount)
+      AssertNoSubstr(tagIniFn & "/no-sci", fmt, "e-", failCount)
+    end if
+  next fi
+
+  FormatterTestSetup()
+end sub
+
+#endif
+
+#ifdef PARSER_FORMATTER_INTEGRATION
+RunParserFormatterIntegrationTests(failures)
+#endif
+
 print !""
 print !"=== Result ==="
 if failures = 0 then

@@ -14,6 +14,8 @@ declare sub Parser_SetSupportComplexNumbers(byval enabled as Boolean)
 declare function Parser_GetSupportComplexNumbers() as Boolean
 declare sub Parser_SetSupportTimeValues(byval enabled as Boolean)
 declare function Parser_GetSupportTimeValues() as Boolean
+declare sub Parser_SetSupportLambdaFunctions(byval enabled as Boolean)
+declare function Parser_GetSupportLambdaFunctions() as Boolean
 declare function Parser_GetLastRawResult(byref rawOut as RawResult) as Boolean
 declare function Parser_FormatTimeMs(byval totalMs as LongInt) as String
 declare function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String

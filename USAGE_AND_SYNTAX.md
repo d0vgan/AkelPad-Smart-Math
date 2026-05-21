@@ -712,10 +712,18 @@ Purpose: complex numbers utilities.
   - `phase(1+2i)` -> `1.107149`
   - `c=1+2i; atan2(imag(c), real(c))` -> `1.107149`
   - `polar(1+2i)` -> `(2.236068, 1.107149)`
+  - `c=1+2i; (abs(c), phase(c))` -> `(2.236068, 1.107149)`
   - `p=polar(1+2i); r=p[0]; angle=p[1]; r*exp(i*angle)` -> `1+2i`
   - `cart(polar(1+2i))` -> `1+2i`
   - `cart((2.236068, 1.107149))` -> `0.999999+2i`
   - `conj(1+2i)` -> `1-2i`
+
+- See also:
+  - Complex Number Operators
+  - Trigonometric and Hyperbolic With Complex Numbers
+  - Logarithmic and Exponential With Complex Numbers
+  - Power and Root With Complex Numbers
+  - Numeric Utilities With Complex Numbers
 
 ### Random
 
@@ -823,6 +831,7 @@ Example:
 
 - **Complex number support (off by default):** `Parser_SetSupportComplexNumbers` / `Parser_GetSupportComplexNumbers` in the FreeBASIC plugin parser. Default is off: behavior stays real-only (non-real domains keep producing `NaN` or an error as they do today). When set on, the parser registers the imaginary unit as the reserved constant **`i`** (lowercase), accepts Cartesian-style complex literals and expressions such as `10+5i`, `-1+3i`, `2-3*i`, and `-i+5` (including implicit multiplication before `i`, for example `5i`).
 - **Time value support (on by default):** `Parser_SetSupportTimeValues` / `Parser_GetSupportTimeValues`. Default is on: colon and compact unit-suffix duration literals (`1:30`, `1d2h3m4s5ms`), duration constants (`millisecond`, `second`, `minute`, `hour`, `day`), and duration-aware arithmetic, comparisons, aggregates, and converter builtins (`milliseconds`, `seconds`, etc.) are active. When set off, the parser skips time-literal parsing and time-specific evaluation paths (plain numeric parsing only), and duration constants/converters are unavailable.
+- **Lambda function support (on by default):** `Parser_SetSupportLambdaFunctions` / `Parser_GetSupportLambdaFunctions`. Default is on: lambda-style user function definitions (`f=x,x+1`, `f=(x,y):(x+y)`, etc.) and anonymous lambda keys in `sortby` (`sortby((3,1,2), x:-x)`) are active. When set off, the parser skips lambda parse and evaluation paths; any input that uses lambda definition syntax fails with `unexpected token`, while ordinary `sortby` with a named function reference (for example `sortby((-3,-1,2), abs)`) still works.
 
 ## SmartMath Options
 

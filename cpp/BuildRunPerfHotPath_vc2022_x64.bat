@@ -30,8 +30,14 @@ if "%REPEATS%"=="" set REPEATS=3
 set WARMUP=%3
 if "%WARMUP%"=="" set WARMUP=1
 
-echo Running perf with %ITERATIONS% iterations, %REPEATS% repeats, %WARMUP% warmup runs...
-PerfHotPath_MathParser.exe %ITERATIONS% %REPEATS% %WARMUP%
+set MODE=%4
+if "%MODE%"=="" (
+  echo Running perf with %ITERATIONS% iterations, %REPEATS% repeats, %WARMUP% warmup runs...
+  PerfHotPath_MathParser.exe %ITERATIONS% %REPEATS% %WARMUP%
+) else (
+  echo Running perf mode "%MODE%" with %ITERATIONS% iterations...
+  PerfHotPath_MathParser.exe %ITERATIONS% %REPEATS% %WARMUP% %MODE%
+)
 if errorlevel 1 exit /b 1
 exit /b 0
 

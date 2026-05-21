@@ -425,6 +425,41 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
+private function RawCartesianScalarToString(byref scalar as RawCartesianScalar) as String
+  dim s as String = "kind=" & ltrim(str(scalar.kind))
+  select case scalar.kind
+    case RSK_INT64: s &= " int64=" & ltrim(str(scalar.intValue))
+    case RSK_UINT64: s &= " uint64=" & ltrim(str(scalar.uintValue))
+    case RSK_FLOATING: s &= " float=" & ltrim(str(scalar.floatValue))
+    case RSK_RATIONAL: s &= " ratio=" & ltrim(str(scalar.ratNum)) & "/" & ltrim(str(scalar.ratDen))
+    case else: s &= " ..."
+  end select
+  return s
+end function
+
+private function RawScalarToString(byref scalar as RawScalar) as String
+  dim s as String = "kind=" & ltrim(str(scalar.kind))
+  select case scalar.kind
+    case RSK_INT64: s &= " int64=" & ltrim(str(scalar.intValue))
+    case RSK_UINT64: s &= " uint64=" & ltrim(str(scalar.uintValue))
+    case RSK_FLOATING: s &= " float=" & ltrim(str(scalar.floatValue))
+    case RSK_RATIONAL: s &= " ratio=" & ltrim(str(scalar.ratNum)) & "/" & ltrim(str(scalar.ratDen))
+    case else: s &= " ..."
+  end select
+  return s
+end function
+
+private sub LogInfo_InputAndResult(byref sLine as String, byref sRes as String, byref raw as RawResult)
+  dim rawDbg as String = "; "
+  if raw.scalar.kind = RSK_COMPLEX then
+    rawDbg &= "real: " & RawCartesianScalarToString(raw.scalar.real)
+    rawDbg &= ", imag: " & RawCartesianScalarToString(raw.scalar.imag)
+  else
+    rawDbg &= RawScalarToString(raw.scalar)
+  end if
+  LogInfo("`" & sLine & "` -> `" & sRes & "`" & rawDbg)
+end sub
+
 private sub BuildRenderedResultText(byref sLine as String, byref sRes as String, byref bIsError as Boolean, byval lineIdx as Integer = -1)
   sRes = ""
   bIsError = FALSE
@@ -447,6 +482,9 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
 
   if Parser_TryEvaluateExRaw(sLine, raw) then
     sRes = FormatRawEvaluationResult(raw)
+    if g_bLogParsedLines then
+      LogInfo_InputAndResult(sLine, sRes, raw)
+    end if
   else
     dim sErr as String = Parser_GetLastError()
     if len(sErr) > 0 then
@@ -526,6 +564,7 @@ private sub EnsureRenderCache(byval hWnd as HWND)
   g_cacheLineCount = nLineCount
 
   Parser_ClearVariables()
+  Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
   for i = 0 to nLineCount - 1
     dim sRes as String = ""
     dim bIsError as Boolean = FALSE
