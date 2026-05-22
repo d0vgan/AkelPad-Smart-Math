@@ -455,6 +455,16 @@ private:
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  static void scalarRepairExactMetadata(EvalValue::ScalarValue& s);
+  static bool scalarHasExactIntegerPayload(const EvalValue::ScalarValue& s);
+  static bool tryMulExactInt64Square(long long i, long long& outSq);
+  static bool tryGetExactSignedInt64NoUIntWrapScalarStrict(const EvalValue::ScalarValue& s, long long& outI);
+  static void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV);
+  static bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV);
+  static bool tryApplyHypotExactScalars(
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      EvalValue& outV);
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
       const EvalValue::ScalarValue& a,

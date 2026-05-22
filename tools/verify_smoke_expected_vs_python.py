@@ -8,19 +8,21 @@ Python. Cases we cannot translate safely are reported as SKIP (not mismatches).
 
 When an expression *looks like* a complex or time-duration case (heuristic), we
 switch to a dedicated reference path:
-  * **Complex:** map Smart-Math `i` suffix / bare `i` to Python `j`, evaluate with
+  * **Complex:** map Smart-Math `i` suffix / bare `i` to Python ``j``, evaluate with
     ``complex`` arithmetic, then compare after normalizing ``j`` <-> ``i`` spelling.
     Tuple + scalar / tuple * scalar / element-wise tuple/tuple uses the same
     broadcast lowering as the ``RunComplexNumberSupportOptionTests`` block in
-    ``SmokeTest_MathParser.bas``. That sub's table rows are discovered with a
-    generic regex ``StemCases(n) = "expr": stemExpect(n) = "expect"`` (same
-    ``Stem`` for both arrays) over the sub body only, so new tables like
-    ``powCases`` / ``powExpect``, ``cxTrigOk`` / ``cxTrigExpect``, ``cxFmtOk`` /
-    ``cxFmtExpect``, and similar ``*Cases`` / ``*Ok`` + ``*Expect`` tables are picked
-    up automatically. Error-only rows (``*ErrExpr``, inline ``Parser_TryEvaluateEx``
-    probes) are captured as ``expect_error``. Formatting builtins (``hex``/``bin``/…)
-    and a few DSL-only forms (``unique``, ``unpack``, user ``f(x)=``) are parsed but
-    skipped for numeric compare when Python cannot mirror display/DSL semantics.
+    ``SmokeTest_MathParser.bas``. Table rows are discovered from:
+    ``StemCases``/``StemOk`` + ``StemExpect``; ``StemExpr`` + ``StemExpect`` (with
+    ``&`` string concat via ``dim … as String`` constants); ``dim var`` +
+    ``Parser_TryEvaluateEx(var,…) orelse rt <> varExpect``; inline literal probes;
+    and ``*ErrExpr`` error tables. ``hex``/``bin``/``oct``/``uhex``/``uoct``/``ubin``
+    are evaluated for reference strings (uppercase ``0x``). DSL-only forms
+    (``unique``, ``unpack``, ``sort``, trailing ``uhex`` command, user ``f(x)=``) stay
+    skipped when not comparable.
+  * **Real (recent exact-int math):** ``sqrt``/``sqr`` use Smart-Math-style exact
+    integer rules; ``tests(1150)``..``1156`` and ``raw-api/sqrt-non-perfect-square``
+    are included. ``hex(sqr(9))`` etc. use the same display builtins as smoke.
   * **Time:** colon literals (MM:SS / HH:MM:SS / DD:HH:MM:SS), named duration
     constants (``second`` … ``day``), compact suffix forms (``1d2h3m4s5ms``),
     converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
@@ -755,6 +757,30 @@ _RE_COMPLEX_OPT_PAIRED_ROW = re.compile(
     re.I,
 )
 
+# fooExpr(n) = "real(" & var & ")": fooExpect(n) = "..." or fooExpect(n) = otherVar
+_RE_COMPLEX_OPT_PAIRED_EXPR_ROW = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)Expr\s*\(\s*(\d+)\s*\)\s*=\s*([^:\r\n]+?)\s*:\s*"
+    r"\1Expect\s*\(\s*\2\s*\)\s*=\s*([^:\r\n]+)",
+    re.I,
+)
+
+_RE_DIM_STRING_CONST = re.compile(
+    r'dim\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+String\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+# Parser_TryEvaluateEx(var, ...) = FALSE orelse rt <> varExpect | "literal"
+_RE_COMPLEX_OPT_VAR_PROBE = re.compile(
+    r"Parser_TryEvaluateEx\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*r\s*,\s*rt\s*,\s*ia\s*\)\s*=\s*FALSE\s+"
+    r"orelse\s+rt\s+<>\s+(?:\"((?:[^\"\\]|\\.)*)\"|([A-Za-z_][A-Za-z0-9_]*))",
+    re.I,
+)
+
+_RE_RUN_RAW_SUB = re.compile(
+    r"(?is)private\s+sub\s+RunRawResultApiTests\s*\([^)]*\)\s*(.*?)(?:^\s*end\s+sub\s*$)",
+    re.MULTILINE,
+)
+
 # Error-only table: cmpErrExpr(1) = "1+2i > 0"
 _RE_COMPLEX_OPT_ERR_ROW = re.compile(
     r'([A-Za-z_][A-Za-z0-9_]*Err(?:Expr)?)\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
@@ -781,12 +807,120 @@ def _extract_run_complex_number_support_sub_body(text: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def _extract_run_raw_result_sub_body(text: str) -> Optional[str]:
+    m = _RE_RUN_RAW_SUB.search(text)
+    return m.group(1) if m else None
+
+
+def _unescape_fb_string(s: str) -> str:
+    return s.replace('""', '"')
+
+
+def _collect_dim_string_constants(block: str) -> dict[str, str]:
+    consts: dict[str, str] = {}
+    for m in _RE_DIM_STRING_CONST.finditer(block):
+        consts[m.group(1)] = _unescape_fb_string(m.group(2))
+    return consts
+
+
+def _resolve_fb_string_piece(piece: str, consts: dict[str, str]) -> str:
+    piece = piece.strip()
+    m = re.fullmatch(r'"((?:[^"\\]|\\.)*)"', piece)
+    if m:
+        return _unescape_fb_string(m.group(1))
+    if piece in consts:
+        return consts[piece]
+    raise ValueError(f"unresolved string piece: {piece!r}")
+
+
+def _resolve_fb_string_expr(rhs: str, consts: dict[str, str]) -> str:
+    rhs = rhs.strip()
+    if "&" not in rhs:
+        return _resolve_fb_string_piece(rhs, consts)
+    return "".join(_resolve_fb_string_piece(p, consts) for p in re.split(r"\s*&\s*", rhs))
+
+
+def _resolve_fb_expect_rhs(rhs: str, consts: dict[str, str]) -> str:
+    rhs = rhs.strip()
+    if rhs.startswith('"'):
+        return _resolve_fb_string_expr(rhs, consts)
+    if rhs in consts:
+        return consts[rhs]
+    return rhs
+
+
+def _parse_paired_expr_expect_tables(block: str, consts: dict[str, str], add_case) -> None:
+    for m in _RE_COMPLEX_OPT_PAIRED_EXPR_ROW.finditer(block):
+        stem, n_s, expr_rhs, exp_rhs = m.group(1), m.group(2), m.group(3), m.group(4)
+        n = int(n_s)
+        try:
+            expr = _resolve_fb_string_expr(expr_rhs, consts)
+            expected = _resolve_fb_expect_rhs(exp_rhs, consts)
+        except ValueError:
+            continue
+        add_case(
+            {
+                "idx": f"{stem}Expr({n})",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
+
+
+def parse_smoke_synthetic_recent_cases() -> list[dict]:
+    """Probes that live only in raw/API subs (no tests(N).expected)."""
+    return [
+        {
+            "idx": "raw-api/sqrt-non-perfect-square-display",
+            "expr": "sqrt(4611686014132420611)",
+            "expected": "2147483647",
+            "ref_mode": "real",
+            "source": "raw_api",
+        },
+    ]
+
+
+def parse_smoke_raw_api_cases(path: str) -> list[dict]:
+    """Inline numeric probes from ``RunRawResultApiTests`` (display string, not raw kind)."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    block = _extract_run_raw_result_sub_body(text)
+    if not block:
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(entry: dict) -> None:
+        key = entry["idx"]
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(entry)
+
+    for m in _RE_COMPLEX_OPT_INLINE_SUCCESS.finditer(block):
+        expr = _unescape_fb_string(m.group(1))
+        expected = _unescape_fb_string(m.group(2))
+        add(
+            {
+                "idx": f"raw-inline:{expr}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": infer_ref_mode(expr, expected),
+                "source": "raw_api",
+            }
+        )
+    return out
+
+
 def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
     """
     Parse numeric and error probes from ``RunComplexNumberSupportOptionTests``.
 
     * Paired rows: ``fooCases(n) = "expr": fooExpect(n) = "exp"`` or
       ``fooOk(n): fooExpect(n)`` on one line.
+    * ``fooExpr(n) = <string expr> : fooExpect(n) = <expect>`` (supports ``&`` concat).
+    * ``dim var as String = "lit"`` with ``Parser_TryEvaluateEx(var, ...) orelse rt <> varExpect``.
     * Error tables: ``cmpErrExpr(n) = "expr"`` (no expected string).
     * Inline ``Parser_TryEvaluateEx("literal", ...)`` success/error probes.
     """
@@ -794,6 +928,8 @@ def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
     block = _extract_run_complex_number_support_sub_body(text)
     if not block:
         return []
+
+    consts = _collect_dim_string_constants(block)
 
     out: list[dict] = []
     stem_first_pos: dict[str, int] = {}
@@ -808,6 +944,29 @@ def parse_smoke_complex_opt_cases(path: str) -> list[dict]:
         if stem:
             stem_first_pos.setdefault(stem.group(1).lower(), len(out))
         out.append(entry)
+
+    _parse_paired_expr_expect_tables(block, consts, add_case)
+
+    for m in _RE_COMPLEX_OPT_VAR_PROBE.finditer(block):
+        var, lit_exp, id_exp = m.group(1), m.group(2), m.group(3)
+        if var not in consts:
+            continue
+        expr = consts[var]
+        if lit_exp is not None:
+            expected = _unescape_fb_string(lit_exp)
+        elif id_exp in consts:
+            expected = consts[id_exp]
+        else:
+            continue
+        add_case(
+            {
+                "idx": f"var:{var}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": "complex",
+                "source": "complex_opt",
+            }
+        )
 
     for m in _RE_COMPLEX_OPT_PAIRED_ROW.finditer(block):
         stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
@@ -1015,6 +1174,17 @@ def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
         "random": "random_sm",
         "rand": "rand_sm",
     }
+    repl.update(
+        {
+            "hex": "hex_sm",
+            "bin": "bin_sm",
+            "oct": "oct_sm",
+            "uhex": "uhex_sm",
+            "uoct": "uoct_sm",
+            "ubin": "ubin_sm",
+            "sqrt": "sqrt_sm_real",
+        }
+    )
     if mode == "complex":
         repl.update(
             {
@@ -1097,7 +1267,41 @@ def pow_sm(b, e):
     return b**e
 
 
+def _as_int_exact(x: Any) -> Optional[int]:
+    if isinstance(x, bool):
+        return int(x)
+    if isinstance(x, int):
+        return x
+    if isinstance(x, float) and math.isfinite(x):
+        r = round(x)
+        if abs(x - r) <= 1e-9 and abs(r) < (1 << 63):
+            return int(r)
+    return None
+
+
+def sqrt_sm_real(x: Any) -> Any:
+    """Smart-Math sqrt: exact int only when round(sqrt(n))^2 == n (checked int multiply)."""
+    if isinstance(x, complex):
+        return sqrt_sm(x)
+    xi = _as_int_exact(x)
+    xf = float(x)
+    if xi is None:
+        return math.sqrt(xf)
+    if xi < 0:
+        return math.sqrt(xf)
+    r = math.sqrt(float(xi))
+    if not math.isfinite(r):
+        return r
+    n = int(round(r))
+    if n * n == xi:
+        return n
+    return r
+
+
 def sqr_sm(x):
+    xi = _as_int_exact(x)
+    if xi is not None:
+        return xi * xi
     return x * x
 
 
@@ -1204,7 +1408,100 @@ def sign_sm_real(x):
 def sqrt_sm(x):
     if isinstance(x, complex) or (isinstance(x, (int, float)) and x < 0):
         return cmath.sqrt(complex(x))
-    return math.sqrt(float(x))
+    return sqrt_sm_real(x)
+
+
+def _format_hex_component(v: int, *, unsigned: bool = False) -> str:
+    if unsigned and v < 0:
+        uv = v % (1 << 64)
+        return "0x" + format(uv, "X")
+    if v < 0:
+        return "-0x" + format(-v, "X")
+    return "0x" + format(v, "X")
+
+
+def _format_hex_imag_coeff(ai: float) -> str:
+    if abs(ai) < 1e-15:
+        return "0"
+    neg = ai < 0
+    a = abs(ai)
+    if abs(a - 1.0) < 1e-12:
+        body = "i" if not neg else "-i"
+    else:
+        iv = int(round(a)) if abs(a - round(a)) < 1e-12 else None
+        if iv is not None:
+            body = (f"0x{format(iv, 'X')}i" if iv != 1 else "i")
+        else:
+            body = f"{a}i".rstrip("0").rstrip(".")
+        if neg:
+            body = "-" + body.lstrip("-")
+    return body
+
+
+def hex_sm(x: Any, *, unsigned: bool = False) -> Any:
+    if isinstance(x, tuple):
+        return tuple(hex_sm(e, unsigned=unsigned) for e in x)
+    if isinstance(x, complex):
+        re_s = _format_hex_component(int(round(x.real)), unsigned=unsigned)
+        im_s = _format_hex_imag_coeff(x.imag)
+        if im_s in ("0", "i", "-i"):
+            if im_s == "0":
+                return re_s
+            if not re_s or re_s == "0x0":
+                return im_s
+        if x.imag > 0:
+            return f"{re_s}+{im_s}"
+        return f"{re_s}{im_s}"
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("hex expects integer values")
+    return _format_hex_component(xi, unsigned=unsigned)
+
+
+def bin_sm(x: Any) -> Any:
+    if isinstance(x, tuple):
+        return tuple(bin_sm(e) for e in x)
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("bin expects integer values")
+    if xi < 0:
+        return "-0b" + format(-xi, "b")
+    return "0b" + format(xi, "b")
+
+
+def oct_sm(x: Any) -> Any:
+    if isinstance(x, tuple):
+        return tuple(oct_sm(e) for e in x)
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("oct expects integer values")
+    if xi < 0:
+        return "-0o" + format(-xi, "o")
+    return "0o" + format(xi, "o")
+
+
+def uhex_sm(x: Any) -> Any:
+    return hex_sm(x, unsigned=True)
+
+
+def uoct_sm(x: Any) -> Any:
+    if isinstance(x, tuple):
+        return tuple(uoct_sm(e) for e in x)
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("uoct expects integer values")
+    uv = xi % (1 << 64) if xi < 0 else xi
+    return "0o" + format(uv, "o")
+
+
+def ubin_sm(x: Any) -> Any:
+    if isinstance(x, tuple):
+        return tuple(ubin_sm(e) for e in x)
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("ubin expects integer values")
+    uv = xi % (1 << 64) if xi < 0 else xi
+    return "0b" + format(uv, "b")
 
 
 def hypot_sm(a, b):
@@ -1454,7 +1751,13 @@ def build_ns(ans: Any) -> dict:
         "cosh": math.cosh,
         "tanh": math.tanh,
         "exp": math.exp,
-        "sqrt": math.sqrt,
+        "sqrt": sqrt_sm_real,
+        "hex_sm": hex_sm,
+        "bin_sm": bin_sm,
+        "oct_sm": oct_sm,
+        "uhex_sm": uhex_sm,
+        "uoct_sm": uoct_sm,
+        "ubin_sm": ubin_sm,
         "abs": abs,
         "floor": math.floor,
         "ceil": math.ceil,
@@ -1505,6 +1808,12 @@ def build_ns_complex(ans: Any) -> dict:
             "atanh": _map_unary_cx(cmath.atanh),
             "exp": _map_unary_cx(cmath.exp),
             "abs": _map_unary_cx(abs),
+            "hex_sm": hex_sm,
+            "bin_sm": bin_sm,
+            "oct_sm": oct_sm,
+            "uhex_sm": uhex_sm,
+            "uoct_sm": uoct_sm,
+            "ubin_sm": ubin_sm,
             "sqrt": _map_unary_cx(sqrt_sm),
             "hypot": hypot_sm,
             "atan2": atan2_sm_cx,
@@ -1573,6 +1882,8 @@ def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
 def ref_format(v: Any, *, mode: str = "real") -> str:
     if isinstance(v, Duration):
         return duration_format_ms(v.ms)
+    if isinstance(v, str):
+        return v
     if isinstance(v, complex):
         return _format_complex_smoke(v)
     if isinstance(v, bool):
@@ -1589,7 +1900,7 @@ def ref_format(v: Any, *, mode: str = "real") -> str:
         return str(v)
     if isinstance(v, tuple):
         inner = ", ".join(ref_format(x, mode=mode) for x in v)
-        return f"({inner})"
+        return f"({inner})".replace(", ", ",").replace("( ", "(")
     return str(v)
 
 
@@ -1657,17 +1968,21 @@ def should_skip_case(case: dict) -> Optional[str]:
     if ex.strip() == "ans" and ";" not in ex:
         return "standalone ans (no prior statement in harness)"
 
-    if is_co and re.search(r"\b(?:hex|bin|oct|uhex|uoct|ubin)\s*\(", ex, re.I):
-        return "formatting builtin (display-only)"
-    if not is_co and re.search(r"\b(?:hex|bin|oct|uhex)\s*\(", ex, re.I):
-        return "formatting builtin"
+    fmt_m = re.search(r"\b(uhex|uoct|ubin|hex|bin|oct)\s*\(", ex, re.I)
+    if fmt_m:
+        if is_co and fmt_m.group(1).lower() in ("hex", "bin", "oct", "uhex", "uoct", "ubin"):
+            pass  # reference implements Smart-Math display builtins
+        elif not is_co and fmt_m.group(1).lower() in ("hex", "bin", "oct", "uhex"):
+            pass
+        else:
+            return "formatting builtin (display-only)"
     if not is_co and ("sort(" in ex or "unique(" in ex):
         return "sort/unique"
     if "~" in ex:
         return "bitwise complement (~)"
 
     last = _last_statement(ex_raw)
-    if re.fullmatch(r"(rad|deg|hex|bin|oct)\b(\(\))?", last.strip()):
+    if re.fullmatch(r"(rad|deg|hex|bin|oct|uhex|uoct|ubin)\b(\(\))?", last.strip(), flags=re.I):
         return "trailing formatter command (DSL)"
 
     if is_co and case.get("expected", "").strip() in ("0", "1") and re.search(
@@ -1713,13 +2028,20 @@ def main() -> int:
     if len(sys.argv) > 1:
         bas = sys.argv[1]
 
-    cases = parse_smoke_cases(bas) + parse_smoke_complex_opt_cases(bas)
+    cases = (
+        parse_smoke_cases(bas)
+        + parse_smoke_complex_opt_cases(bas)
+        + parse_smoke_raw_api_cases(bas)
+        + parse_smoke_synthetic_recent_cases()
+    )
     mismatches: list[str] = []
     skipped: list[str] = []
     ok = 0
     n_complex = 0
     n_complex_opt_compared_ok = 0
-    n_complex_opt_parsed = sum(1 for c in cases if c.get("source") == "complex_opt")
+    n_complex_opt_parsed = sum(
+        1 for c in cases if c.get("source") in ("complex_opt", "raw_api")
+    )
     n_complex_opt_skip_should = 0
     n_complex_opt_skip_eval = 0
     n_complex_opt_error_ok = 0
@@ -1782,12 +2104,14 @@ def main() -> int:
     print("=== Smoke expected vs Python reference ===")
     n_exp = sum(1 for c in cases if "expected" in c)
     print(f"Cases with numeric expected: {n_exp}")
+    n_raw_api = sum(1 for c in cases if c.get("source") == "raw_api")
     print(
-        f"RunComplexNumberSupportOptionTests: parsed {n_complex_opt_parsed} rows "
+        f"Option/raw subs: parsed {n_complex_opt_parsed} rows from complex-opt + raw API "
         f"({n_complex_opt_compared_ok} numeric OK, {n_complex_opt_error_ok} error probes OK); "
         f"{n_complex_opt_skip_should} skipped (DSL/display), "
         f"{n_complex_opt_skip_eval} eval-failed in Python stub, "
-        f"{n_complex_opt_error_fail} error-probe mismatches."
+        f"{n_complex_opt_error_fail} error-probe mismatches "
+        f"(raw_api rows: {n_raw_api})."
     )
     print(
         f"Compared OK (real/complex/time reference, tol rules): {ok}  "

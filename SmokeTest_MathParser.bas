@@ -280,6 +280,28 @@ private sub RunRawResultApiTests()
   end if
   Parser_SetSupportComplexNumbers(FALSE)
 
+  if Parser_TryEvaluateEx("sqrt(81)", r, rt, ia) = FALSE then
+    print "[raw] FAIL: sqrt(81) eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_INT64 orelse raw.scalar.real.intValue <> 9 then
+    print "[raw] FAIL: sqrt(81) raw int64 9"
+    subFail += 1
+  else
+    print "[raw] PASS: sqrt(81) -> verified exact int64"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("sqrt(4611686014132420611)", r, rt, ia) = FALSE then
+    print "[raw] FAIL: sqrt(4611686014132420611) eval"
+    subFail += 1
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_FLOATING then
+    print "[raw] FAIL: sqrt(4611686014132420611) must be floating (not fake exact int)"
+    subFail += 1
+  else
+    print "[raw] PASS: sqrt(4611686014132420611) -> floating (no verified square)"
+    subPass += 1
+  end if
+
   if Parser_TryEvaluateExRaw("ratio(0.5)", raw) = FALSE then
     print "[raw] FAIL: Parser_TryEvaluateExRaw ratio(0.5)"
     subFail += 1
@@ -1295,7 +1317,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1149) as SmokeCase
+  dim tests(1 to 1156) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2501,6 +2523,13 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1147).expr = "hex(abs(0x7FFFFFFFFFFFFFFF+20))": tests(1147).expected = "0x8000000000000013" ' [abs-exact-int]
   tests(1148).expr = "abs(-9223372036854775808)": tests(1148).expected = "9223372036854775808" ' [abs-exact-int] |INT64_MIN|
   tests(1149).expr = "uhex(abs((18446744073709551615,-7)))": tests(1149).expected = "(0xFFFFFFFFFFFFFFFF,0x7)" ' [abs-exact-int]
+  tests(1150).expr = "hex(sqr(9))": tests(1150).expected = "0x51" ' [sqr-exact-int]
+  tests(1151).expr = "sqr(3037000499)": tests(1151).expected = "9223372030926249001" ' [sqr-exact-int] large exact int square (differs from 3037000499*3037000499 float path)
+  tests(1152).expr = "hypot(3037000499,0)": tests(1152).expected = "3037000499" ' [hypot-exact-int]
+  tests(1153).expr = "sqr(1.5)": tests(1153).expected = "2.25" ' [sqr-float] non-exact input uses float path
+  tests(1154).expr = "sqrt(4611686014132420611)*sqrt(4611686014132420611)": tests(1154).expected = "4611686014132420609" ' [sqrt-no-fake-exact] float sqrt; product != radicand
+  tests(1155).expr = "sqr(sqrt(81))": tests(1155).expected = "81" ' [sqrt-exact-int] verified perfect square keeps int through sqr
+  tests(1156).expr = "sqr(sqrt(4611686014132420611))": tests(1156).expected = "4611686014132420609" ' [sqrt-no-fake-exact] fake exact int would yield 2147483647^2
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

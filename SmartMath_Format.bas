@@ -47,6 +47,7 @@ const SM_FMT_NEGINF as String = "-Inf"
 private const SM_STR_ZERO_DOT as String = "0."
 private const SM_STR_SCI_ZERO_PAD_EXP as String = "0E+00"
 private const SM_STR_SCI_EXP_SUFFIX as String = "E+00"
+private const SM_STR_EXPLICIT_FLOAT_FRAC_DIGIT as String = "0"
 
 '' Lowercase tokens from parser scalar strings (ValueToString / classification).
 private const SM_TOK_NAN_LC as String = "nan"
@@ -399,6 +400,27 @@ private function FormatNonFiniteFromDouble(byval d as Double) as String
   return ""
 end function
 
+'' True when formatted text has no decimal fraction (integer-like display).
+private function NumericDisplayHasFractionPart(byref s as String) as Boolean
+  if PositionOfNumericDecimal(s) > 0 then return TRUE
+  dim ePos as Integer = IndexOfExponentLetter(s)
+  if ePos > 0 then
+    if PositionOfNumericDecimal(Left(s, ePos - 1)) > 0 then return TRUE
+  end if
+  return FALSE
+end function
+
+'' Raw RSK_FLOATING display: append ".0" when trimmed formatting looks like an integer.
+private function FormatRawFloatingValue(byval d as Double) as String
+  dim nf as String = FormatNonFiniteFromDouble(d)
+  if Len(nf) > 0 then return nf
+  dim s as String = FormatNumericValue(d)
+  if NumericDisplayHasFractionPart(s) = FALSE then
+    s &= g_sDecimalSeparator & SM_STR_EXPLICIT_FLOAT_FRAC_DIGIT
+  end if
+  return s
+end function
+
 private function ImagCoeffNeedsStarBeforeI(byref coeffStr as String, byval isImagRatio as Boolean) as Boolean
   if isImagRatio then return TRUE
   if coeffStr = SM_FMT_NAN orelse coeffStr = SM_FMT_INF orelse coeffStr = SM_FMT_NEGINF then return TRUE
@@ -422,9 +444,7 @@ private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as Str
     if c.ratDen = 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
     return AddThousandsSeparator(ltrim(str(c.ratNum))) & "/" & AddThousandsSeparator(ltrim(str(c.ratDen)))
   case else
-    dim nf as String = FormatNonFiniteFromDouble(c.floatValue)
-    if Len(nf) > 0 then return nf
-    return FormatNumericValue(c.floatValue)
+    return FormatRawFloatingValue(c.floatValue)
   end select
 end function
 
@@ -488,22 +508,12 @@ private function FormatRawComplexDisplayWithDecimalOptions(byref s as RawScalar)
   dim realStr as String
   dim imagStr as String
   if s.real.kind = RSK_FLOATING then
-    dim nfRe as String = FormatNonFiniteFromDouble(s.real.floatValue)
-    if Len(nfRe) > 0 then
-      realStr = nfRe
-    else
-      realStr = FormatNumericValue(s.real.floatValue)
-    end if
+    realStr = FormatRawFloatingValue(s.real.floatValue)
   else
     realStr = FormatRawCartesianDisplay(s.real)
   end if
   if s.imag.kind = RSK_FLOATING then
-    dim nfIm as String = FormatNonFiniteFromDouble(s.imag.floatValue)
-    if Len(nfIm) > 0 then
-      imagStr = nfIm
-    else
-      imagStr = FormatNumericValue(s.imag.floatValue)
-    end if
+    imagStr = FormatRawFloatingValue(s.imag.floatValue)
   else
     imagStr = FormatRawCartesianDisplay(s.imag)
   end if
@@ -539,7 +549,7 @@ private function FormatRawScalarForDisplayContext(byref s as RawScalar) as Strin
   end if
   if g_nDecimals >= 0 orelse g_bUseThousandsSeparator then
     if s.real.kind = RSK_FLOATING andalso RawScalarIsComplex(s) = FALSE then
-      return FormatNumericValue(s.real.floatValue)
+      return FormatRawFloatingValue(s.real.floatValue)
     end if
     if RawScalarIsComplex(s) then
       return FormatRawComplexDisplayWithDecimalOptions(s)

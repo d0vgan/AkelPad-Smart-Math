@@ -1765,21 +1765,6 @@ private sub ValueSetImagUnit(byref v as EvalValue)
   v.scalarValue.imag = 1.0
 end sub
 
-'' If n rounds to an exact LongInt in IEEE double, attach the same metadata as ValueSetInt64.
-private sub ValueSetScalarPromoteExactInt64(byref v as EvalValue, byval n as Double)
-  ValueSetScalar(v, n)
-  dim t as LongInt
-  if TryGetExactInt64FromDouble(n, t) then
-    v.scalarStorageKind = SSK_INT64
-    v.exactInt64Valid = TRUE
-    v.exactInt64 = t
-    if t >= 0 then
-      v.exactUInt64Valid = TRUE
-      v.exactUInt64 = CULngInt(t)
-    end if
-  end if
-end sub
-
 private function TryGetExactInt64(byref v as EvalValue, byref outV as LongInt) as Boolean
   if v.kind <> VK_SCALAR then return FALSE
   if v.exactInt64Valid then
@@ -1815,11 +1800,16 @@ private function TryGetExactInt64Scalar(byref s as ScalarValue, byref outV as Lo
 end function
 
 private function TryGetExactNonNegativeUInt64Scalar(byref s as ScalarValue, byref outV as ULongInt) as Boolean
-  if s.exactUInt64Valid then
+  ScalarRepairExactMetadata(s)
+  if ScalarExactUInt64Valid(s) orelse s.scalarStorageKind = SSK_UINT64 then
     outV = s.exactUInt64
     return TRUE
   end if
-  if s.exactInt64Valid andalso s.exactInt64 >= 0 then
+  if ScalarExactInt64Valid(s) andalso s.exactInt64 >= 0 then
+    outV = CULngInt(s.exactInt64)
+    return TRUE
+  end if
+  if s.scalarStorageKind = SSK_INT64 andalso s.exactInt64 >= 0 then
     outV = CULngInt(s.exactInt64)
     return TRUE
   end if
@@ -1828,15 +1818,37 @@ end function
 
 '' Exact signed int64, including from uint64 metadata only when value fits LLONG_MAX (no wrap).
 private function TryGetExactSignedInt64NoUIntWrapScalar(byref s as ScalarValue, byref outV as LongInt) as Boolean
-  if s.exactInt64Valid then
+  if ScalarExactInt64Valid(s) then
     outV = s.exactInt64
     return TRUE
   end if
-  if s.exactUInt64Valid andalso s.exactUInt64 <= FB_I64_MAX_U then
+  if ScalarExactUInt64Valid(s) andalso s.exactUInt64 <= FB_I64_MAX_U then
     outV = CLngInt(s.exactUInt64)
     return TRUE
   end if
   return TryGetExactInt64FromDouble(s.scalar, outV)
+end function
+
+'' Metadata-only signed int64 (no float restore); for sqr/hypot exact integer paths.
+private function TryGetExactSignedInt64NoUIntWrapScalarStrict(byref s as ScalarValue, byref outV as LongInt) as Boolean
+  ScalarRepairExactMetadata(s)
+  if ScalarExactInt64Valid(s) then
+    outV = s.exactInt64
+    return TRUE
+  end if
+  if ScalarExactUInt64Valid(s) andalso s.exactUInt64 <= FB_I64_MAX_U then
+    outV = CLngInt(s.exactUInt64)
+    return TRUE
+  end if
+  if s.scalarStorageKind = SSK_INT64 then
+    outV = s.exactInt64
+    return TRUE
+  end if
+  if s.scalarStorageKind = SSK_UINT64 andalso s.exactUInt64 <= FB_I64_MAX_U then
+    outV = CLngInt(s.exactUInt64)
+    return TRUE
+  end if
+  return FALSE
 end function
 
 private function UniqueHashKeyFromDouble(byval v as Double) as ULongInt
@@ -1888,21 +1900,112 @@ private function TryMulInt64(byval a as LongInt, byval b as LongInt, byref outV 
     outV = -a
     return TRUE
   end if
-  if a > 0 then
-    if b > 0 then
-      if a > FB_I64_MAX \ b then return FALSE
+  '' Post-hoc signed overflow test (avoids FB_I64_MAX \ b style pre-checks under -gen gcc -O2).
+  outV = a * b
+  if a <> 0 andalso (outV \ a) <> b then return FALSE
+  return TRUE
+end function
+
+private function ScalarHasExactIntegerPayload(byref sv as ScalarValue) as Boolean
+  if ScalarIsTime(sv) then return FALSE
+  return ScalarExactInt64Valid(sv) orelse ScalarExactUInt64Valid(sv) orelse _
+    sv.scalarStorageKind = SSK_INT64 orelse sv.scalarStorageKind = SSK_UINT64
+end function
+
+private function TryMulExactInt64Square(byval i as LongInt, byref outV as LongInt) as Boolean
+  dim u as ULongInt
+  if i >= 0 then
+    u = CULngInt(i)
+  elseif i = FB_I64_MIN then
+    return FALSE
+  else
+    u = CULngInt(-i)
+  end if
+  dim sqU as ULongInt
+  if TryMulULongChecked(u, u, sqU) = FALSE orelse sqU > FB_I64_MAX_U then return FALSE
+  outV = CLngInt(sqU)
+  return TRUE
+end function
+
+'' sqrt: library root; exact-int output only for exact-int input when round(r)^2 equals input (checked mul).
+private sub ApplySqrtScalarValue(byref sv as ScalarValue, byref outV as EvalValue)
+  ScalarRepairExactMetadata(sv)
+  dim xIn as Double
+  dim ai as Double
+  ScalarLoadCartesian(sv, xIn, ai)
+  dim r as Double = sqr(xIn)
+  if ScalarHasExactIntegerPayload(sv) = FALSE then
+    ValueSetScalar(outV, r)
+    exit sub
+  end if
+  if IsNonFiniteValue(r) then
+    ValueSetScalar(outV, r)
+    exit sub
+  end if
+  dim inpU as ULongInt
+  if TryGetExactNonNegativeUInt64Scalar(sv, inpU) = FALSE then
+    ValueSetScalar(outV, r)
+    exit sub
+  end if
+  dim n as ULongInt = CULngInt(round(r))
+  dim sq as ULongInt
+  if TryMulULongChecked(n, n, sq) andalso sq = inpU then
+    if n <= FB_I64_MAX_U then
+      ValueSetInt64(outV, CLngInt(n))
     else
-      if b < FB_I64_MIN \ a then return FALSE
+      ValueSetUInt64(outV, n)
     end if
   else
-    if b > 0 then
-      if a < FB_I64_MIN \ b then return FALSE
-    else
-      if a <> 0 andalso b < FB_I64_MAX \ a then return FALSE
+    ValueSetScalar(outV, r)
+  end if
+end sub
+
+private function TryApplySqrExactScalar(byref sv as ScalarValue, byref outV as EvalValue) as Boolean
+  ScalarRepairExactMetadata(sv)
+  if ScalarHasExactIntegerPayload(sv) = FALSE then return FALSE
+  dim i as LongInt
+  if TryGetExactSignedInt64NoUIntWrapScalarStrict(sv, i) then
+    dim sq as LongInt
+    if TryMulExactInt64Square(i, sq) then ValueSetInt64(outV, sq): return TRUE
+  else
+    dim u as ULongInt
+    if TryGetExactNonNegativeUInt64Scalar(sv, u) then
+      dim sqU as ULongInt
+      if TryMulULongChecked(u, u, sqU) then
+        if sqU <= FB_I64_MAX_U then
+          ValueSetInt64(outV, CLngInt(sqU))
+        else
+          ValueSetUInt64(outV, sqU)
+        end if
+        return TRUE
+      end if
     end if
   end if
-  outV = a * b
-  return TRUE
+  return FALSE
+end function
+
+private function TryApplyHypotExactScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref outV as EvalValue) as Boolean
+  ScalarRepairExactMetadata(leftS)
+  ScalarRepairExactMetadata(rightS)
+  if ScalarHasExactIntegerPayload(leftS) = FALSE orelse ScalarHasExactIntegerPayload(rightS) = FALSE then return FALSE
+  dim la as LongInt, lb as LongInt
+  if TryGetExactSignedInt64NoUIntWrapScalarStrict(leftS, la) andalso TryGetExactSignedInt64NoUIntWrapScalarStrict(rightS, lb) then
+    dim aa as LongInt, bb as LongInt, sumSq as LongInt
+    if TryMulExactInt64Square(la, aa) andalso TryMulExactInt64Square(lb, bb) andalso TryAddInt64(aa, bb, sumSq) then
+      ValueSetScalar(outV, sqr(CDbl(sumSq)))
+      return TRUE
+    end if
+    return FALSE
+  end if
+  dim ua as ULongInt, ub as ULongInt
+  if TryGetExactNonNegativeUInt64Scalar(leftS, ua) andalso TryGetExactNonNegativeUInt64Scalar(rightS, ub) then
+    dim aaU as ULongInt, bbU as ULongInt, sumSqU as ULongInt
+    if TryMulULongChecked(ua, ua, aaU) andalso TryMulULongChecked(ub, ub, bbU) andalso TryAddULongChecked(aaU, bbU, sumSqU) then
+      ValueSetScalar(outV, sqr(CDbl(sumSqU)))
+      return TRUE
+    end if
+  end if
+  return FALSE
 end function
 
 private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byref outV as LongInt) as Boolean
@@ -3985,7 +4088,7 @@ private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, 
     dim v as Double = valueV.scalar
     if v < minV.scalar then v = minV.scalar
     if v > maxV.scalar then v = maxV.scalar
-    ValueSetScalarPromoteExactInt64(outV, v)
+    ValueSetScalar(outV, v)
     return TRUE
   end if
 
@@ -3996,7 +4099,7 @@ private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, 
     if v < minV.scalar then v = minV.scalar
     if v > maxV.scalar then v = maxV.scalar
     dim r as EvalValue
-    ValueSetScalarPromoteExactInt64(r, v)
+    ValueSetScalar(r, v)
     ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
@@ -4277,8 +4380,9 @@ private sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, 
   elseif scalarV.exactInt64Valid then
     ValueSetInt64(outV, scalarV.exactInt64)
   elseif (x > FB_MAX_EXACT_INT_FROM_DOUBLE) orelse (x < -FB_MAX_EXACT_INT_FROM_DOUBLE) then
-    if (x <= FB_I64_MAX_D) andalso (x >= FB_I64_MIN_D) then
-      ValueSetInt64(outV, CLngInt(x))
+    dim hugeInt as LongInt
+    if TryGetExactInt64FromDouble(x, hugeInt) then
+      ValueSetInt64(outV, hugeInt)
     elseif (x >= 0) andalso (x < FB_2_POW_64_D) andalso (x = floor(x)) then
       dim u as ULongInt = CULngInt(floor(x))
       if CDbl(u) = x then
@@ -4336,7 +4440,7 @@ private function ApplyAbsScalarValue(byref scalarV as ScalarValue, byref outV as
     ValueSetUInt64(outV, scalarV.exactUInt64)
     return TRUE
   end if
-  ValueSetScalarPromoteExactInt64(outV, abs(x))
+  ValueSetScalar(outV, abs(x))
   return TRUE
 end function
 
@@ -4434,49 +4538,51 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
     end if
   end if
   if fnId = FUNC_SIN then
-    ValueSetScalarPromoteExactInt64(outV, CalcSin(x))
+    ValueSetScalar(outV, CalcSin(x))
   elseif fnId = FUNC_COS then
-    ValueSetScalarPromoteExactInt64(outV, CalcCos(x))
+    ValueSetScalar(outV, CalcCos(x))
   elseif fnId = FUNC_TAN then
-    ValueSetScalarPromoteExactInt64(outV, CalcTan(x))
+    ValueSetScalar(outV, CalcTan(x))
   elseif fnId = FUNC_ASIN then
-    ValueSetScalarPromoteExactInt64(outV, asin(x))
+    ValueSetScalar(outV, asin(x))
   elseif fnId = FUNC_ACOS then
-    ValueSetScalarPromoteExactInt64(outV, acos(x))
+    ValueSetScalar(outV, acos(x))
   elseif fnId = FUNC_ATAN then
-    ValueSetScalarPromoteExactInt64(outV, atn(x))
+    ValueSetScalar(outV, atn(x))
   elseif fnId = FUNC_SINH then
-    ValueSetScalarPromoteExactInt64(outV, sinh(x))
+    ValueSetScalar(outV, sinh(x))
   elseif fnId = FUNC_COSH then
-    ValueSetScalarPromoteExactInt64(outV, cosh(x))
+    ValueSetScalar(outV, cosh(x))
   elseif fnId = FUNC_TANH then
-    ValueSetScalarPromoteExactInt64(outV, tanh(x))
+    ValueSetScalar(outV, tanh(x))
   elseif fnId = FUNC_ACOSH then
-    ValueSetScalarPromoteExactInt64(outV, acosh(x))
+    ValueSetScalar(outV, acosh(x))
   elseif fnId = FUNC_ASINH then
-    ValueSetScalarPromoteExactInt64(outV, asinh(x))
+    ValueSetScalar(outV, asinh(x))
   elseif fnId = FUNC_ATANH then
-    ValueSetScalarPromoteExactInt64(outV, atanh(x))
+    ValueSetScalar(outV, atanh(x))
   elseif fnId = FUNC_EXP then
-    ValueSetScalarPromoteExactInt64(outV, exp(x))
+    ValueSetScalar(outV, exp(x))
   elseif fnId = FUNC_LN then
-    ValueSetScalarPromoteExactInt64(outV, log(x))
+    ValueSetScalar(outV, log(x))
   elseif fnId = FUNC_LOG10 then
-    ValueSetScalarPromoteExactInt64(outV, log(x) / log(10.0))
+    ValueSetScalar(outV, log(x) / log(10.0))
   elseif fnId = FUNC_SQRT then
     if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(scalarV) = FALSE andalso IsNonFiniteValue(x) = FALSE andalso x < 0.0 then
       ValueSetScalarComplexFromDoubles(outV, 0.0, sqr(-x))
     else
-      ValueSetScalarPromoteExactInt64(outV, sqr(x))
+      ApplySqrtScalarValue(scalarV, outV)
     end if
   elseif fnId = FUNC_SQR then
-    ValueSetScalarPromoteExactInt64(outV, x * x)
+    if TryApplySqrExactScalar(scalarV, outV) = FALSE then
+      ValueSetScalar(outV, x * x)
+    end if
   elseif (fnId = FUNC_INT) orelse (fnId = FUNC_TRUNC) orelse _
          (fnId = FUNC_FLOOR) orelse (fnId = FUNC_CEIL) orelse _
          (fnId = FUNC_ROUND) then
     calcRoundingFn(fnId, scalarV, outV)
   elseif fnId = FUNC_FRAC then
-    ValueSetScalarPromoteExactInt64(outV, x - Fix(x))
+    ValueSetScalar(outV, x - Fix(x))
   elseif fnId = FUNC_ABS then
     return ApplyAbsScalarValue(scalarV, outV)
   elseif fnId = FUNC_SIGN then
@@ -4502,9 +4608,9 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
       ValueSetInt64(outV, 0)
     end if
   elseif fnId = FUNC_DEG then
-    ValueSetScalarPromoteExactInt64(outV, x * 180.0 / FB_PI_VAL)
+    ValueSetScalar(outV, x * 180.0 / FB_PI_VAL)
   elseif fnId = FUNC_RAD then
-    ValueSetScalarPromoteExactInt64(outV, x * FB_PI_VAL / 180.0)
+    ValueSetScalar(outV, x * FB_PI_VAL / 180.0)
   else
     return FALSE
   end if
@@ -5228,7 +5334,7 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       if TryExtractExactRealComponent(scalarV, cRe) then
         ValueSetScalarFromExactCartesianComponent(outV, cRe)
       else
-        ValueSetScalarPromoteExactInt64(outV, ar)
+        ValueSetScalar(outV, ar)
         ScalarClearImag(outV.scalarValue)
       end if
     case FUNC_IMAG
@@ -5236,11 +5342,11 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       if TryExtractExactImagComponent(scalarV, cIm) then
         ValueSetScalarFromExactCartesianComponent(outV, cIm)
       else
-        ValueSetScalarPromoteExactInt64(outV, ai)
+        ValueSetScalar(outV, ai)
         ScalarClearImag(outV.scalarValue)
       end if
     case FUNC_PHASE
-      ValueSetScalarPromoteExactInt64(outV, CalcAtan2(ai, ar))
+      ValueSetScalar(outV, CalcAtan2(ai, ar))
     case FUNC_POLAR
       dim polarVals(0 to 1) as ScalarValue
       polarVals(0).scalar = CalcHypot(ar, ai)
@@ -5304,7 +5410,7 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       if IsNaNValue(ar) orelse IsNaNValue(ai) then
         ValueSetScalar(outV, MakeNaN())
       else
-        ValueSetScalarPromoteExactInt64(outV, CalcHypot(ar, ai))
+        ValueSetScalar(outV, CalcHypot(ar, ai))
       end if
     case FUNC_SIGN
       dim mag as Double = CalcHypot(ar, ai)
@@ -5574,16 +5680,16 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   end if
 
   select case op
-    case CHAR_ASTERISK: ValueSetScalarPromoteExactInt64(outV, leftS.scalar * rightS.scalar)
+    case CHAR_ASTERISK: ValueSetScalar(outV, leftS.scalar * rightS.scalar)
     case CHAR_DIVIDE
       if rightS.scalar = 0 andalso leftS.scalar = 0 then
         ValueSetScalar(outV, MakeNaN())
       else
-        ValueSetScalarPromoteExactInt64(outV, leftS.scalar / rightS.scalar)
+        ValueSetScalar(outV, leftS.scalar / rightS.scalar)
       end if
-    case CHAR_PLUS: ValueSetScalarPromoteExactInt64(outV, leftS.scalar + rightS.scalar)
-    case CHAR_MINUS: ValueSetScalarPromoteExactInt64(outV, leftS.scalar - rightS.scalar)
-    case CHAR_CARET: ValueSetScalarPromoteExactInt64(outV, leftS.scalar ^ rightS.scalar)
+    case CHAR_PLUS: ValueSetScalar(outV, leftS.scalar + rightS.scalar)
+    case CHAR_MINUS: ValueSetScalar(outV, leftS.scalar - rightS.scalar)
+    case CHAR_CARET: ValueSetScalar(outV, leftS.scalar ^ rightS.scalar)
     case else: return FALSE
   end select
   return TRUE
@@ -5784,7 +5890,7 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
   if fnId = FUNC_LOG then
     if Parser_SupportComplexNumbers = FALSE then
       if leftS.scalar <= 0 orelse rightS.scalar <= 0 orelse rightS.scalar = 1 then return FALSE
-      ValueSetScalarPromoteExactInt64(outV, log(leftS.scalar) / log(rightS.scalar))
+      ValueSetScalar(outV, log(leftS.scalar) / log(rightS.scalar))
       return TRUE
     end if
     dim ar as Double, ai as Double, br as Double, bi as Double
@@ -5793,7 +5899,7 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
     dim pureReal as Boolean
     pureReal = (ScalarHasNonzeroImaginaryPart(leftS) = FALSE andalso ScalarHasNonzeroImaginaryPart(rightS) = FALSE andalso ai = 0.0 andalso bi = 0.0)
     if pureReal andalso ar > 0.0 andalso br > 0.0 andalso br <> 1.0 then
-      ValueSetScalarPromoteExactInt64(outV, log(ar) / log(br))
+      ValueSetScalar(outV, log(ar) / log(br))
       return TRUE
     end if
     if IsNaNValue(ar) orelse IsNaNValue(ai) orelse IsNaNValue(br) orelse IsNaNValue(bi) then
@@ -5819,7 +5925,7 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
       SetIncompatibleOperandsError()
       return TRUE
     end if
-    ValueSetScalarPromoteExactInt64(outV, CalcAtan2(leftS.scalar, rightS.scalar))
+    ValueSetScalar(outV, CalcAtan2(leftS.scalar, rightS.scalar))
     return TRUE
   end if
   if fnId = FUNC_HYPOT then
@@ -5834,11 +5940,13 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
         end if
         dim ml as Double = CalcHypot(ar, ai)
         dim mr as Double = CalcHypot(br, bi)
-        ValueSetScalarPromoteExactInt64(outV, CalcHypot(ml, mr))
+        ValueSetScalar(outV, CalcHypot(ml, mr))
         return TRUE
       end if
     end if
-    ValueSetScalarPromoteExactInt64(outV, CalcHypot(leftS.scalar, rightS.scalar))
+    if TryApplyHypotExactScalars(leftS, rightS, outV) = FALSE then
+      ValueSetScalar(outV, CalcHypot(leftS.scalar, rightS.scalar))
+    end if
     return TRUE
   end if
   return FALSE
@@ -5855,7 +5963,7 @@ private function TryShiftLeftUInt64MaybeExact( _
   byval shiftU as ULongInt) as Boolean
   if shiftU > 63ull then return FALSE
   if shiftU > 0ull andalso leftU > (FB_U64_MAX shr CInt(shiftU)) then
-    ValueSetScalarPromoteExactInt64(outV, leftScalar * pow(2.0, CDbl(shiftU)))
+    ValueSetScalar(outV, leftScalar * pow(2.0, CDbl(shiftU)))
     return TRUE
   end if
   ValueSetUInt64(outV, leftU shl CInt(shiftU))
@@ -7172,7 +7280,7 @@ private function SortbyInvokeKeyFunction(byref funcName as String, byref elem as
 end function
 
 private sub ValueSetRationalReduced(byref outV as EvalValue, byval num as LongInt, byval den as ULongInt)
-  ValueSetScalarPromoteExactInt64(outV, CDbl(num) / CDbl(den))
+  ValueSetScalar(outV, CDbl(num) / CDbl(den))
   outV.scalarValue.exactInt64 = num
   outV.scalarValue.exactUInt64 = den
   ScalarSetExactInt64Valid(outV.scalarValue, TRUE)
@@ -7426,7 +7534,7 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
     return TRUE
   end if
   if sv.exactInt64Valid then
-    ValueSetScalarPromoteExactInt64(outV, CDbl(sv.exactInt64))
+    ValueSetInt64(outV, sv.exactInt64)
     return TRUE
   end if
   if sv.exactUInt64Valid then
@@ -7441,7 +7549,7 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
   end if
   dim nearInt as LongInt
   if TryGetExactInt64FromDouble(ar, nearInt) then
-    ValueSetScalarPromoteExactInt64(outV, CDbl(nearInt))
+    ValueSetInt64(outV, nearInt)
     return TRUE
   end if
   dim num as LongInt, den as ULongInt
@@ -7450,7 +7558,7 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
     return TRUE
   end if
   if den = 1 then
-    ValueSetScalarPromoteExactInt64(outV, CDbl(num))
+    ValueSetInt64(outV, num)
   else
     ValueSetRationalReduced(outV, num, den)
   end if
@@ -7956,13 +8064,13 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
         case FUNC_MILLISECONDS
           ValueSetInt64(outV, msArg)
         case FUNC_SECONDS
-          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 1000.0)
+          ValueSetScalar(outV, CDbl(msArg) / 1000.0)
         case FUNC_MINUTES
-          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 60000.0)
+          ValueSetScalar(outV, CDbl(msArg) / 60000.0)
         case FUNC_HOURS
-          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 3600000.0)
+          ValueSetScalar(outV, CDbl(msArg) / 3600000.0)
         case FUNC_DAYS
-          ValueSetScalarPromoteExactInt64(outV, CDbl(msArg) / 86400000.0)
+          ValueSetScalar(outV, CDbl(msArg) / 86400000.0)
       end select
       return TRUE
     elseif args(0).kind = VK_ARRAY then
@@ -7981,13 +8089,13 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
           case FUNC_MILLISECONDS
             ValueSetInt64(rConv, msElem)
           case FUNC_SECONDS
-            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 1000.0)
+            ValueSetScalar(rConv, CDbl(msElem) / 1000.0)
           case FUNC_MINUTES
-            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 60000.0)
+            ValueSetScalar(rConv, CDbl(msElem) / 60000.0)
           case FUNC_HOURS
-            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 3600000.0)
+            ValueSetScalar(rConv, CDbl(msElem) / 3600000.0)
           case FUNC_DAYS
-            ValueSetScalarPromoteExactInt64(rConv, CDbl(msElem) / 86400000.0)
+            ValueSetScalar(rConv, CDbl(msElem) / 86400000.0)
         end select
         ValueSetArrayElemFromScalar(outV, iA, rConv)
       next iA
@@ -8236,7 +8344,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       acc = m2 / n
       if fnId = FUNC_STDDEV then acc = sqr(acc)
     end if
-    ValueSetScalarPromoteExactInt64(outV, acc)
+    ValueSetScalar(outV, acc)
     return outV
   end if
 
@@ -8385,7 +8493,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
   end if
 
   if fnId = FUNC_RAND then
-    ValueSetScalarPromoteExactInt64(outV, rnd)
+    ValueSetScalar(outV, rnd)
     return outV
   end if
 
@@ -8394,7 +8502,7 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
       SetScalarValuesError(fnName)
       return outV
     end if
-    ValueSetScalarPromoteExactInt64(outV, args(0).scalar + (args(1).scalar - args(0).scalar) * rnd)
+    ValueSetScalar(outV, args(0).scalar + (args(1).scalar - args(0).scalar) * rnd)
     return outV
   end if
 

@@ -3237,6 +3237,210 @@ bool MathParser::tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, lon
   return tryExtractExactInt64FromDoubleStrict(s.imag, out);
 }
 
+void MathParser::scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
+  switch (sv.scalarKind) {
+    case ScalarKind::Int64:
+      sv.setExactInt64Valid(true);
+      if (sv.exactInt64 >= 0) {
+        sv.setExactUInt64Valid(true);
+        sv.exactUInt64 = static_cast<std::uint64_t>(sv.exactInt64);
+      } else if (sv.exactUInt64 != 0u) {
+        sv.setExactUInt64Valid(true);
+      } else {
+        sv.setExactUInt64Valid(false);
+        sv.exactUInt64 = 0;
+      }
+      break;
+    case ScalarKind::UInt64:
+      sv.setExactUInt64Valid(true);
+      if (sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+        sv.setExactInt64Valid(true);
+        sv.exactInt64 = static_cast<long long>(sv.exactUInt64);
+      } else {
+        sv.setExactInt64Valid(false);
+        sv.exactInt64 = 0;
+      }
+      break;
+    default:
+      if (sv.hasRenderRational()) {
+        sv.setExactInt64Valid(true);
+        sv.setExactUInt64Valid(true);
+      } else {
+        sv.setExactInt64Valid(false);
+        sv.setExactUInt64Valid(false);
+      }
+      break;
+  }
+  if (!sv.hasImagExactInt64() && sv.imagExactInt64 != 0) {
+    sv.setImagExactInt64Valid(true);
+    if (sv.imagExactInt64 >= 0) {
+      sv.setImagExactUInt64Valid(true);
+      sv.imagExactUInt64 = static_cast<std::uint64_t>(sv.imagExactInt64);
+    }
+  } else if (!sv.hasImagExactUInt64() && sv.imagExactUInt64 != 0u) {
+    sv.setImagExactUInt64Valid(true);
+    if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      sv.setImagExactInt64Valid(true);
+      sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
+    }
+  }
+}
+
+bool MathParser::scalarHasExactIntegerPayload(const EvalValue::ScalarValue& sv) {
+  if (sv.scalarKind == ScalarKind::Time) {
+    return false;
+  }
+  return sv.hasExactInt64() || sv.hasExactUInt64() || sv.scalarKind == ScalarKind::Int64 ||
+         sv.scalarKind == ScalarKind::UInt64;
+}
+
+bool MathParser::tryMulExactInt64Square(long long i, long long& outSq) {
+  std::uint64_t u = 0;
+  if (i >= 0) {
+    u = static_cast<std::uint64_t>(i);
+  } else if (i == (std::numeric_limits<long long>::min)()) {
+    return false;
+  } else {
+    u = static_cast<std::uint64_t>(-i);
+  }
+  std::uint64_t sqU = 0;
+  if (!tryMulUInt64Checked(u, u, sqU) ||
+      sqU > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    return false;
+  }
+  outSq = static_cast<long long>(sqU);
+  return true;
+}
+
+bool MathParser::tryGetExactSignedInt64NoUIntWrapScalarStrict(const EvalValue::ScalarValue& s, long long& outI) {
+  if (s.scalarKind == ScalarKind::Time || scalarHasNonzeroImaginaryPart(s)) {
+    return false;
+  }
+  EvalValue::ScalarValue sv = s;
+  scalarRepairExactMetadata(sv);
+  if (sv.hasExactInt64()) {
+    outI = sv.exactInt64;
+    return true;
+  }
+  if (sv.hasExactUInt64() &&
+      sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    outI = static_cast<long long>(sv.exactUInt64);
+    return true;
+  }
+  if (sv.scalarKind == ScalarKind::Int64) {
+    outI = sv.exactInt64;
+    return true;
+  }
+  if (sv.scalarKind == ScalarKind::UInt64 &&
+      sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+    outI = static_cast<long long>(sv.exactUInt64);
+    return true;
+  }
+  return false;
+}
+
+void MathParser::applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV) {
+  EvalValue::ScalarValue s = sv;
+  scalarRepairExactMetadata(s);
+  double xIn = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(s, xIn, ai);
+  const double r = std::sqrt(xIn);
+  if (!scalarHasExactIntegerPayload(s)) {
+    outV = makeScalar(r);
+    return;
+  }
+  if (!std::isfinite(r)) {
+    outV = makeScalar(r);
+    return;
+  }
+  std::uint64_t inpU = 0;
+  if (!tryGetExactNonNegativeUInt64FromScalar(s, inpU)) {
+    outV = makeScalar(r);
+    return;
+  }
+  const std::uint64_t n = static_cast<std::uint64_t>(std::round(r));
+  std::uint64_t sq = 0;
+  if (tryMulUInt64Checked(n, n, sq) && sq == inpU) {
+    if (n <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      outV = makeScalarInt(static_cast<long long>(n));
+    } else {
+      outV = makeScalarUInt(n);
+    }
+  } else {
+    outV = makeScalar(r);
+  }
+}
+
+bool MathParser::tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV) {
+  EvalValue::ScalarValue s = sv;
+  scalarRepairExactMetadata(s);
+  if (!scalarHasExactIntegerPayload(s)) {
+    return false;
+  }
+  long long i = 0;
+  if (tryGetExactSignedInt64NoUIntWrapScalarStrict(s, i)) {
+    long long sq = 0;
+    if (tryMulExactInt64Square(i, sq)) {
+      outV = makeScalarInt(sq);
+      return true;
+    }
+  } else {
+    std::uint64_t u = 0;
+    if (tryGetExactNonNegativeUInt64FromScalar(s, u)) {
+      std::uint64_t sqU = 0;
+      if (tryMulUInt64Checked(u, u, sqU)) {
+        if (sqU <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+          outV = makeScalarInt(static_cast<long long>(sqU));
+        } else {
+          outV = makeScalarUInt(sqU);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool MathParser::tryApplyHypotExactScalars(
+    const EvalValue::ScalarValue& leftS,
+    const EvalValue::ScalarValue& rightS,
+    EvalValue& outV) {
+  EvalValue::ScalarValue l = leftS;
+  EvalValue::ScalarValue r = rightS;
+  scalarRepairExactMetadata(l);
+  scalarRepairExactMetadata(r);
+  if (!scalarHasExactIntegerPayload(l) || !scalarHasExactIntegerPayload(r)) {
+    return false;
+  }
+  long long la = 0;
+  long long lb = 0;
+  if (tryGetExactSignedInt64NoUIntWrapScalarStrict(l, la) &&
+      tryGetExactSignedInt64NoUIntWrapScalarStrict(r, lb)) {
+    long long aa = 0;
+    long long bb = 0;
+    long long sumSq = 0;
+    if (tryMulExactInt64Square(la, aa) && tryMulExactInt64Square(lb, bb) && checkedAddLL(aa, bb, sumSq)) {
+      outV = makeScalar(std::sqrt(static_cast<double>(sumSq)));
+      return true;
+    }
+    return false;
+  }
+  std::uint64_t ua = 0;
+  std::uint64_t ub = 0;
+  if (tryGetExactNonNegativeUInt64FromScalar(l, ua) && tryGetExactNonNegativeUInt64FromScalar(r, ub)) {
+    std::uint64_t aaU = 0;
+    std::uint64_t bbU = 0;
+    std::uint64_t sumSqU = 0;
+    if (tryMulUInt64Checked(ua, ua, aaU) && tryMulUInt64Checked(ub, ub, bbU) &&
+        tryAddUInt64Checked(aaU, bbU, sumSqU)) {
+      outV = makeScalar(std::sqrt(static_cast<double>(sumSqU)));
+      return true;
+    }
+  }
+  return false;
+}
+
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
   if (s.scalarKind == ScalarKind::Time) {
     return false;
@@ -3283,12 +3487,18 @@ bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarV
   if (scalarHasNonzeroImaginaryPart(s)) {
     return false;
   }
-  if (s.hasExactUInt64()) {
-    outU = s.exactUInt64;
+  EvalValue::ScalarValue sv = s;
+  scalarRepairExactMetadata(sv);
+  if (sv.hasExactUInt64() || sv.scalarKind == ScalarKind::UInt64) {
+    outU = sv.exactUInt64;
     return true;
   }
-  if (s.hasExactInt64() && s.exactInt64 >= 0) {
-    outU = static_cast<std::uint64_t>(s.exactInt64);
+  if (sv.hasExactInt64() && sv.exactInt64 >= 0) {
+    outU = static_cast<std::uint64_t>(sv.exactInt64);
+    return true;
+  }
+  if (sv.scalarKind == ScalarKind::Int64 && sv.exactInt64 >= 0) {
+    outU = static_cast<std::uint64_t>(sv.exactInt64);
     return true;
   }
   return false;
@@ -5243,6 +5453,13 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
       outS = makeScalarComplexFromDoubles(outRe, outIm);
       return true;
     }
+    if (id == BuiltinFunctionId::Hypot) {
+      EvalValue hv;
+      if (tryApplyHypotExactScalars(l, r, hv)) {
+        outS = hv;
+        return true;
+      }
+    }
     outD = binaryFn(l.scalar, r.scalar);
     outS = makeScalarMaybeExact(outD);
     return true;
@@ -6783,6 +7000,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
+      v.scalarValue.scalarKind = ScalarKind::FloatingPoint;
       return v;
     }
     case Expr::Tag::ArrayOrParens:
@@ -6940,9 +7158,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
           if ((e.binaryOp == Expr::BinaryOp::Add || e.binaryOp == Expr::BinaryOp::Sub) &&
               e.rhsIsDirectPostfixPercent) {
             r.scalarValue.scalar = l.scalarValue.scalar * r.scalarValue.scalar;
+            r.scalarValue.setExactInt64Valid(false);
+            r.scalarValue.setExactUInt64Valid(false);
+            r.scalarValue.scalarKind = ScalarKind::FloatingPoint;
           }
 
-          if ((e.binaryOp == Expr::BinaryOp::Mul || e.binaryOp == Expr::BinaryOp::Add ||
+          if (!e.rhsIsDirectPostfixPercent &&
+              (e.binaryOp == Expr::BinaryOp::Mul || e.binaryOp == Expr::BinaryOp::Add ||
                e.binaryOp == Expr::BinaryOp::Sub)) {
             long long li = 0, ri = 0;
             if (tryGetBothExactSignedInt64NoUIntWrapFromScalars(l.scalarValue, r.scalarValue, li, ri)) {
@@ -7045,6 +7267,7 @@ MathParser::EvalValue MathParser::evalExpr(
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
+      v.scalarValue.scalarKind = ScalarKind::FloatingPoint;
       return v;
     }
     case Expr::Tag::ArrayOrParens: {
@@ -7253,6 +7476,9 @@ MathParser::EvalValue MathParser::evalExpr(
           e.rhsIsDirectPostfixPercent &&
           l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
         r.scalarValue.scalar = l.scalarValue.scalar * r.scalarValue.scalar;
+        r.scalarValue.setExactInt64Valid(false);
+        r.scalarValue.setExactUInt64Valid(false);
+        r.scalarValue.scalarKind = ScalarKind::FloatingPoint;
       }
       if (e.binaryOp == Expr::BinaryOp::Pow) {
         return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
@@ -9655,12 +9881,21 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       case BuiltinFunctionId::Acosh: return makeScalarMaybeExact(std::acosh(x));
       case BuiltinFunctionId::Asinh: return makeScalarMaybeExact(std::asinh(x));
       case BuiltinFunctionId::Atanh: return makeScalarMaybeExact(std::atanh(x));
-      case BuiltinFunctionId::Sqrt:
+      case BuiltinFunctionId::Sqrt: {
         if (supportComplexNumbers_ && !scalarHasNonzeroImaginaryPart(s) && std::isfinite(x) && x < 0.0) {
           return makeScalarComplexFromDoubles(0.0, std::sqrt(-x));
         }
-        return makeScalarMaybeExact(std::sqrt(x));
-      case BuiltinFunctionId::Sqr: return makeScalarMaybeExact(x * x);
+        EvalValue sqrtOut;
+        applySqrtScalarValue(s, sqrtOut);
+        return sqrtOut;
+      }
+      case BuiltinFunctionId::Sqr: {
+        EvalValue sqrOut;
+        if (tryApplySqrExactScalar(s, sqrOut)) {
+          return sqrOut;
+        }
+        return makeScalar(x * x);
+      }
       case BuiltinFunctionId::Abs: return applyAbsScalarValue(s);
       case BuiltinFunctionId::Floor:
       case BuiltinFunctionId::Ceil:

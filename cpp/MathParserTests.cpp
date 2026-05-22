@@ -1126,6 +1126,44 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                }});
 
   // Exact-int recovery after float-path operations (scalar).
+  t.push_back({"edge/sqr exact int preserves metadata for hex", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "hex(sqr(9))", "0x51", why);
+               }});
+  t.push_back({"edge/sqr exact int near int64 square limit", [](std::string& why) {
+                 MathParser p;
+                 p.parseAndEvaluate("sqr(3037000499)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 const std::string actual = p.getResult();
+                 const MathParser::RawResult raw = p.getRawResult();
+                 if (!raw.isScalar() || !raw.scalar.real.isInt64() ||
+                     raw.scalar.real.intValue != 9223372030926249001LL) {
+                   why = "expected exact int64 square in raw, got result=\"" + actual + "\" kind=" +
+                         std::to_string(static_cast<int>(raw.scalar.real.kind));
+                   if (raw.isScalar() && raw.scalar.real.isInt64()) {
+                     why += " intValue=" + std::to_string(raw.scalar.real.intValue);
+                   } else if (raw.isScalar() && raw.scalar.real.isFloatingPoint()) {
+                     why += " fp=" + std::to_string(raw.scalar.real.floatingPoint);
+                   }
+                   return false;
+                 }
+                 if (actual != "9223372030926249001") {
+                   why = "expected \"9223372030926249001\", got \"" + actual + "\"";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"edge/hypot exact int squares then library sqrt", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "hypot(3037000499,0)", "3037000499", why);
+               }});
+  t.push_back({"edge/sqr float input uses floating path", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "sqr(1.5)", "2.25", why);
+               }});
   t.push_back({"edge/scalar sqrt perfect square keeps int metadata for bitwise", [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "sqrt(81)&7", "1", why);
@@ -1133,6 +1171,47 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
   t.push_back({"edge/scalar sqrt perfect square keeps int metadata for hex", [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "hex(sqrt(81))", "0x9", why);
+               }});
+  t.push_back({"edge/sqrt non-perfect square must not fake exact int64", [](std::string& why) {
+                 MathParser p;
+                 p.parseAndEvaluate("sqrt(4611686014132420611)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 const MathParser::RawResult raw = p.getRawResult();
+                 if (!raw.isScalar() || raw.scalar.real.isInt64() || raw.scalar.real.isUInt64()) {
+                   why = "expected floating raw for non-perfect-square sqrt";
+                   return false;
+                 }
+                 if (p.getResult() != "2147483647") {
+                   why = "expected \"2147483647\", got \"" + p.getResult() + "\"";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"edge/sqrt perfect square raw is int64", [](std::string& why) {
+                 MathParser p;
+                 p.parseAndEvaluate("sqrt(81)");
+                 if (!p.getError().empty()) {
+                   why = p.getError();
+                   return false;
+                 }
+                 const MathParser::RawResult raw = p.getRawResult();
+                 if (!raw.isScalar() || !raw.scalar.real.isInt64() || raw.scalar.real.intValue != 9LL) {
+                   why = "expected int64 9 in raw for sqrt(81)";
+                   return false;
+                 }
+                 return true;
+               }});
+  t.push_back({"edge/sqrt non-perfect square product differs from radicand", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "sqrt(4611686014132420611)*sqrt(4611686014132420611)",
+                                   "4611686014132420609", why);
+               }});
+  t.push_back({"edge/sqrt non-perfect square sqr detects no fake exact int", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "sqr(sqrt(4611686014132420611))", "4611686014132420609", why);
                }});
   t.push_back({"edge/scalar abs keeps int metadata for modulo", [](std::string& why) {
                  MathParser p;

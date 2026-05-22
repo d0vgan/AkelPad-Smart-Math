@@ -380,6 +380,20 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
   r.arr(1).real.intValue = 3
   RawCartesianScalarClear(r.arr(1).imag)
   AssertEq("raw format array mix", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "(1/2, 3)", failCount)
+
+  FormatterTestSetup()
+  g_bUseThousandsSeparator = TRUE
+  g_sThousandsSeparator = "'"
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  FormatterTestInitRawScalarFloat r.scalar, 2147483647.0
+  AssertEq("raw float integer-like shows .0", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "2'147'483'647.0", failCount)
+
+  FormatterTestSetup()
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  FormatterTestInitRawScalarInt64 r.scalar, 2147483647
+  AssertEq("raw int64 integer-like no .0", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "2147483647", failCount)
 end sub
 
 RunRawResultFormatTests(failures)
