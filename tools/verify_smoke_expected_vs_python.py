@@ -30,6 +30,12 @@ switch to a dedicated reference path:
 
 Float agreement uses the same tolerance idea as SmokeTest_MathParser.bas:
   tol = 16 * eps * max(1, |a|, |b|)
+
+Sources parsed (in addition to ``tests(N)`` rows):
+  * ``tools/neg_band_cases_generated.bas`` (neg/pos real + complex magnitude bands)
+  * ``RunOperatorPrecedenceDocTests`` (``precOk`` / ``precExpect``)
+  * ``RunTrigAngleReductionTests`` (magnitude ``|result|`` thresholds)
+  * Inline ``Parser_TryEvaluateEx(...) orelse rt <> "..."`` numeric probes in smoke subs
 """
 
 from __future__ import annotations
@@ -555,6 +561,10 @@ def _format_complex_smoke(z: complex) -> str:
     # non-zero imaginary
     eps = 1e-12
     def fmt_re(x: float) -> str:
+        if math.isnan(x):
+            return "nan"
+        if math.isinf(x):
+            return "-inf" if x < 0 else "inf"
         if abs(x) < eps:
             return ""
         if abs(x - round(x)) < 1e-12 and abs(x) < 1e15:
@@ -562,6 +572,10 @@ def _format_complex_smoke(z: complex) -> str:
         return str(x).rstrip("0").rstrip(".")
 
     def imag_tail(ai: float) -> str:
+        if math.isnan(ai):
+            return "nan*i"
+        if math.isinf(ai):
+            return ("-" if ai < 0 else "") + "inf*i"
         a = abs(ai)
         neg = ai < 0
         if abs(a - 1.0) < eps:
@@ -654,6 +668,242 @@ def tuple_close_enough_complex(actual: str, expected: str) -> bool:
 def round_half_away_from_zero(x: float) -> float:
     """Smart Math-style round (e.g. round(2.5) -> 3)."""
     return float(Decimal(str(float(x))).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def is_multiple_of(x: float, x_mult: float) -> bool:
+    """Mirror MathParser ``IsMultipleOf`` (round quotient + residual)."""
+    if x_mult == 0.0:
+        return False
+    q = x / x_mult
+    if not math.isfinite(q):
+        return False
+    n = round(q)
+    if abs(q - n) > 1e-9:
+        return False
+    residual = abs(x - n * x_mult)
+    eps = max(1e-14 * abs(x_mult), 8.0 * EPS * abs(x_mult))
+    return residual <= eps
+
+
+def sin_sm(x: float) -> float:
+    if x == 0.0:
+        return 0.0
+    if math.isfinite(x) and is_multiple_of(x, math.pi):
+        return 0.0
+    return math.sin(x)
+
+
+def cos_sm(x: float) -> float:
+    if math.isfinite(x):
+        if not is_multiple_of(x, math.pi) and is_multiple_of(x, math.pi / 2.0):
+            return 0.0
+    return math.cos(x)
+
+
+def tan_sm(x: float) -> float:
+    if x == 0.0:
+        return 0.0
+    if math.isfinite(x):
+        if is_multiple_of(x, math.pi):
+            return 0.0
+        if is_multiple_of(x, math.pi / 2.0):
+            t = math.tan(x)
+            return math.inf if t > 0.0 else -math.inf
+    return math.tan(x)
+
+
+def dsl_truth(x: Any) -> bool:
+    if isinstance(x, complex):
+        return x.real != 0.0 or x.imag != 0.0
+    if isinstance(x, float):
+        if math.isnan(x):
+            return False
+        return x != 0.0
+    if isinstance(x, int):
+        return x != 0
+    return bool(x)
+
+
+def dsl_lnot(x: Any) -> int:
+    return 0 if dsl_truth(x) else 1
+
+
+def dsl_and(a: Any, b: Any) -> int:
+    return 1 if dsl_truth(a) and dsl_truth(b) else 0
+
+
+def dsl_or(a: Any, b: Any) -> int:
+    return 1 if dsl_truth(a) or dsl_truth(b) else 0
+
+
+def dsl_cmp(op: str, a: Any, b: Any) -> int:
+    if op == "eq":
+        if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+            return 0
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+            return 1 if close_enough_str(str(a), str(b)) or a == b else 0
+        return 1 if a == b else 0
+    if op == "ne":
+        if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+            return 1
+        return 1 - dsl_cmp("eq", a, b)
+    if op == "lt":
+        return 1 if a < b else 0
+    if op == "le":
+        return 1 if a <= b else 0
+    if op == "gt":
+        return 1 if a > b else 0
+    if op == "ge":
+        return 1 if a >= b else 0
+    raise ValueError(op)
+
+
+def dsl_bitinv(x: Any) -> float:
+    return float(~int(math.trunc(float(x))))
+
+
+def fractional_power_is_odd_unit_root(p: float) -> Optional[int]:
+    if p <= 0.0 or p >= 1.0:
+        return None
+    inv = 1.0 / p
+    if inv < 2.0 or inv > 63.0:
+        return None
+    n = int(round(inv))
+    if n < 2 or n > 63:
+        return None
+    if abs(inv - float(n)) > 1e-6:
+        return None
+    if (n % 2) == 0:
+        return None
+    return n
+
+
+def _real_scalar_mag(v: Any) -> float:
+    if isinstance(v, complex):
+        return abs(v)
+    if isinstance(v, (int, float)):
+        return abs(float(v))
+    raise TypeError("not numeric")
+
+
+class _SmokeAstTransform(ast.NodeTransformer):
+    """Comparisons and boolean ops return Smart-Math 0/1 ints."""
+
+    def __init__(self, mode: str = "real") -> None:
+        self._mode = mode
+
+    def visit_BinOp(self, node: ast.BinOp) -> ast.AST:
+        if isinstance(node.op, ast.Pow):
+            fn = "pow_sm_cx" if self._mode == "complex" else "pow_sm"
+        elif isinstance(node.op, ast.Mod):
+            fn = "mod_sm"
+        else:
+            return self.generic_visit(node)
+        return ast.Call(
+            func=ast.Name(id=fn, ctx=ast.Load()),
+            args=[self.visit(node.left), self.visit(node.right)],
+            keywords=[],
+        )
+
+    def visit_Compare(self, node: ast.Compare) -> ast.AST:
+        left = self.visit(node.left)
+        for op, comp in zip(node.ops, node.comparators):
+            right = self.visit(comp)
+            op_name = {
+                ast.Eq: "eq",
+                ast.NotEq: "ne",
+                ast.Lt: "lt",
+                ast.LtE: "le",
+                ast.Gt: "gt",
+                ast.GtE: "ge",
+            }.get(type(op))
+            if op_name is None:
+                raise ValueError("compare op")
+            left = ast.Call(
+                func=ast.Name(id="dsl_cmp", ctx=ast.Load()),
+                args=[ast.Constant(op_name), left, right],
+                keywords=[],
+            )
+        return left
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> ast.AST:
+        fn = "dsl_and" if isinstance(node.op, ast.And) else "dsl_or"
+        acc = self.visit(node.values[0])
+        for v in node.values[1:]:
+            acc = ast.Call(
+                func=ast.Name(id=fn, ctx=ast.Load()),
+                args=[acc, self.visit(v)],
+                keywords=[],
+            )
+        return acc
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> ast.AST:
+        if isinstance(node.op, ast.Not):
+            return ast.Call(
+                func=ast.Name(id="dsl_lnot", ctx=ast.Load()),
+                args=[self.visit(node.operand)],
+                keywords=[],
+            )
+        if isinstance(node.op, ast.Invert):
+            return ast.Call(
+                func=ast.Name(id="dsl_bitinv", ctx=ast.Load()),
+                args=[self.visit(node.operand)],
+                keywords=[],
+            )
+        return self.generic_visit(node)
+
+
+def _preprocess_unary_bang_real(expr: str) -> str:
+    s = expr
+    while True:
+        m = re.search(r"!(?!=)", s)
+        if not m:
+            break
+        pos = m.start()
+        rest = s[pos + 1 :].lstrip()
+        mnum = re.match(r"(\d+\.?\d*(?:[eE][-+]?\d+)?)", rest)
+        if mnum:
+            num = mnum.group(1)
+            s = s[:pos] + f"dsl_lnot({num})" + rest[len(num) :]
+            continue
+        if rest.startswith("("):
+            s = s[:pos] + "dsl_lnot(" + rest[1:]
+            continue
+        break
+    return s
+
+
+def _preprocess_real_dsl(expr: str) -> str:
+    s = expr.replace("<>", "!=")
+    s = _preprocess_unary_bang_real(s)
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i : i + 2] in ("==", "!=", "<=", ">="):
+            out.append(s[i : i + 2])
+            i += 2
+            continue
+        if s[i] == "=":
+            out.append("==")
+            i += 1
+            continue
+        out.append(s[i])
+        i += 1
+    s = "".join(out)
+    s = re.sub(r"\s*&&\s*", " and ", s)
+    s = re.sub(r"\s*\|\|\s*", " or ", s)
+    return s
+
+
+def _preprocess_hex_for_numeric_add(expr: str, expected: str) -> str:
+    if not re.search(r"\bhex\s*\(", expr, re.I):
+        return expr
+    exp = expected.strip()
+    if re.fullmatch(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", exp) or (
+        exp.startswith("(") and "0x" not in exp.lower()
+    ):
+        return re.sub(r"\bhex\s*\(", "hex_val_sm(", expr, flags=re.I)
+    return expr
 
 
 def trig_near_zero_ok(expected: str, got: str) -> bool:
@@ -882,6 +1132,187 @@ def parse_smoke_synthetic_recent_cases() -> list[dict]:
     ]
 
 
+_RE_PREC_PAIR = re.compile(
+    r'precOk\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*precExpect\s*\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+_RE_TRIG_NONZERO = re.compile(
+    r'nonzeroExpr\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+_RE_TRIG_NEARZERO = re.compile(
+    r'nearZeroExpr\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+_RE_INLINE_NUMERIC = re.compile(
+    r'Parser_TryEvaluateEx\s*\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*r\s*,\s*rt\s*,\s*ia\s*\)\s*=\s*FALSE\s+'
+    r'orelse\s+rt\s+<>\s+"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+
+def _unescape_fb(s: str) -> str:
+    return s.replace('""', '"')
+
+
+def parse_smoke_sub_array_cases(path: str) -> list[dict]:
+    """``precOk``/``precExpect`` and trig magnitude tables from SmokeTest_MathParser.bas."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    out: list[dict] = []
+    seen: set[str] = set()
+    for m in _RE_PREC_PAIR.finditer(text):
+        n, expr, expected = m.group(1), _unescape_fb(m.group(2)), _unescape_fb(m.group(3))
+        key = f"precedence:{expr}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "idx": f"precedence-doc/{n}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": infer_ref_mode(expr, expected),
+                "source": "precedence_doc",
+            }
+        )
+    for m in _RE_TRIG_NONZERO.finditer(text):
+        n, expr = m.group(1), _unescape_fb(m.group(2))
+        key = f"trig-nz:{expr}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "idx": f"trig-reduction/nonzero/{n}",
+                "expr": expr,
+                "assert_kind": "abs_gt",
+                "assert_threshold": 1e-6,
+                "ref_mode": "real",
+                "source": "trig_reduction",
+            }
+        )
+    for m in _RE_TRIG_NEARZERO.finditer(text):
+        n, expr = m.group(1), _unescape_fb(m.group(2))
+        key = f"trig-z:{expr}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "idx": f"trig-reduction/nearzero/{n}",
+                "expr": expr,
+                "assert_kind": "abs_lt",
+                "assert_threshold": 1e-9,
+                "ref_mode": "real",
+                "source": "trig_reduction",
+            }
+        )
+    return out
+
+
+def parse_smoke_inline_numeric_probes(path: str) -> list[dict]:
+    """``Parser_TryEvaluateEx(...) orelse rt <> "expect"`` rows across smoke subs."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    out: list[dict] = []
+    seen: set[str] = set()
+    for m in _RE_INLINE_NUMERIC.finditer(text):
+        expr = _unescape_fb(m.group(1))
+        expected = _unescape_fb(m.group(2))
+        if "/" in expected and not re.search(r"\d+/\d+", expected):
+            continue
+        if expected.strip() in ("0", "1") and re.search(
+            r"(?<![<>!=])=(?!=)|<>|!=|==", expr
+        ):
+            pass
+        key = f"{expr}|{expected}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "idx": f"inline:{expr[:60]}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": infer_ref_mode(expr, expected),
+                "source": "inline_probe",
+            }
+        )
+    return out
+
+
+def parse_band_cases_file(path: str) -> list[dict]:
+    """Parse ``neg_band_cases_generated.bas`` (and positive/complex tables)."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    out: list[dict] = []
+    for table, ref_mode in (
+        ("negBandReal", "real"),
+        ("posBandReal", "real"),
+        ("negBandCx", "complex"),
+        ("posBandCx", "complex"),
+    ):
+        exprs: dict[int, str] = {}
+        expects: dict[int, str] = {}
+        is_err: dict[int, bool] = {}
+        err_txt: dict[int, str] = {}
+        for m in re.finditer(
+            rf'{table}Expr\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            text,
+        ):
+            exprs[int(m.group(1))] = _unescape_fb(m.group(2))
+        for m in re.finditer(
+            rf'{table}Expect\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            text,
+        ):
+            expects[int(m.group(1))] = _unescape_fb(m.group(2))
+        for m in re.finditer(
+            rf'{table}IsErr\s*\(\s*(\d+)\s*\)\s*=\s*(TRUE|FALSE)',
+            text,
+            re.I,
+        ):
+            is_err[int(m.group(1))] = m.group(2).upper() == "TRUE"
+        for m in re.finditer(
+            rf'{table}Err\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            text,
+        ):
+            err_txt[int(m.group(1))] = _unescape_fb(m.group(2))
+        for i in sorted(exprs):
+            label_m = re.search(
+                rf'{table}Label\s*\(\s*{i}\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+                text,
+            )
+            label = _unescape_fb(label_m.group(1)) if label_m else f"{table}/{i}"
+            entry: dict = {
+                "idx": f"band/{table}/{i}",
+                "expr": exprs[i],
+                "source": "magnitude_band",
+                "ref_mode": ref_mode,
+                "band_label": label,
+            }
+            if is_err.get(i):
+                entry["expect_error"] = True
+                if i in err_txt:
+                    entry["expected_err_substr"] = err_txt[i]
+            elif i in expects:
+                entry["expected"] = expects[i]
+            out.append(entry)
+    return out
+
+
+def collect_all_numeric_cases(smoke_bas: str, band_bas: str) -> list[dict]:
+    return (
+        parse_smoke_cases(smoke_bas)
+        + parse_smoke_sub_array_cases(smoke_bas)
+        + parse_smoke_inline_numeric_probes(smoke_bas)
+        + parse_band_cases_file(band_bas)
+        + parse_smoke_complex_opt_cases(smoke_bas)
+        + parse_smoke_raw_api_cases(smoke_bas)
+        + parse_smoke_synthetic_recent_cases()
+    )
+
+
 def parse_smoke_raw_api_cases(path: str) -> list[dict]:
     """Inline numeric probes from ``RunRawResultApiTests`` (display string, not raw kind)."""
     text = open(path, encoding="utf-8", errors="replace").read()
@@ -1075,14 +1506,21 @@ def _postfix_percent(expr: str) -> Optional[str]:
     """
     Replace `... + 15%` patterns: `%` applies to the immediately preceding
     numeric atom (Smart Math: 200+15% -> 200 + 200*0.15).
+    Lone ``1%`` -> ``0.01``.
     """
-    # Tokenize coarsely: find `%` not inside string (we have no strings in smoke)
     if "%" not in expr:
         return expr
+    if re.fullmatch(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*%", expr.strip()):
+        return str(float(expr.strip()[:-1].strip()) / 100.0)
     out: list[str] = []
     i = 0
     while i < len(expr):
         if expr[i] == "%":
+            rest = expr[i + 1 :].lstrip()
+            if rest and rest[0] in "0123456789.(":
+                out.append("%")
+                i += 1
+                continue
             j = len(out) - 1
             while j >= 0 and out[j].isspace():
                 j -= 1
@@ -1095,7 +1533,10 @@ def _postfix_percent(expr: str) -> Optional[str]:
             while base_start >= 0 and out[base_start].isspace():
                 base_start -= 1
             if base_start < 0:
-                return None
+                pct = float(atom.strip()) / 100.0
+                out = out[:j] + [str(pct)]
+                i += 1
+                continue
             op = out[base_start]
             if op not in "+-*/":
                 return None
@@ -1173,6 +1614,8 @@ def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
         "sum": "sum_sm",
         "random": "random_sm",
         "rand": "rand_sm",
+        "int": "int_sm",
+        "trunc": "int_sm",
     }
     repl.update(
         {
@@ -1189,6 +1632,7 @@ def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
         repl.update(
             {
                 "int": "int_sm_cx",
+        "trunc": "int_sm_cx",
                 "frac": "frac_sm_cx",
                 "floor": "floor_sm_cx",
                 "ceil": "ceil_sm_cx",
@@ -1264,7 +1708,15 @@ def log10_sm(x):
 
 
 def pow_sm(b, e):
-    return b**e
+    bf = float(b) if not isinstance(b, complex) else b
+    ef = float(e) if not isinstance(e, complex) else e
+    if isinstance(bf, complex) or isinstance(ef, complex):
+        return bf**ef
+    if bf < 0.0 and math.isfinite(bf) and math.isfinite(ef):
+        n_root = fractional_power_is_odd_unit_root(ef)
+        if n_root is not None:
+            return -(abs(bf) ** ef)
+    return bf**ef
 
 
 def _as_int_exact(x: Any) -> Optional[int]:
@@ -1279,8 +1731,34 @@ def _as_int_exact(x: Any) -> Optional[int]:
     return None
 
 
+def _map_unary_real(fn):
+    def wrapped(x: Any) -> Any:
+        if isinstance(x, tuple):
+            return tuple(wrapped(e) for e in x)
+        return fn(x)
+
+    return wrapped
+
+
+def hex_val_sm(x: Any) -> Any:
+    xi = _as_int_exact(x)
+    if xi is None:
+        raise ValueError("hex_val expects integer")
+    return xi
+
+
+def int_sm(x: Any) -> Any:
+    if isinstance(x, tuple):
+        return tuple(int_sm(e) for e in x)
+    if isinstance(x, complex):
+        return complex(math.trunc(x.real), math.trunc(x.imag))
+    return float(math.trunc(float(x)))
+
+
 def sqrt_sm_real(x: Any) -> Any:
     """Smart-Math sqrt: exact int only when round(sqrt(n))^2 == n (checked int multiply)."""
+    if isinstance(x, tuple):
+        return tuple(sqrt_sm_real(e) for e in x)
     if isinstance(x, complex):
         return sqrt_sm(x)
     xi = _as_int_exact(x)
@@ -1356,7 +1834,11 @@ def fact_sm(n):
 
 
 def mod_sm(a, b):
-    return a % b
+    """FreeBASIC ``mod`` / ``%``: remainder with sign of dividend."""
+    a_i, b_i = int(a), int(b)
+    if b_i == 0:
+        raise ValueError("mod")
+    return a_i - b_i * int(a_i / b_i)
 
 
 def deg_sm(x):
@@ -1539,7 +2021,13 @@ def log_sm_cx(a, b=None):
 
 
 def pow_sm_cx(b, e):
-    return _as_complex(b) ** _as_complex(e)
+    br = _as_complex(b)
+    er = _as_complex(e)
+    if abs(br.imag) < 1e-15 and abs(er.imag) < 1e-15:
+        r = pow_sm(br.real, er.real)
+        if isinstance(r, (int, float)) and math.isfinite(float(r)):
+            return complex(float(r), 0.0)
+    return br**er
 
 
 def _int_sm_cx_scalar(z: Any) -> complex:
@@ -1716,11 +2204,21 @@ def build_ns(ans: Any) -> dict:
     return {
         "pi": math.pi,
         "e": math.e,
+        "inf": math.inf,
+        "nan": math.nan,
         "ans": ans,
+        "dsl_cmp": dsl_cmp,
+        "dsl_lnot": dsl_lnot,
+        "dsl_and": dsl_and,
+        "dsl_or": dsl_or,
+        "dsl_bitinv": dsl_bitinv,
+        "hex_val_sm": hex_val_sm,
+        "int_sm": int_sm,
         "log_sm": log_sm,
-        "log_ln": log_ln,
-        "log10_sm": log10_sm,
+        "log_ln": _map_unary_real(log_ln),
+        "log10_sm": _map_unary_real(log10_sm),
         "pow_sm": pow_sm,
+        "pow_sm_cx": pow_sm_cx,
         "sqr_sm": sqr_sm,
         "prod_sm": prod_sm,
         "mean_sm": mean_sm,
@@ -1741,9 +2239,9 @@ def build_ns(ans: Any) -> dict:
         "sum_sm": sum_sm,
         "random_sm": random_sm,
         "rand_sm": rand_sm,
-        "sin": math.sin,
-        "cos": math.cos,
-        "tan": math.tan,
+        "sin": _map_unary_real(sin_sm),
+        "cos": _map_unary_real(cos_sm),
+        "tan": _map_unary_real(tan_sm),
         "asin": math.asin,
         "acos": math.acos,
         "atan": math.atan,
@@ -1846,7 +2344,9 @@ def build_ns_time(ans: Any) -> dict:
     return ns
 
 
-def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
+def ref_eval(
+    expr: str, ns: dict, *, mode: str = "real", expected_hint: str = ""
+) -> Any:
     e = _strip_line_comment(expr).strip()
     if not e:
         raise ValueError("empty")
@@ -1860,6 +2360,9 @@ def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
         e = _preprocess_complex_dsl(e)
     elif mode == "time":
         e = _preprocess_time_expression(e)
+    else:
+        e = _preprocess_real_dsl(e)
+        e = _preprocess_hex_for_numeric_add(e, expected_hint)
     e = _implicit_mul(e)
     t = _translate_functions(e, mode=mode)
     if t is None:
@@ -1876,6 +2379,10 @@ def ref_eval(expr: str, ns: dict, *, mode: str = "real") -> Any:
         except Exception:
             pass
     node = ast.parse(e, mode="eval")
+    if mode in ("real", "time", "complex"):
+        body = _SmokeAstTransform(mode).visit(node.body)
+        ast.fix_missing_locations(body)
+        node = ast.Expression(body=body)
     return eval(compile(node, "<smoke>", "eval"), {"__builtins__": {}}, ns)
 
 
@@ -1904,7 +2411,9 @@ def ref_format(v: Any, *, mode: str = "real") -> str:
     return str(v)
 
 
-def try_reference(expr_chain: str, *, mode: str = "real") -> tuple[Optional[Any], Optional[str]]:
+def try_reference(
+    expr_chain: str, *, mode: str = "real", expected_hint: str = ""
+) -> tuple[Optional[Any], Optional[str]]:
     """Evaluate semicolon chain; last statement value is result."""
     parts = _split_statements(expr_chain)
     if mode == "time":
@@ -1925,11 +2434,11 @@ def try_reference(expr_chain: str, *, mode: str = "real") -> tuple[Optional[Any]
                     name, rhs = part.split("=", 1)
                     name = name.strip()
                     rhs = rhs.strip()
-                    last = ref_eval(rhs, ns, mode=mode)
+                    last = ref_eval(rhs, ns, mode=mode, expected_hint=expected_hint)
                     ns[name] = last
                     ns["ans"] = last
                     continue
-            last = ref_eval(part, ns, mode=mode)
+            last = ref_eval(part, ns, mode=mode, expected_hint=expected_hint)
             ns["ans"] = last
         return last, None
     except Exception as ex:
@@ -1951,6 +2460,8 @@ def _last_statement(expr: str) -> str:
 
 
 def should_skip_case(case: dict) -> Optional[str]:
+    if case.get("assert_kind"):
+        return None
     if case.get("expect_no_result"):
         return "expectNoResult"
     if case.get("expected_err"):
@@ -1958,7 +2469,10 @@ def should_skip_case(case: dict) -> Optional[str]:
     ex_raw = case["expr"]
     ex = _strip_line_comment(ex_raw)
     is_co = case.get("source") == "complex_opt"
+    src = case.get("source", "")
     if case.get("expect_error"):
+        if src == "magnitude_band":
+            return "magnitude-band parser error probe"
         if is_co and (ex.strip() in ("10+5i",) or "cart((5,1))" in ex):
             return "complex support disabled (not modeled in Python reference)"
         if is_co and re.search(r"\bhex\s*\([^)]*\.", ex, re.I):
@@ -1968,54 +2482,82 @@ def should_skip_case(case: dict) -> Optional[str]:
     if ex.strip() == "ans" and ";" not in ex:
         return "standalone ans (no prior statement in harness)"
 
-    fmt_m = re.search(r"\b(uhex|uoct|ubin|hex|bin|oct)\s*\(", ex, re.I)
-    if fmt_m:
-        if is_co and fmt_m.group(1).lower() in ("hex", "bin", "oct", "uhex", "uoct", "ubin"):
-            pass  # reference implements Smart-Math display builtins
-        elif not is_co and fmt_m.group(1).lower() in ("hex", "bin", "oct", "uhex"):
-            pass
-        else:
-            return "formatting builtin (display-only)"
-    if not is_co and ("sort(" in ex or "unique(" in ex):
-        return "sort/unique"
-    if "~" in ex:
-        return "bitwise complement (~)"
+    exp = case.get("expected", "").strip()
+    if re.fullmatch(r"-?\d+/\d+", exp) or (
+        exp.count("/") == 1 and not exp.startswith("(") and "ratio" in ex
+    ):
+        return "ratio fraction string"
+
+    fmt_m = re.search(r"\b(uhex|uoct|ubin)\s*\(", ex, re.I)
+    if fmt_m and not is_co:
+        return "unsigned formatting builtin (display-only)"
+    if not is_co and ("sort(" in ex or "unique(" in ex or "sortby(" in ex):
+        return "sort/unique/sortby"
+    if "unpack(" in ex or "reverse(" in ex:
+        return "array DSL builtin (unpack/reverse)"
+    if "ratio(" in ex and src != "complex_opt":
+        return "ratio() builtin"
 
     last = _last_statement(ex_raw)
     if re.fullmatch(r"(rad|deg|hex|bin|oct|uhex|uoct|ubin)\b(\(\))?", last.strip(), flags=re.I):
         return "trailing formatter command (DSL)"
 
-    if is_co and case.get("expected", "").strip() in ("0", "1") and re.search(
-        r"(?<![<>!=])=(?!=)|<>|!=|==", ex
-    ):
-        pass  # complex-option equality / inequality -> 0/1
-    elif "==" in ex or "!=" in ex or "<=" in ex or ">=" in ex:
-        return "comparison / equality (DSL 0/1 vs Python bool)"
-    elif ex.count("=") > 0 and not is_co and re.search(r"(?<![<>!=])=(?!=)", ex):
-        return "comparison / equality (DSL 0/1 vs Python bool)"
-    if ex.count("==") > 1:
-        return "chained =="
-    if is_co and (re.search(r"!\s*\(", ex) or re.search(r"\bnot\s+\(", ex, re.I)):
-        pass  # complex_not_sm
-    elif " not " in ex or " and " in ex or " or " in ex:
-        return "logical not/and/or (DSL semantics)"
-    masked = ex.replace("<>", "@@NE@@").replace("<<", "@@SL@@").replace(">>", "@@SR@@")
-    if "<" in masked or ">" in masked:
-        if is_co and case.get("expected", "").strip() in ("0", "1"):
-            pass
-        else:
-            return "ordering compare (e.g. chained inequalities)"
-
     if ";" in ex:
         if re.search(r"\b[a-z_][a-z0-9_]*\s*[\+\-\*/]\s*[a-z_][a-z0-9_]*\s*$", last):
             return "broadcast / element-wise array algebra (DSL)"
 
-    if is_co and ("unpack(" in ex or "unique(" in ex or "reverse(" in ex):
-        return "array DSL builtin (unpack/unique/reverse)"
-    if re.search(r"\b[a-z_][a-z0-9_]*\s*\([^)]*\)\s*=", ex, re.I):
-        return "user-defined function"
-    if re.search(r"\by\s*\(", ex) or re.search(r"\bf\s*\(", ex):
+    if re.search(r"\b[a-z_][a-z0-9_]*\s*\([^)]*\)\s*=", ex, re.I) and "rd(t)=" not in ex:
+        if src not in ("inline_probe",):
+            return "user-defined function"
+    if re.search(r"\by\s*\(", ex) or (
+        re.search(r"\bf\s*\(", ex) and "f=x:" not in ex and "f=(" not in ex
+    ):
         return "user-defined function (y(a)=...)"
+
+    if re.search(r"\(e=3\)|\(pi\s*=", ex):
+        return "assignment-in-parens truth (DSL scalar vs tuple)"
+    if re.search(r"a\s*=\s*\([^)]+\)\s*[\+\-\*]", ex) and re.search(
+        r"hex\s*\(\s*a\s*\[", ex, re.I
+    ):
+        return "tuple broadcast + hex(index) (DSL)"
+    if re.search(r"mod\s*\(\s*a\s*\[", ex, re.I):
+        return "mod on broadcast array element (DSL)"
+    if re.search(r"0x[fF]{8,}|1844674407370955161", ex) and (
+        "%" in ex or "mod(" in ex
+    ):
+        return "uint64-scale mod (exact uint64 not in float reference)"
+    if src == "magnitude_band" and re.search(r"2\*\*100", ex):
+        return "magnitude-band 2**100 (exact wide int; float reference)"
+    if src == "magnitude_band" and re.search(r"2\*\*64", ex):
+        if re.search(r"\b(conj|pow)\s*\(", ex, re.I):
+            return "magnitude-band 2**64 float overflow"
+        if re.search(r"\b(sqrt|ln)\s*\(\s*\(\s*-\s*\(\s*2\*\*64", ex, re.I):
+            return "complex sqrt/ln(-2**64) branch cut"
+    if src == "magnitude_band" and re.search(
+        r"4611686018427387904|9223372036854775808", ex
+    ):
+        if "mod(" in ex or "<<" in ex or ">>" in ex:
+            return "magnitude-band int64 edge (exact wide int)"
+    if is_co and re.search(r"inf\s*\+\s*i\s*\*\s*inf", ex, re.I):
+        return "complex inf*i*inf formatting (non-associative product)"
+    if re.search(r"(-?\s*inf)\s*\*\*", ex, re.I) and src == "magnitude_band":
+        return "inf**n edge (real band)"
+    if re.search(r"pow\s*\(\s*-?\s*inf", ex, re.I) and src in (
+        "magnitude_band",
+        "inline_probe",
+    ):
+        return "complex pow(inf) edge"
+    if re.search(r"(sqrt|ln)\s*\(\s*-?\s*inf", ex, re.I) and src in (
+        "magnitude_band",
+        "inline_probe",
+    ):
+        return "complex sqrt/ln(inf) edge"
+    if re.search(r"inf\s*\+\s*i\s*\*", ex, re.I) and "inf" in ex.lower():
+        return "complex inf*i product formatting"
+    if re.search(r"t=3;\s*\(t=3\)", ex):
+        return "assignment-in-parens truth (DSL scalar vs tuple)"
+    if re.search(r"a=2\*\(3,4\)", ex) and "hex(a[" in ex:
+        return "scalar-times-tuple broadcast hex (DSL)"
 
     return None
 
@@ -2025,15 +2567,13 @@ def main() -> int:
     if "/" in root and "\\" not in root:
         root = __file__.rsplit("/", 1)[0]
     bas = root + "/../SmokeTest_MathParser.bas"
+    band = root + "/neg_band_cases_generated.bas"
     if len(sys.argv) > 1:
         bas = sys.argv[1]
+    if len(sys.argv) > 2:
+        band = sys.argv[2]
 
-    cases = (
-        parse_smoke_cases(bas)
-        + parse_smoke_complex_opt_cases(bas)
-        + parse_smoke_raw_api_cases(bas)
-        + parse_smoke_synthetic_recent_cases()
-    )
+    cases = collect_all_numeric_cases(bas, band)
     mismatches: list[str] = []
     skipped: list[str] = []
     ok = 0
@@ -2047,10 +2587,16 @@ def main() -> int:
     n_complex_opt_error_ok = 0
     n_complex_opt_error_fail = 0
     n_time = 0
+    n_assert_ok = 0
+    n_band = sum(1 for c in cases if c.get("source") == "magnitude_band")
 
     for case in cases:
         idx = case["idx"]
-        if "expected" not in case and not case.get("expect_error"):
+        if (
+            "expected" not in case
+            and not case.get("expect_error")
+            and not case.get("assert_kind")
+        ):
             continue
         reason = should_skip_case(case)
         if reason:
@@ -2066,11 +2612,23 @@ def main() -> int:
         if case.get("expect_error"):
             if mode == "complex":
                 n_complex += 1
-            val, err = try_reference(case["expr"], mode=mode)
+            val, err = try_reference(
+                case["expr"],
+                mode=mode,
+                expected_hint=case.get("expected", ""),
+            )
             if err:
-                ok += 1
-                if is_co:
-                    n_complex_opt_error_ok += 1
+                substr = case.get("expected_err_substr")
+                if substr and substr.lower() not in err.lower():
+                    mismatches.append(
+                        f"#{idx} expr={case['expr']!r}\n  expected err contains {substr!r}, got {err!r}\n"
+                    )
+                    if is_co:
+                        n_complex_opt_error_fail += 1
+                else:
+                    ok += 1
+                    if is_co:
+                        n_complex_opt_error_ok += 1
             else:
                 got = ref_format(val, mode=mode).strip()
                 mismatches.append(
@@ -2080,17 +2638,53 @@ def main() -> int:
                     n_complex_opt_error_fail += 1
             continue
 
-        exp = case["expected"].strip()
-        if mode == "complex":
-            n_complex += 1
-        elif mode == "time":
-            n_time += 1
-        val, err = try_reference(case["expr"], mode=mode)
+        assert_kind = case.get("assert_kind")
+        exp_hint = case.get("expected", "")
+        val, err = try_reference(
+            case["expr"], mode=mode, expected_hint=exp_hint
+        )
         if err:
             skipped.append(f"#{idx}: eval failed ({err[:80]})")
             if is_co:
                 n_complex_opt_skip_eval += 1
             continue
+
+        if assert_kind == "abs_gt":
+            thr = float(case.get("assert_threshold", 1e-6))
+            try:
+                mag = _real_scalar_mag(val)
+            except TypeError:
+                skipped.append(f"#{idx}: non-scalar magnitude assert")
+                continue
+            if mag >= thr:
+                ok += 1
+                n_assert_ok += 1
+            else:
+                mismatches.append(
+                    f"#{idx} expr={case['expr']!r}\n  expected |result| >= {thr}, got |{mag}|\n"
+                )
+            continue
+        if assert_kind == "abs_lt":
+            thr = float(case.get("assert_threshold", 1e-9))
+            try:
+                mag = _real_scalar_mag(val)
+            except TypeError:
+                skipped.append(f"#{idx}: non-scalar magnitude assert")
+                continue
+            if mag < thr:
+                ok += 1
+                n_assert_ok += 1
+            else:
+                mismatches.append(
+                    f"#{idx} expr={case['expr']!r}\n  expected |result| < {thr}, got |{mag}|\n"
+                )
+            continue
+
+        exp = case["expected"].strip()
+        if mode == "complex":
+            n_complex += 1
+        elif mode == "time":
+            n_time += 1
         got = ref_format(val, mode=mode).strip()
         if results_match(exp, got, mode=mode):
             ok += 1
@@ -2102,8 +2696,12 @@ def main() -> int:
         )
 
     print("=== Smoke expected vs Python reference ===")
-    n_exp = sum(1 for c in cases if "expected" in c)
-    print(f"Cases with numeric expected: {n_exp}")
+    n_exp = sum(
+        1
+        for c in cases
+        if "expected" in c or c.get("assert_kind") or c.get("expect_error")
+    )
+    print(f"Cases parsed (numeric / assert / error): {n_exp}  (magnitude-band rows: {n_band})")
     n_raw_api = sum(1 for c in cases if c.get("source") == "raw_api")
     print(
         f"Option/raw subs: parsed {n_complex_opt_parsed} rows from complex-opt + raw API "
@@ -2115,7 +2713,8 @@ def main() -> int:
     )
     print(
         f"Compared OK (real/complex/time reference, tol rules): {ok}  "
-        f"(complex-mode eval rows: {n_complex}, time-mode: {n_time})"
+        f"(complex-mode eval rows: {n_complex}, time-mode: {n_time}, "
+        f"magnitude asserts: {n_assert_ok})"
     )
     print(f"Skipped (DSL-only / non-comparable / eval failed): {len(skipped)}")
     print(f"MISMATCH vs plain Python math: {len(mismatches)}")
