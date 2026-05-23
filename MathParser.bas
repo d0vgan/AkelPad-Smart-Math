@@ -9160,14 +9160,14 @@ private function ParseFactor() as EvalValue
 end function
 
 private function ParsePower() as EvalValue
-  dim n as EvalValue = ParseUnary()
+  dim n as EvalValue = ParseFactor()
   if parseError then return n
   SkipSpaces()
 
   if pStream[0] = CHAR_ASTERISK andalso pStream[1] = CHAR_ASTERISK then
     pStream += 2
     dim rhs as EvalValue
-    rhs = ParsePower()
+    rhs = ParseUnary()
     if parseError then return n
     ApplyBinaryParserOpInPlace(n, rhs, CHAR_CARET)
   end if
@@ -9253,7 +9253,7 @@ private function ParseUnary() as EvalValue
     return v
   end if
 
-  dim n as EvalValue = ParseFactor()
+  dim n as EvalValue = ParsePower()
   if parseError then return n
 
   SkipSpaces()
@@ -9284,7 +9284,7 @@ private function ParseUnary() as EvalValue
 end function
 
 private function ParseMultiplicative() as EvalValue
-  dim n as EvalValue = ParsePower()
+  dim n as EvalValue = ParseUnary()
   dim termWasPercentage as Boolean = wasPercentage
   SkipSpaces()
   while TRUE
@@ -9295,7 +9295,7 @@ private function ParseMultiplicative() as EvalValue
     dim intOp as OperatorBitNameId = OP_BIT_NONE
     if TryConsumeMultiplicativeOp(op, useInt64, intOp) = FALSE then exit while
 
-    dim n2 as EvalValue = ParsePower()
+    dim n2 as EvalValue = ParseUnary()
     ApplyMultiplicativeOpInPlace(n, n2, useInt64, intOp, op)
     termWasPercentage = FALSE
     SkipSpaces()

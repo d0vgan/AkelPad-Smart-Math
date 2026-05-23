@@ -488,6 +488,56 @@ private sub RunPosBandCxBatch(byref subPass as Integer, byref subFail as Integer
   next i
 end sub
 
+'' USAGE_AND_SYNTAX.md precedence (high -> low): **, unary, postfix %, */%, +- ...
+private sub RunOperatorPrecedenceDocTests()
+  print "=== Operator precedence (USAGE_AND_SYNTAX.md) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim precOk(1 to 24) as String
+  dim precExpect(1 to 24) as String
+  precOk(1) = "-2**2": precExpect(1) = "-4"
+  precOk(2) = "-(2**2)": precExpect(2) = "-4"
+  precOk(3) = "2**-2": precExpect(3) = "0.25"
+  precOk(4) = "2**3**2": precExpect(4) = "512"
+  precOk(5) = "2**3*4": precExpect(5) = "32"
+  precOk(6) = "2*3**4": precExpect(6) = "162"
+  precOk(7) = "3*-2**2": precExpect(7) = "-12"
+  precOk(8) = "-2%": precExpect(8) = "-0.02"
+  precOk(9) = "2*3%": precExpect(9) = "0.06"
+  precOk(10) = "5+2*3%": precExpect(10) = "5.06"
+  precOk(11) = "2+3*4": precExpect(11) = "14"
+  precOk(12) = "2*3+4": precExpect(12) = "10"
+  precOk(13) = "2+3<<1": precExpect(13) = "10"
+  precOk(14) = "1|2^3&6<<1": precExpect(14) = "3"
+  precOk(15) = "!2==1": precExpect(15) = "0"
+  precOk(16) = "not 2==1": precExpect(16) = "1"
+  precOk(17) = "1||0&&0": precExpect(17) = "1"
+  precOk(18) = "0&&1||1": precExpect(18) = "1"
+  precOk(19) = "16**-0.5": precExpect(19) = "0.25"
+  precOk(20) = "2(3+4)**2": precExpect(20) = "98"
+  precOk(21) = "~2**2": precExpect(21) = "-5"
+  precOk(22) = "!!3": precExpect(22) = "1"
+  precOk(23) = "5+(2*3)%": precExpect(23) = "5.3"
+  precOk(24) = "200+15%": precExpect(24) = "230"
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim pi as Integer
+  for pi = 1 to 24
+    if Parser_TryEvaluateEx(precOk(pi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, precExpect(pi)) = FALSE then
+      print "[precedence-doc] FAIL: """ & precOk(pi) & """ -> """ & rt & """ want """ & precExpect(pi) & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[precedence-doc] PASS: """ & precOk(pi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next pi
+  g_passed += subPass
+  g_failed += subFail
+  print "Operator-precedence doc sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunNegativeArgumentMagnitudeBandTests()
   print "=== Negative argument magnitude bands (real, 3 ranges) ==="
   dim subPass as Integer = 0
@@ -2782,6 +2832,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   next i
 
   RunRawResultApiTests()
+
+  RunOperatorPrecedenceDocTests()
 
   RunComplexNumberSupportOptionTests()
 

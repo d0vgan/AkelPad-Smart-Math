@@ -6625,7 +6625,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
     u->child = std::move(inner);
     return u;
   }
-  auto prim = parsePrimary(ctx);
+  auto prim = parsePower(ctx);
   if (hasExprParseFailure(ctx, prim)) {
     return nullptr;
   }
@@ -6667,7 +6667,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnary(EvalContext& ctx) {
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
-  auto left = parseUnary(ctx);
+  auto left = parsePrimary(ctx);
   if (ctx.parseError || !left) {
     return nullptr;
   }
@@ -6675,7 +6675,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
   // AST parser uses '**' for exponentiation.
   if (ctx.p[0] == '*' && ctx.p[1] == '*') {
     ctx.p += 2;
-    auto right = parsePower(ctx);
+    auto right = parseUnary(ctx);
     if (ctx.parseError || !right) {
       return nullptr;
     }
@@ -6690,7 +6690,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseMulDivMod(EvalContext& ctx) {
-  return parseLeftAssocBinary(ctx, &MathParser::parsePower, &MathParser::tryConsumeMulDivModOp);
+  return parseLeftAssocBinary(ctx, &MathParser::parseUnary, &MathParser::tryConsumeMulDivModOp);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseShift(EvalContext& ctx) {

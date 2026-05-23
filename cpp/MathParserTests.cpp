@@ -4055,6 +4055,50 @@ static bool runNegBandRowBatch(MathParser& p, const NegBandRow* rows, std::size_
   return true;
 }
 
+std::vector<TestCase> buildOperatorPrecedenceDocCases() {
+  struct Row {
+    const char* expr;
+    const char* expected;
+  };
+  static const Row kRows[] = {
+      {"-2**2", "-4"},
+      {"-(2**2)", "-4"},
+      {"2**-2", "0.25"},
+      {"2**3**2", "512"},
+      {"2**3*4", "32"},
+      {"2*3**4", "162"},
+      {"3*-2**2", "-12"},
+      {"-2%", "-0.02"},
+      {"2*3%", "0.06"},
+      {"5+2*3%", "5.06"},
+      {"2+3*4", "14"},
+      {"2*3+4", "10"},
+      {"2+3<<1", "10"},
+      {"1|2^3&6<<1", "3"},
+      {"!2==1", "0"},
+      {"not 2==1", "1"},
+      {"1||0&&0", "1"},
+      {"0&&1||1", "1"},
+      {"16**-0.5", "0.25"},
+      {"2(3+4)**2", "98"},
+      {"~2**2", "-5"},
+      {"!!3", "1"},
+      {"5+(2*3)%", "5.3"},
+      {"200+15%", "230"},
+  };
+  std::vector<TestCase> t;
+  for (const Row& row : kRows) {
+    const std::string expr = row.expr;
+    const std::string expected = row.expected;
+    t.push_back({"precedence-doc/" + expr,
+                 [expr, expected](std::string& why) {
+                   MathParser p;
+                   return expectEval(p, expr, expected, why);
+                 }});
+  }
+  return t;
+}
+
 std::vector<TestCase> buildNegativeArgumentMagnitudeBandCases() {
   std::vector<TestCase> t;
   t.push_back({"neg-band/real: operators and builtins (3 negative magnitude ranges)",
@@ -4903,6 +4947,7 @@ int main(int argc, char** argv) {
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
+  const auto operatorPrecedenceDoc = buildOperatorPrecedenceDocCases();
   const auto negativeArgumentMagnitudeBand = buildNegativeArgumentMagnitudeBandCases();
   const auto positiveArgumentMagnitudeBand = buildPositiveArgumentMagnitudeBandCases();
   const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
@@ -4916,6 +4961,7 @@ int main(int argc, char** argv) {
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+  runSuite("Operator precedence (USAGE_AND_SYNTAX.md)", operatorPrecedenceDoc, s);
   runSuite("Negative argument magnitude bands", negativeArgumentMagnitudeBand, s);
   runSuite("Positive argument magnitude bands", positiveArgumentMagnitudeBand, s);
   runSuite("Time value support (parser option)", timeValuesSupportOption, s);

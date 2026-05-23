@@ -143,7 +143,7 @@
     {"cx/C_hi/cx_sub1", "-inf-1", "-inf", nullptr},
     {"cx/C_hi/cx_mul2", "-inf*2", "-inf", nullptr},
     {"cx/C_hi/cx_div2", "-inf/2", "-inf", nullptr},
-    {"cx/C_hi/cx_pow2", "-inf**2", "inf", nullptr},
+    {"cx/C_hi/cx_pow2", "-inf**2", "-inf", nullptr},
     {"cx/C_hi/cx_pow_fn", "pow(-inf,2)", "inf", nullptr},
     {"cx/C_hi/cx_sqr", "sqr(-inf)", "inf", nullptr},
     {"cx/C_hi/cx_sqrt", "sqrt(-inf)", "nan", nullptr},
