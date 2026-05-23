@@ -21,7 +21,17 @@ Before making changes, read and follow:
 
 - `.cursor/skills/add-mathparser-function/SKILL.md`
 
-Use its parity/build/test rules as mandatory constraints for all refactor work.
+Use its parity/build/test rules as mandatory constraints for all refactor work, including **Compile and build error discipline (Required)** in that skill.
+
+## Compile and build error discipline (Required)
+
+When a build or compile step fails during cleanup work, follow the same rules as in `add-mathparser-function` (**Compile and build error discipline (Required)**). In short:
+
+- Assume the compiler/toolchain is right; a "compiler bug" is a last-resort hypothesis.
+- Fix the **first meaningful error** only; ignore cascading follow-on errors until it is resolved.
+- Make the **smallest** direct fix; keep diffs small and reversible (**one hypothesis → one edit → one compile**; roll back if diagnostics do not improve).
+- Before blaming the compiler, check: modified files, imports/includes, types, generated code, build flags, stale caches, dependency versions, API changes (including Basic/C++ parity drift).
+- After **3** failed fix-compile iterations on the same primary error, stop, summarize facts, and ask for human review — do not invent workarounds.
 
 ## What to optimize
 
@@ -65,6 +75,7 @@ Focus on these goals:
 4. **Apply changes in small slices**
    - Refactor one logical cluster at a time.
    - Compile/test after each cluster when practical.
+   - On compile failure, use **Compile and build error discipline (Required)** — do not stack multiple refactor hypotheses in one edit.
 
 5. **Dead code removal**
    - Remove only when unused/unreachable is confirmed.

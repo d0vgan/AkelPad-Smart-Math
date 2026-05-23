@@ -106,6 +106,25 @@ Apply this rule for **any source-code change** (feature/fix/refactor/cleanup/opt
 - Prefer reusing existing local variables/state before introducing new temporary variables; add a new variable only when it is clearly necessary for correctness, readability, or performance.
 - Preserve consistent block indentation when refactoring/optimizing; changed code must keep project indentation style and cleanly aligned nested blocks.
 
+### Compile and build error discipline (Required)
+
+When a build or compile step fails (`Compile.bat`, `Compile32.bat`, `Compile64.bat`, formatter/copy regression batches, `cpp/BuildTests_vc2022_x64.bat`, or related toolchains):
+
+- **Assume the compiler/toolchain is right by default.** Treat a "compiler bug" as a hypothesis of last resort, only after the checklist below.
+- **Fix the first meaningful error**, not later cascading diagnostics. Ignore follow-on errors until the primary failure is resolved.
+- **Make the smallest change** that directly addresses that error. Do not bundle unrelated edits, drive-by refactors, or speculative fixes.
+- **Keep each attempt small and reversible:** one hypothesis → one edit → one compile/build. If diagnostics do not improve, **roll back** that edit before trying the next hypothesis.
+- **Before blaming the compiler**, work through this checklist in order:
+  1. Modified files (did every touched file save, and is it the file the build actually compiles?)
+  2. Imports / includes / module list (`Compile.bat` vs `Compile32.bat` / `Compile64.bat` parity, C++ headers)
+  3. Types and signatures (Basic `byref`/`byval`, C++ const/member/static, arity)
+  4. Generated or copied code (stale `.obj`, wrong output path)
+  5. Build flags and architecture (`-arch`, MSVC config, bitness)
+  6. Stale caches (old `.obj`, `.exe`, incremental build artifacts — clean rebuild when in doubt)
+  7. Dependency / toolchain versions (FreeBASIC path, MSVC toolset)
+  8. API changes (renamed helpers, moved declarations, parity drift between Basic and C++)
+- **Hard loop limit:** after **3** failed fix-compile iterations on the same primary error, stop. Summarize available facts (first error text, files changed, hypotheses tried, rollback status) and **ask for human review** instead of inventing workarounds or disabling checks.
+
 ### Integer Metadata Preservation Rule (Required)
 
 Apply this rule for parser/runtime logic in both Basic and C++:
@@ -179,11 +198,8 @@ Follow all steps in order.
     - `SmartMath_Menu.bas`
   - Also include any additional Basic implementation/source modules if present.
   - If Basic parser source was **not** changed, skip `Compile.bat`.
-- If compilation fails, treat it as a blocker:
-  - analyze build errors,
-  - fix sources,
-  - rerun `Compile.bat`.
-- Repeat analyze/fix/rerun loop until compilation succeeds.
+- If compilation fails, treat it as a blocker and follow **Compile and build error discipline (Required)** above (first error, minimal fix, one hypothesis per compile, rollback on no improvement, checklist before blaming the toolchain, stop after 3 failed iterations and ask for review).
+- Repeat until compilation succeeds or the hard loop limit is reached.
 - If compilation cannot succeed due to environment/toolchain issues, report the exact blocker and include the last relevant output.
 
 ### 3.1) Formatter and copy regression tests (`RunFormatterTests.bat` + `RunCopyRegressionTests.bat`)
@@ -196,12 +212,12 @@ Run **both** batches from the repo root whenever **Basic implementation source**
 **Formatter (`RunFormatterTests.bat`):**
 
 - Compiles `FormatterTest_Globals.bas` + `FormatterRegressionTests.bas` + `SmartMath_Format.bas` → `FormatterRegressionTests.exe`.
-- If compilation or the executable fails, treat as a blocker; fix `SmartMath_Format.bas` / globals / tests; rerun until exit code 0.
+- If compilation or the executable fails, treat as a blocker; follow **Compile and build error discipline (Required)**; fix `SmartMath_Format.bas` / globals / tests; rerun until exit code 0.
 
 **Copy normalization (`RunCopyRegressionTests.bat`):**
 
 - Compiles `FormatterTest_Globals.bas` + `CopyRegressionTests.bas` + `SmartMath_CopyNormalize.bas` → `CopyRegressionTests.exe`.
-- If compilation or the executable fails, treat as a blocker; fix `SmartMath_CopyNormalize.bas` / globals / tests; rerun until exit code 0.
+- If compilation or the executable fails, treat as a blocker; follow **Compile and build error discipline (Required)**; fix `SmartMath_CopyNormalize.bas` / globals / tests; rerun until exit code 0.
 
 **Shared rules:**
 
@@ -250,12 +266,8 @@ Apply this step only when **C++ parser or C++ test source files** are changed (f
 - If neither C++ parser source nor C++ test source changed, skip this entire C++ build/test gate (do not run `cpp/BuildTests_vc2022_x64.bat`, do not run `cpp/MathParserTests.exe`).
 
 - Run `cpp/BuildTests_vc2022_x64.bat`.
-- If build fails:
-  - treat as blocker,
-  - analyze compiler/linker errors,
-  - fix C++ code,
-  - rerun `cpp/BuildTests_vc2022_x64.bat`,
-  - repeat until build succeeds.
+- If build fails, treat as a blocker and follow **Compile and build error discipline (Required)** (same rules for MSVC/linker output).
+- Rerun `cpp/BuildTests_vc2022_x64.bat` after each minimal fix until build succeeds or the hard loop limit is reached.
 - Once build succeeds, run produced test binary: `cpp/MathParserTests.exe`.
 - If tests fail:
   - analyze failing test output,
@@ -403,6 +415,7 @@ Before finishing, verify:
 - Implementation, signature hints, tests, and `USAGE_AND_SYNTAX.md` are consistent with the final behavior.
 - If `Compile.bat` was edited, `Compile32.bat` and `Compile64.bat` list the same Basic modules in the same order (step 3 parity rule).
 - Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (Basic implementation or formatter/copy test sources — step 3.1), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
+- Build failures were handled per **Compile and build error discipline (Required)** (first error, minimal fix, rollback on no improvement, no compiler-blame without checklist, human review after 3 failed iterations).
 - Cross-language porting/parity is complete for **all** relevant code/test change types: Basic <-> C++ implementations and tests are mirrored, with no mismatches (skip only allowed when `cpp/MathParser.cpp` is missing, and it must be explicitly noted).
 - Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.
 - Safety/docs gates: avoid UB, block user-defined names colliding with built-ins/operators, USAGE quick index is correct, no doc typos/split words, style/structure and wording match surrounding sections, and new or edited USAGE lines use ASCII-friendly typography per **step 6** (hyphen dashes, `->` for results, no gratuitous Unicode punctuation).
