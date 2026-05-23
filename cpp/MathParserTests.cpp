@@ -4055,6 +4055,58 @@ static bool runNegBandRowBatch(MathParser& p, const NegBandRow* rows, std::size_
   return true;
 }
 
+std::vector<TestCase> buildTrigAngleReductionCases() {
+  static const char* kNonzero[] = {
+      "sin(2**52)", "sin(2**51)", "sin(2**50)", "sin(2**49)", "sin(2**48)", "sin(2**47)",
+      "sin(3**32)", "sin(7**18)", "cos(2**52)", "cos(2**51)", "tan(2**52)", "tan(3**32)"};
+  static const char* kNearZero[] = {
+      "sin(pi)", "sin(2*pi)", "cos(pi/2)", "cos(3*pi/2)", "tan(pi)", "tan(2*pi)"};
+  std::vector<TestCase> t;
+  for (const char* expr : kNonzero) {
+    t.push_back({std::string("trig-reduction/nonzero/") + expr,
+                 [expr](std::string& why) {
+                   MathParser p;
+                   p.parseAndEvaluate(expr);
+                   if (!p.getError().empty()) {
+                     why = p.getError();
+                     return false;
+                   }
+                   double v = 0.0;
+                   if (!tryParseFullDouble(p.getResult(), v)) {
+                     why = "non-numeric result: " + p.getResult();
+                     return false;
+                   }
+                   if (std::fabs(v) < 1e-6) {
+                     why = "expected |result| > 1e-6, got " + p.getResult();
+                     return false;
+                   }
+                   return true;
+                 }});
+  }
+  for (const char* expr : kNearZero) {
+    t.push_back({std::string("trig-reduction/nearzero/") + expr,
+                 [expr](std::string& why) {
+                   MathParser p;
+                   p.parseAndEvaluate(expr);
+                   if (!p.getError().empty()) {
+                     why = p.getError();
+                     return false;
+                   }
+                   double v = 0.0;
+                   if (!tryParseFullDouble(p.getResult(), v)) {
+                     why = "non-numeric result: " + p.getResult();
+                     return false;
+                   }
+                   if (std::fabs(v) >= 1e-9) {
+                     why = "expected |result| < 1e-9, got " + p.getResult();
+                     return false;
+                   }
+                   return true;
+                 }});
+  }
+  return t;
+}
+
 std::vector<TestCase> buildOperatorPrecedenceDocCases() {
   struct Row {
     const char* expr;
@@ -4947,6 +4999,7 @@ int main(int argc, char** argv) {
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
+  const auto trigAngleReduction = buildTrigAngleReductionCases();
   const auto operatorPrecedenceDoc = buildOperatorPrecedenceDocCases();
   const auto negativeArgumentMagnitudeBand = buildNegativeArgumentMagnitudeBandCases();
   const auto positiveArgumentMagnitudeBand = buildPositiveArgumentMagnitudeBandCases();
@@ -4961,6 +5014,7 @@ int main(int argc, char** argv) {
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+  runSuite("Trig angle reduction (large integers)", trigAngleReduction, s);
   runSuite("Operator precedence (USAGE_AND_SYNTAX.md)", operatorPrecedenceDoc, s);
   runSuite("Negative argument magnitude bands", negativeArgumentMagnitudeBand, s);
   runSuite("Positive argument magnitude bands", positiveArgumentMagnitudeBand, s);

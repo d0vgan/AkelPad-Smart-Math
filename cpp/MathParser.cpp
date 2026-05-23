@@ -1073,9 +1073,24 @@ bool tryComputeNcrInt64(long long n, long long r, long long& out) {
 
 bool isMultipleOf(double x, double x_mult)
 {
-  const double abs_x = std::fabs(x);
-  const double y = abs_x/x_mult + abs_x/1e+15;
-  return ((y >= 1.0) && (y/std::trunc(y) - 1.0 < 1e-14));
+  if (x_mult == 0.0) {
+    return false;
+  }
+  const double q = x / x_mult;
+  if (!std::isfinite(q)) {
+    return false;
+  }
+  const double n = std::round(q);
+  if (std::fabs(q - n) > 1e-9) {
+    return false;
+  }
+  const double residual = std::fabs(x - n * x_mult);
+  double eps = 1e-14 * std::fabs(x_mult);
+  const double ulpEps = 8.0 * std::numeric_limits<double>::epsilon() * std::fabs(x_mult);
+  if (eps < ulpEps) {
+    eps = ulpEps;
+  }
+  return residual <= eps;
 }
 
 double calcSin(double x)

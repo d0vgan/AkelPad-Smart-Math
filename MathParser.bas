@@ -4476,13 +4476,17 @@ private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref
   return TRUE
 end function
 
+'' True when x is within tolerance of N*x_mult for integer N (round + residual; rejects bare huge integers vs pi).
 private function IsMultipleOf(byval x as Double, byval x_mult as Double) as Boolean
-  dim abs_x as Double = abs(x)
-  dim y as Double = abs_x/x_mult + abs_x/1e+15
-  if y >= 1.0 then
-    if y/Fix(y) - 1.0 < 1e-14 then return TRUE
-  end if
-  return FALSE
+  if x_mult = 0.0 then return FALSE
+  dim q as Double = x / x_mult
+  if not IsFiniteValue(q) then return FALSE
+  dim n as Double = round(q)
+  if abs(q - n) > 1e-9 then return FALSE
+  dim residual as Double = abs(x - n * x_mult)
+  dim eps as Double = 1e-14 * abs(x_mult)
+  if eps < 8.0 * 2.220446049250313e-16 * abs(x_mult) then eps = 8.0 * 2.220446049250313e-16 * abs(x_mult)
+  return residual <= eps
 end function
 
 private function CalcSin(byval x as Double) as Double

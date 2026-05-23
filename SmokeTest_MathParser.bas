@@ -489,6 +489,67 @@ private sub RunPosBandCxBatch(byref subPass as Integer, byref subFail as Integer
 end sub
 
 '' USAGE_AND_SYNTAX.md precedence (high -> low): **, unary, postfix %, */%, +- ...
+private function TrigEvalAbs(byval expr as String) as Double
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  if Parser_TryEvaluateEx(expr, r, rt, ia) = FALSE then return -1.0
+  return abs(r)
+end function
+
+'' sin/cos/tan: large integers must not hit the false N*pi shortcut (IsMultipleOf fmod fix).
+private sub RunTrigAngleReductionTests()
+  print "=== Trig angle-reduction (large integers vs exact multiples) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim nonzeroExpr(1 to 12) as String
+  nonzeroExpr(1) = "sin(2**52)"
+  nonzeroExpr(2) = "sin(2**51)"
+  nonzeroExpr(3) = "sin(2**50)"
+  nonzeroExpr(4) = "sin(2**49)"
+  nonzeroExpr(5) = "sin(2**48)"
+  nonzeroExpr(6) = "sin(2**47)"
+  nonzeroExpr(7) = "sin(3**32)"
+  nonzeroExpr(8) = "sin(7**18)"
+  nonzeroExpr(9) = "cos(2**52)"
+  nonzeroExpr(10) = "cos(2**51)"
+  nonzeroExpr(11) = "tan(2**52)"
+  nonzeroExpr(12) = "tan(3**32)"
+  dim nearZeroExpr(1 to 6) as String
+  nearZeroExpr(1) = "sin(pi)"
+  nearZeroExpr(2) = "sin(2*pi)"
+  nearZeroExpr(3) = "cos(pi/2)"
+  nearZeroExpr(4) = "cos(3*pi/2)"
+  nearZeroExpr(5) = "tan(pi)"
+  nearZeroExpr(6) = "tan(2*pi)"
+  dim ti as Integer
+  dim mag as Double
+  for ti = 1 to 12
+    mag = TrigEvalAbs(nonzeroExpr(ti))
+    if mag < 1e-6 then
+      print "[trig-reduction] FAIL: """ & nonzeroExpr(ti) & """ |result|=" & str(mag) & " (expected non-zero)"
+      subFail += 1
+    else
+      print "[trig-reduction] PASS: """ & nonzeroExpr(ti) & """ |result|=" & str(mag)
+      subPass += 1
+    end if
+  next ti
+  for ti = 1 to 6
+    mag = TrigEvalAbs(nearZeroExpr(ti))
+    if mag >= 1e-9 then
+      print "[trig-reduction] FAIL: """ & nearZeroExpr(ti) & """ |result|=" & str(mag) & " (expected ~0)"
+      subFail += 1
+    else
+      print "[trig-reduction] PASS: """ & nearZeroExpr(ti) & """ |result|=" & str(mag)
+      subPass += 1
+    end if
+  next ti
+  g_passed += subPass
+  g_failed += subFail
+  print "Trig angle-reduction sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunOperatorPrecedenceDocTests()
   print "=== Operator precedence (USAGE_AND_SYNTAX.md) ==="
   dim subPass as Integer = 0
@@ -2834,6 +2895,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunRawResultApiTests()
 
   RunOperatorPrecedenceDocTests()
+
+  RunTrigAngleReductionTests()
 
   RunComplexNumberSupportOptionTests()
 
