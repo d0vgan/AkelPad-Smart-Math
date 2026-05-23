@@ -1488,7 +1488,7 @@ std::vector<TestCase> buildNanInfCases() {
   t.push_back({"naninf/sin +inf", [kPosInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kPosInf);
-                 return expectEval(p, "sin(x)", "nan", why);
+                 return expectEvalErrorContains(p, "sin(x)", "numeric error in sin()", why);
                }});
 
   t.push_back({"naninf/frac +inf", [kPosInf](std::string& why) {
@@ -1810,10 +1810,10 @@ std::vector<TestCase> buildNanInfCases() {
                  addConstTracked(p, "x", kNegInf);
                  return expectEval(p, "atan2(1,x)", "3.141592653589793", why);
                }});
-  t.push_back({"naninf/sin -inf (IEEE nan)", [kNegInf](std::string& why) {
+  t.push_back({"naninf/sin -inf", [kNegInf](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kNegInf);
-                 return expectEval(p, "sin(x)", "nan", why);
+                 return expectEvalErrorContains(p, "sin(x)", "numeric error in sin()", why);
                }});
 
   t.push_back({"naninf/int accepts -inf", [kNegInf](std::string& why) {
@@ -4016,6 +4016,81 @@ std::vector<TestCase> buildLambdaFunctionsSupportOptionCases() {
   return t;
 }
 
+struct NegBandRow {
+  const char* name;
+  const char* expr;
+  const char* expect;
+  const char* errPart;
+};
+
+static const NegBandRow kNegBandRealRows[] = {
+#include "../tools/neg_band_cases_generated.cpp.inc"
+};
+
+static const NegBandRow kNegBandComplexRows[] = {
+#include "../tools/neg_band_cases_generated_cx.cpp.inc"
+};
+
+static const NegBandRow kPosBandRealRows[] = {
+#include "../tools/pos_band_cases_generated.cpp.inc"
+};
+
+static const NegBandRow kPosBandComplexRows[] = {
+#include "../tools/pos_band_cases_generated_cx.cpp.inc"
+};
+
+static bool runNegBandRowBatch(MathParser& p, const NegBandRow* rows, std::size_t count, std::string& why) {
+  for (std::size_t i = 0; i < count; ++i) {
+    const NegBandRow& row = rows[i];
+    if (row.errPart != nullptr) {
+      if (!expectEvalErrorContains(p, row.expr, row.errPart, why)) {
+        why = std::string(row.name) + ": " + why;
+        return false;
+      }
+    } else if (!expectEval(p, row.expr, row.expect, why)) {
+      why = std::string(row.name) + ": " + why;
+      return false;
+    }
+  }
+  return true;
+}
+
+std::vector<TestCase> buildNegativeArgumentMagnitudeBandCases() {
+  std::vector<TestCase> t;
+  t.push_back({"neg-band/real: operators and builtins (3 negative magnitude ranges)",
+               [](std::string& why) {
+                 MathParser p;
+                 const std::size_t count = sizeof(kNegBandRealRows) / sizeof(kNegBandRealRows[0]);
+                 return runNegBandRowBatch(p, kNegBandRealRows, count, why);
+               }});
+  t.push_back({"neg-band/complex: operators and builtins (3 negative magnitude ranges)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 const std::size_t count = sizeof(kNegBandComplexRows) / sizeof(kNegBandComplexRows[0]);
+                 return runNegBandRowBatch(p, kNegBandComplexRows, count, why);
+               }});
+  return t;
+}
+
+std::vector<TestCase> buildPositiveArgumentMagnitudeBandCases() {
+  std::vector<TestCase> t;
+  t.push_back({"pos-band/real: operators and builtins (3 positive magnitude ranges)",
+               [](std::string& why) {
+                 MathParser p;
+                 const std::size_t count = sizeof(kPosBandRealRows) / sizeof(kPosBandRealRows[0]);
+                 return runNegBandRowBatch(p, kPosBandRealRows, count, why);
+               }});
+  t.push_back({"pos-band/complex: operators and builtins (3 positive magnitude ranges)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 const std::size_t count = sizeof(kPosBandComplexRows) / sizeof(kPosBandComplexRows[0]);
+                 return runNegBandRowBatch(p, kPosBandComplexRows, count, why);
+               }});
+  return t;
+}
+
 std::vector<TestCase> buildComplexNumberSupportOptionCases() {
   std::vector<TestCase> t;
   t.push_back({"complex-opt: flag and basic eval under enabled mode",
@@ -4802,7 +4877,23 @@ void runSuite(const std::string& title, const std::vector<TestCase>& cases, Test
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc >= 3 && std::string(argv[1]) == "--eval") {
+    MathParser p;
+    const char* expr = argv[2];
+    if (argc >= 4 && std::string(argv[2]) == "--complex") {
+      p.setSupportComplexNumbers(true);
+      expr = argv[3];
+    }
+    p.parseAndEvaluate(expr);
+    if (!p.getError().empty()) {
+      std::cout << "ERROR:" << p.getError() << "\n";
+      return 1;
+    }
+    std::cout << p.getResult() << "\n";
+    return 0;
+  }
+
   TestState s;
 
   const auto unit = buildUnitCases();
@@ -4812,6 +4903,8 @@ int main() {
   const auto parityFromSmoke = buildParityBasicFromSmokeCases();
   const auto parityTimeFromSmoke = buildParityTimeFromSmokeCases();
   const auto complexNumberSupportOption = buildComplexNumberSupportOptionCases();
+  const auto negativeArgumentMagnitudeBand = buildNegativeArgumentMagnitudeBandCases();
+  const auto positiveArgumentMagnitudeBand = buildPositiveArgumentMagnitudeBandCases();
   const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
   const auto lambdaFunctionsSupportOption = buildLambdaFunctionsSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
@@ -4823,6 +4916,8 @@ int main() {
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+  runSuite("Negative argument magnitude bands", negativeArgumentMagnitudeBand, s);
+  runSuite("Positive argument magnitude bands", positiveArgumentMagnitudeBand, s);
   runSuite("Time value support (parser option)", timeValuesSupportOption, s);
   runSuite("Lambda function support (parser option)", lambdaFunctionsSupportOption, s);
   runSuite("Sortby/Ratio", sortbyRatio, s);

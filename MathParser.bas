@@ -6,7 +6,23 @@ extern "C"
 declare function acosh (byval x as double) as double
 declare function asinh (byval x as double) as double
 declare function atanh (byval x as double) as double
+'' CRT libm (not FB intrinsics: built-in sin/cos/tan mishandle |x| >= 2^63).
+declare function libc_sin alias "sin" (byval x as double) as double
+declare function libc_cos alias "cos" (byval x as double) as double
+declare function libc_tan alias "tan" (byval x as double) as double
 end extern
+
+private function LibSin(byval x as Double) as Double
+  return libc_sin(x)
+end function
+
+private function LibCos(byval x as Double) as Double
+  return libc_cos(x)
+end function
+
+private function LibTan(byval x as Double) as Double
+  return libc_tan(x)
+end function
 
 const FB_STR_AT as string = " at "
 const FB_STR_LINE_1_PREFIX as string = "line 1, "
@@ -1402,6 +1418,25 @@ private function IsNonFiniteValue(byval d as Double) as Boolean
   return IsNaNValue(d) orelse IsInfValue(d)
 end function
 
+'' sin/cos/tan use MinGW libc for |theta| < 2^53; at 2^53 and above, results are rejected.
+private function IsTrigRadiansInRange(byval radians as Double) as Boolean
+  if IsNaNValue(radians) orelse IsInfValue(radians) then return FALSE
+  return abs(radians) < FB_MAX_EXACT_INT_FROM_DOUBLE
+end function
+
+private function IsTrigCartesianInRange(byval ar as Double, byval ai as Double) as Boolean
+  return IsTrigRadiansInRange(ar) andalso IsTrigRadiansInRange(ai)
+end function
+
+private function IsPrimaryTrigFnId(byval fnId as Integer) as Boolean
+  return (fnId = FUNC_SIN) orelse (fnId = FUNC_COS) orelse (fnId = FUNC_TAN)
+end function
+
+private function IsUnaryTrigFnId(byval fnId as Integer) as Boolean
+  return IsPrimaryTrigFnId(fnId) orelse _
+         (fnId = FUNC_SINH) orelse (fnId = FUNC_COSH) orelse (fnId = FUNC_TANH)
+end function
+
 private function IsFiniteValue(byval d as Double) as Boolean
   if IsNaNValue(d) then return FALSE
   if IsInfValue(d) then return FALSE
@@ -1527,9 +1562,17 @@ end sub
 private sub ScalarLoadCartesian(byref sv as ScalarValue, byref ar as Double, byref ai as Double)
   ScalarRepairExactMetadata(sv)
   if ScalarExactInt64Valid(sv) then
-    ar = CDbl(sv.exactInt64)
+    if sv.exactInt64 = FB_I64_MIN then
+      ar = FB_I64_MIN_D
+    else
+      ar = CDbl(sv.exactInt64)
+    end if
   elseif sv.scalarStorageKind = SSK_INT64 then
-    ar = CDbl(sv.exactInt64)
+    if sv.exactInt64 = FB_I64_MIN then
+      ar = FB_I64_MIN_D
+    else
+      ar = CDbl(sv.exactInt64)
+    end if
   elseif ScalarExactUInt64Valid(sv) then
     ar = CDbl(sv.exactUInt64)
   elseif sv.scalarStorageKind = SSK_UINT64 then
@@ -1663,7 +1706,11 @@ private function ValueArrayLen(byref v as EvalValue) as Integer
 end function
 
 private sub ValueSetInt64(byref v as EvalValue, byval n as LongInt)
-  ValueSetScalar(v, CDbl(n))
+  if n = FB_I64_MIN then
+    ValueSetScalar(v, FB_I64_MIN_D)
+  else
+    ValueSetScalar(v, CDbl(n))
+  end if
   v.scalarValue.scalarStorageKind = SSK_INT64
   ScalarSetExactInt64Valid(v.scalarValue, TRUE)
   v.scalarValue.exactInt64 = n
@@ -2201,6 +2248,13 @@ private function FormatSignedMagnitudeBase(byval iv as LongInt, byval baseN as I
     end select
   end if
 
+  if iv = FB_I64_MIN then
+    select case baseN
+      case 16: return "-" & prefix & Hex(FB_I64_MIN_MAG_U)
+      case 8: return "-" & prefix & Oct(FB_I64_MIN_MAG_U)
+      case else: return "-" & prefix & Bin(FB_I64_MIN_MAG_U)
+    end select
+  end if
   if iv < 0 then
     select case baseN
       case 16: return "-" & prefix & Hex(CULngInt(-iv))
@@ -4439,7 +4493,7 @@ private function CalcSin(byval x as Double) as Double
       return 0.0
     end if
   end if
-  return sin(x)
+  return LibSin(x)
 end function
 
 private function CalcCos(byval x as Double) as Double
@@ -4451,7 +4505,7 @@ private function CalcCos(byval x as Double) as Double
       end if
     end if
   endif
-  return cos(x)
+  return LibCos(x)
 end function
 
 private function CalcTan(byval x as Double) as Double
@@ -4463,11 +4517,11 @@ private function CalcTan(byval x as Double) as Double
     end if
     if IsMultipleOf(x, FB_PI_VAL/2) then
       ' tan(N*pi/2), N = 1,3,5,7,...
-      if tan(x) > 0.0 then return 1.0/0.0 ' INF
+      if LibTan(x) > 0.0 then return 1.0/0.0 ' INF
       return -1.0/0.0 ' -INF
     end if
   end if
-  return tan(x)
+  return LibTan(x)
 end function
 
 private function CalcAtan2(byval y as Double, byval x as Double) as Double
@@ -4588,7 +4642,10 @@ end function
 
 private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   if ApplyUnaryComplexSupportScalars(fnId, scalarV, outV) then return TRUE
-  dim x as Double = scalarV.scalar
+  dim arU as Double = 0.0
+  dim aiU as Double = 0.0
+  ScalarLoadCartesian(scalarV, arU, aiU)
+  dim x as Double = arU
   if Parser_SupportComplexNumbers then
     if ScalarHasNonzeroImaginaryPart(scalarV) then
       if fnId = FUNC_SQRT orelse fnId = FUNC_SQR then
@@ -4609,7 +4666,7 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
         end if
         dim halfAng as Double = CalcAtan2(ci, cr) * 0.5
         dim rm as Double = sqr(mag)
-        ValueSetScalarComplexFromDoubles(outV, rm * cos(halfAng), rm * sin(halfAng))
+        ValueSetScalarComplexFromDoubles(outV, rm * LibCos(halfAng), rm * LibSin(halfAng))
         return TRUE
       elseif fnId = FUNC_EXP then
         dim er as Double, ei as Double
@@ -4618,9 +4675,10 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
           ValueSetScalarComplexFromDoubles(outV, MakeNaN(), MakeNaN())
           return TRUE
         end if
+        if IsTrigRadiansInRange(ei) = FALSE then return FALSE
         dim ea as Double = exp(er)
-        dim prE as Double = ea * cos(ei)
-        dim piE as Double = ea * sin(ei)
+        dim prE as Double = ea * LibCos(ei)
+        dim piE as Double = ea * LibSin(ei)
         ScalarSnapComplexNearZeroAxis(prE, piE)
         ValueSetScalarComplexFromDoubles(outV, prE, piE)
         return TRUE
@@ -4679,12 +4737,15 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
       end if
     end if
   end if
-  if fnId = FUNC_SIN then
-    ValueSetScalar(outV, CalcSin(x))
-  elseif fnId = FUNC_COS then
-    ValueSetScalar(outV, CalcCos(x))
-  elseif fnId = FUNC_TAN then
-    ValueSetScalar(outV, CalcTan(x))
+  if IsPrimaryTrigFnId(fnId) then
+    if IsTrigRadiansInRange(x) = FALSE then return FALSE
+    if fnId = FUNC_SIN then
+      ValueSetScalar(outV, CalcSin(x))
+    elseif fnId = FUNC_COS then
+      ValueSetScalar(outV, CalcCos(x))
+    else
+      ValueSetScalar(outV, CalcTan(x))
+    end if
   elseif fnId = FUNC_ASIN then
     ValueSetScalar(outV, asin(x))
   elseif fnId = FUNC_ACOS then
@@ -4773,8 +4834,8 @@ private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, by
           return TRUE
         end if
       end if
-      dim cr as Double = rMag * cos(rAng)
-      dim ci as Double = rMag * sin(rAng)
+      dim cr as Double = rMag * LibCos(rAng)
+      dim ci as Double = rMag * LibSin(rAng)
       ValueSetScalarComplexFromDoubles(outV, cr, ci)
       return TRUE
     end if
@@ -4876,11 +4937,13 @@ private sub ScalarComplexCartesianMul(byval ar as Double, byval ai as Double, by
   end if
 end sub
 
-private sub ScalarComplexExpCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
+private function ScalarComplexExpCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
+  if IsTrigRadiansInRange(ai) = FALSE then return FALSE
   dim ea as Double = exp(ar)
-  outR = ea * cos(ai)
-  outI = ea * sin(ai)
-end sub
+  outR = ea * LibCos(ai)
+  outI = ea * LibSin(ai)
+  return TRUE
+end function
 
 private sub ScalarComplexPrincipalSqrt(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double)
   if IsNaNValue(ar) orelse IsNaNValue(ai) then
@@ -4896,13 +4959,15 @@ private sub ScalarComplexPrincipalSqrt(byval ar as Double, byval ai as Double, b
   end if
   dim halfAng as Double = CalcAtan2(ai, ar) * 0.5
   dim rm as Double = sqr(mag)
-  outR = rm * cos(halfAng)
-  outI = rm * sin(halfAng)
+  outR = rm * LibCos(halfAng)
+  outI = rm * LibSin(halfAng)
   ScalarSnapComplexNearZeroAxis(outR, outI)
 end sub
 
 private function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
-  if IsNaNValue(ar) orelse IsNaNValue(ai) then
+  if IsUnaryTrigFnId(fnId) then
+    if IsTrigCartesianInRange(ar, ai) = FALSE then return FALSE
+  elseif IsNaNValue(ar) orelse IsNaNValue(ai) then
     outR = MakeNaN()
     outI = MakeNaN()
     return TRUE
@@ -4910,32 +4975,32 @@ private function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Do
 
   select case fnId
     case FUNC_SIN
-      outR = sin(ar) * cosh(ai)
-      outI = cos(ar) * sinh(ai)
+      outR = LibSin(ar) * cosh(ai)
+      outI = LibCos(ar) * sinh(ai)
     case FUNC_COS
-      outR = cos(ar) * cosh(ai)
-      outI = -sin(ar) * sinh(ai)
+      outR = LibCos(ar) * cosh(ai)
+      outI = -LibSin(ar) * sinh(ai)
     case FUNC_SINH
-      outR = sinh(ar) * cos(ai)
-      outI = cosh(ar) * sin(ai)
+      outR = sinh(ar) * LibCos(ai)
+      outI = cosh(ar) * LibSin(ai)
     case FUNC_COSH
-      outR = cosh(ar) * cos(ai)
-      outI = sinh(ar) * sin(ai)
+      outR = cosh(ar) * LibCos(ai)
+      outI = sinh(ar) * LibSin(ai)
     case FUNC_TAN, FUNC_TANH
       dim numR as Double
       dim numI as Double
       dim denR as Double
       dim denI as Double
       if fnId = FUNC_TAN then
-        numR = sin(ar) * cosh(ai)
-        numI = cos(ar) * sinh(ai)
-        denR = cos(ar) * cosh(ai)
-        denI = -sin(ar) * sinh(ai)
+        numR = LibSin(ar) * cosh(ai)
+        numI = LibCos(ar) * sinh(ai)
+        denR = LibCos(ar) * cosh(ai)
+        denI = -LibSin(ar) * sinh(ai)
       else
-        numR = sinh(ar) * cos(ai)
-        numI = cosh(ar) * sin(ai)
-        denR = cosh(ar) * cos(ai)
-        denI = sinh(ar) * sin(ai)
+        numR = sinh(ar) * LibCos(ai)
+        numI = cosh(ar) * LibSin(ai)
+        denR = cosh(ar) * LibCos(ai)
+        denI = sinh(ar) * LibSin(ai)
       end if
       ScalarComplexDivide(numR, numI, denR, denI, outR, outI)
     case FUNC_ASINH
@@ -5017,11 +5082,11 @@ private function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Do
 end function
 
 '' Gamma(z) via Lanczos (complex); factorial(n) uses Gamma(n+1).
-private sub ScalarComplexGamma(byval zr as Double, byval zi as Double, byref outR as Double, byref outI as Double)
+private function ScalarComplexGamma(byval zr as Double, byval zi as Double, byref outR as Double, byref outI as Double) as Boolean
   if IsNaNValue(zr) orelse IsNaNValue(zi) then
     outR = MakeNaN()
     outI = MakeNaN()
-    exit sub
+    return TRUE
   end if
   static lanczosC(0 to 8) as Double = { _
     0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, _
@@ -5053,17 +5118,18 @@ private sub ScalarComplexGamma(byval zr as Double, byval zi as Double, byref out
   ScalarComplexCartesianMul(pwRe, pwIm, lnRe, lnIm, lnPowRe, lnPowIm)
   dim powRe as Double
   dim powIm as Double
-  ScalarComplexExpCartesian(lnPowRe, lnPowIm, powRe, powIm)
+  if ScalarComplexExpCartesian(lnPowRe, lnPowIm, powRe, powIm) = FALSE then return FALSE
   dim expNegPrR as Double
   dim expNegPrI as Double
-  ScalarComplexExpCartesian(-tRe, -tIm, expNegPrR, expNegPrI)
+  if ScalarComplexExpCartesian(-tRe, -tIm, expNegPrR, expNegPrI) = FALSE then return FALSE
   dim scale as Double = sqr(2.0 * FB_PI_VAL)
   dim prodRe as Double
   dim prodIm as Double
   ScalarComplexCartesianMul(scale * powRe, scale * powIm, expNegPrR, expNegPrI, prodRe, prodIm)
   ScalarComplexCartesianMul(prodRe, prodIm, xRe, xIm, outR, outI)
   ScalarSnapComplexNearZeroAxis(outR, outI)
-end sub
+  return TRUE
+end function
 
 '' intV/uintV before flag fields: avoids x86_64 UDT padding bugs with leading Boolean/Integer sentinels.
 private type ExactCartesianComponent
@@ -5410,10 +5476,21 @@ private function TryNegateEvalScalarUnary(byref v as EvalValue, byref outV as Ev
     ValueSetInt64(outV, -v.scalarValue.exactInt64)
     return TRUE
   end if
-  if ScalarExactUInt64Valid(v.scalarValue) andalso v.scalarValue.exactUInt64 <= FB_I64_MAX_U then
-    dim ui as LongInt = CLngInt(v.scalarValue.exactUInt64)
-    if ui = FB_I64_MIN then return FALSE
-    ValueSetInt64(outV, -ui)
+  if ScalarExactUInt64Valid(v.scalarValue) orelse v.scalarValue.scalarStorageKind = SSK_UINT64 then
+    dim u as ULongInt = v.scalarValue.exactUInt64
+    if u = 0ull then
+      ValueSetInt64(outV, 0)
+      return TRUE
+    end if
+    if u = FB_I64_MIN_MAG_U then
+      ValueSetInt64(outV, FB_I64_MIN)
+      return TRUE
+    end if
+    if u <= FB_I64_MAX_U then
+      ValueSetInt64(outV, -CLngInt(u))
+      return TRUE
+    end if
+    ValueSetScalar(outV, -CDbl(u))
     return TRUE
   end if
   return FALSE
@@ -5571,7 +5648,7 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
       end if
       dim gr as Double
       dim gi as Double
-      ScalarComplexGamma(ar + 1.0, ai, gr, gi)
+      if ScalarComplexGamma(ar + 1.0, ai, gr, gi) = FALSE then return FALSE
       ValueSetScalarComplexFromDoubles(outV, gr, gi)
     case else
       return FALSE
@@ -5607,8 +5684,8 @@ private sub ScalarComplexPowPrincipal(byval ar as Double, byval ai as Double, by
     if abs(br - 0.5) < epsPow then
       dim halfAng as Double = CalcAtan2(ai, ar) * 0.5
       dim rm as Double = sqr(mag)
-      outR = rm * cos(halfAng)
-      outI = rm * sin(halfAng)
+      outR = rm * LibCos(halfAng)
+      outI = rm * LibSin(halfAng)
       ScalarSnapComplexNearZeroAxis(outR, outI)
       exit sub
     end if
@@ -5640,8 +5717,13 @@ private sub ScalarComplexPowPrincipal(byval ar as Double, byval ai as Double, by
   dim loI as Double = CalcAtan2(ai, ar)
   dim powRe as Double = br * loR - bi * loI
   dim powIm as Double = br * loI + bi * loR
-  dim er as Double = exp(powRe) * cos(powIm)
-  dim ei as Double = exp(powRe) * sin(powIm)
+  if IsTrigRadiansInRange(powIm) = FALSE then
+    outR = MakeNaN()
+    outI = MakeNaN()
+    exit sub
+  end if
+  dim er as Double = exp(powRe) * LibCos(powIm)
+  dim ei as Double = exp(powRe) * LibSin(powIm)
   outR = er
   outI = ei
   ScalarSnapComplexNearZeroAxis(outR, outI)
@@ -9078,14 +9160,14 @@ private function ParseFactor() as EvalValue
 end function
 
 private function ParsePower() as EvalValue
-  dim n as EvalValue = ParseFactor()
+  dim n as EvalValue = ParseUnary()
   if parseError then return n
   SkipSpaces()
 
   if pStream[0] = CHAR_ASTERISK andalso pStream[1] = CHAR_ASTERISK then
     pStream += 2
     dim rhs as EvalValue
-    rhs = ParseUnary()
+    rhs = ParsePower()
     if parseError then return n
     ApplyBinaryParserOpInPlace(n, rhs, CHAR_CARET)
   end if
@@ -9171,7 +9253,7 @@ private function ParseUnary() as EvalValue
     return v
   end if
 
-  dim n as EvalValue = ParsePower()
+  dim n as EvalValue = ParseFactor()
   if parseError then return n
 
   SkipSpaces()
@@ -9202,7 +9284,7 @@ private function ParseUnary() as EvalValue
 end function
 
 private function ParseMultiplicative() as EvalValue
-  dim n as EvalValue = ParseUnary()
+  dim n as EvalValue = ParsePower()
   dim termWasPercentage as Boolean = wasPercentage
   SkipSpaces()
   while TRUE
@@ -9213,7 +9295,7 @@ private function ParseMultiplicative() as EvalValue
     dim intOp as OperatorBitNameId = OP_BIT_NONE
     if TryConsumeMultiplicativeOp(op, useInt64, intOp) = FALSE then exit while
 
-    dim n2 as EvalValue = ParseUnary()
+    dim n2 as EvalValue = ParsePower()
     ApplyMultiplicativeOpInPlace(n, n2, useInt64, intOp, op)
     termWasPercentage = FALSE
     SkipSpaces()

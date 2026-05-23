@@ -7,14 +7,20 @@ rem   1) Double-click RunSmokeTests.bat
 rem   2) Or run from terminal in project root: RunSmokeTests.bat
 
 set "FB_HOME=C:\tools\FreeBASIC"
-set "PATH=%PATH%;%FB_HOME%"
+if exist "%FB_HOME%\bin\win64" (
+  set "PATH=%PATH%;%FB_HOME%;%FB_HOME%\bin\win64"
+  set "FBC_ARCH=-arch x86_64"
+) else (
+  set "PATH=%PATH%;%FB_HOME%;%FB_HOME%\bin\win32"
+  set "FBC_ARCH="
+)
 
 echo ==========================================
 echo SmartMath parser smoke tests
 echo ==========================================
 echo.
 echo [1/3] Compiling SmokeTest_MathParser.bas ...
-fbc -strip -O 2 -Wc -O2 "SmokeTest_MathParser.bas" "MathParser.bas" -x "SmokeTest_MathParser.exe"
+fbc %FBC_ARCH% -strip -O 2 -Wc -O2 "SmokeTest_MathParser.bas" "MathParser.bas" -x "SmokeTest_MathParser.exe"
 if errorlevel 1 goto :compile_failed
 
 echo.

@@ -13,7 +13,15 @@
 
 namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
+constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
 constexpr int kMaxEvalDepth = 128;
+
+bool isTrigRadiansInRange(double radians) {
+  if (!std::isfinite(radians)) {
+    return false;
+  }
+  return std::fabs(radians) < kTrigMaxAbsRadians;
+}
 
 const char* skipAsciiSpacesPtr(const char* p) {
   while (*p && std::isspace(static_cast<unsigned char>(*p))) {
@@ -252,6 +260,11 @@ void complexPowPrincipal(double ar, double ai, double br, double bi, double& out
   const double loI = std::atan2(ai, ar);
   const double powRe = br * loR - bi * loI;
   const double powIm = br * loI + bi * loR;
+  if (!isTrigRadiansInRange(powIm)) {
+    outRe = std::numeric_limits<double>::quiet_NaN();
+    outIm = std::numeric_limits<double>::quiet_NaN();
+    return;
+  }
   outRe = std::exp(powRe) * std::cos(powIm);
   outIm = std::exp(powRe) * std::sin(powIm);
   snapComplexNearZeroAxis(outRe, outIm);
@@ -280,10 +293,14 @@ void complexMultiply(double ar, double ai, double br, double bi, double& outR, d
   }
 }
 
-void complexExpCartesian(double ar, double ai, double& outR, double& outI) {
+bool complexExpCartesian(double ar, double ai, double& outR, double& outI) {
+  if (!isTrigRadiansInRange(ai)) {
+    return false;
+  }
   const double ea = std::exp(ar);
   outR = ea * std::cos(ai);
   outI = ea * std::sin(ai);
+  return true;
 }
 
 void complexPrincipalSqrt(double ar, double ai, double& outR, double& outI) {
@@ -347,10 +364,18 @@ void complexGamma(double zr, double zi, double& outR, double& outI) {
   complexMultiply(pwRe, pwIm, lnRe, lnIm, lnPowRe, lnPowIm);
   double powRe = 0.0;
   double powIm = 0.0;
-  complexExpCartesian(lnPowRe, lnPowIm, powRe, powIm);
+  if (!complexExpCartesian(lnPowRe, lnPowIm, powRe, powIm)) {
+    outR = nanv;
+    outI = nanv;
+    return;
+  }
   double expNegPrR = 0.0;
   double expNegPrI = 0.0;
-  complexExpCartesian(-tRe, -tIm, expNegPrR, expNegPrI);
+  if (!complexExpCartesian(-tRe, -tIm, expNegPrR, expNegPrI)) {
+    outR = nanv;
+    outI = nanv;
+    return;
+  }
   const double scale = std::sqrt(2.0 * kPi);
   double prodRe = 0.0;
   double prodIm = 0.0;
@@ -1827,7 +1852,12 @@ bool MathParser::isComplexUnaryTrigBuiltin(BuiltinFunctionId id) {
 
 bool MathParser::complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI) {
   const double nanv = std::numeric_limits<double>::quiet_NaN();
-  if (!std::isfinite(ar) || !std::isfinite(ai)) {
+  if (id == BuiltinFunctionId::Sin || id == BuiltinFunctionId::Cos || id == BuiltinFunctionId::Tan ||
+      id == BuiltinFunctionId::Sinh || id == BuiltinFunctionId::Cosh || id == BuiltinFunctionId::Tanh) {
+    if (!isTrigRadiansInRange(ar) || !isTrigRadiansInRange(ai)) {
+      return false;
+    }
+  } else if (!std::isfinite(ar) || !std::isfinite(ai)) {
     outR = nanv;
     outI = nanv;
     return true;
@@ -9968,6 +9998,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     }
   }
   const double nanv = std::numeric_limits<double>::quiet_NaN();
+  bool realUnaryOk = true;
+  bool trigOutOfRange = false;
   const auto unaryExpLnLog10ForScalarValue = [&](const EvalValue::ScalarValue& sv) -> EvalValue {
     const double xv = sv.scalar;
     if (supportComplexNumbers_ && id == BuiltinFunctionId::Exp && scalarHasNonzeroImaginaryPart(sv)) {
@@ -9976,6 +10008,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       scalarLoadCartesian(sv, ar, ai);
       if (!std::isfinite(ar) || !std::isfinite(ai)) {
         return makeScalarComplexFromDoubles(nanv, nanv);
+      }
+      if (!isTrigRadiansInRange(ai)) {
+        trigOutOfRange = true;
+        return makeScalar(0);
       }
       const double ea = std::exp(ar);
       double pr = ea * std::cos(ai);
@@ -10018,7 +10054,6 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     }
     return makeScalarMaybeExact(std::log10(xv));
   };
-  bool realUnaryOk = true;
   const auto applyRealUnaryScalarValue = [&](const EvalValue::ScalarValue& s) -> EvalValue {
     if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s) &&
         (id == BuiltinFunctionId::Sqrt || id == BuiltinFunctionId::Sqr)) {
@@ -10050,12 +10085,18 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       double or_ = 0.0;
       double oi = 0.0;
       if (!complexUnaryTrigCartesian(id, ar, ai, or_, oi)) {
-        return makeScalarComplexFromDoubles(nanv, nanv);
+        trigOutOfRange = true;
+        return makeScalar(0);
       }
       snapComplexNearZeroAxis(or_, oi);
       return makeScalarComplexFromDoubles(or_, oi);
     }
     const double x = s.scalar;
+    if ((id == BuiltinFunctionId::Sin || id == BuiltinFunctionId::Cos || id == BuiltinFunctionId::Tan) &&
+        !isTrigRadiansInRange(x)) {
+      trigOutOfRange = true;
+      return makeScalar(0);
+    }
     switch (id) {
       case BuiltinFunctionId::Sin: return makeScalarMaybeExact(calcSin(x));
       case BuiltinFunctionId::Cos: return makeScalarMaybeExact(calcCos(x));
@@ -10102,6 +10143,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     return makeScalar(0);
   };
   const EvalValue result = mapUnaryEvalValue(args[0], applyRealUnaryScalarValue);
+  if (trigOutOfRange) {
+    setNumericErrorInFunction(ctx, fnName);
+    return makeScalar(0);
+  }
   if (!realUnaryOk) {
     setInternalUnaryMathBuiltinError(ctx);
     return makeScalar(0);

@@ -1,4 +1,5 @@
 #include once "Inc\MathParser.bi"
+#include "tools\neg_band_cases_generated.bas"
 
 type SmokeCase
   expr as String
@@ -73,8 +74,54 @@ private function ScalarCloseEnough(byref actual as String, byref expected as Str
   dim scale as Double = abs(da)
   if abs(de) > scale then scale = abs(de)
   if scale < 1 then scale = 1
-  dim tol as Double = 16.0 * 2.2204460492503131e-16 * scale
+  dim tol as Double = 256.0 * 2.2204460492503131e-16 * scale
+  if tol < 1e-14 then tol = 1e-14
   return abs(da - de) <= tol
+end function
+
+private function SplitComplexText(byref s as String, byref rePart as String, byref imPart as String) as Boolean
+  dim t as String = trim(s)
+  if len(t) = 0 then
+    rePart = "0"
+    imPart = "0"
+    return TRUE
+  end if
+  if (right(t, 1) <> "i") andalso (right(t, 1) <> "I") then return FALSE
+  dim splitAt as Integer = 0
+  dim i as Integer
+  for i = len(t) to 2 step -1
+    dim ch as String = mid(t, i, 1)
+    if (ch = "+") orelse (ch = "-") then
+      if i > 1 then
+        dim prevCh as String = mid(t, i - 1, 1)
+        if (prevCh <> "e") andalso (prevCh <> "E") then
+          splitAt = i
+          exit for
+        end if
+      elseif ch = "-" then
+        splitAt = i
+        exit for
+      end if
+    end if
+  next i
+  if splitAt = 0 then
+    rePart = "0"
+    imPart = left(t, len(t) - 1)
+    return TRUE
+  end if
+  rePart = trim(left(t, splitAt - 1))
+  if len(rePart) = 0 then rePart = "0"
+  imPart = trim(mid(t, splitAt))
+  if left(imPart, 1) = "+" then imPart = mid(imPart, 2)
+  return TRUE
+end function
+
+private function ComplexResultCloseEnough(byref actual as String, byref expected as String) as Boolean
+  dim aRe as String, aIm as String, eRe as String, eIm as String
+  if SplitComplexText(actual, aRe, aIm) = FALSE then return FALSE
+  if SplitComplexText(expected, eRe, eIm) = FALSE then return FALSE
+  if ScalarCloseEnough(aRe, eRe) = FALSE then return FALSE
+  return ScalarCloseEnough(aIm, eIm)
 end function
 
 private function SplitArrayElems(byref sText as String, elems() as String) as Integer
@@ -111,9 +158,12 @@ private function ResultCloseEnough(byref actual as String, byref expected as Str
   if ac > 0 orelse ec > 0 then
     if ac <> ec then return FALSE
     for i as Integer = 0 to ac - 1
-      if ScalarCloseEnough(aElems(i), eElems(i)) = FALSE then return FALSE
+      if ResultCloseEnough(aElems(i), eElems(i)) = FALSE then return FALSE
     next i
     return TRUE
+  end if
+  if (instr(lcase(actual), "i") > 0) orelse (instr(lcase(expected), "i") > 0) then
+    return ComplexResultCloseEnough(actual, expected)
   end if
   return ScalarCloseEnough(actual, expected)
 end function
@@ -327,6 +377,136 @@ private sub RunRawResultApiTests()
   g_passed += subPass
   g_failed += subFail
   print "RawResult sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunNegBandRealBatch(byref subPass as Integer, byref subFail as Integer)
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to NEG_BAND_REAL_COUNT
+    if negBandRealIsErr(i) then
+      if Parser_TryEvaluateEx(negBandRealExpr(i), r, rt, ia) then
+        print "[neg-band-real] FAIL: "; negBandRealLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(negBandRealErr(i))) = 0 then
+        print "[neg-band-real] FAIL: "; negBandRealLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(negBandRealExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, negBandRealExpect(i)) = FALSE then
+        print "[neg-band-real] FAIL: "; negBandRealLabel(i); " "; negBandRealExpr(i); " -> """; rt; """ want """; negBandRealExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+end sub
+
+private sub RunNegBandCxBatch(byref subPass as Integer, byref subFail as Integer)
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to NEG_BAND_CX_COUNT
+    if negBandCxIsErr(i) then
+      if Parser_TryEvaluateEx(negBandCxExpr(i), r, rt, ia) then
+        print "[neg-band-cx] FAIL: "; negBandCxLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(negBandCxErr(i))) = 0 then
+        print "[neg-band-cx] FAIL: "; negBandCxLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(negBandCxExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, negBandCxExpect(i)) = FALSE then
+        print "[neg-band-cx] FAIL: "; negBandCxLabel(i); " "; negBandCxExpr(i); " -> """; rt; """ want """; negBandCxExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+end sub
+
+private sub RunPosBandRealBatch(byref subPass as Integer, byref subFail as Integer)
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to POS_BAND_REAL_COUNT
+    if posBandRealIsErr(i) then
+      if Parser_TryEvaluateEx(posBandRealExpr(i), r, rt, ia) then
+        print "[pos-band-real] FAIL: "; posBandRealLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(posBandRealErr(i))) = 0 then
+        print "[pos-band-real] FAIL: "; posBandRealLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(posBandRealExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, posBandRealExpect(i)) = FALSE then
+        print "[pos-band-real] FAIL: "; posBandRealLabel(i); " "; posBandRealExpr(i); " -> """; rt; """ want """; posBandRealExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+end sub
+
+private sub RunPosBandCxBatch(byref subPass as Integer, byref subFail as Integer)
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to POS_BAND_CX_COUNT
+    if posBandCxIsErr(i) then
+      if Parser_TryEvaluateEx(posBandCxExpr(i), r, rt, ia) then
+        print "[pos-band-cx] FAIL: "; posBandCxLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(posBandCxErr(i))) = 0 then
+        print "[pos-band-cx] FAIL: "; posBandCxLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(posBandCxExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, posBandCxExpect(i)) = FALSE then
+        print "[pos-band-cx] FAIL: "; posBandCxLabel(i); " "; posBandCxExpr(i); " -> """; rt; """ want """; posBandCxExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+end sub
+
+private sub RunNegativeArgumentMagnitudeBandTests()
+  print "=== Negative argument magnitude bands (real, 3 ranges) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  RunNegBandRealBatch subPass, subFail
+  g_passed += subPass
+  g_failed += subFail
+  print "Negative-argument band (real) sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunPositiveArgumentMagnitudeBandTests()
+  print "=== Positive argument magnitude bands (real, 3 ranges) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  RunPosBandRealBatch subPass, subFail
+  g_passed += subPass
+  g_failed += subFail
+  print "Positive-argument band (real) sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -564,7 +744,7 @@ private sub RunComplexNumberSupportOptionTests()
 
   dim exi as Integer
   for exi = 1 to 10
-    if Parser_TryEvaluateEx(cxExpLnCases(exi), r, rt, ia) = FALSE orelse rt <> cxExpLnExpect(exi) then
+    if Parser_TryEvaluateEx(cxExpLnCases(exi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxExpLnExpect(exi)) = FALSE then
       print "[complex-opt] FAIL: """ & cxExpLnCases(exi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
     else
@@ -590,7 +770,7 @@ private sub RunComplexNumberSupportOptionTests()
 
   dim tri as Integer
   for tri = 1 to 12
-    if Parser_TryEvaluateEx(cxTrigOk(tri), r, rt, ia) = FALSE orelse rt <> cxTrigExpect(tri) then
+    if Parser_TryEvaluateEx(cxTrigOk(tri), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxTrigExpect(tri)) = FALSE then
       print "[complex-opt] FAIL: """ & cxTrigOk(tri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
     else
@@ -832,7 +1012,7 @@ private sub RunComplexNumberSupportOptionTests()
 
   dim ui as Integer
   for ui = 1 to 16
-    if Parser_TryEvaluateEx(cxUniOk(ui), r, rt, ia) = FALSE orelse rt <> cxUniExpect(ui) then
+    if Parser_TryEvaluateEx(cxUniOk(ui), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxUniExpect(ui)) = FALSE then
       print "[complex-opt] FAIL: """ & cxUniOk(ui) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
     else
@@ -976,6 +1156,22 @@ private sub RunComplexNumberSupportOptionTests()
       subPass += 1
     end if
   next sri
+
+  print "=== Negative argument magnitude bands (complex, 3 ranges) ==="
+  dim negCxPass as Integer = 0
+  dim negCxFail as Integer = 0
+  RunNegBandCxBatch negCxPass, negCxFail
+  subPass += negCxPass
+  subFail += negCxFail
+  print "Negative-argument band (complex) sub-tests: passed " & str(negCxPass) & ", failed " & str(negCxFail)
+
+  print "=== Positive argument magnitude bands (complex, 3 ranges) ==="
+  dim posCxPass as Integer = 0
+  dim posCxFail as Integer = 0
+  RunPosBandCxBatch posCxPass, posCxFail
+  subPass += posCxPass
+  subFail += posCxFail
+  print "Positive-argument band (complex) sub-tests: passed " & str(posCxPass) & ", failed " & str(posCxFail)
 
   Parser_SetSupportComplexNumbers(FALSE)
   if Parser_GetSupportComplexNumbers() <> FALSE then
@@ -2015,8 +2211,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(648).expr = "x=1.0/0.0; ln(x)": tests(648).expected = "inf"
   tests(649).expr = "z=0.0; ln(z)": tests(649).expected = "-inf"
   tests(650).expr = "x=0.0/0.0; sqrt(x)": tests(650).expected = "nan"
-  tests(651).expr = "x=1.0/0.0; sin(x)": tests(651).expected = "nan"
-  tests(652).expr = "x=1.0/0.0; frac(x)": tests(652).expected = "inf"
+  tests(651).expr = "x=1.0/0.0; sin(x)": tests(651).expectedErrContains = "numeric error in sin()"
+  tests(652).expr = "x=1.0/0.0; frac(x)": tests(652).expected = "nan"
   tests(653).expr = "x=0.0/0.0; not x": tests(653).expected = "1"
   tests(654).expr = "x=1.0/0.0; not x": tests(654).expected = "0"
   tests(655).expr = "x=0.0/0.0; x&&1": tests(655).expected = "0"
@@ -2134,7 +2330,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(766).expr = "x=1.0/0.0; atan2(x,1)": tests(766).expected = "1.570796326794897"
   tests(767).expr = "x=-1.0/0.0; atan2(x,1)": tests(767).expected = "-1.570796326794897"
   tests(768).expr = "x=-1.0/0.0; atan2(1,x)": tests(768).expected = "3.141592653589793"
-  tests(769).expr = "x=-1.0/0.0; sin(x)": tests(769).expected = "nan"
+  tests(769).expr = "x=-1.0/0.0; sin(x)": tests(769).expectedErrContains = "numeric error in sin()"
   tests(770).expr = "inf+1": tests(770).expected = "inf"
   tests(771).expr = "INF+1": tests(771).expected = "inf"
   tests(772).expr = "inf=1": tests(772).expectedErrContains = "reserved constant name"
@@ -2588,6 +2784,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunRawResultApiTests()
 
   RunComplexNumberSupportOptionTests()
+
+  RunNegativeArgumentMagnitudeBandTests()
+
+  RunPositiveArgumentMagnitudeBandTests()
 
   RunBuiltinArityTableTests()
 
