@@ -1213,6 +1213,30 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                  MathParser p;
                  return expectEval(p, "sqr(sqrt(4611686014132420611))", "4611686014132420609", why);
                }});
+  t.push_back({"edge/pow verified fractional root exact int", [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "125**(1/3)", "5", why)) return false;
+                 return expectEval(p, "823543**(1/7)", "7", why);
+               }});
+  t.push_back({"edge/pow negative base odd exponent and root", [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 if (!expectEval(p, "(-5)**3", "-125", why)) return false;
+                 if (!expectEval(p, "(-125)**(1/3)", "-5", why)) return false;
+                 if (!expectEval(p, "pow(-5,3)", "-125", why)) return false;
+                 if (!expectEval(p, "pow(-125,1/3)", "-5", why)) return false;
+                 if (!expectEval(p, "pow(pow(-3,39), 1/39)", "-3", why)) return false;
+                 return expectEval(p, "pow(pow(-3,45), 1/45)", "-3", why);
+               }});
+  t.push_back({"edge/pow base 1 and integer exponent verify", [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "pow(1,99)", "1", why)) return false;
+                 return expectEval(p, "2**10", "1024", why);
+               }});
+  t.push_back({"edge/pow non-perfect root stays float", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "126**(1/3)", "5.013297934964584", why);
+               }});
   t.push_back({"edge/scalar abs keeps int metadata for modulo", [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "mod(abs(-14),5)", "4", why);
@@ -4341,7 +4365,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"sqrt(-4)", "2i"},
                      {"(-2)**(1/2)", "1.414213562373095i"},
                      {"(-7)**(3/2)", "-18.52025917745212i"},
-                     {"(-5)**(1/3)", "0.8549879733383486+1.480882609682364i"},
+                     {"(-5)**(1/3)", "-1.709975946676696"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

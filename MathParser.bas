@@ -2008,6 +2008,20 @@ private function TryApplyHypotExactScalars(byref leftS as ScalarValue, byref rig
   return FALSE
 end function
 
+'' Exact-int pow/**: float guess, then checked integer power verifies root or integer exponent.
+private function ScalarExactIntFitsPowExactPolicy(byref s as ScalarValue, byref outI as LongInt) as Boolean
+  if ScalarIsTime(s) then return FALSE
+  if TryGetExactSignedInt64NoUIntWrapScalarStrict(s, outI) = FALSE then return FALSE
+  if outI = FB_I64_MIN then return FALSE
+  dim mag as ULongInt
+  if outI >= 0 then
+    mag = CULngInt(outI)
+  else
+    mag = CULngInt(-outI)
+  end if
+  return mag < CULngInt(FB_MAX_EXACT_INT_FROM_DOUBLE)
+end function
+
 private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byref outV as LongInt) as Boolean
   if expV < 0 then return FALSE
   dim r as LongInt = 1
@@ -2041,6 +2055,134 @@ private function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, by
   wend
   outV = r
   return TRUE
+end function
+
+private function TryPowVerifyRootExact(byval valueInt as LongInt, byval rootCand as LongInt, byval rootDeg as LongInt) as Boolean
+  if rootDeg < 2 orelse rootDeg > 63 then return FALSE
+  if valueInt < 0 andalso (rootDeg and 1) = 0 then return FALSE
+  if rootCand >= 0 andalso valueInt >= 0 then
+    dim reconU as ULongInt
+    if TryPowULong(CULngInt(rootCand), CULngInt(rootDeg), reconU) = FALSE then return FALSE
+    return CLngInt(reconU) = valueInt
+  end if
+  dim reconI as LongInt
+  if TryPowInt64(rootCand, rootDeg, reconI) = FALSE then return FALSE
+  return reconI = valueInt
+end function
+
+private function FractionalPowerIsOddUnitRoot(byval p as Double, byref outN as LongInt) as Boolean
+  if p <= 0.0 orelse p >= 1.0 then return FALSE
+  dim inv as Double = 1.0 / p
+  if inv < 2.0 orelse inv > 63.0 then return FALSE
+  outN = CLngInt(round(inv))
+  if outN < 2 orelse outN > 63 then return FALSE
+  if abs(inv - CDbl(outN)) > 1e-6 then return FALSE
+  return (outN and 1) <> 0
+end function
+
+'' Float pow(negative, non-integer) is NaN on some runtimes; odd unit roots use |base|^power with sign.
+private function TryPowFloatGuess(byval valueInt as LongInt, byval baseScalar as Double, byval p as Double, byref outR as Double) as Boolean
+  if valueInt >= 0 orelse p <= 0.0 orelse p >= 1.0 then
+    outR = baseScalar ^ p
+    return IsNonFiniteValue(outR) = FALSE
+  end if
+  dim nRoot as LongInt
+  if FractionalPowerIsOddUnitRoot(p, nRoot) = FALSE then
+    outR = baseScalar ^ p
+    return IsNonFiniteValue(outR) = FALSE
+  end if
+  dim magD as Double
+  if valueInt = FB_I64_MIN then
+    magD = CDbl(FB_I64_MIN_MAG_U)
+  else
+    magD = CDbl(-valueInt)
+  end if
+  dim rootMag as Double = magD ^ p
+  if IsNonFiniteValue(rootMag) then return FALSE
+  outR = -rootMag
+  return TRUE
+end function
+
+private function TryPowVerifyIntExponentExact(byval valueInt as LongInt, byval powResult as LongInt, byval expDeg as LongInt) as Boolean
+  if expDeg < 0 orelse expDeg > 63 then return FALSE
+  dim recon as LongInt
+  if TryPowInt64(valueInt, expDeg, recon) = FALSE then return FALSE
+  return recon = powResult
+end function
+
+'' Negative real base, fractional power 1/n (odd n): use real IEEE pow, never principal complex.
+private function TryApplyRealScalarPowNegFractional(byref leftS as ScalarValue, byval p as Double, byref outV as EvalValue) as Boolean
+  dim nRoot as LongInt
+  if FractionalPowerIsOddUnitRoot(p, nRoot) = FALSE then return FALSE
+  dim ar as Double, ai as Double
+  ScalarLoadCartesian(leftS, ar, ai)
+  if ai <> 0.0 orelse ar >= 0.0 then return FALSE
+  dim valueInt as LongInt
+  if TryGetExactSignedInt64NoUIntWrapScalarStrict(leftS, valueInt) then
+    if valueInt <> FB_I64_MIN then
+      dim realR as Double
+      if TryPowFloatGuess(valueInt, leftS.scalar, p, realR) then
+        ValueSetScalar(outV, realR)
+        return TRUE
+      end if
+    end if
+  end if
+  dim rootMag as Double = (-ar) ^ p
+  if IsNonFiniteValue(rootMag) then return FALSE
+  ValueSetScalar(outV, -rootMag)
+  return TRUE
+end function
+
+private function TryApplyPowExactScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byref outV as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers andalso (ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS)) then
+    return FALSE
+  end if
+  dim valueInt as LongInt
+  if ScalarExactIntFitsPowExactPolicy(leftS, valueInt) = FALSE then return FALSE
+  if valueInt = 1 then
+    ValueSetInt64(outV, 1)
+    return TRUE
+  end if
+  dim p as Double = rightS.scalar
+  if IsNonFiniteValue(p) then return FALSE
+  if p = 0.0 then
+    ValueSetInt64(outV, 1)
+    return TRUE
+  end if
+  dim r as Double
+  if TryPowFloatGuess(valueInt, leftS.scalar, p, r) = FALSE then return FALSE
+  if p > 0.0 andalso p < 1.0 then
+    dim nRoot as LongInt
+    if FractionalPowerIsOddUnitRoot(p, nRoot) then
+      dim rootCand as LongInt = CLngInt(round(r))
+      if TryPowVerifyRootExact(valueInt, rootCand, nRoot) then
+        ValueSetInt64(outV, rootCand)
+        return TRUE
+      end if
+    end if
+    return FALSE
+  end if
+  if p >= 1.0 then
+    dim nExp as LongInt = CLngInt(round(p))
+    if nExp >= 0 andalso nExp <= 63 then
+      if nExp = 0 then
+        ValueSetInt64(outV, 1)
+        return TRUE
+      end if
+      dim powResult as LongInt = CLngInt(round(r))
+      if TryPowVerifyIntExponentExact(valueInt, powResult, nExp) then
+        ValueSetInt64(outV, powResult)
+        return TRUE
+      end if
+    end if
+  end if
+  return FALSE
+end function
+
+'' Shared early paths for `**` and `pow`: exact-int verify, then real odd unit root (not principal complex).
+private function TryApplyScalarPowSpecialPaths(byref leftS as ScalarValue, byref rightS as ScalarValue, byref outV as EvalValue) as Boolean
+  if TryApplyPowExactScalars(leftS, rightS, outV) then return TRUE
+  return TryApplyRealScalarPowNegFractional(leftS, rightS.scalar, outV)
 end function
 
 private function FormatSignedMagnitudeBase(byval iv as LongInt, byval baseN as Integer, byval asUnsigned as Boolean) as String
@@ -5541,6 +5683,7 @@ private function ValueApplyBinaryScalarsComplex(byref leftS as ScalarValue, byre
   ScalarLoadCartesian(rightS, br, bi)
 
   if op = CHAR_CARET then
+    if TryApplyScalarPowSpecialPaths(leftS, rightS, outV) then return TRUE
     dim powR as Double, powI as Double
     ScalarComplexPowPrincipal ar, ai, br, bi, powR, powI
     ValueSetScalarComplexFromDoubles(outV, powR, powI)
@@ -5571,6 +5714,9 @@ private function ValueApplyBinaryScalarsComplex(byref leftS as ScalarValue, byre
 end function
 
 private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+  if op = CHAR_CARET then
+    if TryApplyScalarPowSpecialPaths(leftS, rightS, outV) then return TRUE
+  end if
   if Parser_SupportComplexNumbers then
     if ScalarHasNonzeroImaginaryPart(leftS) orelse ScalarHasNonzeroImaginaryPart(rightS) then
       return ValueApplyBinaryScalarsComplex(leftS, rightS, op, outV)
@@ -5689,7 +5835,8 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
       end if
     case CHAR_PLUS: ValueSetScalar(outV, leftS.scalar + rightS.scalar)
     case CHAR_MINUS: ValueSetScalar(outV, leftS.scalar - rightS.scalar)
-    case CHAR_CARET: ValueSetScalar(outV, leftS.scalar ^ rightS.scalar)
+    case CHAR_CARET
+      ValueSetScalar(outV, leftS.scalar ^ rightS.scalar)
     case else: return FALSE
   end select
   return TRUE

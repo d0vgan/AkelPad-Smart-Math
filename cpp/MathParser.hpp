@@ -465,6 +465,18 @@ private:
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
+  static bool tryApplyPowExactScalars(
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      EvalValue& outV);
+  static bool tryApplyRealScalarPowNegFractional(
+      const EvalValue::ScalarValue& leftS,
+      double p,
+      EvalValue& outV);
+  static bool tryApplyScalarPowSpecialPaths(
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      EvalValue& outV);
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
       const EvalValue::ScalarValue& a,

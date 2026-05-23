@@ -536,7 +536,7 @@ private sub RunComplexNumberSupportOptionTests()
   powCases(9) = "sqrt(-4)": powExpect(9) = "2i"
   powCases(10) = "(-2)**(1/2)": powExpect(10) = "1.414213562373095i"
   powCases(11) = "(-7)**(3/2)": powExpect(11) = "-18.52025917745213i"
-  powCases(12) = "(-5)**(1/3)": powExpect(12) = "0.8549879733383485+1.480882609682364i"
+  powCases(12) = "(-5)**(1/3)": powExpect(12) = "-1.709975946676697" ' odd real root, not principal complex
 
   dim pwi as Integer
   for pwi = 1 to 12
@@ -1317,7 +1317,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1156) as SmokeCase
+  dim tests(1 to 1167) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2530,6 +2530,17 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1154).expr = "sqrt(4611686014132420611)*sqrt(4611686014132420611)": tests(1154).expected = "4611686014132420609" ' [sqrt-no-fake-exact] float sqrt; product != radicand
   tests(1155).expr = "sqr(sqrt(81))": tests(1155).expected = "81" ' [sqrt-exact-int] verified perfect square keeps int through sqr
   tests(1156).expr = "sqr(sqrt(4611686014132420611))": tests(1156).expected = "4611686014132420609" ' [sqrt-no-fake-exact] fake exact int would yield 2147483647^2
+  tests(1157).expr = "125**(1/3)": tests(1157).expected = "5" ' [pow-exact-int] verified fractional root
+  tests(1158).expr = "823543**(1/7)": tests(1158).expected = "7" ' [pow-exact-int] verified 7th root
+  tests(1159).expr = "pow(27,1/3)": tests(1159).expected = "3" ' [pow-exact-int] builtin same as **
+  tests(1160).expr = "pow(1,99)": tests(1160).expected = "1" ' [pow-exact-int] base 1 fast path
+  tests(1161).expr = "2**10": tests(1161).expected = "1024" ' [pow-exact-int] integer exponent verify
+  tests(1162).expr = "126**(1/3)": tests(1162).expected = "5.013297934964584" ' [pow-float] non-perfect cube stays float
+  tests(1163).expr = "(-5)**3": tests(1163).expected = "-125" ' [pow-exact-int] negative base, odd integer exponent
+  tests(1164).expr = "(-125)**(1/3)": tests(1164).expected = "-5" ' [pow-exact-int] negative base, odd root
+  tests(1165).expr = "pow(-32,1/5)": tests(1165).expected = "-2" ' [pow-exact-int] negative base, odd root via pow()
+  tests(1166).expr = "pow(pow(-3,39), 1/39)": tests(1166).expected = "-3" ' [pow-real] odd unit root, not principal complex
+  tests(1167).expr = "pow(pow(-3,45), 1/45)": tests(1167).expected = "-3" ' [pow-real] odd unit root (regression: was complex)
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

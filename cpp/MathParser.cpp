@@ -986,6 +986,26 @@ bool tryMulInt64Checked(long long a, long long b, long long& out) {
   return true;
 }
 
+bool tryPowInt64Checked(long long base, long long exp, long long& out) {
+  if (exp < 0) {
+    return false;
+  }
+  long long r = 1;
+  long long b = base;
+  long long e = exp;
+  while (e > 0) {
+    if ((e & 1) != 0 && !tryMulInt64Checked(r, b, r)) {
+      return false;
+    }
+    e >>= 1;
+    if (e > 0 && !tryMulInt64Checked(b, b, b)) {
+      return false;
+    }
+  }
+  out = r;
+  return true;
+}
+
 bool tryComputeNprInt64(long long n, long long r, long long& out) {
   if (n < 0 || r < 0 || r > n) return false;
   long long acc = 1;
@@ -3441,6 +3461,170 @@ bool MathParser::tryApplyHypotExactScalars(
   return false;
 }
 
+namespace {
+
+bool fractionalPowerIsOddUnitRoot(double p, long long& outN) {
+  if (p <= 0.0 || p >= 1.0) {
+    return false;
+  }
+  const double inv = 1.0 / p;
+  if (inv < 2.0 || inv > 63.0) {
+    return false;
+  }
+  outN = static_cast<long long>(std::llround(inv));
+  if (outN < 2 || outN > 63) {
+    return false;
+  }
+  if (std::fabs(inv - static_cast<double>(outN)) > 1e-6) {
+    return false;
+  }
+  return (outN % 2) != 0;
+}
+
+bool tryPowFloatGuess(long long valueInt, double baseScalar, double p, double& outR) {
+  if (valueInt >= 0 || p <= 0.0 || p >= 1.0) {
+    outR = std::pow(baseScalar, p);
+    return std::isfinite(outR);
+  }
+  long long nRoot = 0;
+  if (!fractionalPowerIsOddUnitRoot(p, nRoot)) {
+    outR = std::pow(baseScalar, p);
+    return std::isfinite(outR);
+  }
+  const double magD = (valueInt == (std::numeric_limits<long long>::min)())
+    ? static_cast<double>(1ull << 63)
+    : static_cast<double>(-valueInt);
+  const double rootMag = std::pow(magD, p);
+  if (!std::isfinite(rootMag)) {
+    return false;
+  }
+  outR = -rootMag;
+  return true;
+}
+
+}  // namespace
+
+bool MathParser::tryApplyPowExactScalars(
+    const EvalValue::ScalarValue& leftS,
+    const EvalValue::ScalarValue& rightS,
+    EvalValue& outV) {
+  if (scalarHasNonzeroImaginaryPart(leftS) || scalarHasNonzeroImaginaryPart(rightS)) {
+    return false;
+  }
+  if (leftS.scalarKind == ScalarKind::Time) {
+    return false;
+  }
+  long long valueInt = 0;
+  if (!tryGetExactSignedInt64NoUIntWrapScalarStrict(leftS, valueInt)) {
+    return false;
+  }
+  if (valueInt == (std::numeric_limits<long long>::min)()) {
+    return false;
+  }
+  {
+    const std::uint64_t mag = (valueInt >= 0) ? static_cast<std::uint64_t>(valueInt)
+                                              : static_cast<std::uint64_t>(-valueInt);
+    if (mag >= static_cast<std::uint64_t>(K_MAX_EXACT_INT_FROM_DOUBLE)) {
+      return false;
+    }
+  }
+  if (valueInt == 1) {
+    outV = makeScalarInt(1);
+    return true;
+  }
+  const double p = rightS.scalar;
+  if (!std::isfinite(p)) {
+    return false;
+  }
+  if (p == 0.0) {
+    outV = makeScalarInt(1);
+    return true;
+  }
+  double r = 0.0;
+  if (!tryPowFloatGuess(valueInt, leftS.scalar, p, r)) {
+    return false;
+  }
+  if (p > 0.0 && p < 1.0) {
+    long long nRoot = 0;
+    if (fractionalPowerIsOddUnitRoot(p, nRoot)) {
+      const long long rInt = static_cast<long long>(std::round(r));
+      if (rInt >= 0 && valueInt >= 0) {
+        std::uint64_t reconU = 0;
+        if (tryPowUInt64Checked(static_cast<std::uint64_t>(rInt), static_cast<std::uint64_t>(nRoot), reconU) &&
+            static_cast<long long>(reconU) == valueInt) {
+          outV = makeScalarInt(rInt);
+          return true;
+        }
+      } else {
+        long long reconI = 0;
+        if (tryPowInt64Checked(rInt, nRoot, reconI) && reconI == valueInt) {
+          outV = makeScalarInt(rInt);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  if (p >= 1.0) {
+    const long long nExp = static_cast<long long>(std::round(p));
+    if (nExp >= 0 && nExp <= 63) {
+      if (nExp == 0) {
+        outV = makeScalarInt(1);
+        return true;
+      }
+      const long long rInt = static_cast<long long>(std::round(r));
+      long long recon = 0;
+      if (tryPowInt64Checked(valueInt, nExp, recon) && recon == rInt) {
+        outV = makeScalarInt(rInt);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool MathParser::tryApplyRealScalarPowNegFractional(
+    const EvalValue::ScalarValue& leftS,
+    double p,
+    EvalValue& outV) {
+  long long nRoot = 0;
+  if (!fractionalPowerIsOddUnitRoot(p, nRoot)) {
+    return false;
+  }
+  double ar = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(leftS, ar, ai);
+  if (ai != 0.0 || ar >= 0.0) {
+    return false;
+  }
+  long long valueInt = 0;
+  if (tryGetExactSignedInt64NoUIntWrapScalarStrict(leftS, valueInt)) {
+    if (valueInt != (std::numeric_limits<long long>::min)()) {
+      double realR = 0.0;
+      if (tryPowFloatGuess(valueInt, leftS.scalar, p, realR)) {
+        outV = makeScalar(realR);
+        return true;
+      }
+    }
+  }
+  const double rootMag = std::pow(-ar, p);
+  if (!std::isfinite(rootMag)) {
+    return false;
+  }
+  outV = makeScalar(-rootMag);
+  return true;
+}
+
+bool MathParser::tryApplyScalarPowSpecialPaths(
+    const EvalValue::ScalarValue& leftS,
+    const EvalValue::ScalarValue& rightS,
+    EvalValue& outV) {
+  if (tryApplyPowExactScalars(leftS, rightS, outV)) {
+    return true;
+  }
+  return tryApplyRealScalarPowNegFractional(leftS, rightS.scalar, outV);
+}
+
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
   if (s.scalarKind == ScalarKind::Time) {
     return false;
@@ -4410,6 +4594,11 @@ bool MathParser::tryApplyComplexBinaryScalars(
   const bool lIm = scalarHasNonzeroImaginaryPart(lv);
   const bool rIm = scalarHasNonzeroImaginaryPart(rv);
   if (op == '^') {
+    EvalValue powSpecial;
+    if (tryApplyScalarPowSpecialPaths(lv, rv, powSpecial)) {
+      outS = std::move(powSpecial);
+      return true;
+    }
     if (lIm || rIm || complexNeedsPrincipalNegRealPow(ar, ai, br, bi)) {
       double powR = 0.0;
       double powI = 0.0;
@@ -5223,6 +5412,13 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
       outS = std::move(outTime);
       return true;
     }
+    if (op == '^') {
+      EvalValue powSpecial;
+      if (tryApplyScalarPowSpecialPaths(lv, rv, powSpecial)) {
+        outS = std::move(powSpecial);
+        return true;
+      }
+    }
     EvalValue outComplex;
     if (tryApplyComplexBinaryScalars(lv, rv, op, outComplex)) {
       outS = std::move(outComplex);
@@ -5305,6 +5501,10 @@ MathParser::EvalValue MathParser::mapBinary(EvalContext& ctx, const EvalValue& a
         return true;
       }
       if (op == '*' && checkedMulLL(li, ri, outI)) {
+        outS = makeScalarInt(outI);
+        return true;
+      }
+      if (op == '^' && tryPowInt64Checked(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
@@ -9201,18 +9401,6 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
   if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
-  }
-  if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
-    const EvalValue::ScalarValue& a = args[0].scalarValue;
-    const EvalValue::ScalarValue& b = args[1].scalarValue;
-    if (isPureFloatingScalarPair(a, b)) {
-      double out = 0.0;
-      if (!applyBinary(a.scalar, b.scalar, '^', out)) {
-        setNumericErrorInFunction(ctx, fnName);
-        return makeScalar(0);
-      }
-      return makeScalarMaybeExact(out);
-    }
   }
   bool ok = false;
   EvalValue out = mapBinary(ctx, args[0], args[1], '^', ok);
