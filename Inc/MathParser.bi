@@ -19,5 +19,6 @@ declare function Parser_GetSupportLambdaFunctions() as Boolean
 declare function Parser_GetLastRawResult(byref rawOut as RawResult) as Boolean
 declare function Parser_FormatTimeMs(byval totalMs as LongInt) as String
 declare function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String
+declare function Parser_FormatRawCartesianRenderBase(byref c as RawCartesianScalar, byval renderBase as Integer, byval renderUnsigned as Boolean) as String
 
 #endif

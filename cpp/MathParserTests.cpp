@@ -129,6 +129,90 @@ bool tryParseFullDouble(const std::string& s, double& out) {
   return *e == '\0';
 }
 
+namespace {
+
+std::string smokeLowerAscii(std::string s) {
+  for (char& c : s) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return s;
+}
+
+int smokeInfSignFromLiteral(const std::string& s) {
+  const std::string t = smokeLowerAscii(trimSmokeToken(s));
+  if (t == "inf" || t == "+inf") {
+    return 1;
+  }
+  if (t == "-inf") {
+    return -1;
+  }
+  return 0;
+}
+
+bool smokeIsExactZeroLiteral(const std::string& s) {
+  const std::string t = trimSmokeToken(s);
+  return t == "0" || t == "0.0" || t == "-0" || t == "-0.0" || t == "+0" || t == "+0.0";
+}
+
+bool smokeIsExactOneLiteral(const std::string& s) {
+  const std::string t = trimSmokeToken(s);
+  return t == "1" || t == "-1" || t == "1.0" || t == "-1.0" || t == "+1" || t == "+1.0";
+}
+
+int smokeOneSignFromLiteral(const std::string& s) {
+  const std::string t = trimSmokeToken(s);
+  if (t == "1" || t == "1.0" || t == "+1" || t == "+1.0") {
+    return 1;
+  }
+  if (t == "-1" || t == "-1.0") {
+    return -1;
+  }
+  return 0;
+}
+
+bool smokeExpectedRequiresStrictScalarMatch(const std::string& expected) {
+  return smokeIsExactZeroLiteral(expected) || smokeIsExactOneLiteral(expected) ||
+         smokeInfSignFromLiteral(expected) != 0;
+}
+
+bool smokeStrictScalarMatch(const std::string& actual, const std::string& expected) {
+  if (smokeIsExactZeroLiteral(expected)) {
+    if (!smokeIsExactZeroLiteral(actual)) {
+      return false;
+    }
+    double da = 0.0;
+    double de = 0.0;
+    if (!tryParseFullDouble(actual, da) || !tryParseFullDouble(expected, de)) {
+      return false;
+    }
+    return da == 0.0 && de == 0.0;
+  }
+  if (smokeIsExactOneLiteral(expected)) {
+    if (!smokeIsExactOneLiteral(actual)) {
+      return false;
+    }
+    if (smokeOneSignFromLiteral(actual) != smokeOneSignFromLiteral(expected)) {
+      return false;
+    }
+    double da = 0.0;
+    double de = 0.0;
+    if (!tryParseFullDouble(actual, da) || !tryParseFullDouble(expected, de)) {
+      return false;
+    }
+    if (smokeOneSignFromLiteral(expected) > 0) {
+      return da == 1.0 && de == 1.0;
+    }
+    return da == -1.0 && de == -1.0;
+  }
+  const int eInf = smokeInfSignFromLiteral(expected);
+  if (eInf != 0) {
+    return smokeInfSignFromLiteral(actual) == eInf;
+  }
+  return false;
+}
+
+}  // namespace
+
 std::vector<std::string> splitTopLevelCsvInParens(const std::string& s) {
   std::vector<std::string> parts;
   if (s.size() < 2U || s.front() != '(' || s.back() != ')') {
@@ -146,12 +230,17 @@ std::vector<std::string> splitTopLevelCsvInParens(const std::string& s) {
 }
 
 bool smokeScalarCloseEnough(const std::string& actual, const std::string& expected) {
-  if (actual == expected) {
+  const std::string ea = trimSmokeToken(actual);
+  const std::string ee = trimSmokeToken(expected);
+  if (ea == ee) {
     return true;
+  }
+  if (smokeExpectedRequiresStrictScalarMatch(ee)) {
+    return smokeStrictScalarMatch(ea, ee);
   }
   double da = 0.0;
   double de = 0.0;
-  if (!tryParseFullDouble(actual, da) || !tryParseFullDouble(expected, de)) {
+  if (!tryParseFullDouble(ea, da) || !tryParseFullDouble(ee, de)) {
     return false;
   }
   const double p63 = std::ldexp(1.0, 63);
@@ -3117,6 +3206,8 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "tan(77778*pi) // calculates tan(77778*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "tan(-77778*pi) // calculates tan(-77778*pi)", "0"} ,
     {ParityBasicCase::Kind::Expected, "tan((-77778*pi, 77778*pi, -77777*pi, 77777*pi, -2*pi, 2*pi, -pi, pi, 0, -77777*pi/2, 77777*pi/2, -pi/2, pi/2))", "(0, 0, 0, 0, 0, 0, 0, 0, 0, -Inf, Inf, -Inf, Inf)"} ,
+    {ParityBasicCase::Kind::Expected, "cos((pi/2, pi, -pi/2, -pi, 2*pi, 0, 77777*pi/2, -77777*pi/2))", "(0, -1, 0, -1, 1, 1, 0, 0)"} ,
+    {ParityBasicCase::Kind::Expected, "tan((pi, pi/2, -pi, 2*pi, -pi/2, 0, 77777*pi/2, -77777*pi/2))", "(0, Inf, 0, 0, -Inf, 0, Inf, -Inf)"} ,
     {ParityBasicCase::Kind::ErrorContains, "[]", "unexpected token"} ,
     {ParityBasicCase::Kind::ErrorContains, "b=2; 2b", "unexpected token"} ,
     {ParityBasicCase::Kind::ErrorContains, "(2;2b;3)", "missing closing parenthesis"} ,
@@ -4537,6 +4628,13 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"(-2)**(1/2)", "1.414213562373095i"},
                      {"(-7)**(3/2)", "-18.52025917745212i"},
                      {"(-5)**(1/3)", "-1.709975946676696"},
+                     {"64**(1/3)", "4"},
+                     {"pow(-27,1/3)", "-3"},
+                     {"pow(2**64,1/2)", "4294967296"},
+                     {"(-8)**(1/3)", "-2"},
+                     {"sqrt(81)", "9"},
+                     {"sqrt(3+4*i)", "2+i"},
+                     {"pow(2**64,1/2)", "4294967296"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

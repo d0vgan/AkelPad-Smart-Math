@@ -1,6 +1,6 @@
 ---
 name: add-mathparser-function
-description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, update USAGE_AND_SYNTAX documentation with consistent style, ASCII-friendly typography, and logic, or work on the parser-wide complex-number support flag (default off; gated complex behavior and isolated complex tests per skill section).
+description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, update USAGE_AND_SYNTAX documentation with consistent style, ASCII-friendly typography, and logic, work on the parser-wide complex-number support flag (default off; gated complex behavior and isolated complex tests per skill section), or mirror operator/function logic between real-only and complex-enabled paths (bidirectional real/complex parity per skill section).
 ---
 
 # Add MathParser Function or Builtin Constant
@@ -57,6 +57,28 @@ Rules:
 - **Tests (strict separation):** do not mix complex-domain expectations into the main `SmokeCase` table in `SmokeTest_MathParser.bas`. Add complex-related tests only inside **`RunComplexNumberSupportOptionTests()`** (or a similarly dedicated sub), and **start that routine by enabling** `Parser_SetSupportComplexNumbers(TRUE)` before any complex-oriented assertions. On the C++ side, add or extend the dedicated **`buildComplexNumberSupportOptionCases()`** / `runSuite("Complex number support (parser option)", ...)` block; tests that require complex mode must call `setSupportComplexNumbers(true)` at the beginning of the relevant lambda (or shared setup inside that suite). Restore or assert the flag off at the end of the Basic routine when needed so other suites stay isolated.
 - **Parity:** any change to how the flag affects parsing or evaluation must be mirrored Basic <-> C++ with tests on both sides in the dedicated complex test areas above.
 - **Exact numeric metadata (int64 / uint64):** when complex support is on, prefer preserving the same style of exact integer metadata for **both** the real and imaginary Cartesian parts as for purely real scalars (where the Basic/C++ parsers already track `exactInt` / `exactUInt64` and related flags), and fall back to floating-point only when a component is not exactly representable as a 64-bit integer. Keep Basic and C++ consistent when adding or adjusting complex scalar construction, binary ops, and display paths.
+
+## Real and complex operator/function parity (Required)
+
+When changing **operators** or **builtin functions** (or shared helpers they call), treat real-only and complex-enabled behavior as one design surface. Apply **both** directions below; skip only when semantics truly differ (document why in code/tests).
+
+### Real → complex (when applicable)
+
+- Any fix, policy, or helper introduced on a **real-only** path (for example `ApplySqrtScalarValue`, exact-int verification after `sqr`, float vs int64 export rules, non-finite handling) must be **reused or mirrored** on the corresponding **complex** path when complex mode can hit the same situation.
+- Prefer **one shared helper** for both: e.g. negative real `sqrt` should call the same magnitude/`sqrt` policy as `sqrt(|x|)` rather than a separate `sqr(-x)` shortcut with different exactness rules.
+- Complex-only wrappers (Cartesian multiply, `ValueSetScalarComplexFromDoubles`, pure-imaginary constructors) must not weaken rules that the real path already enforces.
+
+### Complex → real (when applicable)
+
+- Any fix, policy, or helper introduced on a **complex** path must be checked against the **real-only** path for the same operator/function when the operand is purely real (imaginary part zero).
+- Do not leave real-only code on an older, divergent branch if complex work established the canonical behavior (verification, metadata preservation, error messages).
+- After complex changes, add or update tests on **both** sides where parity matters: dedicated complex suites **and** main smoke cases for purely real inputs of the same expression shape.
+
+### Practical checks before finishing
+
+- List the operator/function touched and name its **real dispatch** and **complex dispatch** (if any); confirm they share helpers or document an intentional asymmetry.
+- If one side promotes exact int64 and the other uses float (or vice versa) for the same numeric situation, treat that as a bug unless tests explicitly lock different semantics.
+- Mirror parity expectations in Basic and C++ and in formatter/raw-export tests when display kind (`RSK_INT64` vs `RSK_FLOATING`) is affected.
 
 ## Files To Update
 
@@ -166,6 +188,7 @@ Follow all steps in order.
 - Reuse existing helpers when possible; avoid introducing redundant utility code.
 - Follow the **Global Helper Reuse And Optimization Rule** above for all helper-level decisions.
 - Follow the **Integer Metadata Preservation Rule (Required)** above for all numeric-value flow decisions.
+- Follow the **Real and complex operator/function parity (Required)** section above whenever the change touches unary/binary operators or builtins that have both real-only and complex-enabled code paths.
 - Maintain exactly one canonical `FunctionNames` array and one canonical `OperatorNames` array in parser code.
 - Add the new built-in/operator name only in these canonical arrays with a named index (e.g. `FUNC_*`, `OP_*`).
 - Wherever parser logic needs built-in/operator names (dispatch, hints, keyword matching, reserved-name checks), reference `FunctionNames[FUNC_*]` / `OperatorNames[OP_*]` (or helper wrappers over them), never hardcoded string literals.
@@ -426,6 +449,7 @@ Before finishing, verify:
   - intentionally non-preserving math paths (if any) are justified and covered by tests.
 - No unrelated behavior changes; any C++ artifacts touched live under `cpp` only.
 - **Complex numbers:** if the change touches complex semantics, it is gated by the parser-wide complex support flag; default remains off; tests live in the dedicated complex test function/suite described under **Complex number support (parser-wide option)**.
+- **Real/complex parity:** real-only and complex-enabled paths for the same operator/function share policy and helpers where applicable; intentional divergence is documented and tested on both sides (see **Real and complex operator/function parity (Required)**).
 
 ## Response Format For Completion
 

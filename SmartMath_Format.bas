@@ -16,6 +16,13 @@ function Parser_FormatRawScalarRenderBase(byref s as RawScalar) as String
   s = s
   return ""
 end function
+
+function Parser_FormatRawCartesianRenderBase(byref c as RawCartesianScalar, byval renderBase as Integer, byval renderUnsigned as Boolean) as String
+  c = c
+  renderBase = renderBase
+  renderUnsigned = renderUnsigned
+  return ""
+end function
 #endif
 
 #ifndef LOCALE_SDECIMAL
@@ -84,32 +91,57 @@ private function Pow10Cached(byval n as Integer) as Double
   return powTab(n)
 end function
 
-private function MaskFixedCached(byval n as Integer) as String
-  static m(0 to SMARTMATH_DECIMALS_MAX) as String
-  static ok(0 to SMARTMATH_DECIMALS_MAX) as BOOL
-  if ok(n) = FALSE then
-    if n = 0 then
-      m(n) = "0"
-    else
-      m(n) = SM_STR_ZERO_DOT & String(n, 48)
-    end if
-    ok(n) = TRUE
+private const SM_NF_NONE as Integer = 0
+private const SM_NF_NAN as Integer = 1
+private const SM_NF_INF as Integer = 2
+private const SM_NF_NEGINF as Integer = 3
+
+private function ClassifyDoubleNonFinite(byval d as Double) as Integer
+  dim bits as ULongInt = *cast(ULongInt ptr, @d)
+  if (bits and SM_DBL_EXP_MASK) = SM_DBL_EXP_MASK then
+    if (bits and SM_DBL_FRAC_MASK) <> 0 then return SM_NF_NAN
+    if (bits and SM_DBL_SIGN_MASK) <> 0 then return SM_NF_NEGINF
+    return SM_NF_INF
   end if
-  return m(n)
+  if d <> d then return SM_NF_NAN
+  if Not (d <= d) then return SM_NF_NAN
+  return SM_NF_NONE
 end function
 
-private function MaskSciCached(byval n as Integer) as String
-  static m(0 to SMARTMATH_DECIMALS_MAX) as String
-  static ok(0 to SMARTMATH_DECIMALS_MAX) as BOOL
-  if ok(n) = FALSE then
-    if n = 0 then
-      m(n) = SM_STR_SCI_ZERO_PAD_EXP
-    else
-      m(n) = SM_STR_ZERO_DOT & String(n, 48) & SM_STR_SCI_EXP_SUFFIX
+private function NonFiniteTextFromClass(byval nfClass as Integer) as String
+  select case nfClass
+  case SM_NF_NAN: return SM_FMT_NAN
+  case SM_NF_NEGINF: return SM_FMT_NEGINF
+  case SM_NF_INF: return SM_FMT_INF
+  end select
+  return ""
+end function
+
+private function MaskFormatCached(byval useScientific as Boolean, byval n as Integer) as String
+  static mFixed(0 to SMARTMATH_DECIMALS_MAX) as String
+  static okFixed(0 to SMARTMATH_DECIMALS_MAX) as BOOL
+  static mSci(0 to SMARTMATH_DECIMALS_MAX) as String
+  static okSci(0 to SMARTMATH_DECIMALS_MAX) as BOOL
+  if useScientific = FALSE then
+    if okFixed(n) = FALSE then
+      if n = 0 then
+        mFixed(n) = "0"
+      else
+        mFixed(n) = SM_STR_ZERO_DOT & String(n, 48)
+      end if
+      okFixed(n) = TRUE
     end if
-    ok(n) = TRUE
+    return mFixed(n)
   end if
-  return m(n)
+  if okSci(n) = FALSE then
+    if n = 0 then
+      mSci(n) = SM_STR_SCI_ZERO_PAD_EXP
+    else
+      mSci(n) = SM_STR_ZERO_DOT & String(n, 48) & SM_STR_SCI_EXP_SUFFIX
+    end if
+    okSci(n) = TRUE
+  end if
+  return mSci(n)
 end function
 
 private function IndexOfExponentLetter(byref s as String) as Integer
@@ -284,15 +316,8 @@ private function FormatNumericValue(byval d as Double) as String
   dim sRes as String
   dim eScanPos as Integer
 
-  '' Non-finite: IEEE-754 first (all NaN payloads: exp all-1, nonzero fraction), then ordered checks.
-  dim bits as ULongInt = *cast(ULongInt ptr, @d)
-  if (bits and SM_DBL_EXP_MASK) = SM_DBL_EXP_MASK then
-    if (bits and SM_DBL_FRAC_MASK) <> 0 then return SM_FMT_NAN
-    if (bits and SM_DBL_SIGN_MASK) <> 0 then return SM_FMT_NEGINF
-    return SM_FMT_INF
-  end if
-  if d <> d then return SM_FMT_NAN
-  if Not (d <= d) then return SM_FMT_NAN
+  dim nfCls as Integer = ClassifyDoubleNonFinite(d)
+  if nfCls <> SM_NF_NONE then return NonFiniteTextFromClass(nfCls)
   if d = 0.0 then d = 0.0 '' positive zero (Str/Format(-0.0) may yield "-0")
 
   if g_nDecimals < 0 then
@@ -325,9 +350,9 @@ private function FormatNumericValue(byval d as Double) as String
     end if
 
     if useScientific then
-      sRes = FormatWithAsciiDecimal(d, MaskSciCached(g_nDecimals))
+      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(TRUE, g_nDecimals))
     else
-      sRes = FormatWithAsciiDecimal(d, MaskFixedCached(g_nDecimals))
+      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(FALSE, g_nDecimals))
     end if
 
     eScanPos = IndexOfExponentLetter(sRes)
@@ -389,50 +414,82 @@ function AddThousandsSeparator(byref sRes as String) as String
 end function
 
 private function FormatNonFiniteFromDouble(byval d as Double) as String
-  dim bits as ULongInt = *cast(ULongInt ptr, @d)
-  if (bits and SM_DBL_EXP_MASK) = SM_DBL_EXP_MASK then
-    if (bits and SM_DBL_FRAC_MASK) <> 0 then return SM_FMT_NAN
-    if (bits and SM_DBL_SIGN_MASK) <> 0 then return SM_FMT_NEGINF
-    return SM_FMT_INF
-  end if
-  if d <> d then return SM_FMT_NAN
-  if Not (d <= d) then return SM_FMT_NAN
-  return ""
+  return NonFiniteTextFromClass(ClassifyDoubleNonFinite(d))
 end function
 
-'' True when formatted text has no decimal fraction (integer-like display).
-private function NumericDisplayHasFractionPart(byref s as String) as Boolean
-  if PositionOfNumericDecimal(s) > 0 then return TRUE
-  dim ePos as Integer = IndexOfExponentLetter(s)
-  if ePos > 0 then
-    if PositionOfNumericDecimal(Left(s, ePos - 1)) > 0 then return TRUE
-  end if
+private function ScanNumericStringChars(byval wantExponent as Boolean, byval wantFracSep as Boolean, byref s as String) as Boolean
+  dim n as Integer = Len(s)
+  if n = 0 then return FALSE
+  dim p as ZString ptr = strptr(s)
+  dim decSepCh as UByte = 0
+  if wantFracSep andalso Len(g_sDecimalSeparator) > 0 then decSepCh = strptr(g_sDecimalSeparator)[0]
+  dim i as Integer = 0
+  while i < n
+    dim c as UByte = p[i]
+    if wantExponent then
+      if c = asc("e") orelse c = asc("E") then return TRUE
+    end if
+    if wantFracSep then
+      if c = asc(".") orelse (decSepCh <> 0 andalso c = decSepCh) then return TRUE
+    end if
+    i += 1
+  wend
   return FALSE
 end function
 
-'' Raw RSK_FLOATING display: append ".0" when trimmed formatting looks like an integer.
+private function ContainsExponent(byref s as String) as Boolean
+  return ScanNumericStringChars(TRUE, FALSE, s)
+end function
+
+private function ContainsDecimalSepOrExponent(byref s as String) as Boolean
+  return ScanNumericStringChars(TRUE, TRUE, s)
+end function
+
+'' Raw RSK_FLOATING display: append explicit fractional digit when none is shown.
 private function FormatRawFloatingValue(byval d as Double) as String
   dim nf as String = FormatNonFiniteFromDouble(d)
   if Len(nf) > 0 then return nf
   dim s as String = FormatNumericValue(d)
-  if NumericDisplayHasFractionPart(s) = FALSE then
+  if ContainsDecimalSepOrExponent(s) = FALSE then
     s &= g_sDecimalSeparator & SM_STR_EXPLICIT_FLOAT_FRAC_DIGIT
   end if
   return s
 end function
 
-private function ImagCoeffNeedsStarBeforeI(byref coeffStr as String, byval isImagRatio as Boolean) as Boolean
-  if isImagRatio then return TRUE
+private function ImagCoeffNeedsStarBeforeI(byref coeffStr as String, byval forceImagStar as Boolean) as Boolean
+  if forceImagStar then return TRUE
   if coeffStr = SM_FMT_NAN orelse coeffStr = SM_FMT_INF orelse coeffStr = SM_FMT_NEGINF then return TRUE
+  if ContainsExponent(coeffStr) then return TRUE
   return FALSE
 end function
 
-private sub AppendImagUnitSuffix(byref imagPart as String, byval isImagRatio as Boolean)
-  if ImagCoeffNeedsStarBeforeI(imagPart, isImagRatio) then imagPart &= "*"
+private sub AppendImagUnitSuffix(byref imagPart as String, byval forceImagStar as Boolean)
+  if ImagCoeffNeedsStarBeforeI(imagPart, forceImagStar) then imagPart &= "*"
   imagPart &= "i"
 end sub
 
-private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as String
+private function AssembleComplexCartesianDisplay(byref rePart as String, byref imagCoeff as String, byval reZero as Boolean, byval forceImagStar as Boolean) as String
+  if reZero then
+    if forceImagStar = FALSE andalso imagCoeff = "1" then return "i"
+    if forceImagStar = FALSE andalso imagCoeff = "-1" then return "-i"
+    dim imagOnly as String = imagCoeff
+    AppendImagUnitSuffix(imagOnly, forceImagStar)
+    return imagOnly
+  end if
+  if forceImagStar = FALSE andalso imagCoeff = "1" then return rePart & " + i"
+  if forceImagStar = FALSE andalso imagCoeff = "-1" then return rePart & " - i"
+  dim signCh as String = "+"
+  dim coeffBody as String = imagCoeff
+  if left(coeffBody, 1) = "-" then
+    signCh = "-"
+    coeffBody = mid(coeffBody, 2)
+  end if
+  dim imagTail as String = coeffBody
+  AppendImagUnitSuffix(imagTail, forceImagStar)
+  return rePart & " " & signCh & " " & imagTail
+end function
+
+private function FormatRawCartesianComponentText(byref c as RawCartesianScalar) as String
   select case c.kind
   case RSK_TIME
     return Parser_FormatTimeMs(c.intValue)
@@ -446,6 +503,10 @@ private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as Str
   case else
     return FormatRawFloatingValue(c.floatValue)
   end select
+end function
+
+private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as String
+  return FormatRawCartesianComponentText(c)
 end function
 
 private function RawCartesianIsZeroForComplexReal(byref c as RawCartesianScalar) as Boolean
@@ -470,31 +531,18 @@ private function FormatRawComplexDisplay(byref s as RawScalar) as String
   if RawComplexHasNaNComponent(s) then return SM_FMT_NAN
   dim realStr as String = FormatRawCartesianDisplay(s.real)
   dim imagStr as String = FormatRawCartesianDisplay(s.imag)
-  dim isImagRatio as Boolean = RawCartesianIsRational(s.imag)
+  dim forceImagStar as Boolean = RawCartesianIsRational(s.imag)
 
-  if RawCartesianIsZeroForComplexReal(s.real) then
-    if imagStr = "1" then return "i"
-    if imagStr = "-1" then return "-i"
-    AppendImagUnitSuffix(imagStr, isImagRatio)
-    return imagStr
-  end if
+  return AssembleComplexCartesianDisplay(realStr, imagStr, RawCartesianIsZeroForComplexReal(s.real), forceImagStar)
+end function
 
-  if imagStr = "1" then
-    imagStr = " + i"
-  elseif imagStr = "-1" then
-    imagStr = " - i"
-  else
-    dim signCh as String = "+"
-    dim coeffBody as String = imagStr
-    if left(coeffBody, 1) = "-" then
-      signCh = "-"
-      coeffBody = mid(coeffBody, 2)
-    end if
-    dim imagTail as String = coeffBody
-    AppendImagUnitSuffix(imagTail, isImagRatio)
-    imagStr = " " & signCh & " " & imagTail
-  end if
-  return realStr & imagStr
+private function FormatRawComplexRenderBaseDisplay(byref s as RawScalar) as String
+  if s.kind <> RSK_COMPLEX then return ""
+  if RawComplexHasNaNComponent(s) then return SM_FMT_NAN
+  dim reStr as String = Parser_FormatRawCartesianRenderBase(s.real, s.renderBase, s.renderUnsigned)
+  dim imagStr as String = Parser_FormatRawCartesianRenderBase(s.imag, s.renderBase, s.renderUnsigned)
+  if Len(reStr) = 0 orelse Len(imagStr) = 0 then return ""
+  return AssembleComplexCartesianDisplay(reStr, imagStr, RawCartesianIsZeroForComplexReal(s.real), TRUE)
 end function
 
 private function FormatRawScalarDisplay(byref s as RawScalar) as String
@@ -502,57 +550,14 @@ private function FormatRawScalarDisplay(byref s as RawScalar) as String
   return FormatRawCartesianDisplay(s.real)
 end function
 
-private function FormatRawComplexDisplayWithDecimalOptions(byref s as RawScalar) as String
-  if s.kind <> RSK_COMPLEX then return FormatRawScalarDisplay(s)
-  if RawComplexHasNaNComponent(s) then return SM_FMT_NAN
-  dim realStr as String
-  dim imagStr as String
-  if s.real.kind = RSK_FLOATING then
-    realStr = FormatRawFloatingValue(s.real.floatValue)
-  else
-    realStr = FormatRawCartesianDisplay(s.real)
-  end if
-  if s.imag.kind = RSK_FLOATING then
-    imagStr = FormatRawFloatingValue(s.imag.floatValue)
-  else
-    imagStr = FormatRawCartesianDisplay(s.imag)
-  end if
-  dim isImagRatio as Boolean = RawCartesianIsRational(s.imag)
-  if RawCartesianIsZeroForComplexReal(s.real) then
-    if imagStr = "1" then return "i"
-    if imagStr = "-1" then return "-i"
-    AppendImagUnitSuffix(imagStr, isImagRatio)
-    return imagStr
-  end if
-  if imagStr = "1" then
-    imagStr = " + i"
-  elseif imagStr = "-1" then
-    imagStr = " - i"
-  else
-    dim signCh as String = "+"
-    dim coeffBody as String = imagStr
-    if left(coeffBody, 1) = "-" then
-      signCh = "-"
-      coeffBody = mid(coeffBody, 2)
-    end if
-    dim imagTail as String = coeffBody
-    AppendImagUnitSuffix(imagTail, isImagRatio)
-    imagStr = " " & signCh & " " & imagTail
-  end if
-  return realStr & imagStr
-end function
-
 private function FormatRawScalarForDisplayContext(byref s as RawScalar) as String
   if s.renderBase <> 0 then
-    dim baseText as String = Parser_FormatRawScalarRenderBase(s)
-    if Len(baseText) > 0 then return baseText
-  end if
-  if g_nDecimals >= 0 orelse g_bUseThousandsSeparator then
-    if s.real.kind = RSK_FLOATING andalso RawScalarIsComplex(s) = FALSE then
-      return FormatRawFloatingValue(s.real.floatValue)
-    end if
     if RawScalarIsComplex(s) then
-      return FormatRawComplexDisplayWithDecimalOptions(s)
+      dim cxBase as String = FormatRawComplexRenderBaseDisplay(s)
+      if Len(cxBase) > 0 then return cxBase
+    else
+      dim baseText as String = Parser_FormatRawScalarRenderBase(s)
+      if Len(baseText) > 0 then return baseText
     end if
   end if
   return FormatRawScalarDisplay(s)
@@ -583,5 +588,5 @@ function FormatRawEvaluationResult(byref raw as RawResult) as String
 end function
 
 function FormatResult(byval d as Double) as String
-  return SMARTMATH_RESULT_PREFIX & FormatNumericValue(d)
+  return SMARTMATH_RESULT_PREFIX & FormatRawFloatingValue(d)
 end function

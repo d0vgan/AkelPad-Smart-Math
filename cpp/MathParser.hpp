@@ -465,6 +465,16 @@ private:
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
+  static bool tryApplyPowExactScalarsSignedInt(
+      long long valueInt,
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      EvalValue& outV);
+  static bool tryApplyPowExactScalarsUInt(
+      std::uint64_t inpU,
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      EvalValue& outV);
   static bool tryApplyPowExactScalars(
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
@@ -477,6 +487,25 @@ private:
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
+  static bool tryRefinePowPrincipalToExactScalarResult(
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      double powR,
+      double powI,
+      EvalValue& outV);
+  static bool tryVerifyComplexCartesianSquareExact(
+      long long rootR, long long rootI, long long expR, long long expI);
+  static bool tryRefineSqrtPrincipalToExactComplex(
+      const EvalValue::ScalarValue& inS,
+      double sqrtR,
+      double sqrtI,
+      EvalValue& outV);
+  static EvalValue applySqrtComplexPrincipalUnary(const EvalValue::ScalarValue& inS);
+  EvalValue applyUnarySqrtEval(const EvalValue::ScalarValue& s) const;
+  void applyComplexCaretPrincipalEval(
+      const EvalValue::ScalarValue& lv,
+      const EvalValue::ScalarValue& rv,
+      EvalValue& outS) const;
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
       const EvalValue::ScalarValue& a,
@@ -877,6 +906,7 @@ private:
                                                   const EvalValue::ScalarValue& rightS, char op,
                                                   EvalValue& outV);
   static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
+  static void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
   static bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
   static bool tryFlipScalarImagSignExact(EvalValue::ScalarValue& sv);
   static bool tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out);
@@ -891,6 +921,31 @@ private:
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
   bool evalValueInvolvesTime(const EvalValue& v) const;
   static bool evalValueHasNonzeroImaginary(const EvalValue& v);
+  enum class CmpScalarIncompatiblePolicy { SetError, SortUniqueReturnOne, SortLess, SortGreater };
+  bool cmpScalarValuesForCompare(
+      EvalContext* ctx,
+      const EvalValue::ScalarValue& sa,
+      const EvalValue::ScalarValue& sb,
+      int& cmpOut,
+      CmpScalarIncompatiblePolicy policy) const;
+  bool rejectBuiltinArgsWithComplexImaginary(EvalContext& ctx, const std::vector<EvalValue>& args) const;
+  /** @return 0 ok, 1 not integer operands, 2 lcm overflow */
+  int tryApplyGcdLcmScalars(
+      const EvalValue::ScalarValue& a,
+      const EvalValue::ScalarValue& b,
+      bool doLcm,
+      EvalValue& outV) const;
+  EvalValue applyGcdLcmEvalValues(const EvalValue& a, const EvalValue& b, bool doLcm, int& status) const;
+  bool scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const;
+  EvalValue evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const;
+  EvalValue mapTimeUnitOverArray(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
+  EvalValue mapUnaryComplexBuiltin(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
+  bool tryUnaryComplexBuiltinSupport(BuiltinFunctionId id, const EvalValue::ScalarValue& sv, EvalValue& out) const;
+  static std::string assembleComplexDecimalText(
+      const std::string& rePart,
+      const std::string& imagTail,
+      bool negUnitImag,
+      bool reZero);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::CartesianScalar toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart);
@@ -917,6 +972,12 @@ private:
       const EvalValue::ScalarValue& lv,
       const EvalValue::ScalarValue& rv,
       char op,
+      EvalValue& outS) const;
+  bool tryCombineBinaryScalars(
+      EvalContext& ctx,
+      char op,
+      const EvalValue::ScalarValue& lv,
+      const EvalValue::ScalarValue& rv,
       EvalValue& outS) const;
   EvalValue mapBinary(EvalContext& ctx, const EvalValue& a, const EvalValue& b, char op, bool& ok) const;
   UserFunction* findUserFunction(const std::string& fnName);

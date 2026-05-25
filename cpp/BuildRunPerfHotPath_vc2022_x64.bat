@@ -18,7 +18,7 @@ call "%VC_ROOT%\Community\VC\Auxiliary\Build\vcvarsall.bat" %VCVARS_ARG%
 goto Building
 
 :Building
-cl /O2 /EHsc PerfHotPath_MathParser.cpp MathParser.cpp /Fe:PerfHotPath_MathParser.exe
+cl /O2 /EHsc PerfHotPath_MathParser.cpp MathParser.cpp MathParserCold.cpp /Fe:PerfHotPath_MathParser.exe
 if errorlevel 1 exit /b 1
 
 set ITERATIONS=%1
@@ -33,6 +33,7 @@ if "%WARMUP%"=="" set WARMUP=1
 set MODE=%4
 if "%MODE%"=="" (
   echo Running perf with %ITERATIONS% iterations, %REPEATS% repeats, %WARMUP% warmup runs...
+  echo Modes: lambda-stress ^| profile ^(compile/eval/raw split^)
   PerfHotPath_MathParser.exe %ITERATIONS% %REPEATS% %WARMUP%
 ) else (
   echo Running perf mode "%MODE%" with %ITERATIONS% iterations...

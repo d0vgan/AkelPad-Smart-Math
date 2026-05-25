@@ -65,11 +65,79 @@ private function TryParseDecimalToken(byref sText as String, byref outV as Doubl
   return TRUE
 end function
 
+private function SmokeTrimScalarToken(byref s as String) as String
+  return trim(s)
+end function
+
+'' -1 = -inf, 0 = not inf, 1 = +inf (case-insensitive).
+private function SmokeInfSignFromLiteral(byref s as String) as Integer
+  dim t as String = lcase(SmokeTrimScalarToken(s))
+  if t = "inf" orelse t = "+inf" then return 1
+  if t = "-inf" then return -1
+  return 0
+end function
+
+private function SmokeIsExactZeroLiteral(byref s as String) as Boolean
+  dim t as String = SmokeTrimScalarToken(s)
+  return (t = "0") orelse (t = "0.0") orelse (t = "-0") orelse (t = "-0.0") orelse (t = "+0") orelse (t = "+0.0")
+end function
+
+private function SmokeIsExactOneLiteral(byref s as String) as Boolean
+  dim t as String = SmokeTrimScalarToken(s)
+  return (t = "1") orelse (t = "-1") orelse (t = "1.0") orelse (t = "-1.0") orelse (t = "+1") orelse (t = "+1.0")
+end function
+
+private function SmokeOneSignFromLiteral(byref s as String) as Integer
+  dim t as String = SmokeTrimScalarToken(s)
+  if t = "1" orelse t = "1.0" orelse t = "+1" orelse t = "+1.0" then return 1
+  if t = "-1" orelse t = "-1.0" then return -1
+  return 0
+end function
+
+private function SmokeExpectedRequiresStrictScalarMatch(byref expected as String) as Boolean
+  return SmokeIsExactZeroLiteral(expected) orelse SmokeIsExactOneLiteral(expected) orelse (SmokeInfSignFromLiteral(expected) <> 0)
+end function
+
+'' Expected is 0/0.0, +/-1/1.0, or +/-Inf: actual must use the same literal family (no near-miss floats).
+private function SmokeStrictScalarMatch(byref actual as String, byref expected as String) as Boolean
+  if SmokeIsExactZeroLiteral(expected) then
+    if SmokeIsExactZeroLiteral(actual) = FALSE then return FALSE
+    dim da as Double
+    dim de as Double
+    if TryParseDecimalToken(actual, da) = FALSE then return FALSE
+    if TryParseDecimalToken(expected, de) = FALSE then return FALSE
+    return (da = 0.0) andalso (de = 0.0)
+  end if
+  if SmokeIsExactOneLiteral(expected) then
+    if SmokeIsExactOneLiteral(actual) = FALSE then return FALSE
+    if SmokeOneSignFromLiteral(actual) <> SmokeOneSignFromLiteral(expected) then return FALSE
+    dim da as Double
+    dim de as Double
+    if TryParseDecimalToken(actual, da) = FALSE then return FALSE
+    if TryParseDecimalToken(expected, de) = FALSE then return FALSE
+    if SmokeOneSignFromLiteral(expected) = 1 then
+      return (da = 1.0) andalso (de = 1.0)
+    end if
+    return (da = -1.0) andalso (de = -1.0)
+  end if
+  dim eInf as Integer = SmokeInfSignFromLiteral(expected)
+  if eInf <> 0 then
+    return (SmokeInfSignFromLiteral(actual) = eInf)
+  end if
+  return FALSE
+end function
+
 private function ScalarCloseEnough(byref actual as String, byref expected as String) as Boolean
-  if actual = expected then return TRUE
-  dim da as Double, de as Double
-  if TryParseDecimalToken(actual, da) = FALSE then return FALSE
-  if TryParseDecimalToken(expected, de) = FALSE then return FALSE
+  dim ea as String = SmokeTrimScalarToken(actual)
+  dim ee as String = SmokeTrimScalarToken(expected)
+  if ea = ee then return TRUE
+  if SmokeExpectedRequiresStrictScalarMatch(ee) then
+    return SmokeStrictScalarMatch(ea, ee)
+  end if
+  dim da as Double
+  dim de as Double
+  if TryParseDecimalToken(ea, da) = FALSE then return FALSE
+  if TryParseDecimalToken(ee, de) = FALSE then return FALSE
   if da = de then return TRUE
   dim scale as Double = abs(da)
   if abs(de) > scale then scale = abs(de)
@@ -814,8 +882,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next ai
 
-  dim powCases(1 to 12) as String
-  dim powExpect(1 to 12) as String
+  dim powCases(1 to 16) as String
+  dim powExpect(1 to 16) as String
   powCases(1) = "(1+i)**2": powExpect(1) = "2i"
   powCases(2) = "(3+4i)**0.5": powExpect(2) = "2+i"
   powCases(3) = "pow(1+i,2)": powExpect(3) = "2i"
@@ -828,6 +896,26 @@ private sub RunComplexNumberSupportOptionTests()
   powCases(10) = "(-2)**(1/2)": powExpect(10) = "1.414213562373095i"
   powCases(11) = "(-7)**(3/2)": powExpect(11) = "-18.52025917745213i"
   powCases(12) = "(-5)**(1/3)": powExpect(12) = "-1.709975946676697" ' odd real root, not principal complex
+  powCases(13) = "64**(1/3)": powExpect(13) = "4"
+  powCases(14) = "pow(-27,1/3)": powExpect(14) = "-3"
+  powCases(15) = "pow(2**64,1/2)": powExpect(15) = "4294967296"
+  powCases(16) = "(-8)**(1/3)": powExpect(16) = "-2"
+
+  dim sqrtCases(1 to 3) as String
+  dim sqrtExpect(1 to 3) as String
+  sqrtCases(1) = "sqrt(81)": sqrtExpect(1) = "9"
+  sqrtCases(2) = "sqrt(3+4i)": sqrtExpect(2) = "2+i"
+  sqrtCases(3) = "pow(2**64,1/2)": sqrtExpect(3) = "4294967296"
+  dim swi as Integer
+  for swi = 1 to 3
+    if Parser_TryEvaluateEx(sqrtCases(swi), r, rt, ia) = FALSE orelse rt <> sqrtExpect(swi) then
+      print "[complex-opt] FAIL: """ & sqrtCases(swi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & sqrtCases(swi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next swi
 
   dim pwi as Integer
   for pwi = 1 to 12
@@ -1624,7 +1712,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1167) as SmokeCase
+  dim tests(1 to 1169) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2848,6 +2936,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1165).expr = "pow(-32,1/5)": tests(1165).expected = "-2" ' [pow-exact-int] negative base, odd root via pow()
   tests(1166).expr = "pow(pow(-3,39), 1/39)": tests(1166).expected = "-3" ' [pow-real] odd unit root, not principal complex
   tests(1167).expr = "pow(pow(-3,45), 1/45)": tests(1167).expected = "-3" ' [pow-real] odd unit root (regression: was complex)
+  tests(1168).expr = "cos((pi/2, pi, -pi/2, -pi, 2*pi, 0, 77777*pi/2, -77777*pi/2))": tests(1168).expected = "(0, -1, 0, -1, 1, 1, 0, 0)" ' [trig-array] half-pi multiples incl. large N
+  tests(1169).expr = "tan((pi, pi/2, -pi, 2*pi, -pi/2, 0, 77777*pi/2, -77777*pi/2))": tests(1169).expected = "(0, inf, 0, 0, -inf, 0, inf, -inf)" ' [trig-array] poles at odd half-pi
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

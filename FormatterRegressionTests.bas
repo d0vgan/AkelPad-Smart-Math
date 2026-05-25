@@ -394,6 +394,15 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
   r.kind = RRK_SCALAR
   FormatterTestInitRawScalarInt64 r.scalar, 2147483647
   AssertEq("raw int64 integer-like no .0", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "2147483647", failCount)
+
+  RawResultClear(r)
+  r.kind = RRK_SCALAR
+  r.scalar.kind = RSK_COMPLEX
+  r.scalar.real.kind = RSK_FLOATING
+  r.scalar.real.floatValue = 2147483647.0
+  r.scalar.imag.kind = RSK_FLOATING
+  r.scalar.imag.floatValue = 2.0
+  AssertEq("raw complex float integer-like shows .0", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & "2147483647.0 + 2.0i", failCount)
 end sub
 
 RunRawResultFormatTests(failures)
@@ -458,8 +467,34 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
 
   dim cxLit as String = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
   dim cxLit2 as String = "-0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
+  dim cxMaxLit as String = "0x7FFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFFFi"
   dim raw as RawResult
   dim fmt as String
+
+  if FormatterTryEvaluateAndFormat("hex(10+15i)", fmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/hex(10+15i) — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/hex(10+15i)", fmt, SMARTMATH_RESULT_PREFIX & "0xA + 0xF*i", failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("hex(cart(" & cxMaxLit & "))", fmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/hex(cart max i64) — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/hex(cart max i64)", fmt, SMARTMATH_RESULT_PREFIX & "0x7FFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFFF*i", failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("hex(conj(" & cxMaxLit & "))", fmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/hex(conj max i64) — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/hex(conj max i64)", fmt, SMARTMATH_RESULT_PREFIX & "0x7FFFFFFFFFFFFFFF - 0x7FFFFFFFFFFFFFFF*i", failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi);uhex", fmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/uhex mixed hex complex — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/uhex mixed hex complex", fmt, SMARTMATH_RESULT_PREFIX & "0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFF*i", failCount)
+  end if
 
   dim bareExpr(1 to 2) as String
   dim bareWant(1 to 2) as String
@@ -577,6 +612,37 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
       AssertNoSubstr(tagIniFn & "/no-sci", fmt, "e-", failCount)
     end if
   next fi
+
+  '' sqrt(2**70) and sqrt(-2**70): operand is float (2^70 > i64); sqrt uses float unless verified exact int.
+  FormatterTestSetup()
+  g_nDecimals = -1
+  g_bUseThousandsSeparator = FALSE
+  ApplySeparatorDefaults()
+  dim sqrtPosFmt as String, sqrtNegFmt as String
+  if FormatterTryEvaluateAndFormat("sqrt(2**70)", sqrtPosFmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/sqrt(2**70) — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/sqrt(2**70)", sqrtPosFmt, SMARTMATH_RESULT_PREFIX & "34359738368.0", failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/sqrt(2**70)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/sqrt(2**70)/raw float"
+    end if
+  end if
+  if FormatterTryEvaluateAndFormat("sqrt(-2**70)", sqrtNegFmt, raw) = FALSE then
+    print !"[FAIL] parser-fmt/sqrt(-2**70) — evaluate failed"
+    failCount += 1
+  else
+    AssertEq("parser-fmt/sqrt(-2**70)", sqrtNegFmt, SMARTMATH_RESULT_PREFIX & "34359738368.0i", failCount)
+    if raw.scalar.kind <> RSK_COMPLEX orelse raw.scalar.imag.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/sqrt(-2**70)/raw — expected complex float imag"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/sqrt(-2**70)/raw float imag"
+    end if
+  end if
 
   FormatterTestSetup()
 end sub

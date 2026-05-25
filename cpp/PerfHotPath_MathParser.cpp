@@ -95,6 +95,88 @@ void runLambdaFlagStressBench(std::uint64_t iterations) {
   }
 }
 
+void runPhaseProfileBench(std::uint64_t iterations) {
+  std::cout << "=== phase-profile (compile / evaluate / raw export) ===\n";
+  MathParser parser;
+  parser.setSupportTimeValues(false);
+  parser.setSupportLambdaFunctions(false);
+  parser.setSupportComplexNumbers(false);
+  parser.addConst("myconst1", 123LL);
+  parser.addConst("myconst2", 345LL);
+
+  std::uint64_t errors = 0;
+  long long checksum = 0;
+  std::int64_t nsExprBuild = 0;
+  std::int64_t nsCompile = 0;
+  std::int64_t nsEvaluate = 0;
+  std::int64_t nsRawExport = 0;
+
+  for (std::uint64_t i = 0; i < iterations; ++i) {
+    const auto tBuild0 = std::chrono::steady_clock::now();
+    std::string expr;
+    if ((i % 10) == 0) {
+      expr = "myconst1 / (" + std::to_string(i) + " + 0.5)";
+    } else if ((i % 3) == 0) {
+      expr = "myconst1 + " + std::to_string(i);
+    } else if ((i % 4) == 0) {
+      expr = "myconst1 - " + std::to_string(i);
+    } else if ((i % 5) == 0) {
+      expr = "myconst2 | " + std::to_string(i);
+    } else if ((i % 7) == 0) {
+      expr = "myconst2 & " + std::to_string(i);
+    } else if ((i % 11) == 0) {
+      expr = "myconst1 << (" + std::to_string(i) + "%63)";
+    } else {
+      expr = "((myconst1 & 0xFFFF) + (myconst2 | 0x07)) << (2 + 3)";
+    }
+    const auto tBuild1 = std::chrono::steady_clock::now();
+    nsExprBuild += std::chrono::duration_cast<std::chrono::nanoseconds>(tBuild1 - tBuild0).count();
+
+    const auto tCompile0 = std::chrono::steady_clock::now();
+    const bool compiled = parser.compile(expr);
+    const auto tCompile1 = std::chrono::steady_clock::now();
+    nsCompile += std::chrono::duration_cast<std::chrono::nanoseconds>(tCompile1 - tCompile0).count();
+
+    const auto tEval0 = std::chrono::steady_clock::now();
+    if (compiled) {
+      parser.evaluate();
+    }
+    const auto tEval1 = std::chrono::steady_clock::now();
+    nsEvaluate += std::chrono::duration_cast<std::chrono::nanoseconds>(tEval1 - tEval0).count();
+
+    const auto tRaw0 = std::chrono::steady_clock::now();
+    const MathParser::RawResult r = parser.getRawResult();
+    const auto tRaw1 = std::chrono::steady_clock::now();
+    nsRawExport += std::chrono::duration_cast<std::chrono::nanoseconds>(tRaw1 - tRaw0).count();
+
+    if (!compiled || !r.hasValue() || !r.isScalar()) {
+      ++errors;
+    } else {
+      checksum += rawScalarToInt64(r.scalar);
+    }
+  }
+
+  const auto totalNs = nsExprBuild + nsCompile + nsEvaluate + nsRawExport;
+  const double totalSec = static_cast<double>(totalNs) / 1e9;
+  const double opsPerSec = (totalSec > 0.0) ? (static_cast<double>(iterations) / totalSec) : 0.0;
+  const auto pct = [&](std::int64_t partNs) -> double {
+    return (totalNs > 0) ? (100.0 * static_cast<double>(partNs) / static_cast<double>(totalNs)) : 0.0;
+  };
+
+  std::cout << "iterations: " << iterations << "\n";
+  std::cout << "ops_per_sec: " << opsPerSec << "\n";
+  std::cout << "checksum: " << checksum << "\n";
+  std::cout << "errors: " << errors << "\n";
+  std::cout << "expr_build_pct: " << pct(nsExprBuild) << "\n";
+  std::cout << "compile_pct: " << pct(nsCompile) << "\n";
+  std::cout << "evaluate_pct: " << pct(nsEvaluate) << "\n";
+  std::cout << "raw_export_pct: " << pct(nsRawExport) << "\n";
+  std::cout << "expr_build_ms_per_op: " << (static_cast<double>(nsExprBuild) / static_cast<double>(iterations) / 1e6) << "\n";
+  std::cout << "compile_ms_per_op: " << (static_cast<double>(nsCompile) / static_cast<double>(iterations) / 1e6) << "\n";
+  std::cout << "evaluate_ms_per_op: " << (static_cast<double>(nsEvaluate) / static_cast<double>(iterations) / 1e6) << "\n";
+  std::cout << "raw_export_ms_per_op: " << (static_cast<double>(nsRawExport) / static_cast<double>(iterations) / 1e6) << "\n\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -102,6 +184,7 @@ int main(int argc, char** argv) {
   std::uint64_t repeats = 1;
   std::uint64_t warmupRuns = 0;
   bool lambdaStress = false;
+  bool phaseProfile = false;
   if (argc > 1) {
     const std::uint64_t parsed = static_cast<std::uint64_t>(_strtoui64(argv[1], nullptr, 10));
     if (parsed > 0) {
@@ -117,12 +200,22 @@ int main(int argc, char** argv) {
   if (argc > 3) {
     warmupRuns = static_cast<std::uint64_t>(_strtoui64(argv[3], nullptr, 10));
   }
-  if (argc > 4 && std::string(argv[4]) == "lambda-stress") {
-    lambdaStress = true;
+  if (argc > 4) {
+    const std::string mode = argv[4];
+    if (mode == "lambda-stress") {
+      lambdaStress = true;
+    } else if (mode == "profile") {
+      phaseProfile = true;
+    }
   }
 
   if (lambdaStress) {
     runLambdaFlagStressBench(iterations);
+    return 0;
+  }
+
+  if (phaseProfile) {
+    runPhaseProfileBench(iterations);
     return 0;
   }
 
@@ -141,8 +234,8 @@ int main(int argc, char** argv) {
     const bool isWarmup = (run < warmupRuns);
     MathParser parser;
     // Note:
-    // On my machine, I get around 396_000 ops_per_sec with SupportTimeValues enabled.
-    // With them disabled, I get around 402_000 ops_per_sec.
+    // On my machine, I get around 395_000 ops_per_sec with SupportTimeValues enabled.
+    // With them disabled, I get around 400_000 ops_per_sec.
     // Toggling setSupportLambdaFunctions() here usually does NOT change this number: the
     // expressions below are plain arithmetic (no assignment RHS, no sortby lambda keys).
     // Use: PerfHotPath_MathParser.exe <iterations> <repeats> <warmup> lambda-stress
