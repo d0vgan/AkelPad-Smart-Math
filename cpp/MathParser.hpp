@@ -832,6 +832,11 @@ private:
       const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
+  EvalValue builtinPolarCart(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args) const;
   EvalValue builtinUnaryMath(
       EvalContext& ctx,
       const std::string& fnName,

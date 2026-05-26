@@ -704,18 +704,19 @@ Purpose: complex numbers utilities.
 - `imag(c)` - imaginary part of a complex number `c`
 - `phase(c)` - phase (angle) of a complex number `c`: `atan2(imag, real)`
 - `polar(c)` - converts the complex number `c` to polar form: `r*exp(i*angle)`
-- `cart(c)`, `cart((r,angle))` - converts the complex number `c` to cartesian form
+- `cart((r,angle))`, `cart(r,angle)` - converts the complex number `(r,angle)` to cartesian form
 - `conj(c)` - complex conjugate
 - Examples:
   - `real(1+2i)` -> `1`
   - `imag(1+2i)` -> `2`
   - `phase(1+2i)` -> `1.107149`
   - `c=1+2i; atan2(imag(c), real(c))` -> `1.107149`
-  - `polar(1+2i)` -> `(2.236068, 1.107149)`
   - `c=1+2i; (abs(c), phase(c))` -> `(2.236068, 1.107149)`
+  - `polar(1+2i)` -> `(2.236068, 1.107149)`
   - `p=polar(1+2i); r=p[0]; angle=p[1]; r*exp(i*angle)` -> `1+2i`
   - `cart(polar(1+2i))` -> `1+2i`
   - `cart((2.236068, 1.107149))` -> `0.999999+2i`
+  - `cart(2.236068, 1.107149)` -> `0.999999+2i`
   - `conj(1+2i)` -> `1-2i`
 
 - See also:

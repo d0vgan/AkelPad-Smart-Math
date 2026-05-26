@@ -1257,6 +1257,53 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next ui
 
+  dim cxPolCartOk(1 to 8) as String
+  dim cxPolCartExpect(1 to 8) as String
+  cxPolCartOk(1) = "polar(3)": cxPolCartExpect(1) = "(3, 0)"
+  cxPolCartOk(2) = "polar(4i)": cxPolCartExpect(2) = "(4, 1.570796326794897)"
+  cxPolCartOk(3) = "polar(3+4i)": cxPolCartExpect(3) = "(5, 0.9272952180016122)"
+  cxPolCartOk(4) = "polar((3+4i))": cxPolCartExpect(4) = "(5, 0.9272952180016122)"
+  cxPolCartOk(5) = "cart(2)": cxPolCartExpect(5) = "2"
+  cxPolCartOk(6) = "cart((2))": cxPolCartExpect(6) = "2"
+  cxPolCartOk(7) = "cart((2,pi/3))": cxPolCartExpect(7) = "1+1.7320508075688772i"
+  cxPolCartOk(8) = "cart(2,pi/3)": cxPolCartExpect(8) = "1+1.7320508075688772i"
+  dim pci as Integer
+  for pci = 1 to 8
+    if Parser_TryEvaluateEx(cxPolCartOk(pci), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxPolCartExpect(pci)) = FALSE then
+      print "[complex-opt] FAIL: """ & cxPolCartOk(pci) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      print "[complex-opt]      want: """ & cxPolCartExpect(pci) & """"
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxPolCartOk(pci) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next pci
+
+  dim cxPolCartErr(1 to 7) as String
+  cxPolCartErr(1) = "polar(3+4i, 2)"
+  cxPolCartErr(2) = "polar((3+4i, 2))"
+  cxPolCartErr(3) = "cart((2,pi/3,1))"
+  cxPolCartErr(4) = "cart(2,pi/3,1)"
+  cxPolCartErr(5) = "cart((2,pi/3),(1))"
+  cxPolCartErr(6) = "polar(3+4i, 2i)"
+  cxPolCartErr(7) = "polar(3+4i, 1+2i)"
+  dim pcei as Integer
+  for pcei = 1 to 7
+    if Parser_TryEvaluateEx(cxPolCartErr(pcei), r, rt, ia) then
+      print "[complex-opt] FAIL: expected error for """ & cxPolCartErr(pcei) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errPolCart as String = lcase(Parser_GetLastError())
+      if instr(errPolCart, "expects") > 0 orelse instr(errPolCart, "incompatible operands") > 0 then
+        print "[complex-opt] PASS: """ & cxPolCartErr(pcei) & """ -> " & Parser_GetLastError()
+        subPass += 1
+      else
+        print "[complex-opt] FAIL: """ & cxPolCartErr(pcei) & """ expected arity/incompatible error, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next pcei
+
   dim cxFmtOk(1 to 7) as String
   dim cxFmtExpect(1 to 7) as String
   cxFmtOk(1) = "hex(10+15i)": cxFmtExpect(1) = "0xA+0xFi"

@@ -2193,7 +2193,8 @@ MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id)
     case BuiltinFunctionId::Phase:
     case BuiltinFunctionId::Polar:
     case BuiltinFunctionId::Cart:
-    case BuiltinFunctionId::Conj: return BuiltinHintKind::Value;
+    case BuiltinFunctionId::Conj:
+      return BuiltinHintKind::Value;
     case BuiltinFunctionId::Log: return BuiltinHintKind::ValueBase;
     case BuiltinFunctionId::Deg:
     case BuiltinFunctionId::Rad:
@@ -8526,7 +8527,6 @@ MathParser::BuiltinFlags MathParser::getBuiltinFlags(BuiltinFunctionId id) {
     case BuiltinFunctionId::Imag:
     case BuiltinFunctionId::Phase:
     case BuiltinFunctionId::Polar:
-    case BuiltinFunctionId::Cart:
     case BuiltinFunctionId::Conj:
       return F::Unary;
     case BuiltinFunctionId::Deg:
@@ -8578,6 +8578,10 @@ bool MathParser::getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t
     return true;
   }
   switch (id) {
+    case BuiltinFunctionId::Cart:
+      minArgs = 1;
+      maxArgs = 2;
+      return true;
     case BuiltinFunctionId::Rand:
       minArgs = 0;
       maxArgs = 0;
@@ -9692,6 +9696,9 @@ MathParser::EvalValue MathParser::sortbyInvokeKeyFunction(
   if (fnId == BuiltinFunctionId::Deg || fnId == BuiltinFunctionId::Rad) {
     return builtinDegRad(ctx, funcName, fnId, args);
   }
+  if (fnId == BuiltinFunctionId::Polar || fnId == BuiltinFunctionId::Cart) {
+    return builtinPolarCart(ctx, funcName, fnId, args);
+  }
   const EvalValue unaryOut = builtinUnaryMath(ctx, funcName, fnId, args);
   if (ctx.parseError) {
     return unaryOut;
@@ -10536,6 +10543,82 @@ MathParser::EvalValue MathParser::mapUnaryComplexBuiltin(
   });
 }
 
+MathParser::EvalValue MathParser::builtinPolarCart(
+    EvalContext& ctx,
+    const std::string& fnName,
+    BuiltinFunctionId id,
+    const std::vector<EvalValue>& args) const {
+  const auto tryNormalizeUnaryScalarInput = [&](const EvalValue& inV, EvalValue& outScalarV) -> bool {
+    if (inV.kind == ValueKind::Scalar) {
+      outScalarV = inV;
+      return true;
+    }
+    if (inV.kind == ValueKind::Array && inV.arr.size() == 1U) {
+      outScalarV = scalarFromScalarValue(inV.arr[0]);
+      return true;
+    }
+    return false;
+  };
+  const auto cartFromPolarScalars = [&](double rMag, double rAng) -> EvalValue {
+    if (!supportComplexNumbers_ && std::fabs(rAng) > 1e-14) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    return makeScalarComplexFromDoubles(rMag * std::cos(rAng), rMag * std::sin(rAng));
+  };
+
+  if (id == BuiltinFunctionId::Polar) {
+    EvalValue polarIn = makeScalar(0);
+    if (!tryNormalizeUnaryScalarInput(args[0], polarIn)) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    EvalValue outS = makeScalar(0);
+    if (!tryUnaryComplexBuiltinSupport(BuiltinFunctionId::Polar, polarIn.scalarValue, outS)) {
+      setNumericErrorInFunction(ctx, fnName);
+      return makeScalar(0);
+    }
+    return outS;
+  }
+
+  if (args.size() == 1U) {
+    const EvalValue& cartIn = args[0];
+    if (cartIn.kind == ValueKind::Scalar) {
+      EvalValue outS = makeScalar(0);
+      if (!tryUnaryComplexBuiltinSupport(BuiltinFunctionId::Cart, cartIn.scalarValue, outS)) {
+        setNumericErrorInFunction(ctx, fnName);
+        return makeScalar(0);
+      }
+      return outS;
+    }
+    if (cartIn.kind == ValueKind::Array) {
+      const std::size_t nCart = cartIn.arr.size();
+      if (nCart == 1U) {
+        return cartFromPolarScalars(cartIn.arr[0].scalar, 0.0);
+      }
+      if (nCart == 2U) {
+        return cartFromPolarScalars(cartIn.arr[0].scalar, cartIn.arr[1].scalar);
+      }
+    }
+    setIncompatibleOperandsError(ctx);
+    return makeScalar(0);
+  }
+  if (args.size() == 2U) {
+    if (args[0].kind != ValueKind::Scalar || args[1].kind != ValueKind::Scalar) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    if (scalarHasNonzeroImaginaryPart(args[0].scalarValue) ||
+        scalarHasNonzeroImaginaryPart(args[1].scalarValue)) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    return cartFromPolarScalars(args[0].scalarValue.scalar, args[1].scalarValue.scalar);
+  }
+  setIncompatibleOperandsError(ctx);
+  return makeScalar(0);
+}
+
 MathParser::EvalValue MathParser::builtinUnaryMath(
     EvalContext& ctx,
     const std::string& fnName,
@@ -10545,21 +10628,10 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
-  if (id == BuiltinFunctionId::Cart && args[0].kind == ValueKind::Array && args[0].arr.size() == 2U) {
-    const double rMag = args[0].arr[0].scalar;
-    const double rAng = args[0].arr[1].scalar;
-    if (!supportComplexNumbers_ && std::fabs(rAng) > 1e-14) {
-      setIncompatibleOperandsError(ctx);
-      return makeScalar(0);
-    }
-    return makeScalarComplexFromDoubles(rMag * std::cos(rAng), rMag * std::sin(rAng));
-  }
   switch (id) {
     case BuiltinFunctionId::Real:
     case BuiltinFunctionId::Imag:
     case BuiltinFunctionId::Phase:
-    case BuiltinFunctionId::Polar:
-    case BuiltinFunctionId::Cart:
     case BuiltinFunctionId::Conj:
       return mapUnaryComplexBuiltin(ctx, id, args[0]);
     default:
@@ -10955,10 +11027,11 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Real:
     case BuiltinFunctionId::Imag:
     case BuiltinFunctionId::Phase:
-    case BuiltinFunctionId::Polar:
-    case BuiltinFunctionId::Cart:
     case BuiltinFunctionId::Conj:
       return builtinUnaryMath(ctx, fnName, id, args);
+    case BuiltinFunctionId::Polar:
+    case BuiltinFunctionId::Cart:
+      return builtinPolarCart(ctx, fnName, id, args);
     case BuiltinFunctionId::Count:
       break;
   }

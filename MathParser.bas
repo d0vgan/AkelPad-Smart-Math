@@ -1075,7 +1075,7 @@ private function GetBuiltinFlags(byval id as Integer) as UInteger
     case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ACOS, FUNC_ATAN, _
          FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, _
          FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_FRAC, FUNC_ABS, FUNC_SIGN, _
-         FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CART, FUNC_CONJ
+         FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CONJ
       return BUILTIN_FLAG_UNARY
     case FUNC_DEG, FUNC_RAD
       return BUILTIN_FLAG_TRAILING_FORMATTER
@@ -3477,6 +3477,9 @@ private sub GetBuiltinArity(byval id as Integer, byref minArgs as Integer, byref
     exit sub
   end if
   select case id
+    case FUNC_CART
+      minArgs = 1
+      maxArgs = 2
     case FUNC_RAND
       minArgs = 0
       maxArgs = 0
@@ -4964,25 +4967,82 @@ private function MapTimeUnitOverArray(byref arrV as EvalValue, byval fnId as Int
   return TRUE
 end function
 
-private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, byref outV as EvalValue) as Boolean
-  dim fnId as Integer = TryFindBuiltinFunctionId(fn)
-  if fnId = FUNC_CART andalso v.kind = VK_ARRAY then
-    dim nCart as Integer = ValueArrayLen(v)
-    if nCart = 2 then
-      dim rMag as Double = v.arr(lbound(v.arr)).scalar
-      dim rAng as Double = v.arr(lbound(v.arr) + 1).scalar
-      if Parser_SupportComplexNumbers = FALSE then
-        if abs(rAng) > 1e-14 then
-          SetIncompatibleOperandsError()
-          return TRUE
-        end if
-      end if
-      dim cr as Double = rMag * LibCos(rAng)
-      dim ci as Double = rMag * LibSin(rAng)
-      ValueSetScalarComplexFromDoubles(outV, cr, ci)
+private function TryNormalizeUnaryScalarInput(byref inV as EvalValue, byref outScalarV as EvalValue) as Boolean
+  if inV.kind = VK_SCALAR then
+    outScalarV = inV
+    return TRUE
+  end if
+  if inV.kind = VK_ARRAY then
+    dim nIn as Integer = ValueArrayLen(inV)
+    if nIn = 1 then
+      EvalScalarFromScalarValue(inV.arr(lbound(inV.arr)), outScalarV)
       return TRUE
     end if
   end if
+  SetIncompatibleOperandsError()
+  return FALSE
+end function
+
+private function TryCartFromPolarScalars(byval rMag as Double, byval rAng as Double, byref outV as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers = FALSE then
+    if abs(rAng) > 1e-14 then
+      SetIncompatibleOperandsError()
+      return FALSE
+    end if
+  end if
+  dim cr as Double = rMag * LibCos(rAng)
+  dim ci as Double = rMag * LibSin(rAng)
+  ValueSetScalarComplexFromDoubles(outV, cr, ci)
+  return TRUE
+end function
+
+private function TryBuiltinPolarCart(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+  if fnId = FUNC_POLAR then
+    dim polarIn as EvalValue
+    if TryNormalizeUnaryScalarInput(args(0), polarIn) = FALSE then return TRUE
+    if MapUnaryEvalValueById(FUNC_POLAR, polarIn, outV) = FALSE then SetNumericErrorInFunction(fnName)
+    return TRUE
+  end if
+  if fnId <> FUNC_CART then return FALSE
+
+  if ubound(args) = 0 then
+    dim cartIn as EvalValue = args(0)
+    if cartIn.kind = VK_SCALAR then
+      if ApplyUnaryScalarFunctionById(FUNC_CART, cartIn.scalarValue, outV) = FALSE then SetNumericErrorInFunction(fnName)
+      return TRUE
+    end if
+    if cartIn.kind = VK_ARRAY then
+      dim nCart as Integer = ValueArrayLen(cartIn)
+      if nCart = 1 then
+        dim rOnly as Double = cartIn.arr(lbound(cartIn.arr)).scalar
+        if TryCartFromPolarScalars(rOnly, 0.0, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
+        return TRUE
+      elseif nCart = 2 then
+        dim rMagA as Double = cartIn.arr(lbound(cartIn.arr)).scalar
+        dim rAngA as Double = cartIn.arr(lbound(cartIn.arr) + 1).scalar
+        if TryCartFromPolarScalars(rMagA, rAngA, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
+        return TRUE
+      end if
+    end if
+    SetIncompatibleOperandsError()
+    return TRUE
+  elseif ubound(args) = 1 then
+    if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
+      SetIncompatibleOperandsError()
+      return TRUE
+    end if
+    if ScalarHasNonzeroImaginaryPart(args(0).scalarValue) orelse ScalarHasNonzeroImaginaryPart(args(1).scalarValue) then
+      SetIncompatibleOperandsError()
+      return TRUE
+    end if
+    if TryCartFromPolarScalars(args(0).scalar, args(1).scalar, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function ApplyUnaryFunction(byref fn as String, byref v as EvalValue, byref outV as EvalValue) as Boolean
+  dim fnId as Integer = TryFindBuiltinFunctionId(fn)
   return MapUnaryEvalValueById(fnId, v, outV)
 end function
 
@@ -9057,6 +9117,11 @@ private function ParseFunctionCall(byref fnName as String) as EvalValue
 
   if fnId = FUNC_POW then
     if ValueApplyBinary(args(0), args(1), CHAR_CARET, outV) = FALSE then SetNumericErrorInFunction(fnName)
+    return outV
+  end if
+
+  if (fnId = FUNC_POLAR) orelse (fnId = FUNC_CART) then
+    TryBuiltinPolarCart(fnId, fnName, args(), outV)
     return outV
   end if
 

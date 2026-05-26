@@ -5014,6 +5014,60 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: polar/cart arity and shape (parity Basic cxPolCartOk/cxPolCartErr)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kOk[] = {
+                     {"polar(3)", "(3,0)"},
+                     {"polar(4i)", "(4,1.570796326794897)"},
+                     {"polar(3+4i)", "(5,0.9272952180016122)"},
+                     {"polar((3+4i))", "(5,0.9272952180016122)"},
+                     {"cart(2)", "2"},
+                     {"cart((2))", "2"},
+                     {"cart((2,pi/3))", "1+1.732050807568877i"},
+                     {"cart(2,pi/3)", "1+1.732050807568877i"},
+                 };
+                 for (const auto& row : kOk) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (!smokeResultCloseEnough(p.getResult(), row.expect)) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 static const struct {
+                   const char* expr;
+                   const char* errSubstr;
+                 } kErr[] = {
+                     {"polar(3+4i, 2)", "expects"},
+                     {"polar((3+4i, 2))", "incompatible operands"},
+                     {"cart((2,pi/3,1))", "incompatible operands"},
+                     {"cart(2,pi/3,1)", "expects"},
+                     {"cart((2,pi/3),(1))", "incompatible operands"},
+                     {"polar(3+4i, 2i)", "expects"},
+                     {"polar(3+4i, 1+2i)", "expects"},
+                 };
+                 for (const auto& row : kErr) {
+                   p.parseAndEvaluate(row.expr);
+                   if (p.getError().empty()) {
+                     why = std::string(row.expr) + " expected error, got " + p.getResult();
+                     return false;
+                   }
+                   const std::string el = p.getError();
+                   if (el.find(row.errSubstr) == std::string::npos) {
+                     why = std::string(row.expr) + ": " + el;
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: sin/cos/tan and inverses on complex (parity Basic cxTrigOk)",
                [](std::string& why) {
                  MathParser p;
