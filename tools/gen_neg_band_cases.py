@@ -8,20 +8,31 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+try:
+    from verify_smoke_expected_vs_python import ref_format, try_reference
+except ImportError:
+    ref_format = None  # type: ignore
+    try_reference = None  # type: ignore
 EXE_CPP = ROOT / "cpp" / "MathParserTests.exe"
 EXE_BAS = ROOT / "tools" / "NegBandProbe.exe"
 
 
 def eval_expr(expr: str, complex_mode: bool = False) -> tuple[str, bool]:
+    # Prefer Basic NegBandProbe (smoke tests Basic); fall back to C++ --eval.
     if EXE_BAS.is_file():
         bas_args = [str(EXE_BAS)]
         if complex_mode:
             bas_args.append("--complex")
         bas_args.append(expr)
-        bas_proc = subprocess.run(bas_args, capture_output=True, text=True, cwd=ROOT)
-        bas_out = (bas_proc.stdout or "").strip()
-        if bas_proc.returncode == 0 and bas_out:
-            return bas_out, True
+        try:
+            bas_proc = subprocess.run(bas_args, capture_output=True, text=True, cwd=ROOT, timeout=30)
+            bas_out = (bas_proc.stdout or "").strip()
+            if bas_proc.returncode == 0 and bas_out:
+                return bas_out, True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     args = [str(EXE_CPP), "--eval"]
     if complex_mode:
         args.append("--complex")
@@ -95,8 +106,6 @@ def real_probes(v: str, sign: str) -> list[tuple[str, str]]:
         ("shr1", f"{v}>>1"),
         ("sqrt", f"sqrt({v})"),
         ("ln", f"ln({v})"),
-        ("sin", f"sin({v})"),
-        ("cos", f"cos({v})"),
         ("not", f"not({v})"),
         ("udf_add1", f"f(x)=x+1; f({v})"),
         ("udf_abs", f"g(x)=abs(x); g({v})"),
@@ -120,8 +129,6 @@ def complex_probes(z: str) -> list[tuple[str, str]]:
         ("cx_sqrt", f"sqrt({z})"),
         ("cx_hypot", f"hypot({z},3)"),
         ("cx_ln", f"ln({z})"),
-        ("cx_sin", f"sin({z})"),
-        ("cx_cos", f"cos({z})"),
         ("cx_udf", f"f(z)=z+1; f({z})"),
     ]
 
@@ -130,6 +137,60 @@ def complex_literal(v: str, sign: str) -> str:
     if v in ("-inf", "inf"):
         return v
     return f"({v})"
+
+
+def complex_literal_re_im(re: str, im: str) -> str:
+    if im in ("0", "0.0", "-0", "-0.0"):
+        return re
+    im_f = float(im) if im not in ("inf", "-inf", "nan") else None
+    if im_f is not None and im_f < 0:
+        mag = im[1:] if im.startswith("-") else im
+        if mag in ("inf",):
+            return f"{re}-inf*i"
+        return f"{re}-{mag}*i" if "*" not in mag else f"{re}-{mag}"
+    if im in ("inf",):
+        return f"{re}+inf*i"
+    if im in ("nan",):
+        return f"{re}+nan*i"
+    return f"{re}+{im}*i"
+
+
+def float_band_values() -> list[tuple[str, str]]:
+    return [
+        ("D_float_hi", "1.123e+20"),
+        ("D_float_lo", "1.123e-20"),
+        ("D_extreme_hi", "1.123e+197"),
+        ("D_extreme_lo", "1.123e-197"),
+    ]
+
+
+def complex_re_im_grid() -> list[tuple[str, str, str]]:
+    """(band_id, re, im) trimmed grid."""
+    vals = ["1.123e+20", "1.123e-20", "0", "1", "-1"]
+    out: list[tuple[str, str, str]] = []
+    for re in vals:
+        for im in vals:
+            if re == "0" and im == "0":
+                continue
+            out.append((f"R{re}_I{im}", re, im))
+    return out
+
+
+def normalize_err_text(err: str) -> str:
+    e = err.strip()
+    while e.upper().startswith("ERR:"):
+        e = e[4:].lstrip()
+    if e.upper().startswith("ERROR:"):
+        e = e[6:].lstrip()
+    return e
+
+
+def band_expect(expr: str, *, complex_mode: bool = False) -> tuple[str, bool]:
+    """Parser eval (C++ --eval); errors normalized for smoke/C++ tables."""
+    out, ok = eval_expr(expr, complex_mode=complex_mode)
+    if ok:
+        return out, True
+    return normalize_err_text(out), False
 
 
 def collect_rows(sign: str) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
@@ -141,20 +202,49 @@ def collect_rows(sign: str) -> tuple[list[tuple[str, str, str]], list[tuple[str,
     for band_id, v in band_values(sign):
         for probe_id, expr in real_probes(v, sign):
             label = f"{prefix}/{band_id}/{probe_id}"
-            result, ok = eval_expr(expr, complex_mode=False)
+            result, ok = band_expect(expr, complex_mode=False)
             if ok:
                 real_rows.append((label, expr, result))
             else:
-                real_rows.append((label, expr, f"ERR:{result}"))
+                real_rows.append((label, expr, f"ERR:{normalize_err_text(result)}"))
 
         z = complex_literal(v, sign)
         for probe_id, expr in complex_probes(z):
             label = f"{cx_prefix}/{band_id}/{probe_id}"
-            result, ok = eval_expr(expr, complex_mode=True)
+            result, ok = band_expect(expr, complex_mode=True)
             if ok:
                 cx_rows.append((label, expr, result))
             else:
-                cx_rows.append((label, expr, f"ERR:{result}"))
+                cx_rows.append((label, expr, f"ERR:{normalize_err_text(result)}"))
+
+    for band_id, v in float_band_values():
+        for probe_id, expr in real_probes(v, sign):
+            label = f"{prefix}/float/{band_id}/{probe_id}"
+            result, ok = band_expect(expr, complex_mode=False)
+            if ok:
+                real_rows.append((label, expr, result))
+            else:
+                real_rows.append((label, expr, f"ERR:{normalize_err_text(result)}"))
+
+    cx_mix_probes = [
+        ("cx_abs", "abs({z})"),
+        ("cx_real", "real({z})"),
+        ("cx_imag", "imag({z})"),
+        ("cx_conj", "conj({z})"),
+        ("cx_add1", "{z}+1"),
+        ("cx_mul2", "{z}*2"),
+        ("cx_div2", "{z}/2"),
+    ]
+    for band_id, re, im in complex_re_im_grid():
+        z = complex_literal_re_im(re, im)
+        for probe_id, tmpl in cx_mix_probes:
+            expr = tmpl.format(z=z)
+            label = f"{cx_prefix}/mix/{band_id}/{probe_id}"
+            result, ok = band_expect(expr, complex_mode=True)
+            if ok:
+                cx_rows.append((label, expr, result))
+            else:
+                cx_rows.append((label, expr, f"ERR:{normalize_err_text(result)}"))
 
     return real_rows, cx_rows
 

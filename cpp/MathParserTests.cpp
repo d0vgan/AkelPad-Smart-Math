@@ -2184,6 +2184,13 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "fact(0)", "1", why);
               }});
+  t.push_back({"regression/factorial stops once double overflows", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "fact(171)", "inf", why)) {
+                  return false;
+                }
+                return expectEval(p, "fact(170000000)", "inf", why);
+              }});
   t.push_back({"regression/comparison operators keep boolean semantics", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "(2<3)+(2>=3)+(5==5)+(5<>4)", "3", why);
@@ -3363,6 +3370,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "factorial(10)", "3628800"} ,
     {ParityBasicCase::Kind::ErrorContains, "fact(2.5)", "fact() expects integer values"} ,
     {ParityBasicCase::Kind::Expected, "factorial(21)", "5.109094217170944e+019"} ,
+    {ParityBasicCase::Kind::Expected, "fact(171)", "inf"} ,
     {ParityBasicCase::Kind::ErrorContains, "rand", "function: rand()"} ,
     {ParityBasicCase::Kind::ErrorContains, "random", "function: random(min, max)"} ,
     {ParityBasicCase::Kind::ErrorContains, "median", "function: median(...)"} ,
@@ -3775,7 +3783,25 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, " ; ", "empty statement"} ,
     {ParityBasicCase::Kind::ErrorContains, "1;;2", "empty statement"} ,
     {ParityBasicCase::Kind::Expected, "sortby((2,1), polar)", "(1,2)"} ,
-    {ParityBasicCase::Kind::Expected, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)"}
+    {ParityBasicCase::Kind::Expected, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)"},
+    {ParityBasicCase::Kind::Expected, "sum(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "prod(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "product(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "avg(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "mean(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "min(1,Inf,2)", "1"},
+    {ParityBasicCase::Kind::Expected, "max(1,Inf,2)", "inf"},
+    {ParityBasicCase::Kind::Expected, "median(1,Inf,2)", "2"},
+    {ParityBasicCase::Kind::Expected, "variance(1,Inf,2)", "nan"},
+    {ParityBasicCase::Kind::Expected, "stddev(1,Inf,2)", "nan"},
+    {ParityBasicCase::Kind::Expected, "sort(1,Inf,2)", "(1,2,inf)"},
+    {ParityBasicCase::Kind::Expected, "sorted(1,Inf,2)", "(1,2,inf)"},
+    {ParityBasicCase::Kind::Expected, "reverse(1,Inf,2)", "(2,inf,1)"},
+    {ParityBasicCase::Kind::Expected, "reversed(1,Inf,2)", "(2,inf,1)"},
+    {ParityBasicCase::Kind::Expected, "unique(1,Inf,2,Inf)", "(1,inf,2)"},
+    {ParityBasicCase::Kind::Expected, "unpack(1,Inf,2)", "(1,inf,2)"},
+    {ParityBasicCase::Kind::Expected, "sum(unpack(1,Inf,2))", "inf"},
+    {ParityBasicCase::Kind::Expected, "sortby((1,Inf,2),abs)", "(1,2,inf)"}
 };
 
 static const ParityBasicCase kParityTimeFromSmokeCases[] = {
@@ -3840,6 +3866,7 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "imag((5,10))", "(0,0)"} ,
     {ParityBasicCase::Kind::Expected, "cart((5,0))", "5"} ,
     {ParityBasicCase::Kind::ErrorContains, "cart((5,1))", "incompatible operands"} ,
+#include "../tools/smoke_parity_append_generated.cpp.inc"
 };
 
 std::vector<TestCase> buildParityBasicFromSmokeCases() {
@@ -4023,6 +4050,77 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"time-opt: sum/avg/mean/min/max on duration values (parity with Basic timeAggOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"sum(0:30, 1:00)", "01:30"},
+                     {"avg(0:30, 1:30)", "01:00"},
+                     {"mean(0:20, 1:00)", "00:40"},
+                     {"min(1:30, 0:45)", "00:45"},
+                     {"max(1:30, 0:45)", "01:30"},
+                     {"sum((0:15, 0:15, 0:30))", "01:00"},
+                     {"reverse(0:30, Inf, 1:00)", "(01:00,inf,00:30)"},
+                     {"unpack(0:30, Inf)", "(00:30,inf)"},
+                     {"unique(0:30, Inf, 0:30)", "(00:30,inf)"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (p.getResult() != row.expect) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"time-opt: aggregates with Inf reject or mix (parity with Basic timeAggErr/timeAggOk Inf)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportTimeValues(true);
+                 static const struct {
+                   const char* expr;
+                   const char* errSubstr;
+                 } kErrRows[] = {
+                     {"sum(0:30, Inf, 1:00)", "time value"},
+                     {"avg(0:30, Inf, 1:30)", "time value"},
+                     {"mean(0:20, Inf, 1:00)", "time value"},
+                     {"min(0:45, Inf, 1:30)", "time value"},
+                     {"max(0:45, Inf, 1:30)", "time value"},
+                     {"median(0:30, Inf, 1:00)", "time value"},
+                     {"prod(0:30, Inf, 1:00)", "incompatible operands"},
+                     {"variance(0:30, Inf, 1:00)", "incompatible operands"},
+                     {"stddev(0:30, Inf, 1:00)", "incompatible operands"},
+                     {"sort(0:30, Inf, 1:00)", "time value"},
+                     {"sort(0:30, -Inf, 1:00)", "time value"},
+                     {"sort(0:30, NaN, 1:00)", "time value"},
+                 };
+                 for (const auto& row : kErrRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (p.getError().empty()) {
+                     why = std::string(row.expr) + " expected error, got " + p.getResult();
+                     return false;
+                   }
+                   std::string el = p.getError();
+                   std::transform(el.begin(), el.end(), el.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   std::string want = row.errSubstr;
+                   std::transform(want.begin(), want.end(), want.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                   if (el.find(want) == std::string::npos) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   return t;
 }
 
@@ -4128,6 +4226,14 @@ static const NegBandRow kPosBandRealRows[] = {
 
 static const NegBandRow kPosBandComplexRows[] = {
 #include "../tools/pos_band_cases_generated_cx.cpp.inc"
+};
+
+static const NegBandRow kFloatMagnitudeRows[] = {
+#include "../tools/float_magnitude_cases_generated.cpp.inc"
+};
+
+static const NegBandRow kComplexCoverageRows[] = {
+#include "../tools/complex_coverage_generated.cpp.inc"
 };
 
 static bool runNegBandRowBatch(MathParser& p, const NegBandRow* rows, std::size_t count, std::string& why) {
@@ -4256,6 +4362,17 @@ std::vector<TestCase> buildNegativeArgumentMagnitudeBandCases() {
                  p.setSupportComplexNumbers(true);
                  const std::size_t count = sizeof(kNegBandComplexRows) / sizeof(kNegBandComplexRows[0]);
                  return runNegBandRowBatch(p, kNegBandComplexRows, count, why);
+               }});
+  return t;
+}
+
+std::vector<TestCase> buildFloatMagnitudeLiteralCases() {
+  std::vector<TestCase> t;
+  t.push_back({"float-magnitude/literals grid (Python reference)",
+               [](std::string& why) {
+                 MathParser p;
+                 const std::size_t count = sizeof(kFloatMagnitudeRows) / sizeof(kFloatMagnitudeRows[0]);
+                 return runNegBandRowBatch(p, kFloatMagnitudeRows, count, why);
                }});
   return t;
 }
@@ -4503,6 +4620,9 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      "1+2i >= 1+2i",
                      "(1, 2+1i) < (1, 3)",
                      "1+2i == 1s",
+                    "1+2i + 1s",
+                    "1+2i - 1s",
+                    "1+2i*1s",
                      "1+2i <> 0:01",
                  };
                  for (const char* expr : kErr) {
@@ -4706,6 +4826,26 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"unpack((1+2i, 3))", "(1+2i,3)"},
                      {"sum(unpack((1+2i, 2+2i)))", "3+4i"},
                      {"f(x,y)=x*y; f(unpack((1+i, 2)))", "2+2i"},
+                     {"sum(1i, 2i)", "3i"},
+                     {"prod(2+i, 2-i)", "5"},
+                     {"product(1+i, 1+i)", "2i"},
+                     {"mean(1+2i, 3+4i, 5+6i)", "3+4i"},
+                     {"avg(0, 2i)", "i"},
+                     {"sum(2+i, -2+i)", "2i"},
+                     {"sum(1, Inf+2i, 3)", "inf+2i"},
+                     {"prod(1, Inf+2i, 3)", "inf+6i"},
+                     {"prod(5, Inf+2i, 3)", "inf+30i"},
+                     {"avg(1, Inf+2i, 3)", "inf+0.6666666666666666i"},
+                     {"reverse(1, Inf+2i, 3)", "(3,inf+2i,1)"},
+                     {"unique(1, Inf+2i, 3)", "(1,inf+2i,3)"},
+                     {"unpack(Inf+2i, 3)", "(inf+2i,3)"},
+                     {"sum(1, 2+Inf*i, 3)", "6+inf*i"},
+                     {"prod(1, 2+Inf*i, 3)", "6+inf*i"},
+                     {"prod(5, 2+Inf*i, 3)", "30+inf*i"},
+                     {"avg(1, 2+Inf*i, 3)", "2+inf*i"},
+                     {"reverse(1, 2+Inf*i, 3)", "(3,2+inf*i,1)"},
+                     {"unique(1, 2+Inf*i, 3)", "(1,2+inf*i,3)"},
+                     {"unpack(2+Inf*i, 3)", "(2+inf*i,3)"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);
@@ -4813,6 +4953,12 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      "median(1+2i, 5)",
                      "variance(1+2i, 2)",
                      "stddev((1+2i, 2))",
+                     "min(1, Inf+2i, 3)",
+                     "max(1, 2+Inf*i, 3)",
+                     "sort(Inf+2i, 1+2i)",
+                     "median(Inf+2i, 1)",
+                     "variance(2+Inf*i, 1)",
+                     "stddev((Inf+2i, 1))",
                  };
                  for (const char* expr : kExprs) {
                    p.parseAndEvaluate(expr);
@@ -5025,6 +5171,13 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: coverage extension (Python reference, C3/C4/C5/lexer)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 const std::size_t count = sizeof(kComplexCoverageRows) / sizeof(kComplexCoverageRows[0]);
+                 return runNegBandRowBatch(p, kComplexCoverageRows, count, why);
+               }});
   return t;
 }
 
@@ -5101,6 +5254,7 @@ int main(int argc, char** argv) {
   const auto operatorPrecedenceDoc = buildOperatorPrecedenceDocCases();
   const auto negativeArgumentMagnitudeBand = buildNegativeArgumentMagnitudeBandCases();
   const auto positiveArgumentMagnitudeBand = buildPositiveArgumentMagnitudeBandCases();
+  const auto floatMagnitudeLiteral = buildFloatMagnitudeLiteralCases();
   const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
   const auto lambdaFunctionsSupportOption = buildLambdaFunctionsSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
@@ -5116,6 +5270,7 @@ int main(int argc, char** argv) {
   runSuite("Operator precedence (USAGE_AND_SYNTAX.md)", operatorPrecedenceDoc, s);
   runSuite("Negative argument magnitude bands", negativeArgumentMagnitudeBand, s);
   runSuite("Positive argument magnitude bands", positiveArgumentMagnitudeBand, s);
+  runSuite("Float magnitude literals", floatMagnitudeLiteral, s);
   runSuite("Time value support (parser option)", timeValuesSupportOption, s);
   runSuite("Lambda function support (parser option)", lambdaFunctionsSupportOption, s);
   runSuite("Sortby/Ratio", sortbyRatio, s);

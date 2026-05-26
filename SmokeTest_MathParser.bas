@@ -1,5 +1,9 @@
 #include once "Inc\MathParser.bi"
 #include "tools\neg_band_cases_generated.bas"
+#include "tools\float_magnitude_cases_generated.bas"
+#include "tools\naninf_mirror_generated.bas"
+#include "tools\complex_coverage_generated.bas"
+#include "tools\smoke_parity_append_generated.bas"
 
 type SmokeCase
   expr as String
@@ -181,6 +185,10 @@ private function SplitComplexText(byref s as String, byref rePart as String, byr
   if len(rePart) = 0 then rePart = "0"
   imPart = trim(mid(t, splitAt))
   if left(imPart, 1) = "+" then imPart = mid(imPart, 2)
+  if len(imPart) > 0 then
+    dim imLast as String = right(imPart, 1)
+    if (imLast = "i") orelse (imLast = "I") then imPart = left(imPart, len(imPart) - 1)
+  end if
   return TRUE
 end function
 
@@ -1066,15 +1074,18 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next cmi
 
-  dim cmpErrExpr(1 to 5) as String
+  dim cmpErrExpr(1 to 8) as String
   cmpErrExpr(1) = "1+2i > 0"
   cmpErrExpr(2) = "1+2i >= 1+2i"
   cmpErrExpr(3) = "(1, 2+1i) < (1, 3)"
   cmpErrExpr(4) = "1+2i = 1s"
   cmpErrExpr(5) = "1+2i <> 0:01"
+  cmpErrExpr(6) = "1+2i + 1s"
+  cmpErrExpr(7) = "1+2i - 1s"
+  cmpErrExpr(8) = "1+2i * 1s"
 
   dim cei as Integer
-  for cei = 1 to 5
+  for cei = 1 to 8
     if Parser_TryEvaluateEx(cmpErrExpr(cei), r, rt, ia) then
       print "[complex-opt] FAIL: expected error for """ & cmpErrExpr(cei) & """ but got """ & rt & """"
       subFail += 1
@@ -1139,8 +1150,8 @@ private sub RunComplexNumberSupportOptionTests()
   next xi
 
   ' Aggregation/array utilities with complex operands (allowed vs rejected builtins).
-  dim cxAggOk(1 to 12) as String
-  dim cxAggExpect(1 to 12) as String
+  dim cxAggOk(1 to 32) as String
+  dim cxAggExpect(1 to 32) as String
   cxAggOk(1) = "sum(1+2i, 3)": cxAggExpect(1) = "4+2i"
   cxAggOk(2) = "sum((1+2i, 3+4i))": cxAggExpect(2) = "4+6i"
   cxAggOk(3) = "prod(1+i, 2)": cxAggExpect(3) = "2+2i"
@@ -1153,9 +1164,29 @@ private sub RunComplexNumberSupportOptionTests()
   cxAggOk(10) = "unpack((1+2i, 3))": cxAggExpect(10) = "(1+2i, 3)"
   cxAggOk(11) = "sum(unpack((1+2i, 2+2i)))": cxAggExpect(11) = "3+4i"
   cxAggOk(12) = "f(x,y)=x*y; f(unpack((1+i, 2)))": cxAggExpect(12) = "2+2i"
+  cxAggOk(13) = "sum(1i, 2i)": cxAggExpect(13) = "3i"
+  cxAggOk(14) = "prod(2+i, 2-i)": cxAggExpect(14) = "5"
+  cxAggOk(15) = "product(1+i, 1+i)": cxAggExpect(15) = "2i"
+  cxAggOk(16) = "mean(1+2i, 3+4i, 5+6i)": cxAggExpect(16) = "3+4i"
+  cxAggOk(17) = "avg(0, 2i)": cxAggExpect(17) = "i"
+  cxAggOk(18) = "sum(2+i, -2+i)": cxAggExpect(18) = "2i"
+  cxAggOk(19) = "sum(1, Inf+2i, 3)": cxAggExpect(19) = "inf+2i"
+  cxAggOk(20) = "prod(1, Inf+2i, 3)": cxAggExpect(20) = "inf+6i"
+  cxAggOk(21) = "avg(1, Inf+2i, 3)": cxAggExpect(21) = "inf+0.6666666666666666i"
+  cxAggOk(22) = "reverse(1, Inf+2i, 3)": cxAggExpect(22) = "(3, inf+2i, 1)"
+  cxAggOk(23) = "unique(1, Inf+2i, 3)": cxAggExpect(23) = "(1, inf+2i, 3)"
+  cxAggOk(24) = "unpack(Inf+2i, 3)": cxAggExpect(24) = "(inf+2i, 3)"
+  cxAggOk(25) = "sum(1, 2+Inf*i, 3)": cxAggExpect(25) = "6+inf*i"
+  cxAggOk(26) = "prod(1, 2+Inf*i, 3)": cxAggExpect(26) = "6+inf*i"
+  cxAggOk(27) = "avg(1, 2+Inf*i, 3)": cxAggExpect(27) = "2+inf*i"
+  cxAggOk(28) = "reverse(1, 2+Inf*i, 3)": cxAggExpect(28) = "(3, 2+inf*i, 1)"
+  cxAggOk(29) = "unique(1, 2+Inf*i, 3)": cxAggExpect(29) = "(1, 2+inf*i, 3)"
+  cxAggOk(30) = "unpack(2+Inf*i, 3)": cxAggExpect(30) = "(2+inf*i, 3)"
+  cxAggOk(31) = "prod(5, Inf+2i, 3)": cxAggExpect(31) = "inf+30i"
+  cxAggOk(32) = "prod(5, 2+Inf*i, 3)": cxAggExpect(32) = "30+inf*i"
 
   dim agi as Integer
-  for agi = 1 to 12
+  for agi = 1 to 32
     if Parser_TryEvaluateEx(cxAggOk(agi), r, rt, ia) = FALSE orelse rt <> cxAggExpect(agi) then
       print "[complex-opt] FAIL: """ & cxAggOk(agi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -1165,16 +1196,22 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next agi
 
-  dim cxAggErr(1 to 6) as String
+  dim cxAggErr(1 to 12) as String
   cxAggErr(1) = "min(1+2i, 3)"
   cxAggErr(2) = "max((1+2i, 2))"
   cxAggErr(3) = "sort(3+4i, 1+2i)"
   cxAggErr(4) = "median(1+2i, 5)"
   cxAggErr(5) = "variance(1+2i, 2)"
   cxAggErr(6) = "stddev((1+2i, 2))"
+  cxAggErr(7) = "min(1, Inf+2i, 3)"
+  cxAggErr(8) = "max(1, 2+Inf*i, 3)"
+  cxAggErr(9) = "sort(Inf+2i, 1+2i)"
+  cxAggErr(10) = "median(Inf+2i, 1)"
+  cxAggErr(11) = "variance(2+Inf*i, 1)"
+  cxAggErr(12) = "stddev((Inf+2i, 1))"
 
   dim aei as Integer
-  for aei = 1 to 6
+  for aei = 1 to 12
     if Parser_TryEvaluateEx(cxAggErr(aei), r, rt, ia) then
       print "[complex-opt] FAIL: expected error for """ & cxAggErr(aei) & """ but got """ & rt & """"
       subFail += 1
@@ -1372,6 +1409,28 @@ private sub RunComplexNumberSupportOptionTests()
   subFail += posCxFail
   print "Positive-argument band (complex) sub-tests: passed " & str(posCxPass) & ", failed " & str(posCxFail)
 
+  dim cxi as Integer
+  for cxi = 1 to CX_COVERAGE_COUNT
+    if cxCovIsErr(cxi) then
+      if Parser_TryEvaluateEx(cxCovExpr(cxi), r, rt, ia) then
+        print "[complex-cov] FAIL: "; cxCovLabel(cxi); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(cxCovErr(cxi))) = 0 then
+        print "[complex-cov] FAIL: "; cxCovLabel(cxi); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(cxCovExpr(cxi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxCovExpect(cxi)) = FALSE then
+        print "[complex-cov] FAIL: "; cxCovLabel(cxi); " "; cxCovExpr(cxi); " -> """; rt; """ want """; cxCovExpect(cxi); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next cxi
+
   Parser_SetSupportComplexNumbers(FALSE)
   if Parser_GetSupportComplexNumbers() <> FALSE then
     print "[complex-opt] FAIL: expected support flag OFF after disable"
@@ -1428,6 +1487,74 @@ private sub RunComplexNumberSupportOptionTests()
   g_passed += subPass
   g_failed += subFail
   print "Complex-option sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunFloatMagnitudeLiteralTests()
+  print "=== Float magnitude literals (Python reference) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to FLOAT_MAG_COUNT
+    if floatMagIsErr(i) then
+      if Parser_TryEvaluateEx(floatMagExpr(i), r, rt, ia) then
+        print "[floatmag] FAIL: "; floatMagLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(floatMagErr(i))) = 0 then
+        print "[floatmag] FAIL: "; floatMagLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(floatMagExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, floatMagExpect(i)) = FALSE then
+        print "[floatmag] FAIL: "; floatMagLabel(i); " "; floatMagExpr(i); " -> """; rt; """ want """; floatMagExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+  g_passed += subPass
+  g_failed += subFail
+  print "Float-magnitude sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunNanInfTests()
+  print "=== NaN/Inf (parity with C++ buildNanInfCases, literal injection) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+  dim i as Integer
+  for i = 1 to NANINF_MIRROR_COUNT
+    if naninfIsErr(i) then
+      if Parser_TryEvaluateEx(naninfExpr(i), r, rt, ia) then
+        print "[naninf] FAIL: "; naninfLabel(i); " expected error, got """; rt; """"
+        subFail += 1
+      elseif instr(lcase(Parser_GetLastError()), lcase(naninfErr(i))) = 0 then
+        print "[naninf] FAIL: "; naninfLabel(i); " err="; Parser_GetLastError()
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    else
+      if Parser_TryEvaluateEx(naninfExpr(i), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, naninfExpect(i)) = FALSE then
+        print "[naninf] FAIL: "; naninfLabel(i); " "; naninfExpr(i); " -> """; rt; """ want """; naninfExpect(i); """"
+        subFail += 1
+      else
+        subPass += 1
+      end if
+    end if
+  next i
+  g_passed += subPass
+  g_failed += subFail
+  print "NaN/Inf sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -1616,6 +1743,58 @@ private sub RunTimeValuesSupportOptionTests()
     end if
   end if
 
+  dim timeAggOk(1 to 9) as String
+  dim timeAggExpect(1 to 9) as String
+  timeAggOk(1) = "sum(0:30, 1:00)": timeAggExpect(1) = "01:30"
+  timeAggOk(2) = "avg(0:30, 1:30)": timeAggExpect(2) = "01:00"
+  timeAggOk(3) = "mean(0:20, 1:00)": timeAggExpect(3) = "00:40"
+  timeAggOk(4) = "min(1:30, 0:45)": timeAggExpect(4) = "00:45"
+  timeAggOk(5) = "max(1:30, 0:45)": timeAggExpect(5) = "01:30"
+  timeAggOk(6) = "sum((0:15, 0:15, 0:30))": timeAggExpect(6) = "01:00"
+  timeAggOk(7) = "reverse(0:30, Inf, 1:00)": timeAggExpect(7) = "(01:00, inf, 00:30)"
+  timeAggOk(8) = "unpack(0:30, Inf)": timeAggExpect(8) = "(00:30, inf)"
+  timeAggOk(9) = "unique(0:30, Inf, 0:30)": timeAggExpect(9) = "(00:30, inf)"
+  dim tai as Integer
+  for tai = 1 to 9
+    if Parser_TryEvaluateEx(timeAggOk(tai), r, rt, ia) = FALSE orelse rt <> timeAggExpect(tai) then
+      print "[time-opt] FAIL: """ & timeAggOk(tai) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[time-opt] PASS: """ & timeAggOk(tai) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next tai
+
+  dim timeAggErr(1 to 12) as String
+  timeAggErr(1) = "sum(0:30, Inf, 1:00)"
+  timeAggErr(2) = "avg(0:30, Inf, 1:30)"
+  timeAggErr(3) = "mean(0:20, Inf, 1:00)"
+  timeAggErr(4) = "min(0:45, Inf, 1:30)"
+  timeAggErr(5) = "max(0:45, Inf, 1:30)"
+  timeAggErr(6) = "median(0:30, Inf, 1:00)"
+  timeAggErr(7) = "prod(0:30, Inf, 1:00)"
+  timeAggErr(8) = "variance(0:30, Inf, 1:00)"
+  timeAggErr(9) = "stddev(0:30, Inf, 1:00)"
+  timeAggErr(10) = "sort(0:30, Inf, 1:00)"
+  timeAggErr(11) = "sort(0:30, -Inf, 1:00)"
+  timeAggErr(12) = "sort(0:30, NaN, 1:00)"
+  dim tei as Integer
+  for tei = 1 to 12
+    if Parser_TryEvaluateEx(timeAggErr(tei), r, rt, ia) then
+      print "[time-opt] FAIL: expected error for """ & timeAggErr(tei) & """ but got """ & rt & """"
+      subFail += 1
+    else
+      dim errTimeAgg as String = lcase(Parser_GetLastError())
+      if instr(errTimeAgg, "expects a time value") > 0 orelse instr(errTimeAgg, "incompatible operands") > 0 then
+        print "[time-opt] PASS: """ & timeAggErr(tei) & """ -> " & Parser_GetLastError()
+        subPass += 1
+      else
+        print "[time-opt] FAIL: """ & timeAggErr(tei) & """ expected time/incompatible error, got """ & Parser_GetLastError() & """"
+        subFail += 1
+      end if
+    end if
+  next tei
+
   g_passed += subPass
   g_failed += subFail
   print "Time-option sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
@@ -1712,7 +1891,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1169) as SmokeCase
+  dim tests(1 to 1208) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -2405,7 +2584,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(643).expr = "x=0.0/0.0; abs(x)": tests(643).expected = "nan"
   tests(644).expr = "x=1.0/0.0; sign(x)": tests(644).expected = "1"
   tests(645).expr = "x=-1.0/0.0; sign(x)": tests(645).expected = "-1"
-  tests(646).expr = "x=0.0/0.0; sign(x)": tests(646).expected = "1"
+  tests(646).expr = "x=0.0/0.0; sign(x)": tests(646).expected = "0"
   tests(647).expr = "x=0.0/0.0; ln(x)": tests(647).expected = "nan"
   tests(648).expr = "x=1.0/0.0; ln(x)": tests(648).expected = "inf"
   tests(649).expr = "z=0.0; ln(z)": tests(649).expected = "-inf"
@@ -2938,6 +3117,42 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1167).expr = "pow(pow(-3,45), 1/45)": tests(1167).expected = "-3" ' [pow-real] odd unit root (regression: was complex)
   tests(1168).expr = "cos((pi/2, pi, -pi/2, -pi, 2*pi, 0, 77777*pi/2, -77777*pi/2))": tests(1168).expected = "(0, -1, 0, -1, 1, 1, 0, 0)" ' [trig-array] half-pi multiples incl. large N
   tests(1169).expr = "tan((pi, pi/2, -pi, 2*pi, -pi/2, 0, 77777*pi/2, -77777*pi/2))": tests(1169).expected = "(0, inf, 0, 0, -inf, 0, inf, -inf)" ' [trig-array] poles at odd half-pi
+  tests(1170).expr = "fact(171)": tests(1170).expected = "inf" ' [fact-overflow] double factorial overflows
+  tests(1171).expr = "fact(170000000)": tests(1171).expected = "inf" ' [fact-overflow] stop loop once non-finite
+  tests(1172).expr = "avg(0:30, 1:30)": tests(1172).expected = "01:00" ' [time] aggregate avg
+  tests(1173).expr = "mean(0:20, 1:00)": tests(1173).expected = "00:40" ' [time] aggregate mean
+  tests(1174).expr = "min(0:45, 1:30)": tests(1174).expected = "00:45" ' [time] aggregate min
+  tests(1175).expr = "max(0:45, 1:30)": tests(1175).expected = "01:30" ' [time] aggregate max
+  tests(1176).expr = "sum((0:15, 0:15, 0:30))": tests(1176).expected = "01:00" ' [time] aggregate array
+  tests(1177).expr = "sum(1, Inf, 2)": tests(1177).expected = "inf" ' [agg-inf] real sum
+  tests(1178).expr = "prod(1, Inf, 2)": tests(1178).expected = "inf" ' [agg-inf] real product
+  tests(1179).expr = "product(1, Inf, 2)": tests(1179).expected = "inf" ' [agg-inf] real product alias
+  tests(1180).expr = "avg(1, Inf, 2)": tests(1180).expected = "inf" ' [agg-inf] real average
+  tests(1181).expr = "mean(1, Inf, 2)": tests(1181).expected = "inf" ' [agg-inf] real mean
+  tests(1182).expr = "min(1, Inf, 2)": tests(1182).expected = "1" ' [agg-inf] real min
+  tests(1183).expr = "max(1, Inf, 2)": tests(1183).expected = "inf" ' [agg-inf] real max
+  tests(1184).expr = "median(1, Inf, 2)": tests(1184).expected = "2" ' [agg-inf] real median
+  tests(1185).expr = "variance(1, Inf, 2)": tests(1185).expected = "nan" ' [agg-inf] real variance
+  tests(1186).expr = "stddev(1, Inf, 2)": tests(1186).expected = "nan" ' [agg-inf] real stddev
+  tests(1187).expr = "sort(1, Inf, 2)": tests(1187).expected = "(1, 2, inf)" ' [agg-inf] real sort
+  tests(1188).expr = "sorted(1, Inf, 2)": tests(1188).expected = "(1, 2, inf)" ' [agg-inf] real sorted alias
+  tests(1189).expr = "reverse(1, Inf, 2)": tests(1189).expected = "(2, inf, 1)" ' [agg-inf] real reverse
+  tests(1190).expr = "reversed(1, Inf, 2)": tests(1190).expected = "(2, inf, 1)" ' [agg-inf] real reversed alias
+  tests(1191).expr = "unique(1, Inf, 2, Inf)": tests(1191).expected = "(1, inf, 2)" ' [agg-inf] real unique
+  tests(1192).expr = "unpack(1, Inf, 2)": tests(1192).expected = "(1, inf, 2)" ' [agg-inf] real unpack
+  tests(1193).expr = "sum(unpack(1, Inf, 2))": tests(1193).expected = "inf" ' [agg-inf] unpack then sum
+  tests(1194).expr = "sortby((1, Inf, 2), abs)": tests(1194).expected = "(1, 2, inf)" ' [agg-inf] sortby with Inf
+
+  dim smokeAi as Integer
+  for smokeAi = 1 to SMOKE_APPEND_COUNT
+    dim ti as Integer = 1194 + smokeAi
+    tests(ti).expr = smokeAppendExpr(smokeAi)
+    if smokeAppendIsErr(smokeAi) then
+      tests(ti).expectedErrContains = smokeAppendErr(smokeAi)
+    else
+      tests(ti).expected = smokeAppendExpected(smokeAi)
+    end if
+  next smokeAi
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -2993,6 +3208,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunNegativeArgumentMagnitudeBandTests()
 
   RunPositiveArgumentMagnitudeBandTests()
+
+  RunFloatMagnitudeLiteralTests()
+
+  RunNanInfTests()
 
   RunBuiltinArityTableTests()
 

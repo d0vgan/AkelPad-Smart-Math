@@ -1,6 +1,6 @@
 ---
 name: add-mathparser-function
-description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add smoke tests, run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, update USAGE_AND_SYNTAX documentation with consistent style, ASCII-friendly typography, and logic, work on the parser-wide complex-number support flag (default off; gated complex behavior and isolated complex tests per skill section), or mirror operator/function logic between real-only and complex-enabled paths (bidirectional real/complex parity per skill section).
+description: Add a new builtin math function or builtin constant to AkelPad Smart Math end-to-end. Use when the user asks to add/implement/register a function or constant in MathParser, extend function syntax hints, add or review smoke tests (expected values from Python/docs, not current parser output; inverse-operation check when Python principal branch is wrong), run formatter and clipboard copy-normalization regression tests after Basic source edits, update reserved-name checks for constants, update USAGE_AND_SYNTAX documentation with consistent style, ASCII-friendly typography, and logic, work on the parser-wide complex-number support flag (default off; gated complex behavior and isolated complex tests per skill section), or mirror operator/function logic between real-only and complex-enabled paths (bidirectional real/complex parity per skill section).
 ---
 
 # Add MathParser Function or Builtin Constant
@@ -57,6 +57,7 @@ Rules:
 - **Tests (strict separation):** do not mix complex-domain expectations into the main `SmokeCase` table in `SmokeTest_MathParser.bas`. Add complex-related tests only inside **`RunComplexNumberSupportOptionTests()`** (or a similarly dedicated sub), and **start that routine by enabling** `Parser_SetSupportComplexNumbers(TRUE)` before any complex-oriented assertions. On the C++ side, add or extend the dedicated **`buildComplexNumberSupportOptionCases()`** / `runSuite("Complex number support (parser option)", ...)` block; tests that require complex mode must call `setSupportComplexNumbers(true)` at the beginning of the relevant lambda (or shared setup inside that suite). Restore or assert the flag off at the end of the Basic routine when needed so other suites stay isolated.
 - **Parity:** any change to how the flag affects parsing or evaluation must be mirrored Basic <-> C++ with tests on both sides in the dedicated complex test areas above.
 - **Exact numeric metadata (int64 / uint64):** when complex support is on, prefer preserving the same style of exact integer metadata for **both** the real and imaginary Cartesian parts as for purely real scalars (where the Basic/C++ parsers already track `exactInt` / `exactUInt64` and related flags), and fall back to floating-point only when a component is not exactly representable as a 64-bit integer. Keep Basic and C++ consistent when adding or adjusting complex scalar construction, binary ops, and display paths.
+- **Tiny-nonzero preservation (no accidental snap-to-0):** for complex component builtins (`real`, `imag`, `conj`, and any Cartesian component extraction), do not silently round/snap very small nonzero `double` components into integer `0` in a way that changes the mathematical value. If the component is nonzero in Python/reference (e.g. `imag(1.123e+20+1.123e-20*i)`), test expectations must reflect that nonzero value (typically via scientific notation), not `0`.
 
 ## Real and complex operator/function parity (Required)
 
@@ -267,6 +268,36 @@ Minimum recommended coverage:
 - one array-related case (if arrays supported).
 - one single-argument case (for 1-arg/variadic functions), plus single-arg edge and overflow checks when applicable.
 
+### External reference for expected values (Required)
+
+When **adding** or **reviewing** smoke/parity tests (`SmokeTest_MathParser.bas`, `cpp/MathParserTests.cpp`, generated band tables, coverage-audit batches):
+
+- **Do not** treat the current parser (Basic or C++) as the source of truth for numeric **expected** strings. Running `Parser_TryEvaluateEx` / `MathParser::parseAndEvaluate` and copying the result into `expected` locks in bugs and blocks parity with mathematics.
+- **Do** derive expectations from an **external verified reference**, in priority order:
+  1. `USAGE_AND_SYNTAX.md` (documented examples and intentional semantics),
+  2. **Python** (`math`, `cmath`, `statistics`, and project rules) — prefer `tools/verify_smoke_expected_vs_python.py` when it already translates the expression; otherwise compute in a short script/REPL and record the value,
+  3. IEEE / integer exact rules where the doc is silent (for example `nan==nan` → `0`, int64 overflow promotion).
+- After setting expectations from the reference, run both harnesses. If a test fails, treat it as a **parser or formatter defect** unless the spec intentionally differs (then document in `USAGE_AND_SYNTAX.md` and test the spec).
+- Use `ResultCloseEnough` / `smokeResultCloseEnough` when the reference is floating-point; use exact strings for exact integers, `0`/`1`, and exact `inf`/`nan` families per existing smoke policy.
+
+**When Python (or another tool) gives a “strange” result** — for example a **complex** value where a **real** result is the natural calculator answer — do not blindly copy Python’s principal branch:
+
+- Check whether a **real** value satisfies the expression and matches project real-only semantics (odd real roots, real `pow`/`sqrt` paths, etc.).
+- Confirm with the **inverse operation** when possible: if `(-5)**3` is `-125`, then `(-125)**(1/3)` should be `-5`, not a complex root, even when `cmath`/`pow` in Python returns a non-real value.
+- Document the chosen branch in a test comment when it diverges from Python’s default library behavior.
+
+**Error expectations:** prefer substrings from `USAGE_AND_SYNTAX.md` or documented error policy; do not copy ad-hoc parser error text without checking the spec.
+
+### Value preservation in tests (Required)
+
+Tests must encode **correct mathematical and structural behavior**, not tolerate implementation bugs.
+
+- **Never** assert a weakened result just because the current parser returns it (for example accepting `inf` when the input was `inf+2i`, dropping a real or imaginary part, or changing any component without a documented semantic rule). This includes **never** seeding `expected` from current parser output — see **External reference for expected values (Required)** above.
+- For aggregates and structure-only builtins (`sum`, `product`, `reverse`, `unique`, `unpack`, `sort`, and aliases), operands must survive unchanged except for the operation itself (order for `reverse`/`sort`, dedup for `unique`, fold for `sum`/`product`, etc.).
+- When `inf` / `-inf` / `nan` appears in an operand, expected strings must still show every non-zero Cartesian part, exact integer metadata when applicable, and time/duration formatting when applicable.
+- If a test fails after tightening expectations, **fix the parser** (Basic and C++ parity) rather than reverting the test, unless the spec intentionally defines different semantics (document that in `USAGE_AND_SYNTAX.md` and test the spec).
+- `nan` is a valid expected result only when IEEE math or documented domain rules require it (for example `variance(1, Inf, 2)`), not when a spurious `0*Inf` or a display shortcut caused it.
+
 ### 5) Build And Run Smoke Tests
 
 - Run Basic smoke-test build/run only when **Basic test source files** were changed.
@@ -450,6 +481,8 @@ Before finishing, verify:
 - No unrelated behavior changes; any C++ artifacts touched live under `cpp` only.
 - **Complex numbers:** if the change touches complex semantics, it is gated by the parser-wide complex support flag; default remains off; tests live in the dedicated complex test function/suite described under **Complex number support (parser-wide option)**.
 - **Real/complex parity:** real-only and complex-enabled paths for the same operator/function share policy and helpers where applicable; intentional divergence is documented and tested on both sides (see **Real and complex operator/function parity (Required)**).
+- **Value preservation:** tests do not lock in silent component loss or incorrect `inf`/`nan` collapse; aggregates and display paths preserve operand structure unless the spec says otherwise (see **Value preservation in tests (Required)**).
+- **External reference:** numeric expectations come from docs/Python/inverse checks, not from copying current parser output (see **External reference for expected values (Required)**).
 
 ## Response Format For Completion
 

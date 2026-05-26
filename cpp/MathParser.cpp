@@ -249,6 +249,9 @@ void complexPowPrincipal(double ar, double ai, double br, double bi, double& out
             const double ni = cr * ai + ci * ar;
             cr = nr;
             ci = ni;
+            if (!std::isfinite(cr) && !std::isfinite(ci)) {
+              break;
+            }
           }
           outRe = cr;
           outIm = ci;
@@ -262,6 +265,9 @@ void complexPowPrincipal(double ar, double ai, double br, double bi, double& out
             const double ni = cr * ai + ci * ar;
             cr = nr;
             ci = ni;
+            if (!std::isfinite(cr) && !std::isfinite(ci)) {
+              break;
+            }
           }
           pr = cr;
           pi = ci;
@@ -307,14 +313,26 @@ void complexDivide(double numR, double numI, double denR, double denI, double& o
 }
 
 void complexMultiply(double ar, double ai, double br, double bi, double& outR, double& outI) {
-  outR = ar * br - ai * bi;
-  outI = ar * bi + ai * br;
-  if (std::isnan(outR) && !std::isnan(outI)) {
-    if (ar == 0.0 && ai != 0.0 && bi == 0.0 && std::isinf(br)) {
-      outR = 0.0;
-    } else if (br == 0.0 && bi != 0.0 && ai == 0.0 && std::isinf(ar)) {
+  if (ai == 0.0 && br == 0.0) {
+    outR = 0.0;
+  } else if (bi == 0.0) {
+    outR = ar * br;
+    if (ar == 0.0 && std::isnan(outR)) {
       outR = 0.0;
     }
+  } else if (ai == 0.0) {
+    outR = ar * br;
+  } else if (br == 0.0) {
+    outR = -ai * bi;
+  } else {
+    outR = ar * br - ai * bi;
+  }
+  if (ai == 0.0) {
+    outI = ar * bi;
+  } else if (bi == 0.0) {
+    outI = ai * br;
+  } else {
+    outI = ar * bi + ai * br;
   }
 }
 
@@ -1074,6 +1092,40 @@ bool tryComputeNcrInt64(long long n, long long r, long long& out) {
   return true;
 }
 
+constexpr long long kFactorialTable21[21] = {
+    1LL,
+    1LL,
+    2LL,
+    6LL,
+    24LL,
+    120LL,
+    720LL,
+    5040LL,
+    40320LL,
+    362880LL,
+    3628800LL,
+    39916800LL,
+    479001600LL,
+    6227020800LL,
+    87178291200LL,
+    1307674368000LL,
+    20922789888000LL,
+    355687428096000LL,
+    6402373705728000LL,
+    121645100408832000LL,
+    2432902008176640000LL};
+
+double factorialScalarFloatFromInt(long long n) {
+  double d = static_cast<double>(kFactorialTable21[20]);
+  for (long long i = 21; i <= n; ++i) {
+    d *= static_cast<double>(i);
+    if (!std::isfinite(d)) {
+      break;
+    }
+  }
+  return d;
+}
+
 bool isMultipleOf(double x, double x_mult)
 {
   if (x_mult == 0.0) {
@@ -1167,6 +1219,11 @@ std::string formatDoubleFast(double v) {
   if (std::isnan(v)) return STR_NAN;
   if (std::isinf(v)) return (v < 0.0) ? STR_NEG_INF : STR_INF;
   if (v == 0.0) return "0";
+  if (std::fabs(v) > 0.0 && std::fabs(v) < 1e-10) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.15e", v);
+    return buf;
+  }
 
   constexpr int kGenDigits = 17;
   constexpr int kSciOutDigits = 16;
@@ -4167,6 +4224,9 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
 }
 
 bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
+  if (std::isnan(sv.scalar) || std::isnan(sv.imag)) {
+    return false;
+  }
   if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactInt64()) {
     return false;
   }
@@ -4265,6 +4325,11 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     }
     long long iv = 0;
     if (nearlyInt(dval, iv)) {
+      // Avoid formatting tiny nonzero values as the integer "0".
+      // (Complex formatting already preserves small nonzero magnitudes.)
+      if (iv == 0LL && dval != 0.0) {
+        return formatDoubleFast(dval);
+      }
       return std::to_string(iv);
     }
     return formatDoubleFast(dval);
@@ -4453,7 +4518,19 @@ void MathParser::scalarClearImaginary(EvalValue::ScalarValue& s) {
 
 void MathParser::scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im) {
   re = s.hasExactInt64() ? static_cast<double>(s.exactInt64) : s.scalar;
-  im = s.hasImagExactInt64() ? static_cast<double>(s.imagExactInt64) : s.imag;
+  if (s.hasImagExactInt64()) {
+    im = static_cast<double>(s.imagExactInt64);
+    if (im == 0.0 && s.imag != 0.0) {
+      im = s.imag;
+    }
+  } else if (s.hasImagExactUInt64()) {
+    im = static_cast<double>(s.imagExactUInt64);
+    if (im == 0.0 && s.imag != 0.0) {
+      im = s.imag;
+    }
+  } else {
+    im = s.imag;
+  }
 }
 
 MathParser::EvalValue MathParser::makeImaginaryUnit() {
@@ -4473,7 +4550,7 @@ MathParser::EvalValue MathParser::makeImaginaryUnit() {
 }
 
 MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double im) {
-  if (std::isnan(re) || std::isnan(im)) {
+  if (std::isnan(re) && std::isnan(im)) {
     return makeScalar(std::numeric_limits<double>::quiet_NaN());
   }
   EvalValue out = makeScalar(re);
@@ -4623,6 +4700,9 @@ bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, 
 
 bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
   if (sv.hasImagExactInt64()) {
+    if (sv.imagExactInt64 == 0 && sv.imag != 0.0) {
+      return false;
+    }
     exactCartesianComponentAssignFromInt64(c, sv.imagExactInt64);
     if (sv.imagExactInt64 < 0 && sv.hasImagExactUInt64()) {
       c.hasUInt = true;
@@ -4631,6 +4711,11 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
     return true;
   }
   if (sv.hasImagExactUInt64()) {
+    // If exact imag metadata is present but equals 0 while the stored float imag is nonzero,
+    // treat it as "not exact" so `imag()` can return the correct float component.
+    if (sv.imagExactUInt64 == 0u && sv.imag != 0.0) {
+      return false;
+    }
     exactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64);
     return true;
   }
@@ -4640,6 +4725,9 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
   }
   long long t = 0;
   if (tryExtractExactInt64FromDoubleStrict(sv.imag, t)) {
+    if (t == 0 && sv.imag != 0.0) {
+      return false;
+    }
     exactCartesianComponentAssignFromInt64(c, t);
     return true;
   }
@@ -5321,6 +5409,102 @@ bool MathParser::rejectBuiltinArgsWithComplexImaginary(
     }
   }
   return false;
+}
+
+bool MathParser::cmpScalarValuesForCompare(
+    EvalContext* ctx,
+    const EvalValue::ScalarValue& sa,
+    const EvalValue::ScalarValue& sb,
+    int& cmpOut,
+    CmpScalarIncompatiblePolicy policy) const {
+  const bool ta = scalarValueIsTime(sa);
+  const bool tb = scalarValueIsTime(sb);
+  const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
+  const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
+  if ((ha || hb) && (ta || tb)) {
+    if (policy == CmpScalarIncompatiblePolicy::SetError && ctx != nullptr) {
+      setIncompatibleOperandsError(*ctx);
+    }
+    cmpOut = (policy == CmpScalarIncompatiblePolicy::SortUniqueReturnOne) ? 1 : 0;
+    return policy == CmpScalarIncompatiblePolicy::SortUniqueReturnOne;
+  }
+  if (ta || tb) {
+    long long ams = 0;
+    long long bms = 0;
+    if (ta) {
+      ams = timeTotalMsFromScalarValue(sa);
+    } else if (!scalarMsForCompare(sa, ams)) {
+      ams = 0;
+    }
+    if (tb) {
+      bms = timeTotalMsFromScalarValue(sb);
+    } else if (!scalarMsForCompare(sb, bms)) {
+      bms = 0;
+    }
+    if (ams < bms) {
+      cmpOut = -1;
+    } else if (ams > bms) {
+      cmpOut = 1;
+    } else {
+      cmpOut = 0;
+    }
+    return true;
+  }
+  if (ha || hb) {
+    double ar = 0.0;
+    double ai = 0.0;
+    double br = 0.0;
+    double bi = 0.0;
+    scalarLoadCartesian(sa, ar, ai);
+    scalarLoadCartesian(sb, br, bi);
+    if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
+      cmpOut = 1;
+      return true;
+    }
+    if (ar < br) {
+      cmpOut = -1;
+    } else if (ar > br) {
+      cmpOut = 1;
+    } else if (ai < bi) {
+      cmpOut = -1;
+    } else if (ai > bi) {
+      cmpOut = 1;
+    } else {
+      cmpOut = 0;
+    }
+    return true;
+  }
+  if (policy == CmpScalarIncompatiblePolicy::SortLess || policy == CmpScalarIncompatiblePolicy::SortGreater) {
+    const bool aNan = std::isnan(sa.scalar);
+    const bool bNan = std::isnan(sb.scalar);
+    if (policy == CmpScalarIncompatiblePolicy::SortLess) {
+      if (aNan) {
+        cmpOut = bNan ? 0 : -1;
+        return true;
+      }
+      if (bNan) {
+        cmpOut = 1;
+        return true;
+      }
+    } else {
+      if (bNan) {
+        cmpOut = aNan ? 0 : 1;
+        return true;
+      }
+      if (aNan) {
+        cmpOut = -1;
+        return true;
+      }
+    }
+  }
+  if (sa.scalar < sb.scalar) {
+    cmpOut = -1;
+  } else if (sa.scalar > sb.scalar) {
+    cmpOut = 1;
+  } else {
+    cmpOut = 0;
+  }
+  return true;
 }
 
 int MathParser::tryApplyGcdLcmScalars(
@@ -8643,13 +8827,18 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         }
         double br = 0.0;
         double bi = 0.0;
+        bool stopComplexProduct = false;
         forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          if (stopComplexProduct) {
+            return;
+          }
           scalarLoadCartesian(s, br, bi);
           if (id == BuiltinFunctionId::Product) {
-            const double nr = ar * br - ai * bi;
-            const double ni = ar * bi + ai * br;
-            ar = nr;
-            ai = ni;
+            complexMultiply(ar, ai, br, bi, ar, ai);
+            // allow `Inf + N*i` or `N + Inf*i`
+            if (!std::isfinite(ar) && !std::isfinite(ai)) {
+              stopComplexProduct = true;
+            }
           } else {
             ar += br;
             ai += bi;
@@ -8677,12 +8866,6 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     if (anyTimeAgg) {
       long long accMs = 0;
       bool accInit = false;
-      int aggMode = 1;
-      if (id == BuiltinFunctionId::Min) {
-        aggMode = 3;
-      } else if (id == BuiltinFunctionId::Max) {
-        aggMode = 4;
-      }
       std::size_t itemCount = 0;
       bool okAgg = true;
       forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
@@ -8695,7 +8878,17 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
           return;
         }
         const long long curMs = timeTotalMsFromScalarValue(s);
-        if (aggMode == 1) {
+        if (id == BuiltinFunctionId::Min) {
+          if (!accInit || curMs < accMs) {
+            accMs = curMs;
+          }
+          accInit = true;
+        } else if (id == BuiltinFunctionId::Max) {
+          if (!accInit || curMs > accMs) {
+            accMs = curMs;
+          }
+          accInit = true;
+        } else {
           long long nacc = 0;
           if (!tryAddTimeMsChecked(accMs, curMs, nacc)) {
             setIncompatibleOperandsError(ctx);
@@ -8703,16 +8896,6 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
             return;
           }
           accMs = nacc;
-        } else if (aggMode == 3) {
-          if (!accInit || curMs < accMs) {
-            accMs = curMs;
-          }
-          accInit = true;
-        } else {
-          if (!accInit || curMs > accMs) {
-            accMs = curMs;
-          }
-          accInit = true;
         }
         itemCount += 1;
       });
@@ -8856,7 +9039,16 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     std::size_t n = 0;
     if (id == BuiltinFunctionId::Product) {
       acc = 1.0;
-      n = forEachArgScalar([&](double v) { acc *= v; });
+      bool stopProduct = false;
+      n = forEachArgScalar([&](double v) {
+        if (stopProduct) {
+          return;
+        }
+        acc *= v;
+        if (!std::isfinite(acc)) {
+          stopProduct = true;
+        }
+      });
     } else if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
       acc = 0.0;
       n = forEachArgScalar([&](double v) { acc += v; });
@@ -9733,6 +9925,22 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+  if (id == BuiltinFunctionId::Sort && supportTimeValues_ &&
+      std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); })) {
+    bool okTimeSort = true;
+    forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& s) {
+      if (!okTimeSort) {
+        return;
+      }
+      if (!scalarValueIsTime(s)) {
+        setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+        okTimeSort = false;
+      }
+    });
+    if (!okTimeSort) {
+      return makeScalar(0);
+    }
+  }
   const auto copyArrayScalars = [&](const EvalValue& a, std::vector<EvalValue>& out) {
     out.clear();
     out.reserve(a.arr.size());
@@ -9784,19 +9992,6 @@ MathParser::EvalValue MathParser::builtinSortFamily(
   std::vector<EvalValue> flat;
   if (!flattenArgsToScalars(args, flat)) {
     setAtLeastOneArgError(ctx, fnName);
-    return makeScalar(0);
-  }
-  bool seenTimeSort = false;
-  bool seenNonTimeSort = false;
-  for (const auto& ev : flat) {
-    if (scalarValueIsTime(ev.scalarValue)) {
-      seenTimeSort = true;
-    } else {
-      seenNonTimeSort = true;
-    }
-  }
-  if (seenTimeSort && seenNonTimeSort) {
-    setValidationError(ctx, STR_TIME_ARRAY_MIXED);
     return makeScalar(0);
   }
   if (id == BuiltinFunctionId::Sort) {
@@ -10005,41 +10200,15 @@ MathParser::EvalValue MathParser::builtinFactorial(
   if (supportComplexNumbers_) {
     return builtinUnaryMath(ctx, fnName, BuiltinFunctionId::Fact, args);
   }
-  static constexpr long long kFactorialTable[21] = {
-      1LL,
-      1LL,
-      2LL,
-      6LL,
-      24LL,
-      120LL,
-      720LL,
-      5040LL,
-      40320LL,
-      362880LL,
-      3628800LL,
-      39916800LL,
-      479001600LL,
-      6227020800LL,
-      87178291200LL,
-      1307674368000LL,
-      20922789888000LL,
-      355687428096000LL,
-      6402373705728000LL,
-      121645100408832000LL,
-      2432902008176640000LL};
   long long n = 0;
   if (args[0].kind != ValueKind::Scalar || !nearlyInt(args[0].scalarValue.scalar, n) || n < 0) {
     setNonNegativeIntegerError(ctx, fnName);
     return makeScalar(0);
   }
   if (n <= 20) {
-    return makeScalarInt(kFactorialTable[n]);
+    return makeScalarInt(kFactorialTable21[n]);
   }
-  double d = static_cast<double>(kFactorialTable[20]);
-  for (long long i = 21; i <= n; ++i) {
-    d *= static_cast<double>(i);
-  }
-  return makeScalar(d);
+  return makeScalar(factorialScalarFloatFromInt(n));
 }
 
 MathParser::EvalValue MathParser::builtinDegRad(
@@ -10198,13 +10367,50 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
       return true;
     }
     case BuiltinFunctionId::Imag: {
-      ExactCartesianComponent cIm{};
-      if (tryExtractExactImagComponent(sv, cIm)) {
-        setScalarFromExactCartesianComponent(out, cIm);
-      } else {
-        out = makeScalarMaybeExact(ai);
+      // Keep behavior consistent with complex formatting:
+      // if the complex value is stored in a "render rational" imag form,
+      // `imag(z)` must return that component (not a snapped/rounded float 0).
+      if (sv.hasImagRenderRational()) {
+        const long long num = sv.imagExactInt64;
+        const std::uint64_t den = sv.imagExactUInt64;
+        if (den == 0u) {
+          out = makeScalar(0.0);
+          scalarClearImaginary(out.scalarValue);
+          return true;
+        }
+        if (den == 1u) {
+          ExactCartesianComponent cIm{};
+          if (num < 0) {
+            exactCartesianComponentAssignFromInt64(cIm, num);
+          } else {
+            exactCartesianComponentAssignFromInt64(cIm, num);
+          }
+          setScalarFromExactCartesianComponent(out, cIm);
+          return true;
+        }
+        const long double imOut = static_cast<long double>(num) / static_cast<long double>(den);
+        out = makeScalar(static_cast<double>(imOut));
         scalarClearImaginary(out.scalarValue);
+        return true;
       }
+
+      // Prefer correct "exact imag" when it's nonzero; otherwise, use the
+      // floating component loaded from the scalar (used by complex formatting).
+      if (sv.hasImagExactInt64() && sv.imagExactInt64 != 0LL) {
+        ExactCartesianComponent cIm{};
+        exactCartesianComponentAssignFromInt64(cIm, sv.imagExactInt64);
+        setScalarFromExactCartesianComponent(out, cIm);
+        return true;
+      }
+      if (sv.hasImagExactUInt64() && sv.imagExactUInt64 != 0u) {
+        ExactCartesianComponent cIm{};
+        exactCartesianComponentAssignFromUInt64(cIm, sv.imagExactUInt64);
+        setScalarFromExactCartesianComponent(out, cIm);
+        return true;
+      }
+
+      out = makeScalar(ai); // (float) imag component
+      scalarClearImaginary(out.scalarValue);
       return true;
     }
     case BuiltinFunctionId::Phase:
@@ -10297,19 +10503,11 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
       if (ai == 0.0 && !scalarHasNonzeroImaginaryPart(sv)) {
         long long n = 0;
         if (nearlyInt(sv.scalar, n) && n >= 0) {
-          static constexpr long long kFactorialTable[21] = {
-              1LL, 1LL, 2LL, 6LL, 24LL, 120LL, 720LL, 5040LL, 40320LL, 362880LL, 3628800LL, 39916800LL,
-              479001600LL, 6227020800LL, 87178291200LL, 1307674368000LL, 20922789888000LL, 355687428096000LL,
-              6402373705728000LL, 121645100408832000LL, 2432902008176640000LL};
           if (n <= 20) {
-            out = makeScalarInt(kFactorialTable[n]);
+            out = makeScalarInt(kFactorialTable21[n]);
             return true;
           }
-          double d = static_cast<double>(kFactorialTable[20]);
-          for (long long i = 21; i <= n; ++i) {
-            d *= static_cast<double>(i);
-          }
-          out = makeScalar(d);
+          out = makeScalar(factorialScalarFloatFromInt(n));
           return true;
         }
       }

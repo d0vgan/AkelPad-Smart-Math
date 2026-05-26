@@ -550,6 +550,10 @@ def _complex_close(a: complex, b: complex) -> bool:
 def _format_complex_smoke(z: complex) -> str:
     """Emit strings closer to Smart-Math smoke (``-5+10i``, ``5-i``, ``i``)."""
     r, i = z.real, z.imag
+    # Smart-Math collapses any complex value with NaN in either component to "nan".
+    # (It does not preserve "+2i"/"-2i" around a NaN real or imag part.)
+    if math.isnan(r) or math.isnan(i):
+        return "nan"
     if abs(i) < 1e-15:
         if abs(r) < 1e-15:
             return "0"
@@ -714,6 +718,9 @@ def tan_sm(x: float) -> float:
 
 def dsl_truth(x: Any) -> bool:
     if isinstance(x, complex):
+        # Smart-Math treats complex values with NaN in either component as falsey.
+        if math.isnan(x.real) or math.isnan(x.imag):
+            return False
         return x.real != 0.0 or x.imag != 0.0
     if isinstance(x, float):
         if math.isnan(x):
@@ -1577,7 +1584,12 @@ def _preprocess_complex_dsl(expr: str) -> str:
             continue
         out.append(s[i])
         i += 1
-    return "".join(out)
+    s = "".join(out)
+    # Reuse real-mode boolean operator replacement so complex-mode expressions
+    # remain parseable (Smart-Math `&&` / `||` are not Python operators).
+    s = re.sub(r"\s*&&\s*", " and ", s)
+    s = re.sub(r"\s*\|\|\s*", " or ", s)
+    return s
 
 
 def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
