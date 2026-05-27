@@ -40,6 +40,20 @@ Before editing files, confirm or infer:
 
 If requirements are ambiguous, ask concise clarifying questions before coding.
 
+## Protect uncommitted work before editing (Required)
+
+**Before the first edit** to any file you might change (especially `MathParser.bas`, `SmokeTest_MathParser.bas`, `cpp/MathParser.cpp`, `cpp/MathParser.hpp`), check whether the user already has **local uncommitted changes** in those paths (`git status`, or the editor’s dirty state).
+
+If there are local changes, you **must** create a backup **first**, so work cannot be lost if you later revert, reset, reorder, or run `git checkout` / `git restore` / `git stash`:
+
+1. **Preferred:** copy each affected file to a timestamped backup under `tools/backup/` (create the folder if needed), e.g. `tools/backup/MathParser.bas.20260527-153045.bak`. Use a copy command or file write — do not rely on git alone.
+2. **Optional extra:** `git stash push -m "agent-backup-before-<task-summary>" -- <paths>` — only in addition to the file copy, never instead of it.
+3. In your first progress note to the user, list **exact backup path(s)** created.
+4. **Forbidden without explicit user request:** `git checkout HEAD -- <file>`, `git restore --source=HEAD <file>`, or any operation that overwrites the user’s uncommitted version. To return to a known state, restore from the timestamped copy or ask the user.
+5. If you already overwrote a file by mistake, stop further edits, say so immediately, and help recover from backup / IDE local history / `git stash list` — do not repeat destructive git commands.
+
+This rule applies to **all** tasks under this skill (new functions, refactors, large reorder passes, test-only edits that touch shared sources, etc.), not only feature additions.
+
 For any **new operator** or **new builtin function**, explicitly decide whether non-finite values (`inf`, `-inf`, `nan`) should be accepted or rejected:
 - use common sense, standard math expectations, and typical calculator behavior,
 - keep Basic/C++ parity for this decision,

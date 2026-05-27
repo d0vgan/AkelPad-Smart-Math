@@ -21,7 +21,21 @@ Before making changes, read and follow:
 
 - `.cursor/skills/add-mathparser-function/SKILL.md`
 
-Use its parity/build/test rules as mandatory constraints for all refactor work, including **Compile and build error discipline (Required)** in that skill.
+Use its parity/build/test rules as mandatory constraints for all refactor work, including:
+
+- **Protect uncommitted work before editing (Required)** in that skill — mandatory backup of local changes before the first edit; never overwrite uncommitted files via `git checkout` / `git restore` without explicit user approval.
+- **Compile and build error discipline (Required)** in that skill.
+
+## Protect uncommitted work before editing (Required)
+
+Refactors on `MathParser.bas` and mirrored C++ sources are high-risk for accidental loss of large uncommitted edits.
+
+**Before the first edit**, follow the same rule as in `add-mathparser-function` (**Protect uncommitted work before editing (Required)**):
+
+- If `git status` (or dirty editor tabs) shows local changes in paths you will touch, copy each file to `tools/backup/<filename>.<timestamp>.bak` **before** any modification.
+- Tell the user the backup path(s) in your first update.
+- Do **not** use `git checkout HEAD -- …`, `git restore --source=HEAD …`, or “reset to clean tree” on those files to fix a bad refactor — restore from the timestamped copy or ask the user.
+- `git stash` alone is **not** sufficient backup.
 
 ## Compile and build error discipline (Required)
 
