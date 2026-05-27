@@ -11,6 +11,93 @@
 #include <unordered_set>
 #include <utility>
 
+constexpr MathParser::BuiltinFlags operator|(
+    MathParser::BuiltinFlags a,
+    MathParser::BuiltinFlags b) noexcept {
+  return static_cast<MathParser::BuiltinFlags>(
+      static_cast<unsigned>(a) | static_cast<unsigned>(b));
+}
+
+const MathParser::BuiltinMetaRow MathParser::kBuiltinMeta[] = {
+  { MathParser::BuiltinFlags::NonCalculating, 0, 0, MathParser::BuiltinHintKind::EmptyPar },  // Rand
+  { MathParser::BuiltinFlags::FiniteRequired, 2, 2, MathParser::BuiltinHintKind::MinMax },  // Random
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Bin
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Hex
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Oct
+  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::ValuePower },  // Pow
+  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::YX },  // Atan2
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Sin
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Cos
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Tan
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Asin
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Acos
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Atan
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sinh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Cosh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Tanh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Acosh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Asinh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Atanh
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Exp
+  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::ValueBase },  // Log
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ln
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Log10
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sqrt
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sqr
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Int
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Frac
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Abs
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Floor
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ceil
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Trunc
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Round
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sign
+  { MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Deg
+  { MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Rad
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Sum
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Median
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Variance
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Stddev
+  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Sort
+  { MathParser::BuiltinFlags::NonCalculating, 2, 2, MathParser::BuiltinHintKind::ArrayFunc },  // Sortby
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ratio
+  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Reverse
+  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Unique
+  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Unpack
+  { MathParser::BuiltinFlags::Unary | MathParser::BuiltinFlags::IntegerOnly, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::N },  // Fact
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Avg
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Mean
+  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::ValueDivisor },  // Mod
+  { MathParser::BuiltinFlags::None, 3, 3, MathParser::BuiltinHintKind::ValueMinMax },  // Clamp
+  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::XY },  // Hypot
+  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Gcd
+  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Lcm
+  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Ncr
+  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Npr
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Product
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Min
+  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Max
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Uhex
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Uoct
+  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Ubin
+  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Milliseconds
+  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Seconds
+  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Minutes
+  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Hours
+  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Days
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Real
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Imag
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Phase
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Polar
+  { MathParser::BuiltinFlags::None, 1, 2, MathParser::BuiltinHintKind::Value },  // Cart
+  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Conj
+};
+
+constexpr std::size_t builtinMetaRowCountForAssert() {
+  return sizeof(MathParser::kBuiltinMeta) / sizeof(MathParser::kBuiltinMeta[0]);
+}
+static_assert(builtinMetaRowCountForAssert() == 72, "kBuiltinMeta size mismatch");
+
 namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
@@ -118,6 +205,118 @@ bool peekRhsMayBeLambdaSyntaxAt(const char* p) {
   return peekUnwrappedLambdaParamsThenColon(p);
 }
 
+bool isMultipleOf(double x, double x_mult)
+{
+  if (x_mult == 0.0) {
+    return false;
+  }
+  const double q = x / x_mult;
+  if (!std::isfinite(q)) {
+    return false;
+  }
+  const double n = std::round(q);
+  return std::fabs(q - n) <= 1e-9;
+}
+
+bool tryTrigHalfPiQuotient(double x, long long& outK) {
+  constexpr double kHalfPi = kPi / 2.0;
+  if (!isMultipleOf(x, kHalfPi)) {
+    return false;
+  }
+  const double q = std::round(x / kHalfPi);
+  if (!std::isfinite(q) || std::fabs(q) >= kTrigMaxAbsRadians) {
+    return false;
+  }
+  outK = static_cast<long long>(q);
+  return true;
+}
+
+bool tryTrigQuarterPiQuotient(double x, long long& outK) {
+  constexpr double kQuarterPi = kPi / 4.0;
+  if (!isMultipleOf(x, kQuarterPi)) {
+    return false;
+  }
+  const double q = std::round(x / kQuarterPi);
+  if (!std::isfinite(q) || std::fabs(q) >= kTrigMaxAbsRadians) {
+    return false;
+  }
+  outK = static_cast<long long>(q);
+  return true;
+}
+
+double calcSin(double x)
+{
+  if (x == 0.0) {
+    return 0.0;
+  }
+  if (!std::isfinite(x)) {
+    return std::sin(x);
+  }
+  if (isMultipleOf(x, kPi)) {
+    return 0.0;
+  }
+  long long k = 0;
+  if (tryTrigHalfPiQuotient(x, k)) {
+    long long r = k % 4;
+    if (r < 0) {
+      r += 4;
+    }
+    if (r == 1) {
+      return 1.0;
+    }
+    if (r == 3) {
+      return -1.0;
+    }
+    return 0.0;
+  }
+  return std::sin(x);
+}
+
+double calcCos(double x)
+{
+  if (!std::isfinite(x)) {
+    return std::cos(x);
+  }
+  if (!isMultipleOf(x, kPi)) {
+    long long k = 0;
+    if (tryTrigHalfPiQuotient(x, k) && (k % 2) != 0) {
+      return 0.0;
+    }
+  }
+  return std::cos(x);
+}
+
+double calcTan(double x)
+{
+  if (x == 0.0) {
+    return 0.0;
+  }
+  if (!std::isfinite(x)) {
+    return std::tan(x);
+  }
+  if (isMultipleOf(x, kPi)) {
+    return 0.0;
+  }
+  long long k = 0;
+  if (tryTrigHalfPiQuotient(x, k) && (k % 2) != 0) {
+    return (k > 0) ? std::numeric_limits<double>::infinity()
+                   : -std::numeric_limits<double>::infinity();
+  }
+  if (tryTrigQuarterPiQuotient(x, k) && (k % 2) != 0) {
+    long long r = k % 4;
+    if (r < 0) {
+      r += 4;
+    }
+    if (r == 1) {
+      return 1.0;
+    }
+    if (r == 3) {
+      return -1.0;
+    }
+  }
+  return std::tan(x);
+}
+
 double calcAtan2Basic(double y, double x) {
   if (x > 0.0) {
     return std::atan(y / x);
@@ -170,15 +369,15 @@ void complexCartesianPrincipalNthRoot(double ar, double ai, double invN, double&
     outI = 0.0;
     return;
   }
-  const double angN = std::atan2(ai, ar) * invN;
+  const double angN = calcAtan2Basic(ai, ar) * invN;
   double rmN = 0.0;
   if (std::fabs(invN - 0.5) < 1e-12) {
     rmN = std::sqrt(mag);
   } else {
     rmN = std::exp(std::log(mag) * invN);
   }
-  outR = rmN * std::cos(angN);
-  outI = rmN * std::sin(angN);
+  outR = rmN * calcCos(angN);
+  outI = rmN * calcSin(angN);
   snapComplexNearZeroAxis(outR, outI);
 }
 
@@ -203,7 +402,7 @@ void scalarPrincipalLnCartesian(double ar, double ai, double& outRe, double& out
     return;
   }
   outRe = std::log(mag);
-  outIm = std::atan2(ai, ar);
+  outIm = calcAtan2Basic(ai, ar);
   snapComplexNearZeroAxis(outRe, outIm);
 }
 
@@ -288,7 +487,7 @@ void complexPowPrincipal(double ar, double ai, double br, double bi, double& out
     }
   }
   const double loR = std::log(mag);
-  const double loI = std::atan2(ai, ar);
+  const double loI = calcAtan2Basic(ai, ar);
   const double powRe = br * loR - bi * loI;
   const double powIm = br * loI + bi * loR;
   if (!isTrigRadiansInRange(powIm)) {
@@ -296,8 +495,8 @@ void complexPowPrincipal(double ar, double ai, double br, double bi, double& out
     outIm = std::numeric_limits<double>::quiet_NaN();
     return;
   }
-  outRe = std::exp(powRe) * std::cos(powIm);
-  outIm = std::exp(powRe) * std::sin(powIm);
+  outRe = std::exp(powRe) * calcCos(powIm);
+  outIm = std::exp(powRe) * calcSin(powIm);
   snapComplexNearZeroAxis(outRe, outIm);
 }
 
@@ -341,8 +540,8 @@ bool complexExpCartesian(double ar, double ai, double& outR, double& outI) {
     return false;
   }
   const double ea = std::exp(ar);
-  outR = ea * std::cos(ai);
-  outI = ea * std::sin(ai);
+  outR = ea * calcCos(ai);
+  outI = ea * calcSin(ai);
   return true;
 }
 
@@ -1126,93 +1325,6 @@ double factorialScalarFloatFromInt(long long n) {
   return d;
 }
 
-bool isMultipleOf(double x, double x_mult)
-{
-  if (x_mult == 0.0) {
-    return false;
-  }
-  const double q = x / x_mult;
-  if (!std::isfinite(q)) {
-    return false;
-  }
-  const double n = std::round(q);
-  return std::fabs(q - n) <= 1e-9;
-}
-
-bool tryTrigHalfPiQuotient(double x, long long& outK) {
-  constexpr double kHalfPi = kPi / 2.0;
-  if (!isMultipleOf(x, kHalfPi)) {
-    return false;
-  }
-  const double q = std::round(x / kHalfPi);
-  if (!std::isfinite(q) || std::fabs(q) >= kTrigMaxAbsRadians) {
-    return false;
-  }
-  outK = static_cast<long long>(q);
-  return true;
-}
-
-double calcSin(double x)
-{
-  if (x == 0.0) {
-    return 0.0;
-  }
-  if (!std::isfinite(x)) {
-    return std::sin(x);
-  }
-  if (isMultipleOf(x, kPi)) {
-    return 0.0;
-  }
-  long long k = 0;
-  if (tryTrigHalfPiQuotient(x, k)) {
-    long long r = k % 4;
-    if (r < 0) {
-      r += 4;
-    }
-    if (r == 1) {
-      return 1.0;
-    }
-    if (r == 3) {
-      return -1.0;
-    }
-    return 0.0;
-  }
-  return std::sin(x);
-}
-
-double calcCos(double x)
-{
-  if (!std::isfinite(x)) {
-    return std::cos(x);
-  }
-  if (!isMultipleOf(x, kPi)) {
-    long long k = 0;
-    if (tryTrigHalfPiQuotient(x, k) && (k % 2) != 0) {
-      return 0.0;
-    }
-  }
-  return std::cos(x);
-}
-
-double calcTan(double x)
-{
-  if (x == 0.0) {
-    return 0.0;
-  }
-  if (!std::isfinite(x)) {
-    return std::tan(x);
-  }
-  if (isMultipleOf(x, kPi)) {
-    return 0.0;
-  }
-  long long k = 0;
-  if (tryTrigHalfPiQuotient(x, k) && (k % 2) != 0) {
-    return (k > 0) ? std::numeric_limits<double>::infinity()
-                   : -std::numeric_limits<double>::infinity();
-  }
-  return std::tan(x);
-}
-
 std::string formatDoubleFast(double v) {
   // Custom "general" formatter: 16 significant digits in fixed mode, 16 in scientific (smoke parity).
   // Uses only direct character-buffer operations.
@@ -1962,20 +2074,20 @@ bool MathParser::complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, doub
   }
   switch (id) {
     case BuiltinFunctionId::Sin:
-      outR = std::sin(ar) * std::cosh(ai);
-      outI = std::cos(ar) * std::sinh(ai);
+      outR = calcSin(ar) * std::cosh(ai);
+      outI = calcCos(ar) * std::sinh(ai);
       break;
     case BuiltinFunctionId::Cos:
-      outR = std::cos(ar) * std::cosh(ai);
-      outI = -std::sin(ar) * std::sinh(ai);
+      outR = calcCos(ar) * std::cosh(ai);
+      outI = -calcSin(ar) * std::sinh(ai);
       break;
     case BuiltinFunctionId::Sinh:
-      outR = std::sinh(ar) * std::cos(ai);
-      outI = std::cosh(ar) * std::sin(ai);
+      outR = std::sinh(ar) * calcCos(ai);
+      outI = std::cosh(ar) * calcSin(ai);
       break;
     case BuiltinFunctionId::Cosh:
-      outR = std::cosh(ar) * std::cos(ai);
-      outI = std::sinh(ar) * std::sin(ai);
+      outR = std::cosh(ar) * calcCos(ai);
+      outI = std::sinh(ar) * calcSin(ai);
       break;
     case BuiltinFunctionId::Tan:
     case BuiltinFunctionId::Tanh: {
@@ -1984,15 +2096,15 @@ bool MathParser::complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, doub
       double denR = 0.0;
       double denI = 0.0;
       if (id == BuiltinFunctionId::Tan) {
-        numR = std::sin(ar) * std::cosh(ai);
-        numI = std::cos(ar) * std::sinh(ai);
-        denR = std::cos(ar) * std::cosh(ai);
-        denI = -std::sin(ar) * std::sinh(ai);
+        numR = calcSin(ar) * std::cosh(ai);
+        numI = calcCos(ar) * std::sinh(ai);
+        denR = calcCos(ar) * std::cosh(ai);
+        denI = -calcSin(ar) * std::sinh(ai);
       } else {
-        numR = std::sinh(ar) * std::cos(ai);
-        numI = std::cosh(ar) * std::sin(ai);
-        denR = std::cosh(ar) * std::cos(ai);
-        denI = std::sinh(ar) * std::sin(ai);
+        numR = std::sinh(ar) * calcCos(ai);
+        numI = std::cosh(ar) * calcSin(ai);
+        denR = std::cosh(ar) * calcCos(ai);
+        denI = std::sinh(ar) * calcSin(ai);
       }
       complexDivide(numR, numI, denR, denI, outR, outI);
       break;
@@ -2152,82 +2264,10 @@ bool MathParser::tryGetBuiltinFunctionId(const std::string& nameText, BuiltinFun
 }
 
 MathParser::BuiltinHintKind MathParser::getBuiltinHintKind(BuiltinFunctionId id) {
-  switch (id) {
-    case BuiltinFunctionId::Rand: return BuiltinHintKind::EmptyPar;
-    case BuiltinFunctionId::Random: return BuiltinHintKind::MinMax;
-    case BuiltinFunctionId::Bin:
-    case BuiltinFunctionId::Hex:
-    case BuiltinFunctionId::Oct:
-    case BuiltinFunctionId::Ubin:
-    case BuiltinFunctionId::Uhex:
-    case BuiltinFunctionId::Uoct: return BuiltinHintKind::DotDotDot;
-    case BuiltinFunctionId::Pow: return BuiltinHintKind::ValuePower;
-    case BuiltinFunctionId::Atan2: return BuiltinHintKind::YX;
-    case BuiltinFunctionId::Sin:
-    case BuiltinFunctionId::Cos:
-    case BuiltinFunctionId::Tan: return BuiltinHintKind::Angle;
-    case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Sinh:
-    case BuiltinFunctionId::Cosh:
-    case BuiltinFunctionId::Tanh:
-    case BuiltinFunctionId::Acosh:
-    case BuiltinFunctionId::Asinh:
-    case BuiltinFunctionId::Atanh:
-    case BuiltinFunctionId::Exp:
-    case BuiltinFunctionId::Ln:
-    case BuiltinFunctionId::Log10:
-    case BuiltinFunctionId::Sqrt:
-    case BuiltinFunctionId::Sqr:
-    case BuiltinFunctionId::Int:
-    case BuiltinFunctionId::Abs:
-    case BuiltinFunctionId::Floor:
-    case BuiltinFunctionId::Ceil:
-    case BuiltinFunctionId::Trunc:
-    case BuiltinFunctionId::Round:
-    case BuiltinFunctionId::Sign:
-    case BuiltinFunctionId::Frac:
-    case BuiltinFunctionId::Real:
-    case BuiltinFunctionId::Imag:
-    case BuiltinFunctionId::Phase:
-    case BuiltinFunctionId::Polar:
-    case BuiltinFunctionId::Cart:
-    case BuiltinFunctionId::Conj:
-      return BuiltinHintKind::Value;
-    case BuiltinFunctionId::Log: return BuiltinHintKind::ValueBase;
-    case BuiltinFunctionId::Deg:
-    case BuiltinFunctionId::Rad:
-    case BuiltinFunctionId::Sum:
-    case BuiltinFunctionId::Median:
-    case BuiltinFunctionId::Variance:
-    case BuiltinFunctionId::Stddev:
-    case BuiltinFunctionId::Unique:
-    case BuiltinFunctionId::Unpack:
-    case BuiltinFunctionId::Avg:
-    case BuiltinFunctionId::Mean:
-    case BuiltinFunctionId::Product:
-    case BuiltinFunctionId::Min:
-    case BuiltinFunctionId::Max:
-    case BuiltinFunctionId::Sort:
-    case BuiltinFunctionId::Reverse: return BuiltinHintKind::DotDotDot;
-    case BuiltinFunctionId::Ratio: return BuiltinHintKind::Value;
-    case BuiltinFunctionId::Sortby: return BuiltinHintKind::ArrayFunc;
-    case BuiltinFunctionId::Fact: return BuiltinHintKind::N;
-    case BuiltinFunctionId::Mod: return BuiltinHintKind::ValueDivisor;
-    case BuiltinFunctionId::Clamp: return BuiltinHintKind::ValueMinMax;
-    case BuiltinFunctionId::Hypot: return BuiltinHintKind::XY;
-    case BuiltinFunctionId::Gcd:
-    case BuiltinFunctionId::Lcm: return BuiltinHintKind::AB;
-    case BuiltinFunctionId::Ncr:
-    case BuiltinFunctionId::Npr: return BuiltinHintKind::AB;
-    case BuiltinFunctionId::Milliseconds:
-    case BuiltinFunctionId::Seconds:
-    case BuiltinFunctionId::Minutes:
-    case BuiltinFunctionId::Hours:
-    case BuiltinFunctionId::Days: return BuiltinHintKind::Value;
-    default: return BuiltinHintKind::None;
+  if (id >= BuiltinFunctionId::Count) {
+    return BuiltinHintKind::None;
   }
+  return kBuiltinMeta[static_cast<std::size_t>(id)].hintKind;
 }
 
 std::string MathParser::getBuiltinFunctionMissingCallHint(BuiltinFunctionId id) {
@@ -2774,23 +2814,44 @@ void MathParser::setExactArgCountError(
   setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(expectedCount) + STR_ARGUMENT_PAR_S);
 }
 
-bool MathParser::requireBuiltinExactArgCount(
-    EvalContext& ctx,
-    const std::string& fnName,
-    const std::vector<EvalValue>& args,
-    const std::size_t expectedCount) const {
-  if (args.size() == expectedCount) {
-    return true;
-  }
-  setExactArgCountError(ctx, fnName, expectedCount);
-  return false;
-}
-
 bool MathParser::rejectBinaryBuiltinTimeOperands(
     EvalContext& ctx,
     const EvalValue& left,
     const EvalValue& right) const {
   if (evalValueInvolvesTime(left) || evalValueInvolvesTime(right)) {
+    setIncompatibleOperandsError(ctx);
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::rejectInt64BinaryOperands(
+    EvalContext& ctx,
+    const EvalValue& left,
+    const EvalValue& right,
+    const bool isModulo) const {
+  if (supportTimeValues_ && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
+    if (isModulo) {
+      setModuloIntegerOperandsError(ctx);
+    } else {
+      setIncompatibleOperandsError(ctx);
+    }
+    return true;
+  }
+  if (supportComplexNumbers_ &&
+      (MathParser::evalValueHasNonzeroImaginary(left) || MathParser::evalValueHasNonzeroImaginary(right))) {
+    setIncompatibleOperandsError(ctx);
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::rejectNumericBinaryPowWithTime(
+    EvalContext& ctx,
+    const EvalValue& left,
+    const EvalValue& right,
+    const char op) const {
+  if (op == '^' && supportTimeValues_ && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
     setIncompatibleOperandsError(ctx);
     return true;
   }
@@ -5754,42 +5815,20 @@ void MathParser::setError(EvalContext& ctx, const std::string& msg) const {
 
 bool MathParser::flattenArgs(const std::vector<EvalValue>& args, std::vector<double>& out) {
   out.clear();
-  const std::size_t totalCount = countFlattenedScalars(args);
-  out.reserve(totalCount);
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      out.emplace_back(a.scalarValue.scalar);
-    } else {
-      for (const auto& item : a.arr) {
-        out.emplace_back(item.scalar);
-      }
-    }
-  }
+  out.reserve(forEachCallArgScalarValues(args, [](const EvalValue::ScalarValue&) {}));
+  forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& sv) { out.emplace_back(sv.scalar); });
   return !out.empty();
 }
 
 bool MathParser::flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out) {
   out.clear();
-  const std::size_t totalCount = countFlattenedScalars(args);
-  out.reserve(totalCount);
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      out.emplace_back(a);
-    } else {
-      for (const auto& item : a.arr) {
-        out.emplace_back(scalarFromScalarValue(item));
-      }
-    }
-  }
+  out.reserve(forEachFlattenedEvalValue(args, [](const EvalValue&) {}));
+  forEachFlattenedEvalValue(args, [&](const EvalValue& ev) { out.emplace_back(ev); });
   return !out.empty();
 }
 
 std::size_t MathParser::countFlattenedScalars(const std::vector<EvalValue>& args) {
-  std::size_t totalCount = 0;
-  for (const auto& a : args) {
-    totalCount += (a.kind == ValueKind::Scalar) ? 1U : a.arr.size();
-  }
-  return totalCount;
+  return forEachCallArgScalarValues(args, [](const EvalValue::ScalarValue&) {});
 }
 
 int MathParser::expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector<EvalValue>& out) {
@@ -7754,9 +7793,7 @@ MathParser::EvalValue MathParser::evalMappedBinaryOp(
                       (op == Expr::BinaryOp::Mul) ? '*' :
                       (op == Expr::BinaryOp::Div) ? '/' :
                       (op == Expr::BinaryOp::Add) ? '+' : '-';
-  if (op == Expr::BinaryOp::Pow && supportTimeValues_ &&
-      (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
-    setIncompatibleOperandsError(ctx);
+  if (rejectNumericBinaryPowWithTime(ctx, left, right, opChar)) {
     return makeScalar(0);
   }
   bool ok = false;
@@ -7784,16 +7821,10 @@ MathParser::EvalValue MathParser::evalInt64BinaryOp(
     const EvalValue& left,
     const EvalValue& right,
     Expr::BinaryOp op) const {
-  if (supportTimeValues_ && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
-    setIncompatibleOperandsError(ctx);
-    return makeScalar(0);
-  }
-  if (supportComplexNumbers_ &&
-      (MathParser::evalValueHasNonzeroImaginary(left) || MathParser::evalValueHasNonzeroImaginary(right))) {
-    setIncompatibleOperandsError(ctx);
-    return makeScalar(0);
-  }
   const bool isModulo = (op == Expr::BinaryOp::Modulo);
+  if (rejectInt64BinaryOperands(ctx, left, right, isModulo)) {
+    return makeScalar(0);
+  }
   const auto setIntegerOperandError = [&]() {
     if (isModulo) setModuloIntegerOperandsError(ctx);
     else setBitwiseIntegerOperandsError(ctx);
@@ -8483,86 +8514,20 @@ MathParser::EvalValue MathParser::runCompiledProgram(
 }
 
 bool MathParser::argsContainNonFinite(const std::vector<EvalValue>& args) {
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      if (!std::isfinite(a.scalarValue.scalar)) return true;
-      continue;
+  bool found = false;
+  forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& s) {
+    if (!found && !std::isfinite(s.scalar)) {
+      found = true;
     }
-    for (const auto& item : a.arr) {
-      if (!std::isfinite(item.scalar)) return true;
-    }
-  }
-  return false;
+  });
+  return found;
 }
 
 MathParser::BuiltinFlags MathParser::getBuiltinFlags(BuiltinFunctionId id) {
-  using F = BuiltinFlags;
-  switch (id) {
-    case BuiltinFunctionId::Sin:
-    case BuiltinFunctionId::Cos:
-    case BuiltinFunctionId::Tan:
-    case BuiltinFunctionId::Asin:
-    case BuiltinFunctionId::Acos:
-    case BuiltinFunctionId::Atan:
-    case BuiltinFunctionId::Sinh:
-    case BuiltinFunctionId::Cosh:
-    case BuiltinFunctionId::Tanh:
-    case BuiltinFunctionId::Acosh:
-    case BuiltinFunctionId::Asinh:
-    case BuiltinFunctionId::Atanh:
-    case BuiltinFunctionId::Exp:
-    case BuiltinFunctionId::Ln:
-    case BuiltinFunctionId::Log10:
-    case BuiltinFunctionId::Sqrt:
-    case BuiltinFunctionId::Sqr:
-    case BuiltinFunctionId::Int:
-    case BuiltinFunctionId::Floor:
-    case BuiltinFunctionId::Ceil:
-    case BuiltinFunctionId::Trunc:
-    case BuiltinFunctionId::Round:
-    case BuiltinFunctionId::Frac:
-    case BuiltinFunctionId::Abs:
-    case BuiltinFunctionId::Sign:
-    case BuiltinFunctionId::Real:
-    case BuiltinFunctionId::Imag:
-    case BuiltinFunctionId::Phase:
-    case BuiltinFunctionId::Polar:
-    case BuiltinFunctionId::Conj:
-      return F::Unary;
-    case BuiltinFunctionId::Deg:
-    case BuiltinFunctionId::Rad:
-      return F::TrailingFormatter;
-    case BuiltinFunctionId::Hex:
-    case BuiltinFunctionId::Oct:
-    case BuiltinFunctionId::Bin:
-    case BuiltinFunctionId::Uhex:
-    case BuiltinFunctionId::Uoct:
-    case BuiltinFunctionId::Ubin:
-      return static_cast<F>(
-          static_cast<unsigned>(F::Format) | static_cast<unsigned>(F::NonCalculating) |
-          static_cast<unsigned>(F::TrailingFormatter));
-    case BuiltinFunctionId::Gcd:
-    case BuiltinFunctionId::Lcm:
-    case BuiltinFunctionId::Ncr:
-    case BuiltinFunctionId::Npr:
-    case BuiltinFunctionId::Mod:
-      return F::IntegerOnly;
-    case BuiltinFunctionId::Fact:
-      return static_cast<F>(static_cast<unsigned>(F::Unary) | static_cast<unsigned>(F::IntegerOnly));
-    case BuiltinFunctionId::Unpack:
-    case BuiltinFunctionId::Sort:
-    case BuiltinFunctionId::Sortby:
-    case BuiltinFunctionId::Reverse:
-    case BuiltinFunctionId::Unique:
-    case BuiltinFunctionId::Rand:
-      return F::NonCalculating;
-    case BuiltinFunctionId::Ratio:
-      return F::Unary;
-    case BuiltinFunctionId::Random:
-      return F::FiniteRequired;
-    default:
-      return F::None;
+  if (id >= BuiltinFunctionId::Count) {
+    return BuiltinFlags::None;
   }
+  return kBuiltinMeta[static_cast<std::size_t>(id)].flags;
 }
 
 bool MathParser::hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag) {
@@ -8572,86 +8537,29 @@ bool MathParser::hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag) {
 }
 
 bool MathParser::getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs) {
+  if (id >= BuiltinFunctionId::Count) {
+    return false;
+  }
   if (hasBuiltinFlag(id, BuiltinFlags::Unary)) {
     minArgs = 1;
     maxArgs = 1;
     return true;
   }
-  switch (id) {
-    case BuiltinFunctionId::Cart:
-      minArgs = 1;
-      maxArgs = 2;
-      return true;
-    case BuiltinFunctionId::Rand:
-      minArgs = 0;
-      maxArgs = 0;
-      return true;
-    case BuiltinFunctionId::Clamp:
-      minArgs = 3;
-      maxArgs = 3;
-      return true;
-    case BuiltinFunctionId::Random:
-    case BuiltinFunctionId::Pow:
-    case BuiltinFunctionId::Atan2:
-    case BuiltinFunctionId::Hypot:
-    case BuiltinFunctionId::Mod:
-    case BuiltinFunctionId::Log:
-    case BuiltinFunctionId::Gcd:
-    case BuiltinFunctionId::Lcm:
-    case BuiltinFunctionId::Ncr:
-    case BuiltinFunctionId::Npr:
-    case BuiltinFunctionId::Sortby:
-      minArgs = 2;
-      maxArgs = 2;
-      return true;
-    case BuiltinFunctionId::Milliseconds:
-    case BuiltinFunctionId::Seconds:
-    case BuiltinFunctionId::Minutes:
-    case BuiltinFunctionId::Hours:
-    case BuiltinFunctionId::Days:
-      minArgs = 1;
-      maxArgs = 1;
-      return true;
-    case BuiltinFunctionId::Sum:
-    case BuiltinFunctionId::Product:
-    case BuiltinFunctionId::Min:
-    case BuiltinFunctionId::Max:
-    case BuiltinFunctionId::Avg:
-    case BuiltinFunctionId::Mean:
-    case BuiltinFunctionId::Median:
-    case BuiltinFunctionId::Variance:
-    case BuiltinFunctionId::Stddev:
-    case BuiltinFunctionId::Sort:
-    case BuiltinFunctionId::Reverse:
-    case BuiltinFunctionId::Unique:
-    case BuiltinFunctionId::Unpack:
-    case BuiltinFunctionId::Hex:
-    case BuiltinFunctionId::Oct:
-    case BuiltinFunctionId::Bin:
-    case BuiltinFunctionId::Uhex:
-    case BuiltinFunctionId::Uoct:
-    case BuiltinFunctionId::Ubin:
-    case BuiltinFunctionId::Deg:
-    case BuiltinFunctionId::Rad:
-      minArgs = 1;
-      maxArgs = kBuiltinArityUnbounded;
-      return true;
-    default:
-      return false;
+  const auto& row = kBuiltinMeta[static_cast<std::size_t>(id)];
+  if (row.minArgs == MathParser::kBuiltinMetaArityUnset) {
+    return false;
   }
+  minArgs = row.minArgs;
+  maxArgs = row.maxArgs;
+  return true;
 }
 
-bool MathParser::validateBuiltinCallArity(
+bool MathParser::validateCallArity(
     EvalContext& ctx,
     const std::string& fnName,
-    BuiltinFunctionId id,
-    const std::vector<EvalValue>& args) const {
-  uint8_t minArgs = 0;
-  uint8_t maxArgs = 0;
-  if (!getBuiltinArity(id, minArgs, maxArgs)) {
-    return true;
-  }
-  const std::size_t argc = args.size();
+    uint8_t minArgs,
+    uint8_t maxArgs,
+    const std::size_t argc) const {
   if (minArgs == maxArgs) {
     if (argc != minArgs) {
       setExactArgCountError(ctx, fnName, minArgs);
@@ -8670,59 +8578,70 @@ bool MathParser::validateBuiltinCallArity(
   return true;
 }
 
+bool MathParser::validateBuiltinCallArity(
+    EvalContext& ctx,
+    const std::string& fnName,
+    BuiltinFunctionId id,
+    const std::vector<EvalValue>& args) const {
+  uint8_t minArgs = 0;
+  uint8_t maxArgs = 0;
+  if (!getBuiltinArity(id, minArgs, maxArgs)) {
+    return true;
+  }
+  return validateCallArity(ctx, fnName, minArgs, maxArgs, args.size());
+}
+
 bool MathParser::validateIntegerRepresentableArgs(
     EvalContext& ctx,
     const std::string& fnName,
     const std::vector<EvalValue>& args,
     bool allowNonFiniteForFormat) const {
-  for (const auto& a : args) {
-    const auto validateScalar = [&](const EvalValue::ScalarValue& s) -> bool {
-      if (!std::isfinite(s.scalar)) {
-        return allowNonFiniteForFormat;
-      }
-      if (!(s.hasExactInt64() || s.hasExactUInt64())) {
-        long long signedV = 0;
-        if (!tryGetSignedInt64FromScalar(s, signedV)) {
-          setIntegerValuesError(ctx, fnName);
-          return false;
-        }
-      }
-      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s)) {
-        double ai = 0.0;
-        double ar = 0.0;
-        scalarLoadCartesian(s, ar, ai);
-        (void)ar;
-        if (!std::isfinite(ai)) {
-          if (!allowNonFiniteForFormat) {
-            setIntegerValuesError(ctx, fnName);
-            return false;
-          }
-          return true;
-        }
-        if (s.hasImagExactInt64()) {
-          return true;
-        }
-        long long tmp = 0;
-        if (!tryExtractExactInt64FromDoubleStrict(ai, tmp)) {
-          setIntegerValuesError(ctx, fnName);
-          return false;
-        }
-      }
-      return true;
-    };
-    if (a.kind == ValueKind::Scalar) {
-      if (!validateScalar(a.scalarValue)) {
-        setIntegerValuesError(ctx, fnName);
-        return false;
-      }
-      continue;
+  const auto validateScalar = [&](const EvalValue::ScalarValue& s) -> bool {
+    if (!std::isfinite(s.scalar)) {
+      return allowNonFiniteForFormat;
     }
-    for (const auto& item : a.arr) {
-      if (!validateScalar(item)) {
+    if (!(s.hasExactInt64() || s.hasExactUInt64())) {
+      long long signedV = 0;
+      if (!tryGetSignedInt64FromScalar(s, signedV)) {
         setIntegerValuesError(ctx, fnName);
         return false;
       }
     }
+    if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s)) {
+      double ai = 0.0;
+      double ar = 0.0;
+      scalarLoadCartesian(s, ar, ai);
+      (void)ar;
+      if (!std::isfinite(ai)) {
+        if (!allowNonFiniteForFormat) {
+          setIntegerValuesError(ctx, fnName);
+          return false;
+        }
+        return true;
+      }
+      if (s.hasImagExactInt64()) {
+        return true;
+      }
+      long long tmp = 0;
+      if (!tryExtractExactInt64FromDoubleStrict(ai, tmp)) {
+        setIntegerValuesError(ctx, fnName);
+        return false;
+      }
+    }
+    return true;
+  };
+  bool ok = true;
+  forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& s) {
+    if (!ok) {
+      return;
+    }
+    if (!validateScalar(s)) {
+      ok = false;
+    }
+  });
+  if (!ok) {
+    setIntegerValuesError(ctx, fnName);
+    return false;
   }
   return true;
 }
@@ -10564,7 +10483,7 @@ MathParser::EvalValue MathParser::builtinPolarCart(
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
-    return makeScalarComplexFromDoubles(rMag * std::cos(rAng), rMag * std::sin(rAng));
+    return makeScalarComplexFromDoubles(rMag * calcCos(rAng), rMag * calcSin(rAng));
   };
 
   if (id == BuiltinFunctionId::Polar) {
@@ -10670,8 +10589,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         return makeScalar(0);
       }
       const double ea = std::exp(ar);
-      double pr = ea * std::cos(ai);
-      double pi = ea * std::sin(ai);
+      double pr = ea * calcCos(ai);
+      double pi = ea * calcSin(ai);
       snapComplexNearZeroAxis(pr, pi);
       return makeScalarComplexFromDoubles(pr, pi);
     }

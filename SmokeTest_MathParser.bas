@@ -598,6 +598,12 @@ private sub RunTrigAngleReductionTests()
   nearZeroExpr(4) = "cos(3*pi/2)"
   nearZeroExpr(5) = "tan(pi)"
   nearZeroExpr(6) = "tan(2*pi)"
+  dim exactOneExpr(1 to 4) as String
+  dim exactOneExpect(1 to 4) as String
+  exactOneExpr(1) = "tan(pi/4)": exactOneExpect(1) = "1"
+  exactOneExpr(2) = "tan(3*pi/4)": exactOneExpect(2) = "-1"
+  exactOneExpr(3) = "tan(-pi/4)": exactOneExpect(3) = "-1"
+  exactOneExpr(4) = "tan(-3*pi/4)": exactOneExpect(4) = "1"
   dim ti as Integer
   dim mag as Double
   for ti = 1 to 12
@@ -617,6 +623,18 @@ private sub RunTrigAngleReductionTests()
       subFail += 1
     else
       print "[trig-reduction] PASS: """ & nearZeroExpr(ti) & """ |result|=" & str(mag)
+      subPass += 1
+    end if
+  next ti
+  for ti = 1 to 4
+    dim tr as Double
+    dim trt as String
+    dim tia as Boolean
+    if Parser_TryEvaluateEx(exactOneExpr(ti), tr, trt, tia) = FALSE orelse trt <> exactOneExpect(ti) then
+      print "[trig-reduction] FAIL: """ & exactOneExpr(ti) & """ -> """ & trt & """ (expected """ & exactOneExpect(ti) & """)"
+      subFail += 1
+    else
+      print "[trig-reduction] PASS: """ & exactOneExpr(ti) & """ -> """ & trt & """"
       subPass += 1
     end if
   next ti
@@ -890,8 +908,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next ai
 
-  dim powCases(1 to 16) as String
-  dim powExpect(1 to 16) as String
+  dim powCases(1 to 17) as String
+  dim powExpect(1 to 17) as String
   powCases(1) = "(1+i)**2": powExpect(1) = "2i"
   powCases(2) = "(3+4i)**0.5": powExpect(2) = "2+i"
   powCases(3) = "pow(1+i,2)": powExpect(3) = "2i"
@@ -908,6 +926,7 @@ private sub RunComplexNumberSupportOptionTests()
   powCases(14) = "pow(-27,1/3)": powExpect(14) = "-3"
   powCases(15) = "pow(2**64,1/2)": powExpect(15) = "4294967296"
   powCases(16) = "(-8)**(1/3)": powExpect(16) = "-2"
+  powCases(17) = "pow(-1-0i,1/2)": powExpect(17) = "i"
 
   dim sqrtCases(1 to 3) as String
   dim sqrtExpect(1 to 3) as String
@@ -926,7 +945,7 @@ private sub RunComplexNumberSupportOptionTests()
   next swi
 
   dim pwi as Integer
-  for pwi = 1 to 12
+  for pwi = 1 to 17
     if Parser_TryEvaluateEx(powCases(pwi), r, rt, ia) = FALSE orelse rt <> powExpect(pwi) then
       print "[complex-opt] FAIL: """ & powCases(pwi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -936,8 +955,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next pwi
 
-  dim cxExpLnCases(1 to 10) as String
-  dim cxExpLnExpect(1 to 10) as String
+  dim cxExpLnCases(1 to 11) as String
+  dim cxExpLnExpect(1 to 11) as String
   cxExpLnCases(1) = "ln(-1)": cxExpLnExpect(1) = "3.141592653589793i"
   cxExpLnCases(2) = "ln(-2)": cxExpLnExpect(2) = "0.6931471805599453+3.141592653589793i"
   cxExpLnCases(3) = "log10(-10)": cxExpLnExpect(3) = "0.9999999999999999+1.364376353841841i"
@@ -948,9 +967,10 @@ private sub RunComplexNumberSupportOptionTests()
   cxExpLnCases(8) = "log10((-10, -100))": cxExpLnExpect(8) = "(0.9999999999999999+1.364376353841841i, 2+1.364376353841841i)"
   cxExpLnCases(9) = "ln(2)": cxExpLnExpect(9) = "0.6931471805599453"
   cxExpLnCases(10) = "ln(0)": cxExpLnExpect(10) = "-inf"
+  cxExpLnCases(11) = "ln(-1-0i)": cxExpLnExpect(11) = "3.141592653589793i"
 
   dim exi as Integer
-  for exi = 1 to 10
+  for exi = 1 to 11
     if Parser_TryEvaluateEx(cxExpLnCases(exi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxExpLnExpect(exi)) = FALSE then
       print "[complex-opt] FAIL: """ & cxExpLnCases(exi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -1227,8 +1247,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next aei
 
-  dim cxUniOk(1 to 16) as String
-  dim cxUniExpect(1 to 16) as String
+  dim cxUniOk(1 to 18) as String
+  dim cxUniExpect(1 to 18) as String
   cxUniOk(1) = "int(2.7+3.2i)": cxUniExpect(1) = "2+3i"
   cxUniOk(2) = "frac(2.5+0.5i)": cxUniExpect(2) = "0.5+0.5i"
   cxUniOk(3) = "round(2.4+3.6i)": cxUniExpect(3) = "2+4i"
@@ -1245,9 +1265,11 @@ private sub RunComplexNumberSupportOptionTests()
   cxUniOk(14) = "fact(5)": cxUniExpect(14) = "120"
   cxUniOk(15) = "int((1+2.7i, 4.2+5.8i))": cxUniExpect(15) = "(1+2i, 4+5i)"
   cxUniOk(16) = "abs((3+4i, 0))": cxUniExpect(16) = "(5, 0)"
+  cxUniOk(17) = "phase(-1-0i)": cxUniExpect(17) = "3.141592653589793"
+  cxUniOk(18) = "polar(-1-0i)": cxUniExpect(18) = "(1, 3.141592653589793)"
 
   dim ui as Integer
-  for ui = 1 to 16
+  for ui = 1 to 18
     if Parser_TryEvaluateEx(cxUniOk(ui), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxUniExpect(ui)) = FALSE then
       print "[complex-opt] FAIL: """ & cxUniOk(ui) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -1303,6 +1325,61 @@ private sub RunComplexNumberSupportOptionTests()
       end if
     end if
   next pcei
+
+  '' cart/polar/real/imag/phase/ln/exp and complex sin/cos/tan/sinh/cosh at angles where
+  '' CalcSin/Cos/Tan/Atan2 return exact 0, 1, -1, inf, or pi multiples (integer-like floats).
+  dim cxTrigAuxOk(1 to 39) as String
+  dim cxTrigAuxExpect(1 to 39) as String
+  cxTrigAuxOk(1) = "cart(6,0)": cxTrigAuxExpect(1) = "6"
+  cxTrigAuxOk(2) = "cart(5,pi/2)": cxTrigAuxExpect(2) = "5i"
+  cxTrigAuxOk(3) = "cart(2,pi)": cxTrigAuxExpect(3) = "-2"
+  cxTrigAuxOk(4) = "cart(3,3*pi/2)": cxTrigAuxExpect(4) = "-3i"
+  cxTrigAuxOk(5) = "real(cart(8,pi/2))": cxTrigAuxExpect(5) = "0"
+  cxTrigAuxOk(6) = "imag(cart(8,pi/2))": cxTrigAuxExpect(6) = "8"
+  cxTrigAuxOk(7) = "real(cart(7,0))": cxTrigAuxExpect(7) = "7"
+  cxTrigAuxOk(8) = "imag(cart(7,0))": cxTrigAuxExpect(8) = "0"
+  cxTrigAuxOk(9) = "real(cart(5,pi))": cxTrigAuxExpect(9) = "-5"
+  cxTrigAuxOk(10) = "imag(cart(5,3*pi/2))": cxTrigAuxExpect(10) = "-5"
+  cxTrigAuxOk(11) = "polar(9)": cxTrigAuxExpect(11) = "(9, 0)"
+  cxTrigAuxOk(12) = "polar(9i)": cxTrigAuxExpect(12) = "(9, 1.570796326794897)"
+  cxTrigAuxOk(13) = "polar(-9)": cxTrigAuxExpect(13) = "(9, 3.141592653589793)"
+  cxTrigAuxOk(14) = "polar(-9i)": cxTrigAuxExpect(14) = "(9, -1.570796326794897)"
+  cxTrigAuxOk(15) = "phase(9)": cxTrigAuxExpect(15) = "0"
+  cxTrigAuxOk(16) = "phase(9i)": cxTrigAuxExpect(16) = "1.570796326794897"
+  cxTrigAuxOk(17) = "phase(-9)": cxTrigAuxExpect(17) = "3.141592653589793"
+  cxTrigAuxOk(18) = "phase(-9i)": cxTrigAuxExpect(18) = "-1.570796326794897"
+  cxTrigAuxOk(19) = "phase(0)": cxTrigAuxExpect(19) = "0"
+  cxTrigAuxOk(20) = "sin(pi/2)": cxTrigAuxExpect(20) = "1"
+  cxTrigAuxOk(21) = "cos(pi/2)": cxTrigAuxExpect(21) = "0"
+  cxTrigAuxOk(22) = "tan(pi/2)": cxTrigAuxExpect(22) = "inf"
+  cxTrigAuxOk(23) = "tan(-3*pi/2)": cxTrigAuxExpect(23) = "-inf"
+  cxTrigAuxOk(24) = "sin(pi)": cxTrigAuxExpect(24) = "0"
+  cxTrigAuxOk(25) = "tan(pi/4)": cxTrigAuxExpect(25) = "1"
+  cxTrigAuxOk(26) = "tan(-pi/4)": cxTrigAuxExpect(26) = "-1"
+  cxTrigAuxOk(27) = "real(sin(pi/2))": cxTrigAuxExpect(27) = "1"
+  cxTrigAuxOk(28) = "imag(sin(pi/2))": cxTrigAuxExpect(28) = "0"
+  cxTrigAuxOk(29) = "sinh(i*pi/2)": cxTrigAuxExpect(29) = "i"
+  cxTrigAuxOk(30) = "cosh(i*pi/2)": cxTrigAuxExpect(30) = "0"
+  cxTrigAuxOk(31) = "cosh(i*pi)": cxTrigAuxExpect(31) = "-1"
+  cxTrigAuxOk(32) = "exp(pi/2*i)": cxTrigAuxExpect(32) = "i"
+  cxTrigAuxOk(33) = "exp(2*pi*i)": cxTrigAuxExpect(33) = "1"
+  cxTrigAuxOk(34) = "sin(3*pi/2)": cxTrigAuxExpect(34) = "-1"
+  cxTrigAuxOk(35) = "real(ln(-1))": cxTrigAuxExpect(35) = "0"
+  cxTrigAuxOk(36) = "imag(ln(-1))": cxTrigAuxExpect(36) = "3.141592653589793"
+  cxTrigAuxOk(37) = "imag(ln(-i))": cxTrigAuxExpect(37) = "-1.570796326794897"
+  cxTrigAuxOk(38) = "cart(polar(6i))": cxTrigAuxExpect(38) = "6i"
+  cxTrigAuxOk(39) = "cart(polar(-4))": cxTrigAuxExpect(39) = "-4"
+  dim txi as Integer
+  for txi = 1 to 39
+    if Parser_TryEvaluateEx(cxTrigAuxOk(txi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxTrigAuxExpect(txi)) = FALSE then
+      print "[complex-opt] FAIL: """ & cxTrigAuxOk(txi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      print "[complex-opt]      want: """ & cxTrigAuxExpect(txi) & """"
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxTrigAuxOk(txi) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next txi
 
   dim cxFmtOk(1 to 7) as String
   dim cxFmtExpect(1 to 7) as String

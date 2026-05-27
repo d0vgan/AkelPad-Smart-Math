@@ -4258,6 +4258,16 @@ std::vector<TestCase> buildTrigAngleReductionCases() {
       "sin(3**32)", "sin(7**18)", "cos(2**52)", "cos(2**51)", "tan(2**52)", "tan(3**32)"};
   static const char* kNearZero[] = {
       "sin(pi)", "sin(2*pi)", "cos(pi/2)", "cos(3*pi/2)", "tan(pi)", "tan(2*pi)"};
+  struct ExactRow {
+    const char* expr;
+    const char* expect;
+  };
+  static const ExactRow kExactOne[] = {
+      {"tan(pi/4)", "1"},
+      {"tan(3*pi/4)", "-1"},
+      {"tan(-pi/4)", "-1"},
+      {"tan(-3*pi/4)", "1"},
+  };
   std::vector<TestCase> t;
   for (const char* expr : kNonzero) {
     t.push_back({std::string("trig-reduction/nonzero/") + expr,
@@ -4299,6 +4309,15 @@ std::vector<TestCase> buildTrigAngleReductionCases() {
                      return false;
                    }
                    return true;
+                 }});
+  }
+  for (const ExactRow& row : kExactOne) {
+    const std::string expr = row.expr;
+    const std::string expected = row.expect;
+    t.push_back({std::string("trig-reduction/exact/") + expr,
+                 [expr, expected](std::string& why) {
+                   MathParser p;
+                   return expectEval(p, expr, expected, why);
                  }});
   }
   return t;
@@ -4752,6 +4771,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"pow(-27,1/3)", "-3"},
                      {"pow(2**64,1/2)", "4294967296"},
                      {"(-8)**(1/3)", "-2"},
+                    {"pow(-1-0i,1/2)", "i"},
                      {"sqrt(81)", "9"},
                      {"sqrt(3+4*i)", "2+i"},
                      {"pow(2**64,1/2)", "4294967296"},
@@ -4787,6 +4807,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"log10((-10,-100))", "(1+1.364376353841841i,2+1.364376353841841i)"},
                      {"ln(2)", "0.6931471805599452"},
                      {"ln(0)", "-inf"},
+                    {"ln(-1-0i)", "3.141592653589793i"},
                      {"log(8,2)", "3"},
                      {"log(-9,7)", "1.129150068107159+1.614459257080781i"},
                      {"log((-9,16),(7,2))", "(1.129150068107159+1.614459257080781i,4)"},
@@ -4997,6 +5018,8 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"phase(1)", "0"},
                      {"polar(1+1i)", "(1.414213562373095,0.7853981633974482)"},
                      {"cart(polar(1+1i))", "1+i"},
+                    {"phase(-1-0i)", "3.141592653589793"},
+                    {"polar(-1-0i)", "(1,3.141592653589793)"},
                      {"fact(5)", "120"},
                      {"int((1+2.7i,4.2+5.8i))", "(1+2i,4+5i)"},
                      {"abs((3+4i,0))", "(5,0)"},
@@ -5063,6 +5086,67 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    const std::string el = p.getError();
                    if (el.find(row.errSubstr) == std::string::npos) {
                      why = std::string(row.expr) + ": " + el;
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
+  t.push_back({"complex-opt: trig/atan2 auxiliary exact float parts (parity Basic cxTrigAuxOk)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"cart(6,0)", "6"},
+                     {"cart(5,pi/2)", "5i"},
+                     {"cart(2,pi)", "-2"},
+                     {"cart(3,3*pi/2)", "-3i"},
+                     {"real(cart(8,pi/2))", "0"},
+                     {"imag(cart(8,pi/2))", "8"},
+                     {"real(cart(7,0))", "7"},
+                     {"imag(cart(7,0))", "0"},
+                     {"real(cart(5,pi))", "-5"},
+                     {"imag(cart(5,3*pi/2))", "-5"},
+                     {"polar(9)", "(9,0)"},
+                     {"polar(9i)", "(9,1.570796326794897)"},
+                     {"polar(-9)", "(9,3.141592653589793)"},
+                     {"polar(-9i)", "(9,-1.570796326794897)"},
+                     {"phase(9)", "0"},
+                     {"phase(9i)", "1.570796326794897"},
+                     {"phase(-9)", "3.141592653589793"},
+                     {"phase(-9i)", "-1.570796326794897"},
+                     {"phase(0)", "0"},
+                     {"sin(pi/2)", "1"},
+                     {"cos(pi/2)", "0"},
+                     {"tan(pi/2)", "inf"},
+                     {"tan(-3*pi/2)", "-inf"},
+                     {"sin(pi)", "0"},
+                     {"tan(pi/4)", "1"},
+                     {"tan(-pi/4)", "-1"},
+                     {"real(sin(pi/2))", "1"},
+                     {"imag(sin(pi/2))", "0"},
+                     {"sinh(i*pi/2)", "i"},
+                     {"cosh(i*pi/2)", "0"},
+                     {"cosh(i*pi)", "-1"},
+                     {"exp(pi/2*i)", "i"},
+                     {"exp(2*pi*i)", "1"},
+                     {"sin(3*pi/2)", "-1"},
+                     {"real(ln(-1))", "0"},
+                     {"imag(ln(-1))", "3.141592653589793"},
+                     {"imag(ln(-i))", "-1.570796326794897"},
+                     {"cart(polar(6i))", "6i"},
+                     {"cart(polar(-4))", "-4"},
+                 };
+                 for (const auto& row : kRows) {
+                   p.parseAndEvaluate(row.expr);
+                   if (!p.getError().empty()) {
+                     why = std::string(row.expr) + ": " + p.getError();
+                     return false;
+                   }
+                   if (!smokeResultCloseEnough(p.getResult(), row.expect)) {
+                     why = std::string(row.expr) + " -> " + p.getResult() + " (want " + row.expect + ")";
                      return false;
                    }
                  }

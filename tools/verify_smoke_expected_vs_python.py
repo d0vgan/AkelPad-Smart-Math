@@ -33,9 +33,21 @@ Float agreement uses the same tolerance idea as SmokeTest_MathParser.bas:
 
 Sources parsed (in addition to ``tests(N)`` rows):
   * ``tools/neg_band_cases_generated.bas`` (neg/pos real + complex magnitude bands)
+  * ``tools/complex_coverage_generated.bas`` (``cxCov*`` tables)
+  * ``tools/naninf_mirror_generated.bas`` (``naninf*`` tables)
+  * ``tools/float_magnitude_cases_generated.bas`` (``floatMag*`` tables)
+  * ``tools/smoke_parity_append_generated.bas`` (``smokeAppend*``; merged into main table)
   * ``RunOperatorPrecedenceDocTests`` (``precOk`` / ``precExpect``)
-  * ``RunTrigAngleReductionTests`` (magnitude ``|result|`` thresholds)
+  * ``RunTrigAngleReductionTests`` (magnitude ``|result|`` thresholds + ``exactOne*``)
+  * Paired ``*Ok``/``*Expect`` and ``*Expr``/``*Expect`` rows anywhere in smoke source
+  * ``*Err`` / ``errExprs`` error-probe tables in smoke subs (time, complex, arity, …)
   * Inline ``Parser_TryEvaluateEx(...) orelse rt <> "..."`` numeric probes in smoke subs
+  * ``RunComplexNumberSupportOptionTests`` (dedicated block parser)
+  * ``RunRawResultApiTests`` inline success probes
+
+Use ``--audit-coverage`` to print discovered vs parsed row counts per source (before
+the Python reference pass). Use ``--audit-only`` to run the audit and exit (fast).
+C++ ``MathParserTests.cpp`` suites are not parsed (Basic smoke is the reference corpus).
 """
 
 from __future__ import annotations
@@ -43,9 +55,12 @@ from __future__ import annotations
 import ast
 import cmath
 import math
+import os
 import re
 import statistics
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Optional
@@ -378,24 +393,28 @@ def sum_dur_sm(*args: object) -> Duration:
 # --- Complex helpers ---------------------------------------------------------
 
 
+_RE_SMART_IMAG_SUFFIX = re.compile(
+    r"(?<!\*)(?<![A-Za-z0-9_.])(\d+\.?\d*(?:[eE][-+]?\d+)?)i(?![A-Za-z0-9_])",
+    re.I,
+)
+
+
 def _preprocess_complex_surface(expr: str) -> str:
     """
     Turn Smart-Math complex surface syntax into Python ``complex`` literals
     (``...j``), without leaving a bare ``i`` identifier.
+
+    ``5i`` / ``1.123e+20i`` are imaginary suffixes; ``20*i`` is multiply-by-``i``
+    and must not treat the exponent digits as the suffix (``20i``).
     """
-    s = expr
-    s = re.sub(
-        r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i(?![A-Za-z0-9_])",
-        r"\1j",
-        s,
-    )
+    s = _RE_SMART_IMAG_SUFFIX.sub(r"\1j", expr)
     s = re.sub(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", "(1j)", s)
     return s
 
 
 def _looks_like_complex_expr(expr: str) -> bool:
     e = _strip_line_comment(expr)
-    if re.search(r"(?<![A-Za-z0-9_])(\d+\.?\d*|\.\d+)i(?![A-Za-z0-9_])", e):
+    if _RE_SMART_IMAG_SUFFIX.search(e):
         return True
     if re.search(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", e):
         return True
@@ -547,6 +566,25 @@ def _complex_close(a: complex, b: complex) -> bool:
     )
 
 
+def _format_float_scalar_smoke(x: float) -> str:
+    """One float as smoke expects (scientific mantissa; never ``rstrip('0')`` on ``e+20``)."""
+    if math.isnan(x):
+        return "nan"
+    if math.isinf(x):
+        return "-inf" if x < 0 else "inf"
+    if math.isfinite(x) and x != 0 and (abs(x) >= 1e16 or abs(x) < 1e-4):
+        s = f"{x:.15e}"
+        s = re.sub(r"e\+0+(\d)", r"e+\1", s, flags=re.I)
+        s = re.sub(r"e-0+(\d)", r"e-\1", s, flags=re.I)
+        return s
+    if abs(x - round(x)) < 1e-12 and abs(x) < 1e15:
+        return str(int(round(x)))
+    s = str(x)
+    if "e" in s.lower():
+        return s
+    return s.rstrip("0").rstrip(".")
+
+
 def _format_complex_smoke(z: complex) -> str:
     """Emit strings closer to Smart-Math smoke (``-5+10i``, ``5-i``, ``i``)."""
     r, i = z.real, z.imag
@@ -559,21 +597,14 @@ def _format_complex_smoke(z: complex) -> str:
             return "0"
         if math.isinf(r):
             return "-inf" if r < 0 else "inf"
-        if abs(r - round(r)) < 1e-12 and abs(r) < 1e15:
-            return str(int(round(r)))
-        return str(r).rstrip("0").rstrip(".")
+        return _format_float_scalar_smoke(r)
     # non-zero imaginary
     eps = 1e-12
+
     def fmt_re(x: float) -> str:
-        if math.isnan(x):
-            return "nan"
-        if math.isinf(x):
-            return "-inf" if x < 0 else "inf"
         if abs(x) < eps:
             return ""
-        if abs(x - round(x)) < 1e-12 and abs(x) < 1e15:
-            return str(int(round(x)))
-        return str(x).rstrip("0").rstrip(".")
+        return _format_float_scalar_smoke(x)
 
     def imag_tail(ai: float) -> str:
         if math.isnan(ai):
@@ -587,7 +618,7 @@ def _format_complex_smoke(z: complex) -> str:
         if abs(a - round(a)) < 1e-12 and a < 1e15:
             n = int(round(a))
             return f"-{n}i" if neg else f"{n}i"
-        body = (f"{a}i").rstrip("0").rstrip(".")
+        body = _format_float_scalar_smoke(a) + "i"
         return "-" + body if neg else body
 
     tr = fmt_re(r)
@@ -989,12 +1020,21 @@ def parse_smoke_cases(path: str) -> list[dict]:
             continue
         idx = int(m.group(1))
         expr = m.group(2).replace('""', '"')  # FB string escape if any
-        entry = cases.setdefault(idx, {"idx": idx, "expr": expr})
+        entry = cases.setdefault(
+            idx,
+            {
+                "idx": idx,
+                "expr": expr,
+                "source": "smoke_main",
+                "ref_mode": infer_ref_mode(expr, ""),
+            },
+        )
         if re_nores.search(line):
             entry["expect_no_result"] = True
         me = re_exp.search(line)
         if me:
             entry["expected"] = me.group(1).replace('""', '"')
+            entry["ref_mode"] = infer_ref_mode(expr, entry["expected"])
         mer = re_err.search(line)
         if mer:
             entry["expected_err"] = mer.group(1).replace('""', '"')
@@ -1154,6 +1194,18 @@ _RE_TRIG_NEARZERO = re.compile(
     re.I,
 )
 
+_RE_PAIRED_EXPR_EXPECT = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)Expr\s*\(\s*(\d+)\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"\s*:\s*"
+    r"\1Expect\s*\(\s*\2\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"",
+    re.I,
+)
+
+_RE_ERR_EXPR_NEED = re.compile(
+    r'errExprs\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
+    r'errNeed\s*\(\s*\1\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
 _RE_INLINE_NUMERIC = re.compile(
     r'Parser_TryEvaluateEx\s*\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*r\s*,\s*rt\s*,\s*ia\s*\)\s*=\s*FALSE\s+'
     r'orelse\s+rt\s+<>\s+"((?:[^"\\]|\\.)*)"',
@@ -1217,6 +1269,23 @@ def parse_smoke_sub_array_cases(path: str) -> list[dict]:
                 "source": "trig_reduction",
             }
         )
+    for m in _RE_PAIRED_EXPR_EXPECT.finditer(text):
+        stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
+        expr = _unescape_fb(expr_s)
+        expected = _unescape_fb(exp_s)
+        key = f"{stem}-expr:{expr}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "idx": f"{stem}-expr/{n_s}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": infer_ref_mode(expr, expected),
+                "source": "paired_expr_expect",
+            }
+        )
     return out
 
 
@@ -1250,52 +1319,57 @@ def parse_smoke_inline_numeric_probes(path: str) -> list[dict]:
     return out
 
 
-def parse_band_cases_file(path: str) -> list[dict]:
-    """Parse ``neg_band_cases_generated.bas`` (and positive/complex tables)."""
-    text = open(path, encoding="utf-8", errors="replace").read()
+def parse_mirror_table_stems(
+    text: str,
+    tables: list[tuple[str, Optional[str], str]],
+) -> list[dict]:
+    """
+  Parse generated mirror tables: ``{stem}Expr``, ``{stem}Expect``, ``{stem}IsErr``, …
+
+  *tables*: list of (stem, ref_mode or None to infer per row, source tag).
+  """
     out: list[dict] = []
-    for table, ref_mode in (
-        ("negBandReal", "real"),
-        ("posBandReal", "real"),
-        ("negBandCx", "complex"),
-        ("posBandCx", "complex"),
-    ):
+    for table, ref_mode, source in tables:
         exprs: dict[int, str] = {}
         expects: dict[int, str] = {}
         is_err: dict[int, bool] = {}
         err_txt: dict[int, str] = {}
         for m in re.finditer(
-            rf'{table}Expr\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            rf"{table}Expr\s*\(\s*(\d+)\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"",
             text,
         ):
             exprs[int(m.group(1))] = _unescape_fb(m.group(2))
         for m in re.finditer(
-            rf'{table}Expect\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            rf"{table}Expect\s*\(\s*(\d+)\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"",
             text,
         ):
             expects[int(m.group(1))] = _unescape_fb(m.group(2))
         for m in re.finditer(
-            rf'{table}IsErr\s*\(\s*(\d+)\s*\)\s*=\s*(TRUE|FALSE)',
+            rf"{table}IsErr\s*\(\s*(\d+)\s*\)\s*=\s*(TRUE|FALSE)",
             text,
             re.I,
         ):
             is_err[int(m.group(1))] = m.group(2).upper() == "TRUE"
         for m in re.finditer(
-            rf'{table}Err\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+            rf"{table}Err\s*\(\s*(\d+)\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"",
             text,
         ):
             err_txt[int(m.group(1))] = _unescape_fb(m.group(2))
         for i in sorted(exprs):
             label_m = re.search(
-                rf'{table}Label\s*\(\s*{i}\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+                rf"{table}Label\s*\(\s*{i}\s*\)\s*=\s*\"((?:[^\"\\]|\\.)*)\"",
                 text,
             )
             label = _unescape_fb(label_m.group(1)) if label_m else f"{table}/{i}"
+            expr = exprs[i]
+            mode = ref_mode
+            if mode is None:
+                mode = infer_ref_mode(expr, expects.get(i, ""))
             entry: dict = {
-                "idx": f"band/{table}/{i}",
-                "expr": exprs[i],
-                "source": "magnitude_band",
-                "ref_mode": ref_mode,
+                "idx": f"{source}/{table}/{i}",
+                "expr": expr,
+                "source": source,
+                "ref_mode": mode,
                 "band_label": label,
             }
             if is_err.get(i):
@@ -1308,16 +1382,202 @@ def parse_band_cases_file(path: str) -> list[dict]:
     return out
 
 
-def collect_all_numeric_cases(smoke_bas: str, band_bas: str) -> list[dict]:
-    return (
+def parse_band_cases_file(path: str) -> list[dict]:
+    """Parse ``neg_band_cases_generated.bas`` (and positive/complex tables)."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    return parse_mirror_table_stems(
+        text,
+        [
+            ("negBandReal", "real", "magnitude_band"),
+            ("posBandReal", "real", "magnitude_band"),
+            ("negBandCx", "complex", "magnitude_band"),
+            ("posBandCx", "complex", "magnitude_band"),
+        ],
+    )
+
+
+def parse_tools_generated_cases(tools_dir: str) -> list[dict]:
+    """All ``#include`` generated tables under ``tools/`` (except neg band file)."""
+    out: list[dict] = []
+    paths = [
+        (
+            f"{tools_dir}/complex_coverage_generated.bas",
+            [("cxCov", "complex", "complex_coverage")],
+        ),
+        (
+            f"{tools_dir}/naninf_mirror_generated.bas",
+            [("naninf", "real", "naninf_mirror")],
+        ),
+        (
+            f"{tools_dir}/float_magnitude_cases_generated.bas",
+            [("floatMag", "real", "float_magnitude")],
+        ),
+        (
+            f"{tools_dir}/smoke_parity_append_generated.bas",
+            [("smokeAppend", None, "smoke_append")],
+        ),
+    ]
+    for path, stems in paths:
+        try:
+            text = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        out.extend(parse_mirror_table_stems(text, stems))
+    return out
+
+
+def parse_smoke_global_tables(path: str) -> list[dict]:
+    """
+    Paired ``*Ok``/``*Expect``, ``*Err*`` expr tables, and arity ``errExprs`` rows
+    anywhere in ``SmokeTest_MathParser.bas`` (outside complex-opt-only parsing).
+    """
+    text = open(path, encoding="utf-8", errors="replace").read()
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(entry: dict) -> None:
+        key = f"{entry.get('expr','')}|{entry.get('expected','')}|{entry.get('expect_error')}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(entry)
+
+    for m in _RE_COMPLEX_OPT_PAIRED_ROW.finditer(text):
+        stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
+        expr = _unescape_fb(expr_s)
+        expected = _unescape_fb(exp_s)
+        add(
+            {
+                "idx": f"paired/{stem}({n_s})",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": infer_ref_mode(expr, expected),
+                "source": "paired_ok_expect",
+            }
+        )
+
+    consts = _collect_dim_string_constants(text)
+    _parse_paired_expr_expect_tables(text, consts, add)
+
+    for m in _RE_COMPLEX_OPT_ERR_ROW.finditer(text):
+        stem, n_s, expr_s = m.group(1), m.group(2), m.group(3)
+        expr = _unescape_fb(expr_s)
+        add(
+            {
+                "idx": f"errtbl/{stem}({n_s})",
+                "expr": expr,
+                "expect_error": True,
+                "ref_mode": infer_ref_mode(expr, ""),
+                "source": "error_expr_table",
+            }
+        )
+
+    for m in _RE_ERR_EXPR_NEED.finditer(text):
+        n_s, expr_s, need_s = m.group(1), m.group(2), m.group(3)
+        expr = _unescape_fb(expr_s)
+        add(
+            {
+                "idx": f"arity-err/{n_s}",
+                "expr": expr,
+                "expect_error": True,
+                "expected_err_substr": _unescape_fb(need_s),
+                "ref_mode": infer_ref_mode(expr, ""),
+                "source": "builtin_arity",
+            }
+        )
+
+    return out
+
+
+def dedupe_cases(cases: list[dict]) -> list[dict]:
+    """Drop duplicate probes (complex-opt block overlaps global paired-row scan)."""
+    out: list[dict] = []
+    seen: set[str] = set()
+    for c in cases:
+        key = "|".join(
+            (
+                c.get("expr", ""),
+                c.get("expected", ""),
+                str(c.get("expect_error", "")),
+                c.get("assert_kind", ""),
+                str(c.get("assert_threshold", "")),
+            )
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
+def collect_all_numeric_cases(smoke_bas: str, band_bas: str, tools_dir: str) -> list[dict]:
+    batches = (
         parse_smoke_cases(smoke_bas)
         + parse_smoke_sub_array_cases(smoke_bas)
         + parse_smoke_inline_numeric_probes(smoke_bas)
+        + parse_smoke_global_tables(smoke_bas)
         + parse_band_cases_file(band_bas)
+        + parse_tools_generated_cases(tools_dir)
         + parse_smoke_complex_opt_cases(smoke_bas)
         + parse_smoke_raw_api_cases(smoke_bas)
         + parse_smoke_synthetic_recent_cases()
     )
+    return dedupe_cases(batches)
+
+
+def _count_table_expr_rows(text: str, stem: str) -> int:
+    return len(re.findall(rf"{re.escape(stem)}Expr\s*\(\s*\d+\s*\)\s*=", text, re.I))
+
+
+def audit_coverage(smoke_bas: str, band_bas: str, tools_dir: str, cases: list[dict]) -> None:
+    """Print discovered row counts vs cases loaded (sanity check for parsers)."""
+    smoke_text = open(smoke_bas, encoding="utf-8", errors="replace").read()
+    parsed_by_source: dict[str, int] = {}
+    for c in cases:
+        src = c.get("source", "?")
+        parsed_by_source[src] = parsed_by_source.get(src, 0) + 1
+
+    re_tests_expr = re.compile(r"tests\(\d+\)\.expr\s*=", re.I)
+    re_tests_expected = re.compile(r"tests\(\d+\)\.expected\s*=", re.I)
+    print("=== Parser coverage audit ===")
+    print(f"tests(N).expr rows (smoke):           {len(re_tests_expr.findall(smoke_text))}")
+    print(f"tests(N).expected rows:               {len(re_tests_expected.findall(smoke_text))}")
+    print(f"Paired *Ok/*Expect (smoke file):       {len(_RE_COMPLEX_OPT_PAIRED_ROW.findall(smoke_text))}")
+    print(f"Paired *Expr/*Expect (smoke file):     {len(_RE_PAIRED_EXPR_EXPECT.findall(smoke_text))}")
+    print(f"*Err* expr table rows (smoke file):   {len(_RE_COMPLEX_OPT_ERR_ROW.findall(smoke_text))}")
+    print(f"Inline rt<> probes (smoke file):      {len(_RE_INLINE_NUMERIC.findall(smoke_text))}")
+    cx = _extract_run_complex_number_support_sub_body(smoke_text)
+    if cx:
+        print(f"Paired rows in complex-opt sub only:  {len(_RE_COMPLEX_OPT_PAIRED_ROW.findall(cx))}")
+    for label, path, stem in (
+        ("neg/pos band", band_bas, "negBandReal"),
+        ("cxCov", f"{tools_dir}/complex_coverage_generated.bas", "cxCov"),
+        ("naninf", f"{tools_dir}/naninf_mirror_generated.bas", "naninf"),
+        ("floatMag", f"{tools_dir}/float_magnitude_cases_generated.bas", "floatMag"),
+        ("smokeAppend", f"{tools_dir}/smoke_parity_append_generated.bas", "smokeAppend"),
+    ):
+        try:
+            t = open(path, encoding="utf-8", errors="replace").read()
+            if stem == "negBandReal":
+                n = sum(
+                    _count_table_expr_rows(t, s)
+                    for s in ("negBandReal", "posBandReal", "negBandCx", "posBandCx")
+                )
+            else:
+                n = _count_table_expr_rows(t, stem)
+            print(f"{label} Expr rows in file:              {n}")
+        except OSError:
+            print(f"{label}: (file missing)")
+    print("Parsed cases by source tag:")
+    for src in sorted(parsed_by_source):
+        print(f"  {src}: {parsed_by_source[src]}")
+    comparable = sum(
+        1
+        for c in cases
+        if "expected" in c or c.get("assert_kind") or c.get("expect_error")
+    )
+    print(f"Total deduped cases with expected/assert/error: {comparable}")
+    print()
 
 
 def parse_smoke_raw_api_cases(path: str) -> list[dict]:
@@ -1839,10 +2099,18 @@ def avg_sm_cx(*args: Any) -> complex:
 
 
 def fact_sm(n):
+    """Mirror ``TryApplyFactorialScalarInt``: table through 20, then multiply until non-finite."""
     if not float(n).is_integer() or n < 0:
         raise ValueError("fact")
     n = int(n)
-    return float(math.factorial(n)) if n > 12 else math.factorial(n)
+    if n <= 20:
+        return float(math.factorial(n))
+    d = float(math.factorial(20))
+    for fi in range(21, n + 1):
+        d *= float(fi)
+        if not math.isfinite(d):
+            break
+    return d
 
 
 def mod_sm(a, b):
@@ -2408,15 +2676,7 @@ def ref_format(v: Any, *, mode: str = "real") -> str:
     if isinstance(v, bool):
         return "1" if v else "0"
     if isinstance(v, float):
-        if math.isinf(v):
-            return "-inf" if v < 0 else "inf"
-        if math.isfinite(v) and v != 0 and (abs(v) >= 1e16 or abs(v) < 1e-4):
-            s = f"{v:.15e}"
-            if "e" in s.lower():
-                s = re.sub(r"e\+0+(\d)", r"e+\1", s, flags=re.I)
-                s = re.sub(r"e-0+(\d)", r"e-\1", s, flags=re.I)
-            return s
-        return str(v)
+        return _format_float_scalar_smoke(v)
     if isinstance(v, tuple):
         inner = ", ".join(ref_format(x, mode=mode) for x in v)
         return f"({inner})".replace(", ", ",").replace("( ", "(")
@@ -2483,13 +2743,7 @@ def should_skip_case(case: dict) -> Optional[str]:
     is_co = case.get("source") == "complex_opt"
     src = case.get("source", "")
     if case.get("expect_error"):
-        if src == "magnitude_band":
-            return "magnitude-band parser error probe"
-        if is_co and (ex.strip() in ("10+5i",) or "cart((5,1))" in ex):
-            return "complex support disabled (not modeled in Python reference)"
-        if is_co and re.search(r"\bhex\s*\([^)]*\.", ex, re.I):
-            return "hex() fractional complex part (parser-specific error text)"
-        return None
+        return "parser error probe (error text not comparable with Python)"
 
     if ex.strip() == "ans" and ";" not in ex:
         return "standalone ans (no prior statement in harness)"
@@ -2574,18 +2828,77 @@ def should_skip_case(case: dict) -> Optional[str]:
     return None
 
 
+_PROGRESS_IDLE_ABORT_S = 20.0
+
+
+class _ProgressWatchdog:
+    """Abort the process if nothing is printed for ``idle_s`` seconds."""
+
+    def __init__(self, idle_s: float = _PROGRESS_IDLE_ABORT_S) -> None:
+        self._idle_s = idle_s
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last = time.monotonic()
+
+    def say(self, msg: str = "") -> None:
+        self.touch()
+        print(msg, flush=True)
+
+    def start(self) -> None:
+        def run() -> None:
+            while not self._stop.wait(1.0):
+                with self._lock:
+                    idle = time.monotonic() - self._last
+                if idle >= self._idle_s:
+                    print(
+                        f"ERROR: no progress for {idle:.0f}s "
+                        f"(limit {self._idle_s:.0f}s); aborting.",
+                        flush=True,
+                    )
+                    os._exit(4)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
 def main() -> int:
     root = __file__.rsplit("\\", 1)[0]
     if "/" in root and "\\" not in root:
         root = __file__.rsplit("/", 1)[0]
     bas = root + "/../SmokeTest_MathParser.bas"
     band = root + "/neg_band_cases_generated.bas"
-    if len(sys.argv) > 1:
-        bas = sys.argv[1]
-    if len(sys.argv) > 2:
-        band = sys.argv[2]
+    tools_dir = root
+    argv = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(argv) > 0:
+        bas = argv[0]
+    if len(argv) > 1:
+        band = argv[1]
+    if len(argv) > 2:
+        tools_dir = argv[2]
 
-    cases = collect_all_numeric_cases(bas, band)
+    wd = _ProgressWatchdog()
+    if "--no-watchdog" not in sys.argv:
+        wd.start()
+
+    wd.say("Loading smoke/band/tools cases...")
+    cases = collect_all_numeric_cases(bas, band, tools_dir)
+    work_total = sum(
+        1
+        for c in cases
+        if "expected" in c or c.get("assert_kind") or c.get("expect_error")
+    )
+    wd.say(f"Loaded {len(cases)} rows; {work_total} comparable (expected/assert/error).")
+    if "--audit-coverage" in sys.argv or "--audit-only" in sys.argv:
+        audit_coverage(bas, band, tools_dir, cases)
+    if "--audit-only" in sys.argv:
+        wd.stop()
+        return 0
     mismatches: list[str] = []
     skipped: list[str] = []
     ok = 0
@@ -2601,6 +2914,7 @@ def main() -> int:
     n_time = 0
     n_assert_ok = 0
     n_band = sum(1 for c in cases if c.get("source") == "magnitude_band")
+    n_compared = 0
 
     for case in cases:
         idx = case["idx"]
@@ -2610,6 +2924,12 @@ def main() -> int:
             and not case.get("assert_kind")
         ):
             continue
+        n_compared += 1
+        if n_compared % 50 == 0 or n_compared == 1:
+            wd.say(
+                f"  {n_compared}/{work_total} ok={ok} "
+                f"skip={len(skipped)} mismatch={len(mismatches)}"
+            )
         reason = should_skip_case(case)
         if reason:
             skipped.append(f"#{idx}: {reason}")
@@ -2739,6 +3059,7 @@ def main() -> int:
         print("--- SKIPPED ---")
         for s in skipped:
             print(s)
+    wd.stop()
     return 1 if mismatches else 0
 
 

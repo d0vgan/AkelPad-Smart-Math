@@ -797,6 +797,335 @@ enum BuiltinFunctionId
   FUNC__COUNT
 end enum
 
+' Builtin metadata: named flags/hints, one assignment per line (see EnsureBuiltinMeta).
+private const BUILTIN_META_ARITY_UNSET as UByte = 254
+private const BUILTIN_META_ARITY_UNBOUNDED as UByte = 255
+
+private const BUILTIN_FLAG_UNARY as UInteger = 1u shl 0
+private const BUILTIN_FLAG_FORMAT as UInteger = 1u shl 1
+private const BUILTIN_FLAG_INTEGER_ONLY as UInteger = 1u shl 2
+private const BUILTIN_FLAG_NON_CALCULATING as UInteger = 1u shl 3
+private const BUILTIN_FLAG_FINITE_REQUIRED as UInteger = 1u shl 4
+private const BUILTIN_FLAG_TRAILING_FORMATTER as UInteger = 1u shl 5
+
+enum BuiltinHintKind
+  BHK_NONE = 0
+  BHK_EMPTY_PAR
+  BHK_MIN_MAX
+  BHK_DOTDOTDOT
+  BHK_VALUE_POWER
+  BHK_Y_X
+  BHK_ANGLE
+  BHK_VALUE
+  BHK_VALUE_BASE
+  BHK_N
+  BHK_VALUE_DIVISOR
+  BHK_VALUE_MIN_MAX
+  BHK_X_Y
+  BHK_A_B
+  BHK_N_R
+  BHK_ARRAY_FUNC
+end enum
+
+dim shared BuiltinMetaFlags(0 to FUNC__COUNT - 1) as UInteger
+dim shared BuiltinMetaMinArgs(0 to FUNC__COUNT - 1) as UByte
+dim shared BuiltinMetaMaxArgs(0 to FUNC__COUNT - 1) as UByte
+dim shared BuiltinMetaHintKind(0 to FUNC__COUNT - 1) as UByte
+dim shared BuiltinMetaInitialized as Boolean = FALSE
+
+private sub EnsureBuiltinMeta()
+  if BuiltinMetaInitialized then exit sub
+  BuiltinMetaFlags(FUNC_RAND) = BUILTIN_FLAG_NON_CALCULATING  ' Rand
+  BuiltinMetaMinArgs(FUNC_RAND) = 0
+  BuiltinMetaMaxArgs(FUNC_RAND) = 0
+  BuiltinMetaHintKind(FUNC_RAND) = BHK_EMPTY_PAR
+  BuiltinMetaFlags(FUNC_RANDOM) = BUILTIN_FLAG_FINITE_REQUIRED  ' Random
+  BuiltinMetaMinArgs(FUNC_RANDOM) = 2
+  BuiltinMetaMaxArgs(FUNC_RANDOM) = 2
+  BuiltinMetaHintKind(FUNC_RANDOM) = BHK_MIN_MAX
+  BuiltinMetaFlags(FUNC_BIN) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Bin
+  BuiltinMetaMinArgs(FUNC_BIN) = 1
+  BuiltinMetaMaxArgs(FUNC_BIN) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_BIN) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_HEX) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Hex
+  BuiltinMetaMinArgs(FUNC_HEX) = 1
+  BuiltinMetaMaxArgs(FUNC_HEX) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_HEX) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_OCT) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Oct
+  BuiltinMetaMinArgs(FUNC_OCT) = 1
+  BuiltinMetaMaxArgs(FUNC_OCT) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_OCT) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_POW) = 0u  ' Pow
+  BuiltinMetaMinArgs(FUNC_POW) = 2
+  BuiltinMetaMaxArgs(FUNC_POW) = 2
+  BuiltinMetaHintKind(FUNC_POW) = BHK_VALUE_POWER
+  BuiltinMetaFlags(FUNC_ATAN2) = 0u  ' Atan2
+  BuiltinMetaMinArgs(FUNC_ATAN2) = 2
+  BuiltinMetaMaxArgs(FUNC_ATAN2) = 2
+  BuiltinMetaHintKind(FUNC_ATAN2) = BHK_Y_X
+  BuiltinMetaFlags(FUNC_SIN) = BUILTIN_FLAG_UNARY  ' Sin
+  BuiltinMetaMinArgs(FUNC_SIN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_SIN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_SIN) = BHK_ANGLE
+  BuiltinMetaFlags(FUNC_COS) = BUILTIN_FLAG_UNARY  ' Cos
+  BuiltinMetaMinArgs(FUNC_COS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_COS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_COS) = BHK_ANGLE
+  BuiltinMetaFlags(FUNC_TAN) = BUILTIN_FLAG_UNARY  ' Tan
+  BuiltinMetaMinArgs(FUNC_TAN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_TAN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_TAN) = BHK_ANGLE
+  BuiltinMetaFlags(FUNC_ASIN) = BUILTIN_FLAG_UNARY  ' Asin
+  BuiltinMetaMinArgs(FUNC_ASIN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ASIN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ASIN) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ACOS) = BUILTIN_FLAG_UNARY  ' Acos
+  BuiltinMetaMinArgs(FUNC_ACOS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ACOS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ACOS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ATAN) = BUILTIN_FLAG_UNARY  ' Atan
+  BuiltinMetaMinArgs(FUNC_ATAN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ATAN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ATAN) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_SINH) = BUILTIN_FLAG_UNARY  ' Sinh
+  BuiltinMetaMinArgs(FUNC_SINH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_SINH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_SINH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_COSH) = BUILTIN_FLAG_UNARY  ' Cosh
+  BuiltinMetaMinArgs(FUNC_COSH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_COSH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_COSH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_TANH) = BUILTIN_FLAG_UNARY  ' Tanh
+  BuiltinMetaMinArgs(FUNC_TANH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_TANH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_TANH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ACOSH) = BUILTIN_FLAG_UNARY  ' Acosh
+  BuiltinMetaMinArgs(FUNC_ACOSH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ACOSH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ACOSH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ASINH) = BUILTIN_FLAG_UNARY  ' Asinh
+  BuiltinMetaMinArgs(FUNC_ASINH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ASINH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ASINH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ATANH) = BUILTIN_FLAG_UNARY  ' Atanh
+  BuiltinMetaMinArgs(FUNC_ATANH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ATANH) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ATANH) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_EXP) = BUILTIN_FLAG_UNARY  ' Exp
+  BuiltinMetaMinArgs(FUNC_EXP) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_EXP) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_EXP) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_LOG) = 0u  ' Log
+  BuiltinMetaMinArgs(FUNC_LOG) = 2
+  BuiltinMetaMaxArgs(FUNC_LOG) = 2
+  BuiltinMetaHintKind(FUNC_LOG) = BHK_VALUE_BASE
+  BuiltinMetaFlags(FUNC_LN) = BUILTIN_FLAG_UNARY  ' Ln
+  BuiltinMetaMinArgs(FUNC_LN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_LN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_LN) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_LOG10) = BUILTIN_FLAG_UNARY  ' Log10
+  BuiltinMetaMinArgs(FUNC_LOG10) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_LOG10) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_LOG10) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_SQRT) = BUILTIN_FLAG_UNARY  ' Sqrt
+  BuiltinMetaMinArgs(FUNC_SQRT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_SQRT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_SQRT) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_SQR) = BUILTIN_FLAG_UNARY  ' Sqr
+  BuiltinMetaMinArgs(FUNC_SQR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_SQR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_SQR) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_INT) = BUILTIN_FLAG_UNARY  ' Int
+  BuiltinMetaMinArgs(FUNC_INT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_INT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_INT) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_FRAC) = BUILTIN_FLAG_UNARY  ' Frac
+  BuiltinMetaMinArgs(FUNC_FRAC) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_FRAC) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_FRAC) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ABS) = BUILTIN_FLAG_UNARY  ' Abs
+  BuiltinMetaMinArgs(FUNC_ABS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ABS) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ABS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_FLOOR) = BUILTIN_FLAG_UNARY  ' Floor
+  BuiltinMetaMinArgs(FUNC_FLOOR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_FLOOR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_FLOOR) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_CEIL) = BUILTIN_FLAG_UNARY  ' Ceil
+  BuiltinMetaMinArgs(FUNC_CEIL) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_CEIL) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_CEIL) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_TRUNC) = BUILTIN_FLAG_UNARY  ' Trunc
+  BuiltinMetaMinArgs(FUNC_TRUNC) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_TRUNC) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_TRUNC) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_ROUND) = BUILTIN_FLAG_UNARY  ' Round
+  BuiltinMetaMinArgs(FUNC_ROUND) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_ROUND) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_ROUND) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_SIGN) = BUILTIN_FLAG_UNARY  ' Sign
+  BuiltinMetaMinArgs(FUNC_SIGN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_SIGN) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_SIGN) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_DEG) = BUILTIN_FLAG_TRAILING_FORMATTER  ' Deg
+  BuiltinMetaMinArgs(FUNC_DEG) = 1
+  BuiltinMetaMaxArgs(FUNC_DEG) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_DEG) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_RAD) = BUILTIN_FLAG_TRAILING_FORMATTER  ' Rad
+  BuiltinMetaMinArgs(FUNC_RAD) = 1
+  BuiltinMetaMaxArgs(FUNC_RAD) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_RAD) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_SUM) = 0u  ' Sum
+  BuiltinMetaMinArgs(FUNC_SUM) = 1
+  BuiltinMetaMaxArgs(FUNC_SUM) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_SUM) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MEDIAN) = 0u  ' Median
+  BuiltinMetaMinArgs(FUNC_MEDIAN) = 1
+  BuiltinMetaMaxArgs(FUNC_MEDIAN) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_MEDIAN) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_VARIANCE) = 0u  ' Variance
+  BuiltinMetaMinArgs(FUNC_VARIANCE) = 1
+  BuiltinMetaMaxArgs(FUNC_VARIANCE) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_VARIANCE) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_STDDEV) = 0u  ' Stddev
+  BuiltinMetaMinArgs(FUNC_STDDEV) = 1
+  BuiltinMetaMaxArgs(FUNC_STDDEV) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_STDDEV) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_SORT) = BUILTIN_FLAG_NON_CALCULATING  ' Sort
+  BuiltinMetaMinArgs(FUNC_SORT) = 1
+  BuiltinMetaMaxArgs(FUNC_SORT) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_SORT) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_SORTBY) = BUILTIN_FLAG_NON_CALCULATING  ' Sortby
+  BuiltinMetaMinArgs(FUNC_SORTBY) = 2
+  BuiltinMetaMaxArgs(FUNC_SORTBY) = 2
+  BuiltinMetaHintKind(FUNC_SORTBY) = BHK_ARRAY_FUNC
+  BuiltinMetaFlags(FUNC_RATIO) = BUILTIN_FLAG_UNARY  ' Ratio
+  BuiltinMetaMinArgs(FUNC_RATIO) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_RATIO) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_RATIO) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_REVERSE) = BUILTIN_FLAG_NON_CALCULATING  ' Reverse
+  BuiltinMetaMinArgs(FUNC_REVERSE) = 1
+  BuiltinMetaMaxArgs(FUNC_REVERSE) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_REVERSE) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_UNIQUE) = BUILTIN_FLAG_NON_CALCULATING  ' Unique
+  BuiltinMetaMinArgs(FUNC_UNIQUE) = 1
+  BuiltinMetaMaxArgs(FUNC_UNIQUE) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_UNIQUE) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_UNPACK) = BUILTIN_FLAG_NON_CALCULATING  ' Unpack
+  BuiltinMetaMinArgs(FUNC_UNPACK) = 1
+  BuiltinMetaMaxArgs(FUNC_UNPACK) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_UNPACK) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_FACT) = BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY  ' Fact
+  BuiltinMetaMinArgs(FUNC_FACT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_FACT) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_FACT) = BHK_N
+  BuiltinMetaFlags(FUNC_AVG) = 0u  ' Avg
+  BuiltinMetaMinArgs(FUNC_AVG) = 1
+  BuiltinMetaMaxArgs(FUNC_AVG) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_AVG) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MEAN) = 0u  ' Mean
+  BuiltinMetaMinArgs(FUNC_MEAN) = 1
+  BuiltinMetaMaxArgs(FUNC_MEAN) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_MEAN) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MOD) = BUILTIN_FLAG_INTEGER_ONLY  ' Mod
+  BuiltinMetaMinArgs(FUNC_MOD) = 2
+  BuiltinMetaMaxArgs(FUNC_MOD) = 2
+  BuiltinMetaHintKind(FUNC_MOD) = BHK_VALUE_DIVISOR
+  BuiltinMetaFlags(FUNC_CLAMP) = 0u  ' Clamp
+  BuiltinMetaMinArgs(FUNC_CLAMP) = 3
+  BuiltinMetaMaxArgs(FUNC_CLAMP) = 3
+  BuiltinMetaHintKind(FUNC_CLAMP) = BHK_VALUE_MIN_MAX
+  BuiltinMetaFlags(FUNC_HYPOT) = 0u  ' Hypot
+  BuiltinMetaMinArgs(FUNC_HYPOT) = 2
+  BuiltinMetaMaxArgs(FUNC_HYPOT) = 2
+  BuiltinMetaHintKind(FUNC_HYPOT) = BHK_X_Y
+  BuiltinMetaFlags(FUNC_GCD) = BUILTIN_FLAG_INTEGER_ONLY  ' Gcd
+  BuiltinMetaMinArgs(FUNC_GCD) = 2
+  BuiltinMetaMaxArgs(FUNC_GCD) = 2
+  BuiltinMetaHintKind(FUNC_GCD) = BHK_A_B
+  BuiltinMetaFlags(FUNC_LCM) = BUILTIN_FLAG_INTEGER_ONLY  ' Lcm
+  BuiltinMetaMinArgs(FUNC_LCM) = 2
+  BuiltinMetaMaxArgs(FUNC_LCM) = 2
+  BuiltinMetaHintKind(FUNC_LCM) = BHK_A_B
+  BuiltinMetaFlags(FUNC_NCR) = BUILTIN_FLAG_INTEGER_ONLY  ' Ncr
+  BuiltinMetaMinArgs(FUNC_NCR) = 2
+  BuiltinMetaMaxArgs(FUNC_NCR) = 2
+  BuiltinMetaHintKind(FUNC_NCR) = BHK_N_R
+  BuiltinMetaFlags(FUNC_NPR) = BUILTIN_FLAG_INTEGER_ONLY  ' Npr
+  BuiltinMetaMinArgs(FUNC_NPR) = 2
+  BuiltinMetaMaxArgs(FUNC_NPR) = 2
+  BuiltinMetaHintKind(FUNC_NPR) = BHK_N_R
+  BuiltinMetaFlags(FUNC_PRODUCT) = 0u  ' Product
+  BuiltinMetaMinArgs(FUNC_PRODUCT) = 1
+  BuiltinMetaMaxArgs(FUNC_PRODUCT) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_PRODUCT) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MIN) = 0u  ' Min
+  BuiltinMetaMinArgs(FUNC_MIN) = 1
+  BuiltinMetaMaxArgs(FUNC_MIN) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_MIN) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MAX) = 0u  ' Max
+  BuiltinMetaMinArgs(FUNC_MAX) = 1
+  BuiltinMetaMaxArgs(FUNC_MAX) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_MAX) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_UHEX) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Uhex
+  BuiltinMetaMinArgs(FUNC_UHEX) = 1
+  BuiltinMetaMaxArgs(FUNC_UHEX) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_UHEX) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_UOCT) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Uoct
+  BuiltinMetaMinArgs(FUNC_UOCT) = 1
+  BuiltinMetaMaxArgs(FUNC_UOCT) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_UOCT) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_UBIN) = BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER  ' Ubin
+  BuiltinMetaMinArgs(FUNC_UBIN) = 1
+  BuiltinMetaMaxArgs(FUNC_UBIN) = BUILTIN_META_ARITY_UNBOUNDED
+  BuiltinMetaHintKind(FUNC_UBIN) = BHK_DOTDOTDOT
+  BuiltinMetaFlags(FUNC_MILLISECONDS) = 0u  ' Milliseconds
+  BuiltinMetaMinArgs(FUNC_MILLISECONDS) = 1
+  BuiltinMetaMaxArgs(FUNC_MILLISECONDS) = 1
+  BuiltinMetaHintKind(FUNC_MILLISECONDS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_SECONDS) = 0u  ' Seconds
+  BuiltinMetaMinArgs(FUNC_SECONDS) = 1
+  BuiltinMetaMaxArgs(FUNC_SECONDS) = 1
+  BuiltinMetaHintKind(FUNC_SECONDS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_MINUTES) = 0u  ' Minutes
+  BuiltinMetaMinArgs(FUNC_MINUTES) = 1
+  BuiltinMetaMaxArgs(FUNC_MINUTES) = 1
+  BuiltinMetaHintKind(FUNC_MINUTES) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_HOURS) = 0u  ' Hours
+  BuiltinMetaMinArgs(FUNC_HOURS) = 1
+  BuiltinMetaMaxArgs(FUNC_HOURS) = 1
+  BuiltinMetaHintKind(FUNC_HOURS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_DAYS) = 0u  ' Days
+  BuiltinMetaMinArgs(FUNC_DAYS) = 1
+  BuiltinMetaMaxArgs(FUNC_DAYS) = 1
+  BuiltinMetaHintKind(FUNC_DAYS) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_REAL) = BUILTIN_FLAG_UNARY  ' Real
+  BuiltinMetaMinArgs(FUNC_REAL) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_REAL) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_REAL) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_IMAG) = BUILTIN_FLAG_UNARY  ' Imag
+  BuiltinMetaMinArgs(FUNC_IMAG) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_IMAG) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_IMAG) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_PHASE) = BUILTIN_FLAG_UNARY  ' Phase
+  BuiltinMetaMinArgs(FUNC_PHASE) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_PHASE) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_PHASE) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_POLAR) = BUILTIN_FLAG_UNARY  ' Polar
+  BuiltinMetaMinArgs(FUNC_POLAR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_POLAR) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_POLAR) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_CART) = 0u  ' Cart
+  BuiltinMetaMinArgs(FUNC_CART) = 1
+  BuiltinMetaMaxArgs(FUNC_CART) = 2
+  BuiltinMetaHintKind(FUNC_CART) = BHK_VALUE
+  BuiltinMetaFlags(FUNC_CONJ) = BUILTIN_FLAG_UNARY  ' Conj
+  BuiltinMetaMinArgs(FUNC_CONJ) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaMaxArgs(FUNC_CONJ) = BUILTIN_META_ARITY_UNSET
+  BuiltinMetaHintKind(FUNC_CONJ) = BHK_VALUE
+  BuiltinMetaInitialized = TRUE
+end sub
+
 enum OperatorNameId
   OP_NOT = 0
   OP_AND
@@ -1060,39 +1389,12 @@ private function IsOpKeyword(byref nameText as String, byval id as OperatorNameI
   return lcase(nameText) = OpName(id)
 end function
 
-' Keep flag assignments and GetBuiltinFlags cases in sync with BuiltinFlags in cpp/MathParser.hpp.
-' Keep GetBuiltinArity cases in sync with getBuiltinArity in cpp/MathParser.cpp.
-private const BUILTIN_ARITY_UNBOUNDED as Integer = 255
-private const BUILTIN_FLAG_UNARY as UInteger = 1u shl 0
-private const BUILTIN_FLAG_FORMAT as UInteger = 1u shl 1
-private const BUILTIN_FLAG_INTEGER_ONLY as UInteger = 1u shl 2
-private const BUILTIN_FLAG_NON_CALCULATING as UInteger = 1u shl 3
-private const BUILTIN_FLAG_FINITE_REQUIRED as UInteger = 1u shl 4
-private const BUILTIN_FLAG_TRAILING_FORMATTER as UInteger = 1u shl 5
+private const BUILTIN_ARITY_UNBOUNDED as Integer = BUILTIN_META_ARITY_UNBOUNDED
 
 private function GetBuiltinFlags(byval id as Integer) as UInteger
-  select case id
-    case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ACOS, FUNC_ATAN, _
-         FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, _
-         FUNC_INT, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_FRAC, FUNC_ABS, FUNC_SIGN, _
-         FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CONJ
-      return BUILTIN_FLAG_UNARY
-    case FUNC_DEG, FUNC_RAD
-      return BUILTIN_FLAG_TRAILING_FORMATTER
-    case FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
-      return BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER
-    case FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_MOD
-      return BUILTIN_FLAG_INTEGER_ONLY
-    case FUNC_FACT
-      return BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY
-    case FUNC_UNPACK, FUNC_SORT, FUNC_SORTBY, FUNC_REVERSE, FUNC_UNIQUE, FUNC_RAND
-      return BUILTIN_FLAG_NON_CALCULATING
-    case FUNC_RATIO
-      return BUILTIN_FLAG_UNARY
-    case FUNC_RANDOM
-      return BUILTIN_FLAG_FINITE_REQUIRED
-  end select
-  return 0u
+  if id < 0 orelse id >= FUNC__COUNT then return 0u
+  EnsureBuiltinMeta()
+  return BuiltinMetaFlags(id)
 end function
 
 private function HasBuiltinFlag(byval id as Integer, byval flagMask as UInteger) as Boolean
@@ -1104,52 +1406,10 @@ private function IsUnaryBuiltin(byref fn as String) as Boolean
   return HasBuiltinFlag(id, BUILTIN_FLAG_UNARY)
 end function
 
-enum BuiltinHintKind
-  BHK_NONE = 0
-  BHK_EMPTY_PAR
-  BHK_MIN_MAX
-  BHK_DOTDOTDOT
-  BHK_VALUE_POWER
-  BHK_Y_X
-  BHK_ANGLE
-  BHK_VALUE
-  BHK_VALUE_BASE
-  BHK_N
-  BHK_VALUE_DIVISOR
-  BHK_VALUE_MIN_MAX
-  BHK_X_Y
-  BHK_A_B
-  BHK_N_R
-  BHK_ARRAY_FUNC
-end enum
-
 private function GetBuiltinHintKind(byval id as Integer) as BuiltinHintKind
-  select case id
-    case FUNC_RAND: return BHK_EMPTY_PAR
-    case FUNC_RANDOM: return BHK_MIN_MAX
-    case FUNC_BIN, FUNC_HEX, FUNC_OCT, FUNC_UBIN, FUNC_UHEX, FUNC_UOCT: return BHK_DOTDOTDOT
-    case FUNC_POW: return BHK_VALUE_POWER
-    case FUNC_ATAN2: return BHK_Y_X
-    case FUNC_SIN, FUNC_COS, FUNC_TAN: return BHK_ANGLE
-    case FUNC_ASIN, FUNC_ACOS, FUNC_ATAN
-      return BHK_VALUE
-    case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH, FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
-      return BHK_VALUE
-    case FUNC_FRAC, FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_POLAR, FUNC_CART, FUNC_CONJ: return BHK_VALUE
-    case FUNC_LOG: return BHK_VALUE_BASE
-    case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS: return BHK_VALUE
-    case FUNC_SORTBY: return BHK_ARRAY_FUNC
-    case FUNC_RATIO: return BHK_VALUE
-    case FUNC_DEG, FUNC_RAD, FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_UNIQUE, FUNC_UNPACK, FUNC_AVG, FUNC_MEAN, FUNC_PRODUCT, FUNC_MIN, FUNC_MAX, FUNC_SORT, FUNC_REVERSE
-      return BHK_DOTDOTDOT
-    case FUNC_FACT: return BHK_N
-    case FUNC_MOD: return BHK_VALUE_DIVISOR
-    case FUNC_CLAMP: return BHK_VALUE_MIN_MAX
-    case FUNC_HYPOT: return BHK_X_Y
-    case FUNC_GCD, FUNC_LCM: return BHK_A_B
-    case FUNC_NCR, FUNC_NPR: return BHK_N_R
-  end select
-  return BHK_NONE
+  if id < 0 orelse id >= FUNC__COUNT then return BHK_NONE
+  EnsureBuiltinMeta()
+  return CInt(BuiltinMetaHintKind(id))
 end function
 
 private function GetBuiltinHintDisplayName(byval id as Integer, byref lowFn as String) as String
@@ -3241,6 +3501,7 @@ declare function ParseBitwiseAnd() as EvalValue
 declare function ParseShift() as EvalValue
 declare function ParseAdditive() as EvalValue
 declare function ParseMultiplicative() as EvalValue
+declare function ParseLeftAssocBinary(byval kind as Integer, byval int64LevelId as Integer) as EvalValue
 declare function ParseUnary() as EvalValue
 declare function ParsePower() as EvalValue
 declare function ParseFactor() as EvalValue
@@ -3471,45 +3732,27 @@ private sub SetExactArgCountError(byref fnName as String, byval expectedCount as
 end sub
 
 private sub GetBuiltinArity(byval id as Integer, byref minArgs as Integer, byref maxArgs as Integer)
+  if id < 0 orelse id >= FUNC__COUNT then
+    minArgs = -1
+    maxArgs = -1
+    exit sub
+  end if
+  EnsureBuiltinMeta()
   if HasBuiltinFlag(id, BUILTIN_FLAG_UNARY) then
     minArgs = 1
     maxArgs = 1
     exit sub
   end if
-  select case id
-    case FUNC_CART
-      minArgs = 1
-      maxArgs = 2
-    case FUNC_RAND
-      minArgs = 0
-      maxArgs = 0
-    case FUNC_CLAMP
-      minArgs = 3
-      maxArgs = 3
-    case FUNC_RANDOM, FUNC_POW, FUNC_ATAN2, FUNC_HYPOT, FUNC_MOD, FUNC_LOG, _
-         FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR, FUNC_SORTBY
-      minArgs = 2
-      maxArgs = 2
-    case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS
-      minArgs = 1
-      maxArgs = 1
-    case FUNC_SUM, FUNC_PRODUCT, FUNC_MIN, FUNC_MAX, FUNC_AVG, FUNC_MEAN, _
-         FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_SORT, FUNC_REVERSE, FUNC_UNIQUE, FUNC_UNPACK, _
-         FUNC_HEX, FUNC_OCT, FUNC_BIN, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN, FUNC_DEG, FUNC_RAD
-      minArgs = 1
-      maxArgs = BUILTIN_ARITY_UNBOUNDED
-    case else
-      minArgs = -1
-      maxArgs = -1
-  end select
+  if BuiltinMetaMinArgs(id) = BUILTIN_META_ARITY_UNSET then
+    minArgs = -1
+    maxArgs = -1
+    exit sub
+  end if
+  minArgs = BuiltinMetaMinArgs(id)
+  maxArgs = BuiltinMetaMaxArgs(id)
 end sub
 
-private function ValidateBuiltinCallArity(byval fnId as Integer, byref fnName as String, args() as EvalValue) as Boolean
-  dim minArgs as Integer = 0
-  dim maxArgs as Integer = 0
-  GetBuiltinArity(fnId, minArgs, maxArgs)
-  if minArgs < 0 then return TRUE
-  dim argc as Integer = ubound(args) + 1
+private function ValidateCallArity(byval minArgs as Integer, byval maxArgs as Integer, byval argc as Integer, byref fnName as String) as Boolean
   if minArgs = maxArgs then
     if argc <> minArgs then
       SetExactArgCountError(fnName, minArgs, argc)
@@ -3526,6 +3769,14 @@ private function ValidateBuiltinCallArity(byval fnId as Integer, byref fnName as
     return FALSE
   end if
   return TRUE
+end function
+
+private function ValidateBuiltinCallArity(byval fnId as Integer, byref fnName as String, args() as EvalValue) as Boolean
+  dim minArgs as Integer = 0
+  dim maxArgs as Integer = 0
+  GetBuiltinArity(fnId, minArgs, maxArgs)
+  if minArgs < 0 then return TRUE
+  return ValidateCallArity(minArgs, maxArgs, ubound(args) + 1, fnName)
 end function
 
 private sub SetScalarValuesError(byref fnName as String)
@@ -4586,6 +4837,16 @@ private function TryTrigHalfPiQuotient(byval x as Double, byref outK as LongInt)
   return TRUE
 end function
 
+'' k = round(x / (pi/4)) when x is a multiple of pi/4; FALSE if not or |k| is out of trig range.
+private function TryTrigQuarterPiQuotient(byval x as Double, byref outK as LongInt) as Boolean
+  if IsMultipleOf(x, FB_PI_VAL/4) = FALSE then return FALSE
+  dim q as Double = round(x / (FB_PI_VAL/4))
+  if IsFiniteValue(q) = FALSE then return FALSE
+  if abs(q) >= FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
+  outK = CLngInt(q)
+  return TRUE
+end function
+
 private function CalcSin(byval x as Double) as Double
   if x = 0.0 then return 0.0
   if IsFiniteValue(x) = FALSE then return LibSin(x)
@@ -4618,6 +4879,12 @@ private function CalcTan(byval x as Double) as Double
   if TryTrigHalfPiQuotient(x, k) andalso (k mod 2) <> 0 then
     if k > 0 then return 1.0/0.0
     return -1.0/0.0
+  end if
+  if TryTrigQuarterPiQuotient(x, k) andalso (k mod 2) <> 0 then
+    dim r as LongInt = k mod 4
+    if r < 0 then r += 4
+    if r = 1 then return 1.0
+    if r = 3 then return -1.0
   end if
   return LibTan(x)
 end function
@@ -4775,8 +5042,8 @@ private function ApplyUnaryScalarFunctionById(byval fnId as Integer, byref scala
         end if
         if IsTrigRadiansInRange(ei) = FALSE then return FALSE
         dim ea as Double = exp(er)
-        dim prE as Double = ea * LibCos(ei)
-        dim piE as Double = ea * LibSin(ei)
+        dim prE as Double = ea * CalcCos(ei)
+        dim piE as Double = ea * CalcSin(ei)
         ScalarSnapComplexNearZeroAxis(prE, piE)
         ValueSetScalarComplexFromDoubles(outV, prE, piE)
         return TRUE
@@ -4990,8 +5257,8 @@ private function TryCartFromPolarScalars(byval rMag as Double, byval rAng as Dou
       return FALSE
     end if
   end if
-  dim cr as Double = rMag * LibCos(rAng)
-  dim ci as Double = rMag * LibSin(rAng)
+  dim cr as Double = rMag * CalcCos(rAng)
+  dim ci as Double = rMag * CalcSin(rAng)
   ValueSetScalarComplexFromDoubles(outV, cr, ci)
   return TRUE
 end function
@@ -5141,8 +5408,8 @@ end sub
 private function ScalarComplexExpCartesian(byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
   if IsTrigRadiansInRange(ai) = FALSE then return FALSE
   dim ea as Double = exp(ar)
-  outR = ea * LibCos(ai)
-  outI = ea * LibSin(ai)
+  outR = ea * CalcCos(ai)
+  outI = ea * CalcSin(ai)
   return TRUE
 end function
 
@@ -5166,8 +5433,8 @@ private sub ScalarComplexCartesianPrincipalNthRoot(byval ar as Double, byval ai 
   else
     rmN = exp(log(mag) * invN)
   end if
-  outR = rmN * LibCos(angN)
-  outI = rmN * LibSin(angN)
+  outR = rmN * CalcCos(angN)
+  outI = rmN * CalcSin(angN)
   ScalarSnapComplexNearZeroAxis(outR, outI)
 end sub
 
@@ -5186,32 +5453,32 @@ private function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Do
 
   select case fnId
     case FUNC_SIN
-      outR = LibSin(ar) * cosh(ai)
-      outI = LibCos(ar) * sinh(ai)
+      outR = CalcSin(ar) * cosh(ai)
+      outI = CalcCos(ar) * sinh(ai)
     case FUNC_COS
-      outR = LibCos(ar) * cosh(ai)
-      outI = -LibSin(ar) * sinh(ai)
+      outR = CalcCos(ar) * cosh(ai)
+      outI = -CalcSin(ar) * sinh(ai)
     case FUNC_SINH
-      outR = sinh(ar) * LibCos(ai)
-      outI = cosh(ar) * LibSin(ai)
+      outR = sinh(ar) * CalcCos(ai)
+      outI = cosh(ar) * CalcSin(ai)
     case FUNC_COSH
-      outR = cosh(ar) * LibCos(ai)
-      outI = sinh(ar) * LibSin(ai)
+      outR = cosh(ar) * CalcCos(ai)
+      outI = sinh(ar) * CalcSin(ai)
     case FUNC_TAN, FUNC_TANH
       dim numR as Double
       dim numI as Double
       dim denR as Double
       dim denI as Double
       if fnId = FUNC_TAN then
-        numR = LibSin(ar) * cosh(ai)
-        numI = LibCos(ar) * sinh(ai)
-        denR = LibCos(ar) * cosh(ai)
-        denI = -LibSin(ar) * sinh(ai)
+        numR = CalcSin(ar) * cosh(ai)
+        numI = CalcCos(ar) * sinh(ai)
+        denR = CalcCos(ar) * cosh(ai)
+        denI = -CalcSin(ar) * sinh(ai)
       else
-        numR = sinh(ar) * LibCos(ai)
-        numI = cosh(ar) * LibSin(ai)
-        denR = cosh(ar) * LibCos(ai)
-        denI = sinh(ar) * LibSin(ai)
+        numR = sinh(ar) * CalcCos(ai)
+        numI = cosh(ar) * CalcSin(ai)
+        denR = cosh(ar) * CalcCos(ai)
+        denI = sinh(ar) * CalcSin(ai)
       end if
       ScalarComplexDivide(numR, numI, denR, denI, outR, outI)
     case FUNC_ASINH
@@ -6125,8 +6392,8 @@ private sub ScalarComplexPowPrincipal(byval ar as Double, byval ai as Double, by
     outI = MakeNaN()
     exit sub
   end if
-  dim er as Double = exp(powRe) * LibCos(powIm)
-  dim ei as Double = exp(powRe) * LibSin(powIm)
+  dim er as Double = exp(powRe) * CalcCos(powIm)
+  dim ei as Double = exp(powRe) * CalcSin(powIm)
   outR = er
   outI = ei
   ScalarSnapComplexNearZeroAxis(outR, outI)
@@ -6346,6 +6613,46 @@ private const MAP_BINARY_OP_NUMERIC as Integer = 1
 private const MAP_BINARY_OP_INT64 as Integer = 2
 private const MAP_BINARY_OP_SCALAR_MATH as Integer = 3
 
+private const BSD_NUMERIC as Integer = 1
+private const BSD_INT64 as Integer = 2
+private const BSD_SCALAR_MATH as Integer = 3
+
+declare function ValueApplyBinaryTimeAware(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
+
+declare function MapBinaryBroadcastScalarsImpl( _
+  byval useTimeOps as Boolean, _
+  byval mode as Integer, _
+  byref leftV as EvalValue, _
+  byref rightV as EvalValue, _
+  byval op as UByte, _
+  byval intOp as OperatorBitNameId, _
+  byval fnId as Integer, _
+  byref outV as EvalValue) as Boolean
+
+private function ApplyBinaryEvalPolicy(byval kind as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue, byval tryTimeFirst as Boolean) as Boolean
+  if tryTimeFirst then
+    if ValueApplyBinaryTimeAware(leftV, rightV, op, outV) then
+      return (parseError = 0)
+    end if
+  end if
+  if kind = BSD_INT64 then
+    if Parser_SupportComplexNumbers then
+      if EvalValueHasNonzeroImaginary(leftV) orelse EvalValueHasNonzeroImaginary(rightV) then
+        SetIncompatibleOperandsError()
+        return FALSE
+      end if
+    end if
+  end if
+  dim mode as Integer = MAP_BINARY_OP_NUMERIC
+  select case kind
+    case BSD_NUMERIC: mode = MAP_BINARY_OP_NUMERIC
+    case BSD_INT64: mode = MAP_BINARY_OP_INT64
+    case BSD_SCALAR_MATH: mode = MAP_BINARY_OP_SCALAR_MATH
+    case else: return FALSE
+  end select
+  return MapBinaryBroadcastScalarsImpl(FALSE, mode, leftV, rightV, op, intOp, fnId, outV)
+end function
+
 private function TryMapBinaryPair(byval mode as Integer, byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
   select case mode
     case MAP_BINARY_OP_NUMERIC
@@ -6365,44 +6672,48 @@ private function MapBinaryBroadcastPair(byval useTimeOps as Boolean, byval mode 
   return TryMapBinaryPair(mode, leftS, rightS, op, intOp, fnId, outV)
 end function
 
+private function MapBinaryBroadcastArrayPair(byval useTimeOps as Boolean, byval mode as Integer, byref leftArr as EvalValue, byref rightArr as EvalValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
+  if ValueArrayLen(leftArr) <> ValueArrayLen(rightArr) then return FALSE
+  dim lb as Integer = lbound(leftArr.arr)
+  dim ub as Integer = ubound(leftArr.arr)
+  ValueInitArrayLike(outV, lb, ub)
+  for i as Integer = lb to ub
+    dim r as EvalValue
+    if MapBinaryBroadcastPair(useTimeOps, mode, leftArr.arr(i), rightArr.arr(i), op, intOp, fnId, r) = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
+  next i
+  return TRUE
+end function
+
+private function MapBinaryBroadcastArrayScalar(byval useTimeOps as Boolean, byval mode as Integer, byref arrV as EvalValue, byref scalarS as ScalarValue, byval scalarOnLeft as Boolean, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
+  dim lb as Integer = lbound(arrV.arr)
+  dim ub as Integer = ubound(arrV.arr)
+  ValueInitArrayLike(outV, lb, ub)
+  for i as Integer = lb to ub
+    dim r as EvalValue
+    dim ok as Boolean
+    if scalarOnLeft then
+      ok = MapBinaryBroadcastPair(useTimeOps, mode, scalarS, arrV.arr(i), op, intOp, fnId, r)
+    else
+      ok = MapBinaryBroadcastPair(useTimeOps, mode, arrV.arr(i), scalarS, op, intOp, fnId, r)
+    end if
+    if ok = FALSE then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
+  next i
+  return TRUE
+end function
+
 private function MapBinaryBroadcastScalarsImpl(byval useTimeOps as Boolean, byval mode as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
-  dim i as Integer
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
     return MapBinaryBroadcastPair(useTimeOps, mode, leftV.scalarValue, rightV.scalarValue, op, intOp, fnId, outV)
   end if
-
-  dim lb as Integer, ub as Integer
   if leftV.kind = VK_ARRAY andalso rightV.kind = VK_ARRAY then
-    if ValueArrayLen(leftV) <> ValueArrayLen(rightV) then return FALSE
-    lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    ValueInitArrayLike(outV, lb, ub)
-    dim rAA as EvalValue
-    for i = lb to ub
-      if MapBinaryBroadcastPair(useTimeOps, mode, leftV.arr(i), rightV.arr(i), op, intOp, fnId, rAA) = FALSE then return FALSE
-      ValueSetArrayElemFromScalar(outV, i, rAA)
-    next i
-    return TRUE
+    return MapBinaryBroadcastArrayPair(useTimeOps, mode, leftV, rightV, op, intOp, fnId, outV)
   end if
-
   if leftV.kind = VK_ARRAY then
-    lb = lbound(leftV.arr): ub = ubound(leftV.arr)
-    ValueInitArrayLike(outV, lb, ub)
-    dim rAS as EvalValue
-    for i = lb to ub
-      if MapBinaryBroadcastPair(useTimeOps, mode, leftV.arr(i), rightV.scalarValue, op, intOp, fnId, rAS) = FALSE then return FALSE
-      ValueSetArrayElemFromScalar(outV, i, rAS)
-    next i
-    return TRUE
+    return MapBinaryBroadcastArrayScalar(useTimeOps, mode, leftV, rightV.scalarValue, FALSE, op, intOp, fnId, outV)
   end if
-
-  lb = lbound(rightV.arr): ub = ubound(rightV.arr)
-  ValueInitArrayLike(outV, lb, ub)
-  dim rSA as EvalValue
-  for i = lb to ub
-    if MapBinaryBroadcastPair(useTimeOps, mode, leftV.scalarValue, rightV.arr(i), op, intOp, fnId, rSA) = FALSE then return FALSE
-    ValueSetArrayElemFromScalar(outV, i, rSA)
-  next i
-  return TRUE
+  return MapBinaryBroadcastArrayScalar(useTimeOps, mode, rightV, leftV.scalarValue, TRUE, op, intOp, fnId, outV)
 end function
 
 private function MapBinaryBroadcastScalars(byval mode as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byval intOp as OperatorBitNameId, byval fnId as Integer, byref outV as EvalValue) as Boolean
@@ -6506,7 +6817,7 @@ private function ValueApplyBinaryTimeAware(byref leftV as EvalValue, byref right
 end function
 
 private function ValueApplyBinary(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
-  return MapBinaryBroadcastScalars(MAP_BINARY_OP_NUMERIC, leftV, rightV, op, OP_BIT_NONE, -1, outV)
+  return ApplyBinaryEvalPolicy(BSD_NUMERIC, leftV, rightV, op, OP_BIT_NONE, -1, outV, FALSE)
 end function
 
 private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
@@ -6576,7 +6887,7 @@ private function ApplyScalarBinaryMathFunctionScalars(byref leftS as ScalarValue
 end function
 
 private function ApplyScalarBinaryMathFunctionValues(byref leftV as EvalValue, byref rightV as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
-  return MapBinaryBroadcastScalars(MAP_BINARY_OP_SCALAR_MATH, leftV, rightV, 0, OP_BIT_NONE, fnId, outV)
+  return ApplyBinaryEvalPolicy(BSD_SCALAR_MATH, leftV, rightV, 0, OP_BIT_NONE, fnId, outV, FALSE)
 end function
 
 private function TryShiftLeftUInt64MaybeExact( _
@@ -6664,13 +6975,7 @@ private function ValueApplyBinaryInt64Scalars(byref leftS as ScalarValue, byref 
 end function
 
 private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
-  if Parser_SupportComplexNumbers then
-    if EvalValueHasNonzeroImaginary(leftV) orelse EvalValueHasNonzeroImaginary(rightV) then
-      SetIncompatibleOperandsError()
-      return FALSE
-    end if
-  end if
-  return MapBinaryBroadcastScalars(MAP_BINARY_OP_INT64, leftV, rightV, 0, op, -1, outV)
+  return ApplyBinaryEvalPolicy(BSD_INT64, leftV, rightV, 0, op, -1, outV, FALSE)
 end function
 
 private function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
@@ -6939,10 +7244,7 @@ private function ApplyInt64ParserOp(byref leftV as EvalValue, byref rightV as Ev
 end function
 
 private function ApplyBinaryParserOp(byref leftV as EvalValue, byref rightV as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
-  if ValueApplyBinaryTimeAware(leftV, rightV, op, outV) then
-    return (parseError = 0)
-  end if
-  if ValueApplyBinary(leftV, rightV, op, outV) = FALSE then
+  if ApplyBinaryEvalPolicy(BSD_NUMERIC, leftV, rightV, op, OP_BIT_NONE, -1, outV, TRUE) = FALSE then
     SetIncompatibleOperandsError()
     return FALSE
   end if
@@ -6968,14 +7270,9 @@ private sub ApplyComparisonParserOpInPlace(byref leftV as EvalValue, byref right
   end if
 end sub
 
-private function EnsureExactArgCount(args() as EvalValue, byval expectedCount as Integer, byref fnName as String) as Boolean
-  dim argc as Integer = ubound(args) + 1
-  if argc <> expectedCount then
-    SetExactArgCountError(fnName, expectedCount, argc)
-    return FALSE
-  end if
-  return TRUE
-end function
+declare function ArgWalkNextPosition(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref srcArgIdx as Integer, byref srcElemIdx as Integer, byref isScalar as Boolean) as Boolean
+declare function ArgScalarWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as Double) as Boolean
+declare function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as ScalarValue) as Boolean
 
 private function TryBuiltinMapBinaryTwoArgCore(args() as EvalValue, byref fnName as String, byval fnId as Integer, byval rejectComplex as Boolean, byref outV as EvalValue) as Boolean
   if EvalValueInvolvesTime(args(0)) orelse EvalValueInvolvesTime(args(1)) then
@@ -6992,16 +7289,12 @@ private function TryBuiltinMapBinaryTwoArgCore(args() as EvalValue, byref fnName
 end function
 
 private function ArgsContainNonFinite(args() as EvalValue) as Boolean
-  if ubound(args) = -1 then return FALSE
-  for i as Integer = lbound(args) to ubound(args)
-    if args(i).kind = VK_SCALAR then
-      if IsNonFiniteValue(args(i).scalar) then return TRUE
-    else
-      for j as Integer = lbound(args(i).arr) to ubound(args(i).arr)
-        if IsNonFiniteValue(args(i).arr(j).scalar) then return TRUE
-      next j
-    end if
-  next i
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim item as Double
+  while ArgScalarWalkNext(args(), argIdx, elemIdx, item)
+    if IsNonFiniteValue(item) then return TRUE
+  wend
   return FALSE
 end function
 
@@ -7030,16 +7323,15 @@ private function ScalarIntegerRepresentableForFormat(byref sv as ScalarValue, by
 end function
 
 private function ValidateIntegerRepresentableArgs(args() as EvalValue, byref fnName as String, byval allowNonFiniteForFormat as Boolean) as Boolean
-  if ubound(args) = -1 then return TRUE
-  for i as Integer = lbound(args) to ubound(args)
-    if args(i).kind = VK_SCALAR then
-      if ScalarIntegerRepresentableForFormat(args(i).scalarValue, allowNonFiniteForFormat) = FALSE then SetIntegerValuesError(fnName): return FALSE
-    else
-      for j as Integer = lbound(args(i).arr) to ubound(args(i).arr)
-        if ScalarIntegerRepresentableForFormat(args(i).arr(j), allowNonFiniteForFormat) = FALSE then SetIntegerValuesError(fnName): return FALSE
-      next j
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim sv as ScalarValue
+  while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+    if ScalarIntegerRepresentableForFormat(sv, allowNonFiniteForFormat) = FALSE then
+      SetIntegerValuesError(fnName)
+      return FALSE
     end if
-  next i
+  wend
   return TRUE
 end function
 
@@ -7122,8 +7414,6 @@ private function TryParsePrefixedUIntLiteral(byval prefixChar as UByte, byval ra
   return TRUE
 end function
 
-declare function ArgScalarWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as Double) as Boolean
-declare function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Integer, byref elemIdx as Integer, byref outV as ScalarValue) as Boolean
 declare function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TryBuiltinDispatchWithComplex(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TryApproximateRational(byval x as Double, byref num as LongInt, byref den as ULongInt) as Boolean
@@ -7136,14 +7426,14 @@ declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnN
 
 private function CountFlattenedArgs(args() as EvalValue) as Integer
   dim count as Integer = 0
-  dim i as Integer
-  for i = lbound(args) to ubound(args)
-    if args(i).kind = VK_SCALAR then
-      count += 1
-    else
-      count += ValueArrayLen(args(i))
-    end if
-  next i
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim srcArgIdx as Integer
+  dim srcElemIdx as Integer
+  dim isScalar as Boolean
+  while ArgWalkNextPosition(args(), argIdx, elemIdx, srcArgIdx, srcElemIdx, isScalar)
+    count += 1
+  wend
   return count
 end function
 
@@ -9557,6 +9847,11 @@ private sub ApplyMultiplicativeOpInPlace(byref leftV as EvalValue, byref rightV 
   end if
 end sub
 
+private const PLAB_KIND_INT64 as Integer = 1
+private const PLAB_KIND_ADDITIVE as Integer = 2
+private const PLAB_KIND_COMPARISON as Integer = 3
+private const PLAB_KIND_MULTIPLICATIVE as Integer = 4
+
 private function ParseUnary() as EvalValue
   SkipSpaces()
   if pStream[0] = CHAR_PLUS then
@@ -9642,24 +9937,7 @@ private function ParseUnary() as EvalValue
 end function
 
 private function ParseMultiplicative() as EvalValue
-  dim n as EvalValue = ParseUnary()
-  dim termWasPercentage as Boolean = wasPercentage
-  SkipSpaces()
-  while TRUE
-    if parseError then exit while
-
-    dim op as UByte = 0
-    dim useInt64 as Integer = FALSE
-    dim intOp as OperatorBitNameId = OP_BIT_NONE
-    if TryConsumeMultiplicativeOp(op, useInt64, intOp) = FALSE then exit while
-
-    dim n2 as EvalValue = ParseUnary()
-    ApplyMultiplicativeOpInPlace(n, n2, useInt64, intOp, op)
-    termWasPercentage = FALSE
-    SkipSpaces()
-  wend
-  wasPercentage = termWasPercentage
-  return n
+  return ParseLeftAssocBinary(PLAB_KIND_MULTIPLICATIVE, 0)
 end function
 
 private function IsAdditiveTermBoundary() as Boolean
@@ -9687,18 +9965,7 @@ private sub ApplyPercentageRhsByContext(byref lhs as EvalValue, byref rhs as Eva
 end sub
 
 private function ParseAdditive() as EvalValue
-  dim n as EvalValue = ParseMultiplicative()
-  SkipSpaces()
-  while TRUE
-    if parseError then exit while
-    dim op as UByte = 0
-    if TryConsumeAdditiveOperator(op) = FALSE then exit while
-    dim n2 as EvalValue = ParseMultiplicative()
-    ApplyPercentageRhsByContext(n, n2)
-    ApplyBinaryParserOpInPlace(n, n2, op)
-    SkipSpaces()
-  wend
-  return n
+  return ParseLeftAssocBinary(PLAB_KIND_ADDITIVE, 0)
 end function
 
 private const PARSE_INT64_LEVEL_ADDITIVE as Integer = 1
@@ -9749,34 +10016,20 @@ private function TryConsumeInt64BinaryOp(byval levelId as Integer, byref outOp a
   return FALSE
 end function
 
-private function ParseLeftAssocInt64Binary(byval operandLevelId as Integer) as EvalValue
-  dim n as EvalValue = ParseInt64OperandLevel(operandLevelId)
-  SkipSpaces()
-  while TRUE
-    if parseError then exit while
-    dim op as OperatorBitNameId = OP_BIT_NONE
-    if TryConsumeInt64BinaryOp(operandLevelId, op) = FALSE then exit while
-    dim n2 as EvalValue = ParseInt64OperandLevel(operandLevelId)
-    ApplyInt64ParserOpInPlace(n, n2, op)
-    SkipSpaces()
-  wend
-  return n
-end function
-
 private function ParseShift() as EvalValue
-  return ParseLeftAssocInt64Binary(PARSE_INT64_LEVEL_ADDITIVE)
+  return ParseLeftAssocBinary(PLAB_KIND_INT64, PARSE_INT64_LEVEL_ADDITIVE)
 end function
 
 private function ParseBitwiseAnd() as EvalValue
-  return ParseLeftAssocInt64Binary(PARSE_INT64_LEVEL_SHIFT)
+  return ParseLeftAssocBinary(PLAB_KIND_INT64, PARSE_INT64_LEVEL_SHIFT)
 end function
 
 private function ParseBitwiseXor() as EvalValue
-  return ParseLeftAssocInt64Binary(PARSE_INT64_LEVEL_BITAND)
+  return ParseLeftAssocBinary(PLAB_KIND_INT64, PARSE_INT64_LEVEL_BITAND)
 end function
 
 private function ParseBitwiseOr() as EvalValue
-  return ParseLeftAssocInt64Binary(PARSE_INT64_LEVEL_BITXOR)
+  return ParseLeftAssocBinary(PLAB_KIND_INT64, PARSE_INT64_LEVEL_BITXOR)
 end function
 
 private function TryConsumeComparisonOperator(byref outOp as OperatorCmpNameId) as Boolean
@@ -9825,19 +10078,69 @@ private function TryConsumeComparisonOperator(byref outOp as OperatorCmpNameId) 
   return FALSE
 end function
 
-private function ParseComparison() as EvalValue
-  dim n as EvalValue = ParseBitwiseOr()
+private function ParseLeftAssocBinary(byval kind as Integer, byval int64LevelId as Integer) as EvalValue
+  dim n as EvalValue
+  dim termWasPercentage as Boolean = FALSE
+
+  select case kind
+    case PLAB_KIND_INT64
+      n = ParseInt64OperandLevel(int64LevelId)
+    case PLAB_KIND_ADDITIVE
+      n = ParseMultiplicative()
+    case PLAB_KIND_COMPARISON
+      n = ParseBitwiseOr()
+    case PLAB_KIND_MULTIPLICATIVE
+      n = ParseUnary()
+      termWasPercentage = wasPercentage
+    case else
+      ValueSetInt64(n, 0)
+      SetUnexpectedTokenError()
+      return n
+  end select
+
   SkipSpaces()
   while TRUE
     if parseError then exit while
-    dim op as OperatorCmpNameId = OP_CMP_NONE
-    if TryConsumeComparisonOperator(op) = FALSE then exit while
 
-    dim n2 as EvalValue = ParseBitwiseOr()
-    ApplyComparisonParserOpInPlace(n, n2, op)
+    select case kind
+      case PLAB_KIND_INT64
+        dim intOp as OperatorBitNameId = OP_BIT_NONE
+        if TryConsumeInt64BinaryOp(int64LevelId, intOp) = FALSE then exit while
+        dim n2Int64 as EvalValue = ParseInt64OperandLevel(int64LevelId)
+        ApplyInt64ParserOpInPlace(n, n2Int64, intOp)
+      case PLAB_KIND_ADDITIVE
+        dim addOp as UByte = 0
+        if TryConsumeAdditiveOperator(addOp) = FALSE then exit while
+        dim n2Add as EvalValue = ParseMultiplicative()
+        ApplyPercentageRhsByContext(n, n2Add)
+        ApplyBinaryParserOpInPlace(n, n2Add, addOp)
+      case PLAB_KIND_COMPARISON
+        dim cmpOp as OperatorCmpNameId = OP_CMP_NONE
+        if TryConsumeComparisonOperator(cmpOp) = FALSE then exit while
+        dim n2Cmp as EvalValue = ParseBitwiseOr()
+        ApplyComparisonParserOpInPlace(n, n2Cmp, cmpOp)
+      case PLAB_KIND_MULTIPLICATIVE
+        dim mulOp as UByte = 0
+        dim useInt64 as Integer = FALSE
+        dim mulIntOp as OperatorBitNameId = OP_BIT_NONE
+        if TryConsumeMultiplicativeOp(mulOp, useInt64, mulIntOp) = FALSE then exit while
+        dim n2Mul as EvalValue = ParseUnary()
+        ApplyMultiplicativeOpInPlace(n, n2Mul, useInt64, mulIntOp, mulOp)
+        termWasPercentage = FALSE
+      case else
+        exit while
+    end select
     SkipSpaces()
   wend
+
+  if kind = PLAB_KIND_MULTIPLICATIVE then
+    wasPercentage = termWasPercentage
+  end if
   return n
+end function
+
+private function ParseComparison() as EvalValue
+  return ParseLeftAssocBinary(PLAB_KIND_COMPARISON, 0)
 end function
 
 private function ParseLogicalNot() as EvalValue

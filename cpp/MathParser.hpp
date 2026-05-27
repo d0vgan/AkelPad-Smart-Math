@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -523,6 +524,7 @@ private:
       EvalValue& outV);
   static bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool argsContainNonFinite(const std::vector<EvalValue>& args);
+  // Builtin metadata tables are embedded in parser sources (MathParser.cpp / MathParser.bas).
   // Builtin validation flags (keep in sync with BUILTIN_FLAG_* / GetBuiltinFlags in MathParser.bas).
   enum class BuiltinFlags : unsigned {
     None = 0,
@@ -533,10 +535,26 @@ private:
     FiniteRequired = 1u << 4,
     TrailingFormatter = 1u << 5,
   };
+  friend constexpr BuiltinFlags operator|(BuiltinFlags a, BuiltinFlags b) noexcept;
+  struct BuiltinMetaRow {
+    BuiltinFlags flags;
+    std::uint8_t minArgs;
+    std::uint8_t maxArgs;
+    BuiltinHintKind hintKind;
+  };
+  static constexpr std::uint8_t kBuiltinMetaArityUnset = 254;
+  static const BuiltinMetaRow kBuiltinMeta[];
+  friend constexpr std::size_t builtinMetaRowCountForAssert();
   static BuiltinFlags getBuiltinFlags(BuiltinFunctionId id);
   static bool hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag);
   static constexpr uint8_t kBuiltinArityUnbounded = 255;
   static bool getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs);
+  bool validateCallArity(
+      EvalContext& ctx,
+      const std::string& fnName,
+      uint8_t minArgs,
+      uint8_t maxArgs,
+      std::size_t argc) const;
   bool validateBuiltinCallArity(
       EvalContext& ctx,
       const std::string& fnName,
@@ -630,12 +648,17 @@ private:
   void setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const;
   void setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const;
   void setExactArgCountError(EvalContext& ctx, const std::string& fnName, size_t expectedCount) const;
-  bool requireBuiltinExactArgCount(
-      EvalContext& ctx,
-      const std::string& fnName,
-      const std::vector<EvalValue>& args,
-      std::size_t expectedCount) const;
   bool rejectBinaryBuiltinTimeOperands(EvalContext& ctx, const EvalValue& left, const EvalValue& right) const;
+  bool rejectInt64BinaryOperands(
+      EvalContext& ctx,
+      const EvalValue& left,
+      const EvalValue& right,
+      bool isModulo) const;
+  bool rejectNumericBinaryPowWithTime(
+      EvalContext& ctx,
+      const EvalValue& left,
+      const EvalValue& right,
+      char op) const;
   EvalValue builtinMapBinaryTwoArg(
       EvalContext& ctx,
       const std::string& fnName,
@@ -957,6 +980,22 @@ private:
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);
   static RawResult toRawResult(const EvalValue& v);
   static EvalValue scalarFromScalarValue(const EvalValue::ScalarValue& sv);
+  template <typename Visitor>
+  static std::size_t forEachFlattenedEvalValue(const std::vector<EvalValue>& args, Visitor&& visit) {
+    std::size_t count = 0;
+    for (const auto& a : args) {
+      if (a.kind == ValueKind::Scalar) {
+        visit(a);
+        ++count;
+      } else {
+        for (const auto& item : a.arr) {
+          visit(scalarFromScalarValue(item));
+          ++count;
+        }
+      }
+    }
+    return count;
+  }
   static EvalValue scalarFromArrayAt(const EvalValue& arrV, std::size_t idx);
   static bool applyBinary(double a, double b, char op, double& out);
   static EvalValue mapUnaryFn(const EvalValue& in, double (*fn)(double));
