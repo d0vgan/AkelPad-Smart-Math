@@ -352,6 +352,101 @@ enum EvalFlags
   EVF_RENDER_BASE_MASK = &h0000FF00
 end enum
 
+enum BuiltinFunctionId
+  FUNC_RAND = 0
+  FUNC_RANDOM
+  FUNC_BIN
+  FUNC_HEX
+  FUNC_OCT
+  FUNC_POW
+  FUNC_ATAN2
+  FUNC_SIN
+  FUNC_COS
+  FUNC_TAN
+  FUNC_ASIN
+  FUNC_ACOS
+  FUNC_ATAN
+  FUNC_SINH
+  FUNC_COSH
+  FUNC_TANH
+  FUNC_ACOSH
+  FUNC_ASINH
+  FUNC_ATANH
+  FUNC_EXP
+  FUNC_LOG
+  FUNC_LN
+  FUNC_LOG10
+  FUNC_SQRT
+  FUNC_SQR
+  FUNC_INT
+  FUNC_FRAC
+  FUNC_ABS
+  FUNC_FLOOR
+  FUNC_CEIL
+  FUNC_TRUNC
+  FUNC_ROUND
+  FUNC_SIGN
+  FUNC_DEG
+  FUNC_RAD
+  FUNC_SUM
+  FUNC_MEDIAN
+  FUNC_VARIANCE
+  FUNC_STDDEV
+  FUNC_SORT
+  FUNC_SORTBY
+  FUNC_RATIO
+  FUNC_REVERSE
+  FUNC_UNIQUE
+  FUNC_UNPACK
+  FUNC_FACT
+  FUNC_AVG
+  FUNC_MEAN
+  FUNC_MOD
+  FUNC_CLAMP
+  FUNC_HYPOT
+  FUNC_GCD
+  FUNC_LCM
+  FUNC_NCR
+  FUNC_NPR
+  FUNC_PRODUCT
+  FUNC_MIN
+  FUNC_MAX
+  FUNC_UHEX
+  FUNC_UOCT
+  FUNC_UBIN
+  FUNC_MILLISECONDS
+  FUNC_SECONDS
+  FUNC_MINUTES
+  FUNC_HOURS
+  FUNC_DAYS
+  FUNC_REAL
+  FUNC_IMAG
+  FUNC_PHASE
+  FUNC_POLAR
+  FUNC_CART
+  FUNC_CONJ
+  FUNC__COUNT
+end enum
+
+enum BuiltinHintKind
+  BHK_NONE = 0
+  BHK_EMPTY_PAR
+  BHK_MIN_MAX
+  BHK_DOTDOTDOT
+  BHK_VALUE_POWER
+  BHK_Y_X
+  BHK_ANGLE
+  BHK_VALUE
+  BHK_VALUE_BASE
+  BHK_N
+  BHK_VALUE_DIVISOR
+  BHK_VALUE_MIN_MAX
+  BHK_X_Y
+  BHK_A_B
+  BHK_N_R
+  BHK_ARRAY_FUNC
+end enum
+
 type ScalarValue
   scalarStorageKind as ScalarStorageKind
   flags as UInteger
@@ -524,21 +619,6 @@ property EvalValue.renderUnsigned(byval v as Boolean)
   end if
 end property
 
-declare function ScalarIsTime(byref sv as ScalarValue) as Boolean
-declare function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
-declare function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
-declare sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
-declare function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
-declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
-declare function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
-declare function FormatComplexScalarValue(byref sv as ScalarValue) as String
-declare function CallArgsInvolveComplex(args() as EvalValue) as Boolean
-declare function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
-declare function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
-declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
-declare sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
-declare function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as EvalValue) as Boolean
-
 type VarEntry
   name as String
   value as EvalValue
@@ -591,6 +671,165 @@ dim shared Parser_ShowErrorLine as Boolean = FALSE
 dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 dim shared Parser_SupportTimeValues as Boolean = TRUE
 dim shared Parser_SupportLambdaFunctions as Boolean = TRUE
+
+private function MakeNaN() as Double
+  return 0.0 / 0.0
+end function
+
+private function IsNaNValue(byval d as Double) as Boolean
+  return (_isnan(d) <> 0)
+end function
+
+private function IsInfValue(byval d as Double) as Boolean
+  if _isnan(d) <> 0 then return FALSE
+  dim infV as Double = 1.0 / 0.0
+  return abs(d) = infV
+end function
+
+private function IsNonFiniteValue(byval d as Double) as Boolean
+  return IsNaNValue(d) orelse IsInfValue(d)
+end function
+
+private function RoundHalfUpDoubleToLongInt(byval x as Double) as LongInt
+  if IsNonFiniteValue(x) then return 0
+  if x >= 0 then
+    return CLngInt(Int(x + 0.5))
+  end if
+  return -CLngInt(Int(-x + 0.5))
+end function
+
+private function ULongIntToString(byval x as ULongInt) as String
+  if x = 0 then return "0"
+  dim s as String = ""
+  while x > 0
+    s = chr(48 + (x mod 10)) + s
+    x \= 10
+  wend
+  return s
+end function
+
+private function Pad2Digits(byval n as LongInt) as String
+  if n < 0 then n = 0
+  if n >= 100 then return ltrim(str(n))
+  if n >= 10 then return chr(48 + n \ 10) & chr(48 + n mod 10)
+  return "0" & chr(48 + n mod 10)
+end function
+
+private function ScalarIsTime(byref sv as ScalarValue) as Boolean
+  if Parser_SupportTimeValues = FALSE then return FALSE
+  return (sv.scalarStorageKind = SSK_TIME)
+end function
+
+private function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
+  return sv.exactInt64
+end function
+
+private function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
+  dim neg as Boolean = (totalMs < 0)
+  dim rU as ULongInt
+  if neg then
+    if totalMs = FB_I64_MIN then
+      rU = CULngInt(FB_I64_MIN_MAG_U)
+    else
+      rU = CULngInt(-totalMs)
+    end if
+  else
+    rU = CULngInt(totalMs)
+  end if
+  dim msPart as LongInt = CLngInt(rU mod 1000ull)
+  rU = rU \ 1000ull
+  dim sPart as LongInt = CLngInt(rU mod 60ull)
+  rU = rU \ 60ull
+  dim mPart as LongInt = CLngInt(rU mod 60ull)
+  rU = rU \ 60ull
+  dim hPart as LongInt = CLngInt(rU mod 24ull)
+  rU = rU \ 24ull
+  dim dPart as ULongInt = rU
+  dim body as String
+  if dPart > 0ull then
+    body = ULongIntToString(dPart) & ":" & Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  elseif hPart > 0 then
+    body = Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  else
+    body = Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
+  end if
+  if msPart <> 0 then
+    body &= "." & chr(48 + (msPart \ 100)) & chr(48 + ((msPart \ 10) mod 10)) & chr(48 + (msPart mod 10))
+  end if
+  if neg then return "-" & body
+  return body
+end function
+
+private sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
+  v.kind = VK_SCALAR
+  v.scalarStorageKind = SSK_TIME
+  v.scalar = CDbl(totalMs) / 1000.0
+  v.exactInt64Valid = FALSE
+  v.exactInt64 = totalMs
+  v.exactUInt64Valid = FALSE
+  v.exactUInt64 = 0
+  v.expandArgs = FALSE
+  v.renderBase = 10
+  v.renderUnsigned = FALSE
+  erase v.arr
+end sub
+
+private function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
+  dim t as Double = CDbl(a) + CDbl(b)
+  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
+  outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function TrySubTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
+  dim t as Double = CDbl(a) - CDbl(b)
+  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
+  outMs = RoundHalfUpDoubleToLongInt(t)
+  return TRUE
+end function
+
+private function ScalarImagExactInt64Valid(byref sv as ScalarValue) as Boolean
+  return (sv.flags and SVF_IMAG_EXACT_INT64_VALID) <> 0
+end function
+
+private function ScalarHasNonzeroImaginaryPart(byref sv as ScalarValue) as Boolean
+  ' NaN comparisons are not reliable for "nonzero" checks, and we must not
+  ' normalize complex values with NaN/Inf imaginary components into pure-real.
+  if IsNaNValue(sv.imag) then return TRUE
+  if IsInfValue(sv.imag) then return TRUE
+  if sv.imag <> 0.0 then return TRUE
+  if ScalarImagExactInt64Valid(sv) andalso sv.imagExactInt64 <> 0 then return TRUE
+  return FALSE
+end function
+
+private function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
+  if v.kind = VK_SCALAR then
+    return ScalarHasNonzeroImaginaryPart(v.scalarValue)
+  end if
+  dim j as Integer
+  for j = lbound(v.arr) to ubound(v.arr)
+    if ScalarHasNonzeroImaginaryPart(v.arr(j)) then return TRUE
+  next j
+  return FALSE
+end function
+
+private function CallArgsInvolveComplex(args() as EvalValue) as Boolean
+  if Parser_SupportComplexNumbers = FALSE then return FALSE
+  dim i as Integer
+  if ubound(args) < lbound(args) then return FALSE
+  for i = lbound(args) to ubound(args)
+    if EvalValueHasNonzeroImaginary(args(i)) then return TRUE
+  next i
+  return FALSE
+end function
+
+declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS as ScalarValue, byval op as UByte, byref outV as EvalValue) as Boolean
+declare function FormatComplexScalarValue(byref sv as ScalarValue) as String
+declare function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
+declare function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
+declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
+declare sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
+declare function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as EvalValue) as Boolean
 
 private function ExprStartPointsIntoRootInput() as Boolean
   if len(rootInputExpr) = 0 then return FALSE
@@ -721,82 +960,6 @@ private sub AppendUniqueName(byref listText as String, byref n as String)
   end if
 end sub
 
-enum BuiltinFunctionId
-  FUNC_RAND = 0
-  FUNC_RANDOM
-  FUNC_BIN
-  FUNC_HEX
-  FUNC_OCT
-  FUNC_POW
-  FUNC_ATAN2
-  FUNC_SIN
-  FUNC_COS
-  FUNC_TAN
-  FUNC_ASIN
-  FUNC_ACOS
-  FUNC_ATAN
-  FUNC_SINH
-  FUNC_COSH
-  FUNC_TANH
-  FUNC_ACOSH
-  FUNC_ASINH
-  FUNC_ATANH
-  FUNC_EXP
-  FUNC_LOG
-  FUNC_LN
-  FUNC_LOG10
-  FUNC_SQRT
-  FUNC_SQR
-  FUNC_INT
-  FUNC_FRAC
-  FUNC_ABS
-  FUNC_FLOOR
-  FUNC_CEIL
-  FUNC_TRUNC
-  FUNC_ROUND
-  FUNC_SIGN
-  FUNC_DEG
-  FUNC_RAD
-  FUNC_SUM
-  FUNC_MEDIAN
-  FUNC_VARIANCE
-  FUNC_STDDEV
-  FUNC_SORT
-  FUNC_SORTBY
-  FUNC_RATIO
-  FUNC_REVERSE
-  FUNC_UNIQUE
-  FUNC_UNPACK
-  FUNC_FACT
-  FUNC_AVG
-  FUNC_MEAN
-  FUNC_MOD
-  FUNC_CLAMP
-  FUNC_HYPOT
-  FUNC_GCD
-  FUNC_LCM
-  FUNC_NCR
-  FUNC_NPR
-  FUNC_PRODUCT
-  FUNC_MIN
-  FUNC_MAX
-  FUNC_UHEX
-  FUNC_UOCT
-  FUNC_UBIN
-  FUNC_MILLISECONDS
-  FUNC_SECONDS
-  FUNC_MINUTES
-  FUNC_HOURS
-  FUNC_DAYS
-  FUNC_REAL
-  FUNC_IMAG
-  FUNC_PHASE
-  FUNC_POLAR
-  FUNC_CART
-  FUNC_CONJ
-  FUNC__COUNT
-end enum
-
 ' Builtin metadata: named flags/hints, one assignment per line (see EnsureBuiltinMeta).
 private const BUILTIN_META_ARITY_UNSET as UByte = 254
 private const BUILTIN_META_ARITY_UNBOUNDED as UByte = 255
@@ -807,25 +970,6 @@ private const BUILTIN_FLAG_INTEGER_ONLY as UInteger = 1u shl 2
 private const BUILTIN_FLAG_NON_CALCULATING as UInteger = 1u shl 3
 private const BUILTIN_FLAG_FINITE_REQUIRED as UInteger = 1u shl 4
 private const BUILTIN_FLAG_TRAILING_FORMATTER as UInteger = 1u shl 5
-
-enum BuiltinHintKind
-  BHK_NONE = 0
-  BHK_EMPTY_PAR
-  BHK_MIN_MAX
-  BHK_DOTDOTDOT
-  BHK_VALUE_POWER
-  BHK_Y_X
-  BHK_ANGLE
-  BHK_VALUE
-  BHK_VALUE_BASE
-  BHK_N
-  BHK_VALUE_DIVISOR
-  BHK_VALUE_MIN_MAX
-  BHK_X_Y
-  BHK_A_B
-  BHK_N_R
-  BHK_ARRAY_FUNC
-end enum
 
 dim shared BuiltinMetaFlags(0 to FUNC__COUNT - 1) as UInteger
 dim shared BuiltinMetaMinArgs(0 to FUNC__COUNT - 1) as UByte
@@ -1383,7 +1527,18 @@ private function OpName(byval id as OperatorNameId) as String
   return OperatorNames(id)
 end function
 
-declare function TryFindBuiltinFunctionId(byref nameText as String) as Integer
+private function TryFindBuiltinFunctionId(byref nameText as String) as Integer
+  EnsureBuiltinFunctionLookup()
+  dim lowName as String = lcase(nameText)
+  dim slot as Integer = CInt(HashLowerIdent(lowName) mod BUILTIN_FN_LOOKUP_CAPACITY)
+  dim probed as Integer
+  for probed = 0 to BUILTIN_FN_LOOKUP_CAPACITY - 1
+    if BuiltinFnLookupKeys(slot) = "" then return -1
+    if BuiltinFnLookupKeys(slot) = lowName then return BuiltinFnLookupIds(slot)
+    slot = (slot + 1) mod BUILTIN_FN_LOOKUP_CAPACITY
+  next probed
+  return -1
+end function
 
 private function IsOpKeyword(byref nameText as String, byval id as OperatorNameId) as Boolean
   return lcase(nameText) = OpName(id)
@@ -1467,19 +1622,6 @@ end function
 
 private function IsReservedOperatorKeyword(byref nameText as String) as Boolean
   return IsOpKeyword(nameText, OP_NOT) orelse IsLogicalBinaryOperatorKeyword(nameText)
-end function
-
-private function TryFindBuiltinFunctionId(byref nameText as String) as Integer
-  EnsureBuiltinFunctionLookup()
-  dim lowName as String = lcase(nameText)
-  dim slot as Integer = CInt(HashLowerIdent(lowName) mod BUILTIN_FN_LOOKUP_CAPACITY)
-  dim probed as Integer
-  for probed = 0 to BUILTIN_FN_LOOKUP_CAPACITY - 1
-    if BuiltinFnLookupKeys(slot) = "" then return -1
-    if BuiltinFnLookupKeys(slot) = lowName then return BuiltinFnLookupIds(slot)
-    slot = (slot + 1) mod BUILTIN_FN_LOOKUP_CAPACITY
-  next probed
-  return -1
 end function
 
 private function IsBuiltinFunctionName(byref nameText as String) as Boolean
@@ -1661,24 +1803,6 @@ private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Intege
   return TryMult10_N_TimesImpl(x, N, TRUE, outV)
 end function
 
-private function MakeNaN() as Double
-  return 0.0 / 0.0
-end function
-
-private function IsNaNValue(byval d as Double) as Boolean
-  return (_isnan(d) <> 0)
-end function
-
-private function IsInfValue(byval d as Double) as Boolean
-  if _isnan(d) <> 0 then return FALSE
-  dim infV as Double = 1.0 / 0.0
-  return abs(d) = infV
-end function
-
-private function IsNonFiniteValue(byval d as Double) as Boolean
-  return IsNaNValue(d) orelse IsInfValue(d)
-end function
-
 '' sin/cos/tan use MinGW libc for |theta| < 2^53; at 2^53 and above, results are rejected.
 private function IsTrigRadiansInRange(byval radians as Double) as Boolean
   if IsNaNValue(radians) orelse IsInfValue(radians) then return FALSE
@@ -1710,10 +1834,6 @@ private sub ScalarClearImag(byref sv as ScalarValue)
   sv.imagExactUInt64 = 0
   sv.flags and= not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID)
 end sub
-
-private function ScalarImagExactInt64Valid(byref sv as ScalarValue) as Boolean
-  return (sv.flags and SVF_IMAG_EXACT_INT64_VALID) <> 0
-end function
 
 private sub ScalarSetImagExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
   if v then
@@ -1807,16 +1927,6 @@ private sub ScalarRepairExactMetadata(byref sv as ScalarValue)
     end if
   end if
 end sub
-
-private function ScalarHasNonzeroImaginaryPart(byref sv as ScalarValue) as Boolean
-  ' NaN comparisons are not reliable for "nonzero" checks, and we must not
-  ' normalize complex values with NaN/Inf imaginary components into pure-real.
-  if IsNaNValue(sv.imag) then return TRUE
-  if IsInfValue(sv.imag) then return TRUE
-  if sv.imag <> 0.0 then return TRUE
-  if ScalarImagExactInt64Valid(sv) andalso sv.imagExactInt64 <> 0 then return TRUE
-  return FALSE
-end function
 
 private sub ScalarNormalizeIfPureReal(byref sv as ScalarValue)
   if ScalarHasNonzeroImaginaryPart(sv) = FALSE then
@@ -2764,16 +2874,6 @@ private function TryFormatComplexScalarByRenderBase(byref sv as ScalarValue, byv
   return TRUE
 end function
 
-private function ULongIntToString(byval x as ULongInt) as String
-  if x = 0 then return "0"
-  dim s as String = ""
-  while x > 0
-    s = chr(48 + (x mod 10)) + s
-    x \= 10
-  wend
-  return s
-end function
-
 private function TryFormatScalarNonFiniteText(byval d as Double, byref outText as String) as Boolean
   if IsNaNValue(d) then
     outText = "nan"
@@ -3261,34 +3361,6 @@ private function TryGetConstant(byref n as String, byref v as EvalValue) as Bool
   return TRUE
 end function
 
-#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
-declare function TryGetFunctionVariableOverride(byref n as String, byref v as EvalValue) as Boolean
-#endif
-
-private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
-#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
-  if TryGetFunctionVariableOverride(n, v) then return TRUE
-#endif
-  if lcase(n) = FB_STR_ANS then
-    dim j as Integer
-    for j = lbound(variables) to ubound(variables)
-      if variables(j).name = FB_STR_ANS then
-        v = variables(j).value
-        return TRUE
-      end if
-    next j
-    return FALSE
-  end if
-  dim i as Integer
-  for i = lbound(variables) to ubound(variables)
-    if variables(i).name = n then
-      v = variables(i).value
-      return TRUE
-    end if
-  next i
-  return FALSE
-end function
-
 private function FindVariableIndex(byref n as String) as Integer
   dim i as Integer
   for i = lbound(variables) to ubound(variables)
@@ -3314,6 +3386,30 @@ private function TryGetFunctionVariableOverride(byref n as String, byref v as Ev
   return FALSE
 end function
 #endif
+
+private function GetVariable(byref n as String, byref v as EvalValue) as Boolean
+#ifdef __FB_FUNC_VARS_OVERRIDE_GLOBALS__
+  if TryGetFunctionVariableOverride(n, v) then return TRUE
+#endif
+  if lcase(n) = FB_STR_ANS then
+    dim j as Integer
+    for j = lbound(variables) to ubound(variables)
+      if variables(j).name = FB_STR_ANS then
+        v = variables(j).value
+        return TRUE
+      end if
+    next j
+    return FALSE
+  end if
+  dim i as Integer
+  for i = lbound(variables) to ubound(variables)
+    if variables(i).name = n then
+      v = variables(i).value
+      return TRUE
+    end if
+  next i
+  return FALSE
+end function
 
 private sub SetVariable(byref n as String, byref v as EvalValue)
   dim i as Integer
@@ -3827,11 +3923,6 @@ private sub SetTimeArrayMixedError()
   SetParseError(FB_STR_TIME_ARRAY_MIXED)
 end sub
 
-private function ScalarIsTime(byref sv as ScalarValue) as Boolean
-  if Parser_SupportTimeValues = FALSE then return FALSE
-  return (sv.scalarStorageKind = SSK_TIME)
-end function
-
 private function EvalValueInvolvesTime(byref v as EvalValue) as Boolean
   if Parser_SupportTimeValues = FALSE then return FALSE
   if v.kind <> VK_SCALAR then
@@ -3843,32 +3934,6 @@ private function EvalValueInvolvesTime(byref v as EvalValue) as Boolean
     return FALSE
   end if
   return ScalarIsTime(v.scalarValue)
-end function
-
-private function TimeTotalMsFromScalarValue(byref sv as ScalarValue) as LongInt
-  return sv.exactInt64
-end function
-
-private sub ValueSetTimeMs(byref v as EvalValue, byval totalMs as LongInt)
-  v.kind = VK_SCALAR
-  v.scalarStorageKind = SSK_TIME
-  v.scalar = CDbl(totalMs) / 1000.0
-  v.exactInt64Valid = FALSE
-  v.exactInt64 = totalMs
-  v.exactUInt64Valid = FALSE
-  v.exactUInt64 = 0
-  v.expandArgs = FALSE
-  v.renderBase = 10
-  v.renderUnsigned = FALSE
-  erase v.arr
-end sub
-
-private function RoundHalfUpDoubleToLongInt(byval x as Double) as LongInt
-  if IsNonFiniteValue(x) then return 0
-  if x >= 0 then
-    return CLngInt(Int(x + 0.5))
-  end if
-  return -CLngInt(Int(-x + 0.5))
 end function
 
 private function SecondsFieldToMsRounded(byval wholeSec as LongInt, byref fracDigits as String) as LongInt
@@ -4215,63 +4280,6 @@ private function TryParseScalarTimeLiteral(byref outV as EvalValue) as Boolean
   end if
   pStream = q
   ValueSetTimeMs(outV, ms)
-  return TRUE
-end function
-
-private function Pad2Digits(byval n as LongInt) as String
-  if n < 0 then n = 0
-  if n >= 100 then return ltrim(str(n))
-  if n >= 10 then return chr(48 + n \ 10) & chr(48 + n mod 10)
-  return "0" & chr(48 + n mod 10)
-end function
-
-private function FormatTimeCanonicalFromMs(byval totalMs as LongInt) as String
-  dim neg as Boolean = (totalMs < 0)
-  dim rU as ULongInt
-  if neg then
-    if totalMs = FB_I64_MIN then
-      rU = CULngInt(FB_I64_MIN_MAG_U)
-    else
-      rU = CULngInt(-totalMs)
-    end if
-  else
-    rU = CULngInt(totalMs)
-  end if
-  dim msPart as LongInt = CLngInt(rU mod 1000ull)
-  rU = rU \ 1000ull
-  dim sPart as LongInt = CLngInt(rU mod 60ull)
-  rU = rU \ 60ull
-  dim mPart as LongInt = CLngInt(rU mod 60ull)
-  rU = rU \ 60ull
-  dim hPart as LongInt = CLngInt(rU mod 24ull)
-  rU = rU \ 24ull
-  dim dPart as ULongInt = rU
-  dim body as String
-  if dPart > 0ull then
-    body = ULongIntToString(dPart) & ":" & Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
-  elseif hPart > 0 then
-    body = Pad2Digits(hPart) & ":" & Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
-  else
-    body = Pad2Digits(mPart) & ":" & Pad2Digits(sPart)
-  end if
-  if msPart <> 0 then
-    body &= "." & chr(48 + (msPart \ 100)) & chr(48 + ((msPart \ 10) mod 10)) & chr(48 + (msPart mod 10))
-  end if
-  if neg then return "-" & body
-  return body
-end function
-
-private function TryAddTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
-  dim t as Double = CDbl(a) + CDbl(b)
-  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
-  outMs = RoundHalfUpDoubleToLongInt(t)
-  return TRUE
-end function
-
-private function TrySubTimeMsChecked(byval a as LongInt, byval b as LongInt, byref outMs as LongInt) as Boolean
-  dim t as Double = CDbl(a) - CDbl(b)
-  if t < CDbl(FB_I64_MIN) orelse t > CDbl(FB_I64_MAX) then return FALSE
-  outMs = RoundHalfUpDoubleToLongInt(t)
   return TRUE
 end function
 
@@ -6976,27 +6984,6 @@ end function
 
 private function ValueApplyBinaryInt64(byref leftV as EvalValue, byref rightV as EvalValue, byval op as OperatorBitNameId, byref outV as EvalValue) as Boolean
   return ApplyBinaryEvalPolicy(BSD_INT64, leftV, rightV, 0, op, -1, outV, FALSE)
-end function
-
-private function EvalValueHasNonzeroImaginary(byref v as EvalValue) as Boolean
-  if v.kind = VK_SCALAR then
-    return ScalarHasNonzeroImaginaryPart(v.scalarValue)
-  end if
-  dim j as Integer
-  for j = lbound(v.arr) to ubound(v.arr)
-    if ScalarHasNonzeroImaginaryPart(v.arr(j)) then return TRUE
-  next j
-  return FALSE
-end function
-
-private function CallArgsInvolveComplex(args() as EvalValue) as Boolean
-  if Parser_SupportComplexNumbers = FALSE then return FALSE
-  dim i as Integer
-  if ubound(args) < lbound(args) then return FALSE
-  for i = lbound(args) to ubound(args)
-    if EvalValueHasNonzeroImaginary(args(i)) then return TRUE
-  next i
-  return FALSE
 end function
 
 private function CmpScalarValuesForCompare(byref sa as ScalarValue, byref sb as ScalarValue, byref cmp as Integer) as Boolean
