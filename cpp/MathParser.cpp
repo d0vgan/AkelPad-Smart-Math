@@ -3987,6 +3987,7 @@ static bool tryPowVerifyRootExactValue(long long valueInt, long long rootCand, l
   return reconI == valueInt;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryRefinePowPrincipalToExactScalarResult(
     const EvalValue::ScalarValue& leftS,
     const EvalValue::ScalarValue& rightS,
@@ -4098,7 +4099,6 @@ bool MathParser::tryRefinePowPrincipalToExactScalarResult(
   return false;
 }
 
-#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryVerifyComplexCartesianSquareExact(
     long long rootR, long long rootI, long long expR, long long expI) {
   long long rr = 0;
@@ -4719,7 +4719,6 @@ MathParser::EvalValue MathParser::makeImaginaryUnit() {
   out.scalarValue.imag = 1.0;
   return out;
 }
-#endif
 
 MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double im) {
   if (std::isnan(re) && std::isnan(im)) {
@@ -4761,6 +4760,7 @@ MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double
   }
   return out;
 }
+#endif
 
 void MathParser::exactCartesianComponentClear(ExactCartesianComponent& c) {
   c.hasInt = false;
@@ -4872,6 +4872,7 @@ bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, 
   return false;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c) {
   if (sv.hasImagExactInt64()) {
     if (sv.imagExactInt64 == 0 && sv.imag != 0.0) {
@@ -4908,6 +4909,7 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
   exactCartesianComponentClear(c);
   return false;
 }
+#endif
 
 void MathParser::setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c) {
   v.kind = ValueKind::Scalar;
@@ -4948,6 +4950,7 @@ void MathParser::setScalarFromExactCartesianComponent(EvalValue& v, const ExactC
   scalarClearImaginary(v.scalarValue);
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 void MathParser::scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
                                                           const ExactCartesianComponent& c) {
   sv.imag = 0.0;
@@ -5005,6 +5008,7 @@ bool MathParser::tryAddExactCartesianComponents(const ExactCartesianComponent& a
   }
   return false;
 }
+#endif
 
 bool MathParser::tryQuotExactInt64(long long num, long long den, long long& quo) {
   if (den == 0) {
@@ -5014,6 +5018,7 @@ bool MathParser::tryQuotExactInt64(long long num, long long den, long long& quo)
   return quo * den == num;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a, const ExactCartesianComponent& b,
                                     ExactCartesianComponent& out) {
   exactCartesianComponentClear(out);
@@ -5028,7 +5033,6 @@ bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a
   return false;
 }
 
-#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
                                                    const EvalValue::ScalarValue& rightS, char op,
                                                    EvalValue& outV) {
@@ -5110,7 +5114,6 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
   }
   return false;
 }
-#endif
 
 MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const EvalValue& rePart,
                                                                         const EvalValue& imPart) {
@@ -5124,6 +5127,7 @@ MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const Ev
   }
   return makeScalarComplexFromDoubles(rePart.scalarValue.scalar, imPart.scalarValue.scalar);
 }
+#endif
 
 void MathParser::setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv) {
   outV = makeScalarInt(0);

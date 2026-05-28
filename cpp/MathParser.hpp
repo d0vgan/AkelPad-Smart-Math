@@ -504,13 +504,13 @@ private:
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
+#if SMARTMATH_COMPLEX_NUMBERS
   static bool tryRefinePowPrincipalToExactScalarResult(
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       double powR,
       double powI,
       EvalValue& outV);
-#if SMARTMATH_COMPLEX_NUMBERS
   static bool tryVerifyComplexCartesianSquareExact(
       long long rootR, long long rootI, long long expR, long long expI);
   static bool tryRefineSqrtPrincipalToExactComplex(
@@ -928,8 +928,8 @@ private:
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
 #if SMARTMATH_COMPLEX_NUMBERS
   static EvalValue makeImaginaryUnit();
-#endif
   static EvalValue makeScalarComplexFromDoubles(double re, double im);
+#endif
   struct ExactCartesianComponent {
     bool hasInt = false;
     long long intV = 0;
@@ -945,23 +945,23 @@ private:
   static bool complexNeedsPrincipalNegRealPow(double ar, double ai, double br, double bi);
   static void complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
                                      double& outI);
-#endif
-  static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
-  static void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
-  static void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
-                                                       const ExactCartesianComponent& c);
-  static void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
-                                                 const ExactCartesianComponent& im);
   static bool tryAddExactCartesianComponents(const ExactCartesianComponent& a,
                                              const ExactCartesianComponent& b, ExactCartesianComponent& out);
-  static bool tryQuotExactInt64(long long num, long long den, long long& quo);
+  static void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
+                                                         const ExactCartesianComponent& c);
   static bool trySubExactCartesianComponents(const ExactCartesianComponent& a,
                                              const ExactCartesianComponent& b, ExactCartesianComponent& out);
-  static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
+#endif
+  static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
+  static bool tryQuotExactInt64(long long num, long long den, long long& quo);
   static void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
   static bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
 #if SMARTMATH_COMPLEX_NUMBERS
+  static void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
+                                                 const ExactCartesianComponent& im);
+  static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
   static bool tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out);
   static bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
                                                   const EvalValue::ScalarValue& rightS, char op,
