@@ -1,4 +1,5 @@
 @echo off
+setlocal EnableExtensions
 cd /d "%~dp0"
 
 set VC_ROOT=%ProgramFiles%\Microsoft Visual Studio\2022
@@ -18,7 +19,7 @@ call "%VC_ROOT%\Community\VC\Auxiliary\Build\vcvarsall.bat" %VCVARS_ARG%
 goto Building
 
 :Building
-cl /O2 /EHsc MathParserTests.cpp MathParser.cpp /Fe:MathParserTests.exe
+cl /O2 /EHsc %* MathParserTests.cpp MathParser.cpp /Fe:MathParserTests.exe
 goto End
 
 :ErrorNoVcVarsAll
@@ -26,3 +27,4 @@ echo ERROR: Could not find "vcvarsall.bat"
 goto End
 
 :End
+endlocal

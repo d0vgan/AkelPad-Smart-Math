@@ -18,80 +18,85 @@ constexpr MathParser::BuiltinFlags operator|(
       static_cast<unsigned>(a) | static_cast<unsigned>(b));
 }
 
+#define BF MathParser::BuiltinFlags
+#define BHK MathParser::BuiltinHintKind
+
 const MathParser::BuiltinMetaRow MathParser::kBuiltinMeta[] = {
-  { MathParser::BuiltinFlags::NonCalculating, 0, 0, MathParser::BuiltinHintKind::EmptyPar },  // Rand
-  { MathParser::BuiltinFlags::FiniteRequired, 2, 2, MathParser::BuiltinHintKind::MinMax },  // Random
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Bin
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Hex
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Oct
-  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::ValuePower },  // Pow
-  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::YX },  // Atan2
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Sin
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Cos
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Angle },  // Tan
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Asin
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Acos
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Atan
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sinh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Cosh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Tanh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Acosh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Asinh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Atanh
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Exp
-  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::ValueBase },  // Log
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ln
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Log10
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sqrt
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sqr
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Int
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Frac
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Abs
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Floor
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ceil
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Trunc
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Round
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Sign
-  { MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Deg
-  { MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Rad
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Sum
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Median
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Variance
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Stddev
-  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Sort
-  { MathParser::BuiltinFlags::NonCalculating, 2, 2, MathParser::BuiltinHintKind::ArrayFunc },  // Sortby
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Ratio
-  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Reverse
-  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Unique
-  { MathParser::BuiltinFlags::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Unpack
-  { MathParser::BuiltinFlags::Unary | MathParser::BuiltinFlags::IntegerOnly, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::N },  // Fact
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Avg
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Mean
-  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::ValueDivisor },  // Mod
-  { MathParser::BuiltinFlags::None, 3, 3, MathParser::BuiltinHintKind::ValueMinMax },  // Clamp
-  { MathParser::BuiltinFlags::None, 2, 2, MathParser::BuiltinHintKind::XY },  // Hypot
-  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Gcd
-  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Lcm
-  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Ncr
-  { MathParser::BuiltinFlags::IntegerOnly, 2, 2, MathParser::BuiltinHintKind::AB },  // Npr
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Product
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Min
-  { MathParser::BuiltinFlags::None, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Max
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Uhex
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Uoct
-  { MathParser::BuiltinFlags::Format | MathParser::BuiltinFlags::NonCalculating | MathParser::BuiltinFlags::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, MathParser::BuiltinHintKind::DotDotDot },  // Ubin
-  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Milliseconds
-  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Seconds
-  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Minutes
-  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Hours
-  { MathParser::BuiltinFlags::None, 1, 1, MathParser::BuiltinHintKind::Value },  // Days
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Real
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Imag
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Phase
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Polar
-  { MathParser::BuiltinFlags::None, 1, 2, MathParser::BuiltinHintKind::Value },  // Cart
-  { MathParser::BuiltinFlags::Unary, MathParser::kBuiltinMetaArityUnset, MathParser::kBuiltinMetaArityUnset, MathParser::BuiltinHintKind::Value },  // Conj
+  { BF::NonCalculating, 0, 0, BHK::EmptyPar },  // Rand
+  { BF::FiniteRequired, 2, 2, BHK::MinMax },  // Random
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Bin
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Hex
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Oct
+  { BF::None, 2, 2, BHK::ValuePower },  // Pow
+  { BF::None, 2, 2, BHK::YX },  // Atan2
+  { BF::Unary, 1, 1, BHK::Angle },  // Sin
+  { BF::Unary, 1, 1, BHK::Angle },  // Cos
+  { BF::Unary, 1, 1, BHK::Angle },  // Tan
+  { BF::Unary, 1, 1, BHK::Value },  // Asin
+  { BF::Unary, 1, 1, BHK::Value },  // Acos
+  { BF::Unary, 1, 1, BHK::Value },  // Atan
+  { BF::Unary, 1, 1, BHK::Value },  // Sinh
+  { BF::Unary, 1, 1, BHK::Value },  // Cosh
+  { BF::Unary, 1, 1, BHK::Value },  // Tanh
+  { BF::Unary, 1, 1, BHK::Value },  // Acosh
+  { BF::Unary, 1, 1, BHK::Value },  // Asinh
+  { BF::Unary, 1, 1, BHK::Value },  // Atanh
+  { BF::Unary, 1, 1, BHK::Value },  // Exp
+  { BF::None, 2, 2, BHK::ValueBase },  // Log
+  { BF::Unary, 1, 1, BHK::Value },  // Ln
+  { BF::Unary, 1, 1, BHK::Value },  // Log10
+  { BF::Unary, 1, 1, BHK::Value },  // Sqrt
+  { BF::Unary, 1, 1, BHK::Value },  // Sqr
+  { BF::Unary, 1, 1, BHK::Value },  // Int
+  { BF::Unary, 1, 1, BHK::Value },  // Frac
+  { BF::Unary, 1, 1, BHK::Value },  // Abs
+  { BF::Unary, 1, 1, BHK::Value },  // Floor
+  { BF::Unary, 1, 1, BHK::Value },  // Ceil
+  { BF::Unary, 1, 1, BHK::Value },  // Trunc
+  { BF::Unary, 1, 1, BHK::Value },  // Round
+  { BF::Unary, 1, 1, BHK::Value },  // Sign
+  { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Deg
+  { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Rad
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Sum
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Median
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Variance
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Stddev
+  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Sort
+  { BF::NonCalculating, 2, 2, BHK::ArrayFunc },  // Sortby
+  { BF::Unary, 1, 1, BHK::Value },  // Ratio
+  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Reverse
+  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unique
+  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unpack
+  { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N },  // Fact
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Avg
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Mean
+  { BF::IntegerOnly, 2, 2, BHK::ValueDivisor },  // Mod
+  { BF::None, 3, 3, BHK::ValueMinMax },  // Clamp
+  { BF::None, 2, 2, BHK::XY },  // Hypot
+  { BF::IntegerOnly, 2, 2, BHK::AB },  // Gcd
+  { BF::IntegerOnly, 2, 2, BHK::AB },  // Lcm
+  { BF::IntegerOnly, 2, 2, BHK::AB },  // Ncr
+  { BF::IntegerOnly, 2, 2, BHK::AB },  // Npr
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Product
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Min
+  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Max
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Uhex
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Uoct
+  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Ubin
+  { BF::None, 1, 1, BHK::Value },  // Milliseconds
+  { BF::None, 1, 1, BHK::Value },  // Seconds
+  { BF::None, 1, 1, BHK::Value },  // Minutes
+  { BF::None, 1, 1, BHK::Value },  // Hours
+  { BF::None, 1, 1, BHK::Value },  // Days
+  { BF::Unary, 1, 1, BHK::Value },  // Real
+  { BF::Unary, 1, 1, BHK::Value },  // Imag
+  { BF::Unary, 1, 1, BHK::Value },  // Phase
+  { BF::Unary, 1, 1, BHK::Value },  // Polar
+  { BF::None, 1, 2, BHK::Value },  // Cart
+  { BF::Unary, 1, 1, BHK::Value },  // Conj
 };
+#undef BHK
+#undef BF
 
 constexpr std::size_t builtinMetaRowCountForAssert() {
   return sizeof(MathParser::kBuiltinMeta) / sizeof(MathParser::kBuiltinMeta[0]);
@@ -146,6 +151,7 @@ bool peekIdentFollowedByAssignEquals(const char* p) {
   return *p == '=' && p[1] != '=';
 }
 
+#if SMARTMATH_LAMBDA_FUNCTIONS
 bool peekUnwrappedLambdaParamsThenColon(const char* p) {
   p = skipAsciiSpacesPtr(p);
   if (!localIsIdentStart(*p)) {
@@ -204,6 +210,7 @@ bool peekRhsMayBeLambdaSyntaxAt(const char* p) {
   // x:body, x,y:body, x,y,z:body
   return peekUnwrappedLambdaParamsThenColon(p);
 }
+#endif
 
 bool isMultipleOf(double x, double x_mult)
 {
@@ -340,6 +347,10 @@ double calcHypotBasic(double x, double y) {
   return std::sqrt((x * x) + (y * y));
 }
 
+bool fractionalPowerIsOddUnitRoot(double p, long long& outN);
+bool fractionalPowerResolveRootDegree(double p, long long& outN);
+
+#if SMARTMATH_COMPLEX_NUMBERS
 void snapComplexNearZeroAxis(double& zr, double& zi) {
   if (!std::isfinite(zr) || !std::isfinite(zi)) {
     return;
@@ -352,9 +363,6 @@ void snapComplexNearZeroAxis(double& zr, double& zi) {
     zi = 0.0;
   }
 }
-
-bool fractionalPowerIsOddUnitRoot(double p, long long& outN);
-bool fractionalPowerResolveRootDegree(double p, long long& outN);
 
 void complexCartesianPrincipalNthRoot(double ar, double ai, double invN, double& outR, double& outI) {
   const double nanv = std::numeric_limits<double>::quiet_NaN();
@@ -609,6 +617,41 @@ void complexGamma(double zr, double zi, double& outR, double& outI) {
   complexMultiply(prodRe, prodIm, xRe, xIm, outR, outI);
   snapComplexNearZeroAxis(outR, outI);
 }
+#else
+void complexCartesianPrincipalNthRoot(double, double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+}
+void scalarPrincipalLnCartesian(double, double, double& outRe, double& outIm) {
+  outRe = std::numeric_limits<double>::quiet_NaN();
+  outIm = std::numeric_limits<double>::quiet_NaN();
+}
+void complexPowPrincipal(double, double, double, double, double& outRe, double& outIm) {
+  outRe = std::numeric_limits<double>::quiet_NaN();
+  outIm = std::numeric_limits<double>::quiet_NaN();
+}
+void complexDivide(double, double, double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+}
+void complexMultiply(double, double, double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+}
+bool complexExpCartesian(double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+  return false;
+}
+void complexPrincipalSqrt(double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+}
+void complexGamma(double, double, double& outR, double& outI) {
+  outR = std::numeric_limits<double>::quiet_NaN();
+  outI = std::numeric_limits<double>::quiet_NaN();
+}
+#endif
 
 constexpr const char* STR_NAN = "nan";
 constexpr const char* STR_NEG_INF = "-inf";
@@ -1780,6 +1823,20 @@ void mergeUnknownNameList(std::string& dest, const std::string& src) {
   }
 }
 
+std::string pad2DigitsLl(long long n) {
+  if (n < 0) {
+    n = 0;
+  }
+  if (n >= 100) {
+    return std::to_string(n);
+  }
+  if (n >= 10) {
+    return std::string(1, static_cast<char>('0' + (n / 10))) + std::string(1, static_cast<char>('0' + (n % 10)));
+  }
+  return std::string("0") + std::string(1, static_cast<char>('0' + (n % 10)));
+}
+
+#if SMARTMATH_TIME_VALUES
 long long roundHalfUpDoubleToLongLong(double x) {
   if (!std::isfinite(x)) {
     return 0;
@@ -1984,19 +2041,6 @@ bool parseTimeLiteralStringToMs(const std::string& lit, long long& outMs, const 
   return parseTimeLiteralStringToMs(lit.data(), lit.data() + lit.size(), outMs, err);
 }
 
-std::string pad2DigitsLl(long long n) {
-  if (n < 0) {
-    n = 0;
-  }
-  if (n >= 100) {
-    return std::to_string(n);
-  }
-  if (n >= 10) {
-    return std::string(1, static_cast<char>('0' + (n / 10))) + std::string(1, static_cast<char>('0' + (n % 10)));
-  }
-  return std::string("0") + std::string(1, static_cast<char>('0' + (n % 10)));
-}
-
 std::string formatTimeCanonicalFromMs(long long totalMs) {
   const bool neg = (totalMs < 0);
   std::uint64_t rU = 0;
@@ -2037,9 +2081,11 @@ std::string formatTimeCanonicalFromMs(long long totalMs) {
   }
   return body;
 }
+#endif
 
 }  // namespace
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::isComplexUnaryTrigBuiltin(BuiltinFunctionId id) {
   switch (id) {
     case BuiltinFunctionId::Sin:
@@ -2184,6 +2230,7 @@ bool MathParser::complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, doub
   snapComplexNearZeroAxis(outR, outI);
   return true;
 }
+#endif
 
 MathParser::MathParser() {
   assert(functionNames().size() == static_cast<std::size_t>(BuiltinFunctionId::Count));
@@ -2192,11 +2239,13 @@ MathParser::MathParser() {
   addConst(STR_E, std::exp(1.0));
   addConst(STR_INF, std::numeric_limits<double>::infinity());
   addConst(STR_NAN, std::numeric_limits<double>::quiet_NaN());
+#if SMARTMATH_TIME_VALUES
   setVariable(STR_MILLISECOND, makeScalarTimeMs(1LL));
   setVariable(STR_SECOND, makeScalarTimeMs(1000LL));
   setVariable(STR_MINUTE, makeScalarTimeMs(60000LL));
   setVariable(STR_HOUR, makeScalarTimeMs(3600000LL));
   setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
+#endif
   setVariable(STR_ANS, makeScalarInt(0));
   setVariable(STR_FORMAL_VALIDATION_PROBE, makeScalarInt(1));
   syncLambdaSupportDispatch();
@@ -2315,21 +2364,25 @@ const char* MathParser::getReservedIdentifierError(const std::string& ident) con
   if (isReservedFunctionName(ident)) {
     return STR_RESERVED_FUNCTION_NAME;
   }
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     std::string low = ident;
     std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (low == STR_I) {
       return STR_RESERVED_CONSTANT_NAME;
     }
   }
+#endif
   if (ident == STR_PI || ident == STR_E || ident == STR_INF || ident == STR_NAN) {
     return STR_RESERVED_CONSTANT_NAME;
   }
-  if (supportTimeValues_ &&
+#if SMARTMATH_TIME_VALUES
+  if (getSupportTimeValues() &&
       (ident == STR_MILLISECOND || ident == STR_SECOND || ident == STR_MINUTE || ident == STR_HOUR ||
        ident == STR_DAY)) {
     return STR_RESERVED_CONSTANT_NAME;
   }
+#endif
   return nullptr;
 }
 
@@ -2573,16 +2626,18 @@ const char* MathParser::validateUserFunctionDefinitionNames(
     if (seen.find(p) != seen.end()) {
       return STR_DUPLICATE_PARAMETER_NAME;
     }
-    if (isReservedBuiltinConstantName(p, supportTimeValues_)) {
+    if (isReservedBuiltinConstantName(p, getSupportTimeValues())) {
       return STR_RESERVED_CONSTANT_NAME;
     }
+#if SMARTMATH_COMPLEX_NUMBERS
     {
       std::string low = p;
       std::transform(low.begin(), low.end(), low.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-      if (supportComplexNumbers_ && low == STR_I) {
+      if (getSupportComplexNumbers() && low == STR_I) {
         return STR_RESERVED_CONSTANT_NAME;
       }
     }
+#endif
     seen[p] = true;
   }
   return nullptr;
@@ -2747,7 +2802,8 @@ bool MathParser::tryAppendAssignOrExpressionStatement(EvalContext& ctx, std::vec
       }
       ++ctx.p;
       const char* afterEq = ctx.p;
-      if (supportLambdaFunctions_) {
+#if SMARTMATH_LAMBDA_FUNCTIONS
+      if (getSupportLambdaFunctions()) {
         std::vector<std::string> lamParams;
         std::string lamBody;
         if (peekRhsMayBeLambdaSyntaxAt(afterEq) &&
@@ -2765,6 +2821,7 @@ bool MathParser::tryAppendAssignOrExpressionStatement(EvalContext& ctx, std::vec
         setUnexpectedTokenError(ctx);
         return false;
       }
+#endif
       ctx.p = afterEq;
       auto ex = parseExpression(ctx);
       if (ctx.parseError || !ex) {
@@ -2814,6 +2871,7 @@ void MathParser::setExactArgCountError(
   setError(ctx, fnName + STR_PAR_EXPECTS + std::to_string(expectedCount) + STR_ARGUMENT_PAR_S);
 }
 
+#if SMARTMATH_TIME_VALUES
 bool MathParser::rejectBinaryBuiltinTimeOperands(
     EvalContext& ctx,
     const EvalValue& left,
@@ -2824,13 +2882,15 @@ bool MathParser::rejectBinaryBuiltinTimeOperands(
   }
   return false;
 }
+#endif
 
 bool MathParser::rejectInt64BinaryOperands(
     EvalContext& ctx,
     const EvalValue& left,
     const EvalValue& right,
     const bool isModulo) const {
-  if (supportTimeValues_ && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
+#if SMARTMATH_TIME_VALUES
+  if (getSupportTimeValues() && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
     if (isModulo) {
       setModuloIntegerOperandsError(ctx);
     } else {
@@ -2838,25 +2898,30 @@ bool MathParser::rejectInt64BinaryOperands(
     }
     return true;
   }
-  if (supportComplexNumbers_ &&
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() &&
       (MathParser::evalValueHasNonzeroImaginary(left) || MathParser::evalValueHasNonzeroImaginary(right))) {
     setIncompatibleOperandsError(ctx);
     return true;
   }
+#endif
   return false;
 }
 
+#if SMARTMATH_TIME_VALUES
 bool MathParser::rejectNumericBinaryPowWithTime(
     EvalContext& ctx,
     const EvalValue& left,
     const EvalValue& right,
     const char op) const {
-  if (op == '^' && supportTimeValues_ && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
+  if (op == '^' && getSupportTimeValues() && (evalValueInvolvesTime(left) || evalValueInvolvesTime(right))) {
     setIncompatibleOperandsError(ctx);
     return true;
   }
   return false;
 }
+#endif
 
 MathParser::EvalValue MathParser::builtinMapBinaryTwoArg(
     EvalContext& ctx,
@@ -2865,14 +2930,18 @@ MathParser::EvalValue MathParser::builtinMapBinaryTwoArg(
     const std::vector<EvalValue>& args,
     const bool rejectComplexOperands,
     const bool numericErrorOnMapFailure) const {
+#if SMARTMATH_TIME_VALUES
   if (rejectBinaryBuiltinTimeOperands(ctx, args[0], args[1])) {
     return makeScalar(0);
   }
-  if (rejectComplexOperands && supportComplexNumbers_ &&
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (rejectComplexOperands && getSupportComplexNumbers() &&
       (evalValueHasNonzeroImaginary(args[0]) || evalValueHasNonzeroImaginary(args[1]))) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+#endif
   bool ok = false;
   EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
   if (!ok) {
@@ -3296,10 +3365,12 @@ bool MathParser::tryConsumeMulDivModOp(EvalContext& ctx, Expr::BinaryOp& outOp) 
     outOp = Expr::BinaryOp::Mul;
     return true;
   }
-  if (supportComplexNumbers_ && *ctx.p == 'i' && !isIdentChar(ctx.p[1])) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() && *ctx.p == 'i' && !isIdentChar(ctx.p[1])) {
     outOp = Expr::BinaryOp::Mul;
     return true;
   }
+#endif
   return false;
 }
 
@@ -4027,6 +4098,7 @@ bool MathParser::tryRefinePowPrincipalToExactScalarResult(
   return false;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryVerifyComplexCartesianSquareExact(
     long long rootR, long long rootI, long long expR, long long expI) {
   long long rr = 0;
@@ -4098,26 +4170,6 @@ MathParser::EvalValue MathParser::applySqrtComplexPrincipalUnary(const EvalValue
   return makeScalarComplexFromDoubles(sqrtR, sqrtI);
 }
 
-MathParser::EvalValue MathParser::applyUnarySqrtEval(const EvalValue::ScalarValue& s) const {
-  if (supportComplexNumbers_) {
-    if (scalarHasNonzeroImaginaryPart(s)) {
-      return applySqrtComplexPrincipalUnary(s);
-    }
-    const double x = s.scalar;
-    if (std::isfinite(x) && x < 0.0) {
-      EvalValue absV = applyAbsScalarValue(s);
-      EvalValue magV;
-      applySqrtScalarValue(absV.scalarValue, magV);
-      EvalValue out{};
-      setPureImaginaryFromMagnitudeScalar(out, magV.scalarValue);
-      return out;
-    }
-  }
-  EvalValue sqrtOut;
-  applySqrtScalarValue(s, sqrtOut);
-  return sqrtOut;
-}
-
 void MathParser::applyComplexCaretPrincipalEval(
     const EvalValue::ScalarValue& lv,
     const EvalValue::ScalarValue& rv,
@@ -4135,6 +4187,29 @@ void MathParser::applyComplexCaretPrincipalEval(
     return;
   }
   outS = makeScalarComplexFromDoubles(powR, powI);
+}
+#endif
+
+MathParser::EvalValue MathParser::applyUnarySqrtEval(const EvalValue::ScalarValue& s) const {
+#if SMARTMATH_COMPLEX_NUMBERS  
+  if (getSupportComplexNumbers()) {
+    if (scalarHasNonzeroImaginaryPart(s)) {
+      return applySqrtComplexPrincipalUnary(s);
+    }
+    const double x = s.scalar;
+    if (std::isfinite(x) && x < 0.0) {
+      EvalValue absV = applyAbsScalarValue(s);
+      EvalValue magV;
+      applySqrtScalarValue(absV.scalarValue, magV);
+      EvalValue out{};
+      setPureImaginaryFromMagnitudeScalar(out, magV.scalarValue);
+      return out;
+    }
+  }
+#endif
+  EvalValue sqrtOut;
+  applySqrtScalarValue(s, sqrtOut);
+  return sqrtOut;
 }
 
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
@@ -4285,6 +4360,7 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
   return true;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
   if (std::isnan(sv.scalar) || std::isnan(sv.imag)) {
     return false;
@@ -4344,14 +4420,18 @@ bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv
   }
   return true;
 }
+#endif
 
 std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const {
   const int baseCode = static_cast<int>(base);
   const double dval = v.scalarValue.scalar;
+#if SMARTMATH_TIME_VALUES
   if (v.scalarValue.scalarKind == ScalarKind::Time) {
     return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
   }
-  if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS  
+  if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
     if (base == RenderBase::Dec) {
       std::string ratCx;
       if (tryFormatComplexRationalScalar(v.scalarValue, ratCx)) {
@@ -4363,6 +4443,7 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     }
     return formatComplexScalarValue(v.scalarValue);
   }
+#endif
   if (base == RenderBase::Dec) {
     std::string ratText;
     if (tryFormatRationalScalar(v.scalarValue, ratText)) {
@@ -4481,6 +4562,7 @@ MathParser::RawResult MathParser::getRawResult() const {
 }
 
 void MathParser::setSupportComplexNumbers(bool enabled) {
+#if SMARTMATH_COMPLEX_NUMBERS
   if (supportComplexNumbers_ == enabled) {
     return;
   }
@@ -4490,13 +4572,22 @@ void MathParser::setSupportComplexNumbers(bool enabled) {
   } else {
     variables_.erase(STR_I);
   }
+#else
+  (void)enabled;
+  return;
+#endif
 }
 
 bool MathParser::getSupportComplexNumbers() const {
+#if SMARTMATH_COMPLEX_NUMBERS
   return supportComplexNumbers_;
+#else
+  return false;
+#endif
 }
 
 void MathParser::setSupportTimeValues(bool enabled) {
+#if SMARTMATH_TIME_VALUES
   if (supportTimeValues_ == enabled) {
     return;
   }
@@ -4514,25 +4605,42 @@ void MathParser::setSupportTimeValues(bool enabled) {
     variables_.erase(STR_HOUR);
     variables_.erase(STR_DAY);
   }
+#else
+  (void)enabled;
+#endif
 }
 
 bool MathParser::getSupportTimeValues() const {
+#if SMARTMATH_TIME_VALUES
   return supportTimeValues_;
+#else
+  return false;
+#endif
 }
 
 void MathParser::setSupportLambdaFunctions(bool enabled) {
+#if SMARTMATH_LAMBDA_FUNCTIONS
   supportLambdaFunctions_ = enabled;
   syncLambdaSupportDispatch();
+#else
+  (void)enabled;
+#endif
 }
 
 bool MathParser::getSupportLambdaFunctions() const {
+#if SMARTMATH_LAMBDA_FUNCTIONS
   return supportLambdaFunctions_;
+#else
+  return false;
+#endif
 }
 
 void MathParser::syncLambdaSupportDispatch() {
-  parseSortbyKeyArgImpl_ = supportLambdaFunctions_
-      ? &MathParser::parseSortbyKeyArgWithLambda
-      : &MathParser::parseSortbyKeyArgFunctionRefOnly;
+  parseSortbyKeyArgImpl_ = 
+#if SMARTMATH_LAMBDA_FUNCTIONS  
+  getSupportLambdaFunctions() ? &MathParser::parseSortbyKeyArgWithLambda :
+#endif
+    &MathParser::parseSortbyKeyArgFunctionRefOnly;
 }
 
 void MathParser::addConst(const std::string& constName, long long intValue) {
@@ -4595,6 +4703,7 @@ void MathParser::scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re
   }
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 MathParser::EvalValue MathParser::makeImaginaryUnit() {
   EvalValue out = makeScalarComplexFromDoubles(0.0, 1.0);
   out.scalarValue.scalarKind = ScalarKind::Int64;
@@ -4610,6 +4719,7 @@ MathParser::EvalValue MathParser::makeImaginaryUnit() {
   out.scalarValue.imag = 1.0;
   return out;
 }
+#endif
 
 MathParser::EvalValue MathParser::makeScalarComplexFromDoubles(double re, double im) {
   if (std::isnan(re) && std::isnan(im)) {
@@ -4681,6 +4791,7 @@ void MathParser::exactCartesianComponentAssignFromUInt64(ExactCartesianComponent
   }
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::complexNeedsPrincipalNegRealPow(double ar, double ai, double br, double bi) {
   if (ai != 0.0 || bi != 0.0) {
     return false;
@@ -4721,6 +4832,7 @@ void MathParser::complexCartesianBinary(double ar, double ai, double br, double 
       break;
   }
 }
+#endif
 
 bool MathParser::tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI) {
   if (c.hasInt) {
@@ -4916,6 +5028,7 @@ bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a
   return false;
 }
 
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
                                                    const EvalValue::ScalarValue& rightS, char op,
                                                    EvalValue& outV) {
@@ -4997,6 +5110,7 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
   }
   return false;
 }
+#endif
 
 MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const EvalValue& rePart,
                                                                         const EvalValue& imPart) {
@@ -5067,22 +5181,7 @@ bool MathParser::tryNegateExactCartesianComponent(const ExactCartesianComponent&
   return true;
 }
 
-bool MathParser::tryFlipScalarImagSignExact(EvalValue::ScalarValue& sv) {
-  ExactCartesianComponent c{};
-  ExactCartesianComponent cNeg{};
-  if (!tryExtractExactImagComponent(sv, c)) {
-    return false;
-  }
-  if (!scalarHasNonzeroImaginaryPart(sv)) {
-    return true;
-  }
-  if (!tryNegateExactCartesianComponent(c, cNeg)) {
-    return false;
-  }
-  scalarApplyExactImagFromCartesianComponent(sv, cNeg);
-  return true;
-}
-
+#if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out) {
   if (!scalarHasNonzeroImaginaryPart(sv)) {
     return false;
@@ -5162,7 +5261,7 @@ bool MathParser::tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t it
 
 bool MathParser::tryApplyComplexBinaryScalars(
     const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const {
-  if (!supportComplexNumbers_) {
+  if (!getSupportComplexNumbers()) {
     return false;
   }
   if (op != '+' && op != '-' && op != '*' && op != '/' && op != '^') {
@@ -5334,6 +5433,7 @@ std::string MathParser::formatComplexScalarWithRenderBase(
   }
   return negIm ? (rePart + std::string("-") + tail) : (rePart + std::string("+") + tail);
 }
+#endif
 
 MathParser::EvalValue MathParser::makeScalarMaybeExact(double v) {
   EvalValue out = makeScalar(v);
@@ -5391,6 +5491,7 @@ MathParser::EvalValue MathParser::makeScalarUInt(std::uint64_t v) {
   return out;
 }
 
+#if SMARTMATH_TIME_VALUES
 MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
   EvalValue out;
   out.kind = ValueKind::Scalar;
@@ -5409,7 +5510,7 @@ MathParser::EvalValue MathParser::makeScalarTimeMs(long long totalMs) {
 }
 
 bool MathParser::scalarValueIsTime(const EvalValue::ScalarValue& s) const {
-  if (!supportTimeValues_) {
+  if (!getSupportTimeValues()) {
     return false;
   }
   return s.scalarKind == ScalarKind::Time;
@@ -5420,7 +5521,7 @@ long long MathParser::timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s
 }
 
 bool MathParser::evalValueInvolvesTime(const EvalValue& v) const {
-  if (!supportTimeValues_) {
+  if (!getSupportTimeValues()) {
     return false;
   }
   if (v.kind != ValueKind::Scalar) {
@@ -5433,6 +5534,7 @@ bool MathParser::evalValueInvolvesTime(const EvalValue& v) const {
   }
   return scalarValueIsTime(v.scalarValue);
 }
+#endif
 
 bool MathParser::evalValueHasNonzeroImaginary(const EvalValue& v) {
   if (v.kind == ValueKind::Scalar) {
@@ -5446,6 +5548,7 @@ bool MathParser::evalValueHasNonzeroImaginary(const EvalValue& v) {
   return false;
 }
 
+#if SMARTMATH_TIME_VALUES
 bool MathParser::scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const {
   if (scalarValueIsTime(sv)) {
     outMs = timeTotalMsFromScalarValue(sv);
@@ -5457,11 +5560,13 @@ bool MathParser::scalarMsForCompare(const EvalValue::ScalarValue& sv, long long&
   outMs = roundHalfUpDoubleToLongLong(sv.scalar * 1000.0);
   return true;
 }
+#endif
 
 bool MathParser::rejectBuiltinArgsWithComplexImaginary(
     EvalContext& ctx,
     const std::vector<EvalValue>& args) const {
-  if (!supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (!getSupportComplexNumbers()) {
     return false;
   }
   for (const auto& v : args) {
@@ -5471,6 +5576,11 @@ bool MathParser::rejectBuiltinArgsWithComplexImaginary(
     }
   }
   return false;
+#else
+  (void)ctx;
+  (void)args;
+  return false;
+#endif
 }
 
 bool MathParser::cmpScalarValuesForCompare(
@@ -5479,10 +5589,15 @@ bool MathParser::cmpScalarValuesForCompare(
     const EvalValue::ScalarValue& sb,
     int& cmpOut,
     CmpScalarIncompatiblePolicy policy) const {
+#if SMARTMATH_TIME_VALUES
   const bool ta = scalarValueIsTime(sa);
   const bool tb = scalarValueIsTime(sb);
-  const bool ha = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sa);
-  const bool hb = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sb);
+#else
+  const bool ta = false;
+  const bool tb = false;
+#endif
+  const bool ha = getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(sa);
+  const bool hb = getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(sb);
   if ((ha || hb) && (ta || tb)) {
     if (policy == CmpScalarIncompatiblePolicy::SetError && ctx != nullptr) {
       setIncompatibleOperandsError(*ctx);
@@ -5490,6 +5605,7 @@ bool MathParser::cmpScalarValuesForCompare(
     cmpOut = (policy == CmpScalarIncompatiblePolicy::SortUniqueReturnOne) ? 1 : 0;
     return policy == CmpScalarIncompatiblePolicy::SortUniqueReturnOne;
   }
+#if SMARTMATH_TIME_VALUES
   if (ta || tb) {
     long long ams = 0;
     long long bms = 0;
@@ -5512,6 +5628,8 @@ bool MathParser::cmpScalarValuesForCompare(
     }
     return true;
   }
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS  
   if (ha || hb) {
     double ar = 0.0;
     double ai = 0.0;
@@ -5536,6 +5654,7 @@ bool MathParser::cmpScalarValuesForCompare(
     }
     return true;
   }
+#endif
   if (policy == CmpScalarIncompatiblePolicy::SortLess || policy == CmpScalarIncompatiblePolicy::SortGreater) {
     const bool aNan = std::isnan(sa.scalar);
     const bool bNan = std::isnan(sb.scalar);
@@ -5616,6 +5735,7 @@ int MathParser::tryApplyGcdLcmScalars(
   return 0;
 }
 
+#if SMARTMATH_TIME_VALUES
 MathParser::EvalValue MathParser::evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const {
   if (id == BuiltinFunctionId::Milliseconds) {
     return makeScalarInt(ms);
@@ -5650,6 +5770,7 @@ MathParser::EvalValue MathParser::mapTimeUnitOverArray(
   }
   return makeArrayFromScalars(outs);
 }
+#endif
 
 MathParser::EvalValue MathParser::applyGcdLcmEvalValues(const EvalValue& a, const EvalValue& b, bool doLcm, int& status) const {
   if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
@@ -5692,11 +5813,13 @@ MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalVal
 MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart) {
   RawResult::CartesianScalar out;
   if (!imagPart) {
+#if SMARTMATH_TIME_VALUES
     if (v.scalarKind == ScalarKind::Time) {
       out.kind = RawResult::ScalarKind::Time;
       out.intValue = timeTotalMsFromScalarValue(v);
       return out;
     }
+#endif
     if (v.hasRenderRational() && (v.hasExactUInt64() || v.exactUInt64 != 0)) {
       out.kind = RawResult::ScalarKind::Rational;
       out.rational.numerator = v.exactInt64;
@@ -5948,6 +6071,7 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     }
     return makeArrayFromScalars(elems);
   }
+#if SMARTMATH_TIME_VALUES
   if (v.scalarValue.scalarKind == ScalarKind::Time) {
     const long long ms = timeTotalMsFromScalarValue(v.scalarValue);
     if (ms == (std::numeric_limits<long long>::min)()) {
@@ -5955,6 +6079,8 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     }
     return makeScalarTimeMs(-ms);
   }
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
   if (scalarHasNonzeroImaginaryPart(v.scalarValue)) {
     EvalValue exactNeg{};
     if (tryNegateExactComplexScalar(v.scalarValue, exactNeg)) {
@@ -5965,6 +6091,7 @@ MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
     scalarLoadCartesian(v.scalarValue, re, im);
     return makeScalarComplexFromDoubles(-re, -im);
   }
+#endif
   if (v.scalarValue.hasDecScientificPow63High()) {
     const double p63 = std::ldexp(1.0, 63);
     if (v.scalarValue.scalar == p63) {
@@ -6060,13 +6187,14 @@ MathParser::EvalValue MathParser::mapBinaryBroadcast(
   return ret;
 }
 
+#if SMARTMATH_TIME_VALUES
 bool MathParser::tryApplyTimeBinaryScalars(
     EvalContext& ctx,
     const EvalValue::ScalarValue& lv,
     const EvalValue::ScalarValue& rv,
     char op,
     EvalValue& outS) const {
-  if (!supportTimeValues_) {
+  if (!getSupportTimeValues()) {
     return false;
   }
   const bool lt = scalarValueIsTime(lv);
@@ -6074,12 +6202,14 @@ bool MathParser::tryApplyTimeBinaryScalars(
   if (!lt && !rt) {
     return false;
   }
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     if ((!lt && scalarHasNonzeroImaginaryPart(lv)) || (!rt && scalarHasNonzeroImaginaryPart(rv))) {
       setIncompatibleOperandsError(ctx);
       return true;
     }
   }
+#endif
   if (op != '+' && op != '-' && op != '*' && op != '/') {
     setIncompatibleOperandsError(ctx);
     return true;
@@ -6174,6 +6304,7 @@ bool MathParser::tryApplyTimeBinaryScalars(
   setIncompatibleOperandsError(ctx);
   return true;
 }
+#endif
 
 bool MathParser::tryCombineBinaryScalars(
     EvalContext& ctx,
@@ -6181,7 +6312,8 @@ bool MathParser::tryCombineBinaryScalars(
     const EvalValue::ScalarValue& lv,
     const EvalValue::ScalarValue& rv,
     EvalValue& outS) const {
-  if (supportTimeValues_) {
+#if SMARTMATH_TIME_VALUES
+  if (getSupportTimeValues()) {
     EvalValue outTime;
     if (tryApplyTimeBinaryScalars(ctx, lv, rv, op, outTime)) {
       if (ctx.parseError) {
@@ -6191,6 +6323,7 @@ bool MathParser::tryCombineBinaryScalars(
       return true;
     }
   }
+#endif
     if (op == '^') {
       EvalValue powSpecial;
       if (tryApplyScalarPowSpecialPaths(lv, rv, powSpecial)) {
@@ -6198,13 +6331,15 @@ bool MathParser::tryCombineBinaryScalars(
         return true;
       }
     }
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     EvalValue outComplex;
     if (tryApplyComplexBinaryScalars(lv, rv, op, outComplex)) {
       outS = std::move(outComplex);
       return true;
     }
   }
+#endif
     if (isPureFloatingScalarPair(lv, rv)) {
       double outD = 0.0;
       if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
@@ -6335,9 +6470,11 @@ bool MathParser::tryCombineBinaryScalars(
       outS = makeScalar(std::ldexp(1.0, 63)); outS.scalarValue.setDecScientificPow63High(true);
       return true;
     }
-    if (supportComplexNumbers_ && (scalarHasNonzeroImaginaryPart(lv) || scalarHasNonzeroImaginaryPart(rv))) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && (scalarHasNonzeroImaginaryPart(lv) || scalarHasNonzeroImaginaryPart(rv))) {
       return false;
     }
+#endif
     double outD = 0;
     if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
       return false;
@@ -6378,7 +6515,8 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
   }
 
   auto applyScalarValue = [&](const EvalValue::ScalarValue& l, const EvalValue::ScalarValue& r, EvalValue& outS) -> bool {
-    if (supportComplexNumbers_ && id == BuiltinFunctionId::Hypot &&
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && id == BuiltinFunctionId::Hypot &&
         (scalarHasNonzeroImaginaryPart(l) || scalarHasNonzeroImaginaryPart(r))) {
       double ar = 0.0;
       double ai = 0.0;
@@ -6395,15 +6533,19 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
       outS = makeScalarMaybeExact(std::hypot(ml, mr));
       return true;
     }
+#endif
     double outD = 0.0;
     if (isLog) {
-      if (!supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+      if (!getSupportComplexNumbers()) {
+#endif
         if (l.scalar <= 0.0 || r.scalar <= 0.0 || r.scalar == 1.0) {
           return false;
         }
         outD = std::log(l.scalar) / std::log(r.scalar);
         outS = makeScalarMaybeExact(outD);
         return true;
+#if SMARTMATH_COMPLEX_NUMBERS
       }
       double ar = 0.0;
       double ai = 0.0;
@@ -6440,6 +6582,7 @@ MathParser::EvalValue MathParser::mapBinaryBuiltinMathFunction(
       snapComplexNearZeroAxis(outRe, outIm);
       outS = makeScalarComplexFromDoubles(outRe, outIm);
       return true;
+#endif
     }
     if (id == BuiltinFunctionId::Hypot) {
       EvalValue hv;
@@ -6544,6 +6687,7 @@ int netRoundParenDepthBetween(const char* lo, const char* hiExclusive) {
 
 }  // namespace
 
+#if SMARTMATH_LAMBDA_FUNCTIONS
 bool MathParser::lambdaBodyConsume(
     EvalContext& ctx,
     std::string& outBody,
@@ -6730,21 +6874,6 @@ std::unique_ptr<MathParser::Expr> MathParser::makeUnarySortbyInlineLambdaExpr(
   return lit;
 }
 
-std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx) {
-  return (this->*parseSortbyKeyArgImpl_)(ctx);
-}
-
-std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx) {
-  ctx.parseError = false;
-  ctx.errorText.clear();
-  skipSpaces(ctx);
-  if (peekRhsMayBeLambdaSyntaxAt(ctx.p)) {
-    setUnexpectedTokenError(ctx);
-    return nullptr;
-  }
-  return parseSortbyFunctionRef(ctx);
-}
-
 std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalContext& ctx) {
   ctx.parseError = false;
   ctx.errorText.clear();
@@ -6844,6 +6973,24 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   mergeUnknownNameList(ctx.unknownFuncsText, sub.unknownFuncsText);
   return v;
 }
+#endif
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx) {
+  return (this->*parseSortbyKeyArgImpl_)(ctx);
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx) {
+  ctx.parseError = false;
+  ctx.errorText.clear();
+  skipSpaces(ctx);
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  if (peekRhsMayBeLambdaSyntaxAt(ctx.p)) {
+      setUnexpectedTokenError(ctx);
+      return nullptr;
+    }
+#endif
+  return parseSortbyFunctionRef(ctx);
+}
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
   skipSpaces(ctx);
@@ -6899,6 +7046,7 @@ bool isDecimalRadixPrefixedAt(const char* p) {
   return px == 'x' || px == 'b' || px == 'o';
 }
 
+#if SMARTMATH_TIME_VALUES
 bool scanColonTimeLiteralEnd(const char* p0, const char*& outEnd) {
   if (*p0 < '0' || *p0 > '9' || isDecimalRadixPrefixedAt(p0)) {
     return false;
@@ -6934,6 +7082,7 @@ bool peekCompactTimeSuffixAfterDigitRun(const char* digitEnd) {
   }
   return false;
 }
+#endif
 
 NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
   if (*p < '0' || *p > '9') {
@@ -6966,15 +7115,19 @@ NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
     while (*digitEnd >= '0' && *digitEnd <= '9') {
       ++digitEnd;
     }
+#if SMARTMATH_TIME_VALUES
     if (peekCompactTimeSuffixAfterDigitRun(digitEnd)) {
       return NumericLiteralRoute::CompactTime;
     }
+#endif
     return NumericLiteralRoute::Plain;
   }
+#if SMARTMATH_TIME_VALUES
   const char* colonEnd = nullptr;
   if (scanColonTimeLiteralEnd(p, colonEnd)) {
     return NumericLiteralRoute::ColonTime;
   }
+#endif
   return NumericLiteralRoute::Plain;
 }
 
@@ -7015,8 +7168,9 @@ const char* scanDecimalNumericLiteralEnd(const char* p) {
 
 }  // namespace
 
+#if SMARTMATH_TIME_VALUES
 bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const {
-  if (!supportTimeValues_) {
+  if (!getSupportTimeValues()) {
     return false;
   }
   const char* p0 = ctx.p;
@@ -7038,7 +7192,7 @@ bool MathParser::tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) con
 }
 
 bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const {
-  if (!supportTimeValues_) {
+  if (!getSupportTimeValues()) {
     return false;
   }
   const char* const pSave = ctx.p;
@@ -7154,6 +7308,7 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
   out = makeScalarTimeMs(totalMs);
   return true;
 }
+#endif
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
   const char* parsedEnd = nullptr;
@@ -7184,7 +7339,8 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       return lit;
     }
   }
-  if (supportTimeValues_) {
+#if SMARTMATH_TIME_VALUES
+  if (getSupportTimeValues()) {
     switch (classifyNumericLiteralRoute(ctx.p)) {
       case NumericLiteralRoute::ColonTime: {
         EvalValue timeLit;
@@ -7216,6 +7372,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
         break;
     }
   }
+#endif
   const char* const numStart = ctx.p;
   const char* const numEnd = scanDecimalNumericLiteralEnd(numStart);
   if (numEnd == numStart) {
@@ -7764,10 +7921,12 @@ MathParser::EvalValue MathParser::evalUnaryExpr(
     return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
   }
   if (e.unaryOp == '~') {
-    if (supportComplexNumbers_ && MathParser::evalValueHasNonzeroImaginary(v)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && MathParser::evalValueHasNonzeroImaginary(v)) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
+#endif
     if (!scalarOnlyMode && v.kind != ValueKind::Scalar) {
       setBitwiseIntegerOperandsError(ctx);
       return makeScalar(0);
@@ -7793,9 +7952,11 @@ MathParser::EvalValue MathParser::evalMappedBinaryOp(
                       (op == Expr::BinaryOp::Mul) ? '*' :
                       (op == Expr::BinaryOp::Div) ? '/' :
                       (op == Expr::BinaryOp::Add) ? '+' : '-';
+#if SMARTMATH_TIME_VALUES
   if (rejectNumericBinaryPowWithTime(ctx, left, right, opChar)) {
     return makeScalar(0);
   }
+#endif
   bool ok = false;
   EvalValue out = mapBinary(ctx, left, right, opChar, ok);
   if (ok) {
@@ -7970,14 +8131,18 @@ MathParser::EvalValue MathParser::evalExprScalar(
     case Expr::Tag::PostfixPercent: {
       EvalValue v = evalExprScalar(*e.child, ctx, scopedVars);
       if (ctx.parseError) return v;
+#if SMARTMATH_TIME_VALUES
       if (scalarValueIsTime(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
-      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+      if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+#endif
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -7997,11 +8162,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::LogicalAnd:
           return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1LL : 0LL);
         case Expr::BinaryOp::Modulo: {
-          if (supportComplexNumbers_ &&
+#if SMARTMATH_COMPLEX_NUMBERS
+          if (getSupportComplexNumbers() &&
               (MathParser::evalValueHasNonzeroImaginary(l) || MathParser::evalValueHasNonzeroImaginary(r))) {
             setIncompatibleOperandsError(ctx);
             return makeScalar(0);
           }
+#endif
           if (l.scalarValue.hasExactUInt64() && r.scalarValue.hasExactUInt64() &&
               (!l.scalarValue.hasExactInt64() || !r.scalarValue.hasExactInt64())) {
             if (r.scalarValue.exactUInt64 == 0u) {
@@ -8026,11 +8193,13 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::BitXor:
         case Expr::BinaryOp::ShiftLeft:
         case Expr::BinaryOp::ShiftRight: {
-          if (supportComplexNumbers_ &&
+#if SMARTMATH_COMPLEX_NUMBERS
+          if (getSupportComplexNumbers() &&
               (MathParser::evalValueHasNonzeroImaginary(l) || MathParser::evalValueHasNonzeroImaginary(r))) {
             setIncompatibleOperandsError(ctx);
             return makeScalar(0);
           }
+#endif
           if (e.binaryOp == Expr::BinaryOp::ShiftLeft) {
             std::uint64_t aU = 0;
             std::uint64_t bU = 0;
@@ -8086,10 +8255,15 @@ MathParser::EvalValue MathParser::evalExprScalar(
         case Expr::BinaryOp::CmpGe:
         case Expr::BinaryOp::CmpEq:
         case Expr::BinaryOp::CmpNe: {
+#if SMARTMATH_TIME_VALUES
           const bool lTime = scalarValueIsTime(l.scalarValue);
           const bool rTime = scalarValueIsTime(r.scalarValue);
-          const bool lIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(l.scalarValue);
-          const bool rIm = supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(r.scalarValue);
+#else
+          const bool lTime = false;
+          const bool rTime = false;
+#endif
+          const bool lIm = getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(l.scalarValue);
+          const bool rIm = getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(r.scalarValue);
           const bool orderingOp = e.binaryOp == Expr::BinaryOp::CmpLt || e.binaryOp == Expr::BinaryOp::CmpLe ||
                                   e.binaryOp == Expr::BinaryOp::CmpGt || e.binaryOp == Expr::BinaryOp::CmpGe;
           if (orderingOp && (lIm || rIm)) {
@@ -8101,7 +8275,8 @@ MathParser::EvalValue MathParser::evalExprScalar(
             return makeScalar(0);
           }
           if (!lTime && !rTime) {
-            if (supportComplexNumbers_ && (lIm || rIm)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+            if (getSupportComplexNumbers() && (lIm || rIm)) {
               double lr = 0.0;
               double li = 0.0;
               double rr = 0.0;
@@ -8111,7 +8286,9 @@ MathParser::EvalValue MathParser::evalExprScalar(
               if (std::isnan(lr) || std::isnan(li) || std::isnan(rr) || std::isnan(ri)) {
                 return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
               }
-            } else {
+            } else
+#endif
+            {
               const double ls = l.scalarValue.scalar;
               const double rs = r.scalarValue.scalar;
               if (std::isnan(ls) || std::isnan(rs)) {
@@ -8233,14 +8410,18 @@ MathParser::EvalValue MathParser::evalExpr(
         setPercentageRequiresScalarValueError(ctx);
         return makeScalar(0);
       }
+#if SMARTMATH_TIME_VALUES
       if (scalarValueIsTime(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
-      if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+      if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+#endif
       v.scalarValue.scalar /= 100.0;
       v.scalarValue.setExactInt64Valid(false);
       v.scalarValue.setExactUInt64Valid(false);
@@ -8271,6 +8452,7 @@ MathParser::EvalValue MathParser::evalExpr(
       if (flatVals.empty()) {
         return makeArrayFromScalars({});
       }
+#if SMARTMATH_TIME_VALUES
       bool anyTimeArr = false;
       bool anyNonTimeArr = false;
       for (const auto& fv : flatVals) {
@@ -8287,6 +8469,7 @@ MathParser::EvalValue MathParser::evalExpr(
         setValidationError(ctx, STR_TIME_ARRAY_MIXED);
         return makeScalar(0);
       }
+#endif
       return makeArrayFromScalars(flatVals);
     }
     case Expr::Tag::Call: {
@@ -8388,7 +8571,8 @@ MathParser::EvalValue MathParser::evalExpr(
         if (ctx.parseError) return makeScalar(0);
         EvalValue r = evalExpr(*e.right, ctx, scopedVars);
         if (ctx.parseError) return makeScalar(0);
-        if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+        if (getSupportComplexNumbers()) {
           const auto valueHasComplex = [](const EvalValue& vv) -> bool {
             if (vv.kind == ValueKind::Scalar) {
               return scalarHasNonzeroImaginaryPart(vv.scalarValue);
@@ -8406,17 +8590,24 @@ MathParser::EvalValue MathParser::evalExpr(
             setIncompatibleOperandsError(ctx);
             return makeScalar(0);
           }
+#if SMARTMATH_TIME_VALUES
           if ((valueHasComplex(l) || valueHasComplex(r)) &&
               (evalValueInvolvesTime(l) || evalValueInvolvesTime(r))) {
             setIncompatibleOperandsError(ctx);
             return makeScalar(0);
           }
+#endif
         }
+#endif
         if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
+#if SMARTMATH_TIME_VALUES
           const bool lTime = scalarValueIsTime(l.scalarValue);
           const bool rTime = scalarValueIsTime(r.scalarValue);
-          if (!lTime && !rTime) {
-            if (supportComplexNumbers_) {
+          if (!lTime && !rTime)
+#endif
+          {
+#if SMARTMATH_COMPLEX_NUMBERS
+            if (getSupportComplexNumbers()) {
               double lr = 0.0;
               double li = 0.0;
               double rr = 0.0;
@@ -8426,7 +8617,9 @@ MathParser::EvalValue MathParser::evalExpr(
               if (std::isnan(lr) || std::isnan(li) || std::isnan(rr) || std::isnan(ri)) {
                 return makeScalarInt(evalComparisonTruthWhenUnorderedNan(e.binaryOp) ? 1LL : 0LL);
               }
-            } else {
+            } else
+#endif
+            {
               const double ls = l.scalarValue.scalar;
               const double rs = r.scalarValue.scalar;
               if (std::isnan(ls) || std::isnan(rs)) {
@@ -8607,7 +8800,8 @@ bool MathParser::validateIntegerRepresentableArgs(
         return false;
       }
     }
-    if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(s)) {
       double ai = 0.0;
       double ar = 0.0;
       scalarLoadCartesian(s, ar, ai);
@@ -8628,6 +8822,7 @@ bool MathParser::validateIntegerRepresentableArgs(
         return false;
       }
     }
+#endif
     return true;
   };
   bool ok = true;
@@ -8694,17 +8889,20 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
   const auto forEachArgScalarValue = [&](const auto& fn) -> std::size_t {
     return forEachCallArgScalarValues(args, fn);
   };
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     const bool anyComplex = std::any_of(
         args.begin(), args.end(),
         [](const EvalValue& v) { return MathParser::evalValueHasNonzeroImaginary(v); });
     if (anyComplex) {
+#if SMARTMATH_TIME_VALUES
       const bool anyTimeAgg =
           std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
       if (anyTimeAgg) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+#endif
       if (id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Median ||
           id == BuiltinFunctionId::Variance || id == BuiltinFunctionId::Stddev) {
         setIncompatibleOperandsError(ctx);
@@ -8775,17 +8973,21 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       }
     }
   }
+#endif
   if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
       id == BuiltinFunctionId::Max || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
+#if SMARTMATH_TIME_VALUES
     const bool anyTimeAgg =
         std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
     if (anyTimeAgg && id == BuiltinFunctionId::Product) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
+#endif
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
       return args[0];
     }
+#if SMARTMATH_TIME_VALUES
     if (anyTimeAgg) {
       long long accMs = 0;
       bool accInit = false;
@@ -8835,6 +9037,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
       }
       return makeScalarTimeMs(accMs);
     }
+#endif
     if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
         id == BuiltinFunctionId::Max) {
       bool allNnU = true;
@@ -9008,6 +9211,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
           return scalarFromArrayAt(single, 0);
         }
       }
+#if SMARTMATH_TIME_VALUES
       const bool anyTimeMed =
           std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); });
       if (anyTimeMed) {
@@ -9041,6 +9245,7 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         const double lower = *std::max_element(flatMs.begin(), flatMs.begin() + static_cast<std::ptrdiff_t>(mid));
         return makeScalarTimeMs(roundHalfUpDoubleToLongLong((lower + upper) / 2.0));
       }
+#endif
       std::vector<double> flat;
       if (!flattenArgs(args, flat)) {
         setAtLeastOneArgError(ctx, fnName);
@@ -9058,10 +9263,12 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
     }
     case BuiltinFunctionId::Variance:
     case BuiltinFunctionId::Stddev: {
+#if SMARTMATH_TIME_VALUES
       if (std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); })) {
         setIncompatibleOperandsError(ctx);
         return makeScalar(0);
       }
+#endif
       // Welford single-pass accumulation for better stability and fewer passes.
       double mean = 0.0;
       double m2 = 0.0;
@@ -9144,13 +9351,15 @@ bool MathParser::tryLexicographicCompareEvalValues(
     const EvalValue& a,
     const EvalValue& b,
     int& cmpOut) const {
-  if (!supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (!getSupportComplexNumbers()) {
     if (evalValueHasNonzeroImaginary(a) || evalValueHasNonzeroImaginary(b)) {
       setIncompatibleOperandsError(ctx);
       cmpOut = 0;
       return false;
     }
   }
+#endif
   if (a.kind == ValueKind::Scalar && b.kind == ValueKind::Scalar) {
     if (!cmpScalarValuesForCompare(
             &ctx, a.scalarValue, b.scalarValue, cmpOut, CmpScalarIncompatiblePolicy::SetError)) {
@@ -9420,10 +9629,12 @@ bool MathParser::tryApproximateRational(double x, long long& num, std::uint64_t&
 }
 
 bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const {
+#if SMARTMATH_TIME_VALUES
   if (scalarValueIsTime(sv)) {
     ctx.parseError = true;
     return false;
   }
+#endif
   double ar = 0.0;
   double ai = 0.0;
   scalarLoadCartesian(sv, ar, ai);
@@ -9447,7 +9658,8 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
       return false;
     }
   }
-  if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(sv)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(sv)) {
     long long numR = 0;
     std::uint64_t denR = 1;
     long long numI = 0;
@@ -9504,6 +9716,7 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     }
     return true;
   }
+#endif
   if (sv.hasExactInt64()) {
     outV = makeScalarInt(sv.exactInt64);
     return true;
@@ -9668,13 +9881,16 @@ MathParser::EvalValue MathParser::builtinSortby(
   keys.reserve(vals.size());
   for (std::size_t i = 0; i < vals.size(); ++i) {
     EvalValue keyV;
+#if SMARTMATH_LAMBDA_FUNCTIONS
     if (keyIsLambda) {
       std::vector<EvalValue> lamArgs;
       if (args[1].lambdaParams.size() == 1U) {
         lamArgs.push_back(scalarFromScalarValue(vals[i]));
       }
       keyV = evalInlineLambdaCall(ctx, args[1].lambdaParams, args[1].lambdaBody, std::move(lamArgs), scopedVars);
-    } else {
+    } else
+#endif
+    {
       keyV = sortbyInvokeKeyFunction(ctx, args[1].funcRefName, vals[i], scopedVars);
     }
     if (ctx.parseError) {
@@ -9796,8 +10012,9 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     return bits;
   };
   auto dedupUniqueInPlace = [&](std::vector<EvalValue>& values) {
+#if SMARTMATH_COMPLEX_NUMBERS
     bool useComplexDedup = false;
-    if (supportComplexNumbers_) {
+    if (getSupportComplexNumbers()) {
       for (const auto& ev : values) {
         if (scalarHasNonzeroImaginaryPart(ev.scalarValue)) {
           useComplexDedup = true;
@@ -9830,6 +10047,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       values = std::move(out);
       return;
     }
+#endif    
     std::unordered_set<std::uint64_t> seen;
     seen.reserve(values.size() * 2 + 1);
     std::size_t writePos = 0;
@@ -9846,12 +10064,15 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     values.resize(writePos);
   };
 
-  if (supportComplexNumbers_ && id == BuiltinFunctionId::Sort &&
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() && id == BuiltinFunctionId::Sort &&
       std::any_of(args.begin(), args.end(), [](const EvalValue& v) { return MathParser::evalValueHasNonzeroImaginary(v); })) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
-  if (id == BuiltinFunctionId::Sort && supportTimeValues_ &&
+#endif
+#if SMARTMATH_TIME_VALUES
+  if (id == BuiltinFunctionId::Sort && getSupportTimeValues() &&
       std::any_of(args.begin(), args.end(), [this](const EvalValue& v) { return evalValueInvolvesTime(v); })) {
     bool okTimeSort = true;
     forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& s) {
@@ -9867,6 +10088,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       return makeScalar(0);
     }
   }
+#endif
   const auto copyArrayScalars = [&](const EvalValue& a, std::vector<EvalValue>& out) {
     out.clear();
     out.reserve(a.arr.size());
@@ -9966,10 +10188,12 @@ MathParser::EvalValue MathParser::builtinBaseFormat(
 
 MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector<EvalValue>& args) const {
   const std::string fnName = getFunctionName(BuiltinFunctionId::Pow);
+#if SMARTMATH_TIME_VALUES
   if (evalValueInvolvesTime(args[0]) || evalValueInvolvesTime(args[1])) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+#endif
   bool ok = false;
   EvalValue out = mapBinary(ctx, args[0], args[1], '^', ok);
   if (!ok) {
@@ -10123,9 +10347,11 @@ MathParser::EvalValue MathParser::builtinFactorial(
     EvalContext& ctx,
     const std::string& fnName,
     const std::vector<EvalValue>& args) const {
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     return builtinUnaryMath(ctx, fnName, BuiltinFunctionId::Fact, args);
   }
+#endif
   long long n = 0;
   if (args[0].kind != ValueKind::Scalar || !nearlyInt(args[0].scalarValue.scalar, n) || n < 0) {
     setNonNegativeIntegerError(ctx, fnName);
@@ -10142,7 +10368,8 @@ MathParser::EvalValue MathParser::builtinDegRad(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     for (const auto& a : args) {
       if (evalValueHasNonzeroImaginary(a)) {
         setIncompatibleOperandsError(ctx);
@@ -10150,6 +10377,7 @@ MathParser::EvalValue MathParser::builtinDegRad(
       }
     }
   }
+#endif
   const bool toDeg = (id == BuiltinFunctionId::Deg);
   if (args.size() == 1) {
     return mapUnaryEvalValue(args[0], [&](const EvalValue::ScalarValue& s) -> EvalValue {
@@ -10253,10 +10481,54 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
     BuiltinFunctionId id,
     const EvalValue::ScalarValue& sv,
     EvalValue& out) const {
+#if !SMARTMATH_COMPLEX_NUMBERS
+  double ar = 0.0;
+  double ai = 0.0;
+  scalarLoadCartesian(sv, ar, ai);
+  if (scalarHasNonzeroImaginaryPart(sv)) {
+    return false;
+  }
+  switch (id) {
+    case BuiltinFunctionId::Real: {
+      ExactCartesianComponent cRe{};
+      if (tryExtractExactRealComponent(sv, cRe)) {
+        setScalarFromExactCartesianComponent(out, cRe);
+      } else {
+        out = makeScalarMaybeExact(ar);
+        scalarClearImaginary(out.scalarValue);
+      }
+      return true;
+    }
+    case BuiltinFunctionId::Imag:
+      out = makeScalar(ai);
+      scalarClearImaginary(out.scalarValue);
+      return true;
+    case BuiltinFunctionId::Phase:
+      out = makeScalarMaybeExact(calcAtan2Basic(ai, ar));
+      return true;
+    case BuiltinFunctionId::Conj:
+      out = makeScalarMaybeExact(ar);
+      scalarClearImaginary(out.scalarValue);
+      return true;
+    case BuiltinFunctionId::Polar: {
+      std::vector<EvalValue> elems;
+      elems.emplace_back(makeScalarMaybeExact(calcHypotBasic(ar, ai)));
+      elems.emplace_back(makeScalarMaybeExact(calcAtan2Basic(ai, ar)));
+      out = makeArrayFromScalars(elems);
+      return true;
+    }
+    case BuiltinFunctionId::Cart:
+      out = makeScalarMaybeExact(ar);
+      scalarClearImaginary(out.scalarValue);
+      return true;
+    default:
+      return false;
+  }
+#else
   const bool isCxComponentUnary =
       id == BuiltinFunctionId::Real || id == BuiltinFunctionId::Imag || id == BuiltinFunctionId::Phase ||
       id == BuiltinFunctionId::Polar || id == BuiltinFunctionId::Cart || id == BuiltinFunctionId::Conj;
-  if (!supportComplexNumbers_ && !isCxComponentUnary) {
+  if (!getSupportComplexNumbers() && !isCxComponentUnary) {
     return false;
   }
   double ar = 0.0;
@@ -10446,6 +10718,7 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
     default:
       return false;
   }
+#endif
 }
 
 MathParser::EvalValue MathParser::mapUnaryComplexBuiltin(
@@ -10479,11 +10752,19 @@ MathParser::EvalValue MathParser::builtinPolarCart(
     return false;
   };
   const auto cartFromPolarScalars = [&](double rMag, double rAng) -> EvalValue {
-    if (!supportComplexNumbers_ && std::fabs(rAng) > 1e-14) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (!getSupportComplexNumbers() && std::fabs(rAng) > 1e-14) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
     return makeScalarComplexFromDoubles(rMag * calcCos(rAng), rMag * calcSin(rAng));
+#else
+    if (std::fabs(rAng) > 1e-14) {
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+    }
+    return makeScalarMaybeExact(rMag);
+#endif
   };
 
   if (id == BuiltinFunctionId::Polar) {
@@ -10543,10 +10824,12 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
+#if SMARTMATH_TIME_VALUES
   if (evalValueInvolvesTime(args[0])) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+#endif
   switch (id) {
     case BuiltinFunctionId::Real:
     case BuiltinFunctionId::Imag:
@@ -10556,7 +10839,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     default:
       break;
   }
-  if (supportComplexNumbers_) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers()) {
     switch (id) {
       case BuiltinFunctionId::Int:
       case BuiltinFunctionId::Trunc:
@@ -10572,12 +10856,14 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
         break;
     }
   }
+#endif
   const double nanv = std::numeric_limits<double>::quiet_NaN();
   bool realUnaryOk = true;
   bool trigOutOfRange = false;
   const auto unaryExpLnLog10ForScalarValue = [&](const EvalValue::ScalarValue& sv) -> EvalValue {
     const double xv = sv.scalar;
-    if (supportComplexNumbers_ && id == BuiltinFunctionId::Exp && scalarHasNonzeroImaginaryPart(sv)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && id == BuiltinFunctionId::Exp && scalarHasNonzeroImaginaryPart(sv)) {
       double ar = 0.0;
       double ai = 0.0;
       scalarLoadCartesian(sv, ar, ai);
@@ -10594,7 +10880,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       snapComplexNearZeroAxis(pr, pi);
       return makeScalarComplexFromDoubles(pr, pi);
     }
-    if (supportComplexNumbers_ && (id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) &&
+    if (getSupportComplexNumbers() && (id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) &&
         (scalarHasNonzeroImaginaryPart(sv) || (std::isfinite(xv) && xv <= 0.0))) {
       if (!scalarHasNonzeroImaginaryPart(sv) && std::isfinite(xv) && xv < 0.0) {
         if (id == BuiltinFunctionId::Ln) {
@@ -10621,6 +10907,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       const double invLn10 = 1.0 / std::log(10.0);
       return makeScalarComplexFromDoubles(loR * invLn10, loI * invLn10);
     }
+#endif
     if (id == BuiltinFunctionId::Exp) {
       return makeScalarMaybeExact(std::exp(xv));
     }
@@ -10630,7 +10917,8 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
     return makeScalarMaybeExact(std::log10(xv));
   };
   const auto applyRealUnaryScalarValue = [&](const EvalValue::ScalarValue& s) -> EvalValue {
-    if (supportComplexNumbers_ && scalarHasNonzeroImaginaryPart(s) && id == BuiltinFunctionId::Sqr) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(s) && id == BuiltinFunctionId::Sqr) {
       double ar = 0.0;
       double ai = 0.0;
       scalarLoadCartesian(s, ar, ai);
@@ -10640,10 +10928,12 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       }
       return makeScalarComplexFromDoubles(ar * ar - ai * ai, 2.0 * ar * ai);
     }
+#endif
     if (id == BuiltinFunctionId::Exp || id == BuiltinFunctionId::Ln || id == BuiltinFunctionId::Log10) {
       return unaryExpLnLog10ForScalarValue(s);
     }
-    if (supportComplexNumbers_ && isComplexUnaryTrigBuiltin(id) && scalarHasNonzeroImaginaryPart(s)) {
+#if SMARTMATH_COMPLEX_NUMBERS
+    if (getSupportComplexNumbers() && isComplexUnaryTrigBuiltin(id) && scalarHasNonzeroImaginaryPart(s)) {
       double ar = 0.0;
       double ai = 0.0;
       scalarLoadCartesian(s, ar, ai);
@@ -10656,6 +10946,7 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
       snapComplexNearZeroAxis(or_, oi);
       return makeScalarComplexFromDoubles(or_, oi);
     }
+#endif
     const double x = s.scalar;
     if ((id == BuiltinFunctionId::Sin || id == BuiltinFunctionId::Cos || id == BuiltinFunctionId::Tan) &&
         !isTrigRadiansInRange(x)) {
@@ -10722,16 +11013,20 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     setScalarMinMaxError(ctx, getFunctionName(BuiltinFunctionId::Clamp));
     return makeScalar(0);
   }
+#if SMARTMATH_TIME_VALUES
   if (evalValueInvolvesTime(valueV) || scalarValueIsTime(minV.scalarValue) || scalarValueIsTime(maxV.scalarValue)) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
-  if (supportComplexNumbers_ &&
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() &&
       (MathParser::evalValueHasNonzeroImaginary(valueV) || MathParser::evalValueHasNonzeroImaginary(minV) ||
           MathParser::evalValueHasNonzeroImaginary(maxV))) {
     setIncompatibleOperandsError(ctx);
     return makeScalar(0);
   }
+#endif
   if (valueV.kind != ValueKind::Scalar && valueV.kind != ValueKind::Array) {
     setNumericErrorInFunction(ctx, getFunctionName(BuiltinFunctionId::Clamp));
     return makeScalar(0);
@@ -10853,10 +11148,11 @@ MathParser::EvalValue MathParser::evalFunctionCall(
 
   if (id == BuiltinFunctionId::Milliseconds || id == BuiltinFunctionId::Seconds || id == BuiltinFunctionId::Minutes ||
       id == BuiltinFunctionId::Hours || id == BuiltinFunctionId::Days) {
-    if (!supportTimeValues_) {
+    if (!getSupportTimeValues()) {
       setIncompatibleOperandsError(ctx);
       return makeScalar(0);
     }
+#if SMARTMATH_TIME_VALUES
     const EvalValue& a0 = args[0];
     if (a0.kind == ValueKind::Scalar) {
       if (!scalarValueIsTime(a0.scalarValue)) {
@@ -10870,6 +11166,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     }
     setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
     return makeScalar(0);
+#endif
   }
 
   switch (id) {

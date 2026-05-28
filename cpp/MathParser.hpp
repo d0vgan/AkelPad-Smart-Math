@@ -7,6 +7,18 @@
 #include <unordered_map>
 #include <vector>
 
+#ifndef SMARTMATH_COMPLEX_NUMBERS
+#define SMARTMATH_COMPLEX_NUMBERS 1
+#endif
+
+#ifndef SMARTMATH_TIME_VALUES
+#define SMARTMATH_TIME_VALUES 1
+#endif
+
+#ifndef SMARTMATH_LAMBDA_FUNCTIONS
+#define SMARTMATH_LAMBDA_FUNCTIONS 1
+#endif
+
 class MathParser {
 public:
   struct RawResult {
@@ -408,8 +420,10 @@ private:
       std::vector<std::unique_ptr<Expr>>& outValues);
   std::unique_ptr<Expr> parsePrimaryParenthesized(EvalContext& ctx);
   std::unique_ptr<Expr> parsePrimaryNumericLiteral(EvalContext& ctx);
+#if SMARTMATH_TIME_VALUES
   bool tryParseScalarTimeLiteral(EvalContext& ctx, EvalValue& out) const;
   bool tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& out) const;
+#endif
   std::unique_ptr<Expr> parsePrimaryIdentifierOrCall(EvalContext& ctx);
   bool parseSortbyCallArguments(EvalContext& ctx, std::vector<std::unique_ptr<Expr>>& outArgs);
   std::unique_ptr<Expr> parseSortbyFunctionRef(EvalContext& ctx);
@@ -419,6 +433,7 @@ private:
     TopLevelSemicolonOrEof,
     ToEof
   };
+#if SMARTMATH_LAMBDA_FUNCTIONS
   bool tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const;
   static bool lambdaBodyConsume(
       EvalContext& ctx,
@@ -437,17 +452,18 @@ private:
       EvalContext& ctx,
       std::vector<std::string>&& params,
       std::string&& body);
-  std::unique_ptr<Expr> parseSortbyKeyArg(EvalContext& ctx);
   std::unique_ptr<Expr> parseSortbyKeyArgWithLambda(EvalContext& ctx);
-  std::unique_ptr<Expr> parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx);
-  void syncLambdaSupportDispatch();
+  static EvalValue makeInlineLambdaValue(std::vector<std::string> params, std::string body);
   EvalValue evalInlineLambdaCall(
       EvalContext& ctx,
       const std::vector<std::string>& paramNames,
       const std::string& bodyExpr,
       std::vector<EvalValue>&& args,
       const std::unordered_map<std::string, EvalValue>* scopedVars);
-  static EvalValue makeInlineLambdaValue(std::vector<std::string> params, std::string body);
+#endif
+  std::unique_ptr<Expr> parseSortbyKeyArg(EvalContext& ctx);
+  std::unique_ptr<Expr> parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx);
+  void syncLambdaSupportDispatch();
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
   static bool udfBodyIsEmptyTupleLiteral(const std::string& bodyExpr);
@@ -494,6 +510,7 @@ private:
       double powR,
       double powI,
       EvalValue& outV);
+#if SMARTMATH_COMPLEX_NUMBERS
   static bool tryVerifyComplexCartesianSquareExact(
       long long rootR, long long rootI, long long expR, long long expI);
   static bool tryRefineSqrtPrincipalToExactComplex(
@@ -502,11 +519,12 @@ private:
       double sqrtI,
       EvalValue& outV);
   static EvalValue applySqrtComplexPrincipalUnary(const EvalValue::ScalarValue& inS);
-  EvalValue applyUnarySqrtEval(const EvalValue::ScalarValue& s) const;
   void applyComplexCaretPrincipalEval(
       const EvalValue::ScalarValue& lv,
       const EvalValue::ScalarValue& rv,
       EvalValue& outS) const;
+#endif
+  EvalValue applyUnarySqrtEval(const EvalValue::ScalarValue& s) const;
   static bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   static bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
       const EvalValue::ScalarValue& a,
@@ -648,17 +666,19 @@ private:
   void setNumericErrorInFunction(EvalContext& ctx, const std::string& fnName) const;
   void setAtLeastOneArgError(EvalContext& ctx, const std::string& fnName) const;
   void setExactArgCountError(EvalContext& ctx, const std::string& fnName, size_t expectedCount) const;
+#if SMARTMATH_TIME_VALUES
   bool rejectBinaryBuiltinTimeOperands(EvalContext& ctx, const EvalValue& left, const EvalValue& right) const;
-  bool rejectInt64BinaryOperands(
-      EvalContext& ctx,
-      const EvalValue& left,
-      const EvalValue& right,
-      bool isModulo) const;
   bool rejectNumericBinaryPowWithTime(
       EvalContext& ctx,
       const EvalValue& left,
       const EvalValue& right,
       char op) const;
+#endif
+  bool rejectInt64BinaryOperands(
+      EvalContext& ctx,
+      const EvalValue& left,
+      const EvalValue& right,
+      bool isModulo) const;
   EvalValue builtinMapBinaryTwoArg(
       EvalContext& ctx,
       const std::string& fnName,
@@ -832,7 +852,9 @@ private:
   bool tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const;
   static std::string formatRationalParts(long long num, std::uint64_t den);
   static bool tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
+#if SMARTMATH_COMPLEX_NUMBERS
   static bool tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
+#endif
   EvalValue builtinBaseFormat(
       EvalContext& ctx,
       const std::string& fnName,
@@ -898,11 +920,15 @@ private:
   static EvalValue makeScalarMaybeExact(double v);
   static EvalValue makeScalarInt(long long v);
   static EvalValue makeScalarUInt(std::uint64_t v);
+#if SMARTMATH_TIME_VALUES
   static EvalValue makeScalarTimeMs(long long totalMs);
+#endif
   static bool scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s);
   static void scalarClearImaginary(EvalValue::ScalarValue& s);
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
+#if SMARTMATH_COMPLEX_NUMBERS
   static EvalValue makeImaginaryUnit();
+#endif
   static EvalValue makeScalarComplexFromDoubles(double re, double im);
   struct ExactCartesianComponent {
     bool hasInt = false;
@@ -915,9 +941,11 @@ private:
   static void exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n);
   static void exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u);
   static bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
+#if SMARTMATH_COMPLEX_NUMBERS
   static bool complexNeedsPrincipalNegRealPow(double ar, double ai, double br, double bi);
   static void complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
                                      double& outI);
+#endif
   static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   static void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
@@ -930,24 +958,32 @@ private:
   static bool tryQuotExactInt64(long long num, long long den, long long& quo);
   static bool trySubExactCartesianComponents(const ExactCartesianComponent& a,
                                              const ExactCartesianComponent& b, ExactCartesianComponent& out);
-  static bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
-                                                  const EvalValue::ScalarValue& rightS, char op,
-                                                  EvalValue& outV);
   static EvalValue setScalarComplexFromEvalRealImagParts(const EvalValue& rePart, const EvalValue& imPart);
   static void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
   static bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
-  static bool tryFlipScalarImagSignExact(EvalValue::ScalarValue& sv);
+#if SMARTMATH_COMPLEX_NUMBERS
   static bool tryNegateExactComplexScalar(const EvalValue::ScalarValue& sv, EvalValue& out);
+  static bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
+                                                  const EvalValue::ScalarValue& rightS, char op,
+                                                  EvalValue& outV);
   static bool tryFoldExactComplexCartesian(const std::vector<EvalValue>& args, char op, EvalValue& out);
-  static bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out);
   bool tryApplyComplexBinaryScalars(const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, char op, EvalValue& outS) const;
+  static bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out);
+  static std::string assembleComplexDecimalText(
+      const std::string& rePart,
+      const std::string& imagTail,
+      bool negUnitImag,
+      bool reZero);  
   std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
   std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
   static bool isComplexUnaryTrigBuiltin(BuiltinFunctionId id);
   static bool complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI);
+#endif
+#if SMARTMATH_TIME_VALUES
   bool scalarValueIsTime(const EvalValue::ScalarValue& s) const;
   static long long timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s);
   bool evalValueInvolvesTime(const EvalValue& v) const;
+#endif
   static bool evalValueHasNonzeroImaginary(const EvalValue& v);
   enum class CmpScalarIncompatiblePolicy { SetError, SortUniqueReturnOne, SortLess, SortGreater };
   bool cmpScalarValuesForCompare(
@@ -964,16 +1000,13 @@ private:
       bool doLcm,
       EvalValue& outV) const;
   EvalValue applyGcdLcmEvalValues(const EvalValue& a, const EvalValue& b, bool doLcm, int& status) const;
+#if SMARTMATH_TIME_VALUES
   bool scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const;
-  EvalValue evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const;
   EvalValue mapTimeUnitOverArray(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
+  EvalValue evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const;
+#endif
   EvalValue mapUnaryComplexBuiltin(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
   bool tryUnaryComplexBuiltinSupport(BuiltinFunctionId id, const EvalValue::ScalarValue& sv, EvalValue& out) const;
-  static std::string assembleComplexDecimalText(
-      const std::string& rePart,
-      const std::string& imagTail,
-      bool negUnitImag,
-      bool reZero);
   static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::CartesianScalar toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart);
@@ -1011,12 +1044,14 @@ private:
       bool& ok) const;
   /** Unary minus with exact int/uint preservation; LLONG_MIN -> double. */
   static EvalValue negateEvalValue(const EvalValue& v);
+#if SMARTMATH_TIME_VALUES
   bool tryApplyTimeBinaryScalars(
       EvalContext& ctx,
       const EvalValue::ScalarValue& lv,
       const EvalValue::ScalarValue& rv,
       char op,
       EvalValue& outS) const;
+#endif
   bool tryCombineBinaryScalars(
       EvalContext& ctx,
       char op,

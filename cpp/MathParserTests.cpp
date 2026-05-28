@@ -514,6 +514,7 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+#if SMARTMATH_TIME_VALUES
   t.push_back({"unit/getRawResult scalar time (ms in intValue, parity with Basic RSK_TIME)",
                [](std::string& why) {
                  MathParser p;
@@ -553,6 +554,7 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+#endif
   t.push_back({"unit/getRawResult array and error state", [](std::string& why) {
                  MathParser p;
                  p.parseAndEvaluate("(1,2.5,3)");
@@ -2309,6 +2311,7 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 return expectEval(p, "abs(-9223372036854775808)", "9223372036854775808", why);
               }});
+#if SMARTMATH_TIME_VALUES
   t.push_back({"regression/builtin arity table: time converters exact one arg", [](std::string& why) {
                 MathParser p;
                 p.setSupportTimeValues(true);
@@ -2318,6 +2321,7 @@ std::vector<TestCase> buildRegressionCases() {
                 return expectEvalErrorContains(
                     p, "seconds(1:00,2:00)", "seconds() expects 1 argument(s)", why);
               }});
+#endif
   t.push_back({"regression/log array with scalar base stays elementwise", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "log((8,64),2)", "(3,6)", why);
@@ -2757,9 +2761,11 @@ std::vector<TestCase> buildRegressionCases() {
                   return false;
                 if (!expectEvalErrorContains(p, "f(x)=x+1; f", "user-defined function: f(x)", why))
                   return false;
+#if SMARTMATH_TIME_VALUES
                 if (!expectEvalErrorContains(
                         p, "a(x)=1/x; sortby((0:30, 1:00, 0:45), a)", "incompatible operands", why))
                   return false;
+#endif
                 if (!expectEvalErrorContains(
                         p, "a(x)=1/a; sortby((0:30, 1:00, 0:45), a)", "unknown variable: a", why))
                   return false;
@@ -2792,6 +2798,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "f(2)", "unknown function: newfn", why)) return false;
                 return expectEval(p, "newfn(x)=x**(1/3); f(8)", "16", why);
               }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/udf reject empty tuple body", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "f=():()", "function body is empty", why)) return false;
@@ -2804,6 +2811,7 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 return true;
               }});
+#endif
   t.push_back({"regression/udf formal parameter array indexing", [](std::string& why) {
                 MathParser p;
                 if (!expectEval(p, "_=(1,2,3,4); ff(a)=(a[1],a[-1]); ff(_)", "(2,4)", why)) return false;
@@ -2837,6 +2845,7 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 return true;
               }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/bare function name tail hint vs middle unknown variable", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "polar", "function:", why)) return false;
@@ -2847,10 +2856,12 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "qqq=x:polar", "function:", why)) return false;
                 if (!expectEvalErrorContains(p, "qqq(x)=polar+2", "unknown variable: polar", why)) return false;
                 if (!expectEvalErrorContains(p, "qqq(x)=sin+cos", "unknown variable: sin", why)) return false;
+#if SMARTMATH_TIME_VALUES
                 if (!expectEvalErrorContains(p, "sortby((1:30,1:00),x:polar)", "function:", why)) return false;
                 if (!expectEvalErrorContains(
                         p, "sortby((1:30,1:00),x:polar+2)", "unknown variable: polar", why))
                   return false;
+#endif
                 MathParser pf;
                 pf.parseAndEvaluate("h(x)=x+1; h+2");
                 if (pf.getError().find("unknown variable: h") == std::string::npos) {
@@ -2870,6 +2881,7 @@ std::vector<TestCase> buildRegressionCases() {
                 return expectEvalErrorContains(
                     pg, "g(x)=x; sortby((3,1,2),x:g+1)", "unknown variable: g", why);
               }});
+#endif
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
                 MathParser p;
                 return expectEvalErrorContains(p, "f(x)=x*p(x); f(2)", "unknown function", why);
@@ -3032,11 +3044,13 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  if (!expectEval(p, "ratio(0.123456789012345)", "10/81", why)) return false;
                  return expectEval(p, "ratio(1/7)", "1/7", why);
                }});
+#if SMARTMATH_TIME_VALUES
   t.push_back({"sortby/ratio: ratio rejects time",
                [](std::string& why) {
                  MathParser p;
                  return expectEvalErrorContains(p, "ratio(1:00)", "incompatible operands", why);
                }});
+#endif
   t.push_back({"sortby/ratio: sortby stable by abs",
                [](std::string& why) {
                  MathParser p;
@@ -3072,10 +3086,12 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  MathParser p;
                  if (!expectEvalErrorContains(p, "sortby((1,2), nosuchfn)", "unknown function: nosuchfn", why))
                    return false;
-                 if (!expectEvalErrorContains(
-                         p, "x=10; sortby((0:30, 1:00, 0:45), x)",
-                         "sortby expects a function that takes 1 parameter", why))
-                   return false;
+#if SMARTMATH_TIME_VALUES
+                if (!expectEvalErrorContains(
+                        p, "x=10; sortby((0:30, 1:00, 0:45), x)",
+                        "sortby expects a function that takes 1 parameter", why))
+                  return false;
+#endif
                  p.addUserFunction("f(x)=x*x");
                  if (!expectEval(p, "sortby((3,1,2), f)", "(1,2,3)", why)) return false;
                  return true;
@@ -3087,6 +3103,7 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  if (!expectEval(p, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)", why)) return false;
                  return true;
                }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"sortby/ratio: lambda assignment and sortby anonymous lambdas",
                [](std::string& why) {
                  MathParser p;
@@ -3107,11 +3124,15 @@ std::vector<TestCase> buildSortbyRatioCases() {
                    return false;
                  if (!expectEval(p, "g=((x):(1/x)); g(2)", "0.5", why)) return false;
                  if (!expectEval(p, "sortby((2,1), (x):(1/x))", "(2,1)", why)) return false;
-                 if (!expectEvalErrorContains(
-                         p, "sortby((1:30,1:00),x:)", "function body is empty", why))
-                   return false;
+#if SMARTMATH_TIME_VALUES
+                if (!expectEvalErrorContains(
+                        p, "sortby((1:30,1:00),x:)", "function body is empty", why))
+                  return false;
+#endif
                  return true;
-               }});
+              }});
+#endif
+#if SMARTMATH_TIME_VALUES
   t.push_back({"sortby/ratio: sortby time and milliseconds keys",
                [](std::string& why) {
                  MathParser p;
@@ -3124,6 +3145,7 @@ std::vector<TestCase> buildSortbyRatioCases() {
                  return expectEvalErrorContains(
                      p, "f(x)=1/x; sortby((0:30, 1:00, 0:45), f)", "incompatible operands", why);
                }});
+#endif
   return t;
 }
 
@@ -3775,7 +3797,9 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "(pi/4,pi/3,pi/2); deg", "(45, 60, 90)"} ,
     {ParityBasicCase::Kind::ErrorContains, "0xAA; foo()", "unknown function"} ,
     {ParityBasicCase::Kind::ErrorContains, "y(a)=g(a)+y(a)+4", "recursive function call: y"} ,
+#if SMARTMATH_TIME_VALUES
     {ParityBasicCase::Kind::Expected, "d(x)=(ratio(x), x-ratio(x)); d(seconds(20ms))", "(1/50, 0)" } ,
+#endif
     {ParityBasicCase::Kind::Expected, "f(x)=x*(2,3,4); f(10)", "(20, 30, 40)" } ,
     {ParityBasicCase::Kind::Expected, "1+2;", "3"} ,
     {ParityBasicCase::Kind::Expected, "   1+2 ; ", "3"} ,
@@ -3917,6 +3941,9 @@ std::vector<TestCase> buildParityTimeFromSmokeCases() {
 
 std::vector<TestCase> buildTimeValuesSupportOptionCases() {
   std::vector<TestCase> t;
+#if !SMARTMATH_TIME_VALUES
+  return t;
+#else
   t.push_back({"time-opt: flag and duration eval under enabled mode",
                [](std::string& why) {
                  MathParser p;
@@ -4121,11 +4148,15 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  }
                  return true;
                }});
+#endif
   return t;
 }
 
 std::vector<TestCase> buildLambdaFunctionsSupportOptionCases() {
   std::vector<TestCase> t;
+#if !SMARTMATH_LAMBDA_FUNCTIONS
+  return t;
+#else
   t.push_back({"lambda-opt: flag and lambda eval under enabled mode",
                [](std::string& why) {
                  MathParser p;
@@ -4202,6 +4233,7 @@ std::vector<TestCase> buildLambdaFunctionsSupportOptionCases() {
                  }
                  return true;
                }});
+#endif
   return t;
 }
 
@@ -4216,17 +4248,21 @@ static const NegBandRow kNegBandRealRows[] = {
 #include "../tools/neg_band_cases_generated.cpp.inc"
 };
 
+#if SMARTMATH_COMPLEX_NUMBERS
 static const NegBandRow kNegBandComplexRows[] = {
 #include "../tools/neg_band_cases_generated_cx.cpp.inc"
 };
+#endif
 
 static const NegBandRow kPosBandRealRows[] = {
 #include "../tools/pos_band_cases_generated.cpp.inc"
 };
 
+#if SMARTMATH_COMPLEX_NUMBERS
 static const NegBandRow kPosBandComplexRows[] = {
 #include "../tools/pos_band_cases_generated_cx.cpp.inc"
 };
+#endif
 
 static const NegBandRow kFloatMagnitudeRows[] = {
 #include "../tools/float_magnitude_cases_generated.cpp.inc"
@@ -4375,6 +4411,7 @@ std::vector<TestCase> buildNegativeArgumentMagnitudeBandCases() {
                  const std::size_t count = sizeof(kNegBandRealRows) / sizeof(kNegBandRealRows[0]);
                  return runNegBandRowBatch(p, kNegBandRealRows, count, why);
                }});
+#if SMARTMATH_COMPLEX_NUMBERS
   t.push_back({"neg-band/complex: operators and builtins (3 negative magnitude ranges)",
                [](std::string& why) {
                  MathParser p;
@@ -4382,6 +4419,7 @@ std::vector<TestCase> buildNegativeArgumentMagnitudeBandCases() {
                  const std::size_t count = sizeof(kNegBandComplexRows) / sizeof(kNegBandComplexRows[0]);
                  return runNegBandRowBatch(p, kNegBandComplexRows, count, why);
                }});
+#endif
   return t;
 }
 
@@ -4404,6 +4442,7 @@ std::vector<TestCase> buildPositiveArgumentMagnitudeBandCases() {
                  const std::size_t count = sizeof(kPosBandRealRows) / sizeof(kPosBandRealRows[0]);
                  return runNegBandRowBatch(p, kPosBandRealRows, count, why);
                }});
+#if SMARTMATH_COMPLEX_NUMBERS
   t.push_back({"pos-band/complex: operators and builtins (3 positive magnitude ranges)",
                [](std::string& why) {
                  MathParser p;
@@ -4411,11 +4450,15 @@ std::vector<TestCase> buildPositiveArgumentMagnitudeBandCases() {
                  const std::size_t count = sizeof(kPosBandComplexRows) / sizeof(kPosBandComplexRows[0]);
                  return runNegBandRowBatch(p, kPosBandComplexRows, count, why);
                }});
+#endif
   return t;
 }
 
 std::vector<TestCase> buildComplexNumberSupportOptionCases() {
   std::vector<TestCase> t;
+#if !SMARTMATH_COMPLEX_NUMBERS
+  return t;
+#endif
   t.push_back({"complex-opt: flag and basic eval under enabled mode",
                [](std::string& why) {
                  MathParser p;
@@ -4638,11 +4681,13 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      "1+2i > 0",
                      "1+2i >= 1+2i",
                      "(1, 2+1i) < (1, 3)",
+#if SMARTMATH_TIME_VALUES
                      "1+2i == 1s",
                     "1+2i + 1s",
                     "1+2i - 1s",
                     "1+2i*1s",
                      "1+2i <> 0:01",
+#endif
                  };
                  for (const char* expr : kErr) {
                    p.parseAndEvaluate(expr);
@@ -5402,15 +5447,23 @@ int main(int argc, char** argv) {
   runSuite("NaN/Inf", nanInf, s);
   runSuite("Regression", regression, s);
   runSuite("Parity/SmokeTest_MathParser (from Basic)", parityFromSmoke, s);
+#if SMARTMATH_TIME_VALUES
   runSuite("Parity/Time (Smoke alignment)", parityTimeFromSmoke, s);
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
   runSuite("Complex number support (parser option)", complexNumberSupportOption, s);
+#endif
   runSuite("Trig angle reduction (large integers)", trigAngleReduction, s);
   runSuite("Operator precedence (USAGE_AND_SYNTAX.md)", operatorPrecedenceDoc, s);
   runSuite("Negative argument magnitude bands", negativeArgumentMagnitudeBand, s);
   runSuite("Positive argument magnitude bands", positiveArgumentMagnitudeBand, s);
   runSuite("Float magnitude literals", floatMagnitudeLiteral, s);
+#if SMARTMATH_TIME_VALUES
   runSuite("Time value support (parser option)", timeValuesSupportOption, s);
+#endif
+#if SMARTMATH_LAMBDA_FUNCTIONS
   runSuite("Lambda function support (parser option)", lambdaFunctionsSupportOption, s);
+#endif
   runSuite("Sortby/Ratio", sortbyRatio, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
