@@ -2966,10 +2966,8 @@ MathParser::EvalValue MathParser::builtinMapBinaryTwoArg(
   bool ok = false;
   EvalValue out = mapBinaryBuiltinMathFunction(args[0], args[1], id, ok);
   if (!ok) {
-    if (numericErrorOnMapFailure) {
-      setNumericErrorInFunction(ctx, fnName);
-    } else {
-      setIncompatibleOperandsError(ctx);
+    if (!ctx.parseError) {
+      setBinaryBuiltinBroadcastFailure(ctx, fnName, args[0], args[1], numericErrorOnMapFailure ? 2 : 3);
     }
     return makeScalar(0);
   }
@@ -3002,6 +3000,29 @@ void MathParser::setModuloIntegerOperandsError(EvalContext& ctx) const {
 
 void MathParser::setIncompatibleOperandsError(EvalContext& ctx) const {
   setError(ctx, STR_INCOMPATIBLE_OPERANDS);
+}
+
+bool MathParser::evalValuesHaveMismatchedArrayLengths(const EvalValue& left, const EvalValue& right) const {
+  return left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size();
+}
+
+void MathParser::setBinaryBuiltinBroadcastFailure(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const EvalValue& left,
+    const EvalValue& right,
+    int pairStatus) const {
+  if (pairStatus == 1) {
+    setIntegerValuesError(ctx, fnName);
+    return;
+  }
+  if (pairStatus == 3 || evalValuesHaveMismatchedArrayLengths(left, right)) {
+    setIncompatibleOperandsError(ctx);
+    return;
+  }
+  if (!ctx.parseError && ctx.errorText.empty()) {
+    setNumericErrorInFunction(ctx, fnName);
+  }
 }
 
 void MathParser::setUnexpectedCommaError(EvalContext& ctx) const {
@@ -10305,7 +10326,7 @@ MathParser::EvalValue MathParser::builtinPow(EvalContext& ctx, const std::vector
   EvalValue out = mapBinary(ctx, args[0], args[1], '^', ok);
   if (!ok) {
     if (!ctx.parseError) {
-      setNumericErrorInFunction(ctx, fnName);
+      setBinaryBuiltinBroadcastFailure(ctx, fnName, args[0], args[1], 2);
     }
     return makeScalar(0);
   }
@@ -10332,37 +10353,23 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     return builtinApplyClamp(ctx, args[0], args[1], args[2]);
   }
 
-  if (id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm) {
+  if (id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm || id == BuiltinFunctionId::Ncr ||
+      id == BuiltinFunctionId::Npr) {
     if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
       return makeScalar(0);
     }
-    int gcdStatus = 0;
-    EvalValue gcdOut = applyGcdLcmEvalValues(args[0], args[1], id == BuiltinFunctionId::Lcm, gcdStatus);
-    if (gcdStatus == 1) {
-      setIntegerValuesError(ctx, fnName);
+    int pairStatus = 0;
+    EvalValue out;
+    if (id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm) {
+      out = applyGcdLcmEvalValues(args[0], args[1], id == BuiltinFunctionId::Lcm, pairStatus);
+    } else {
+      out = applyNcrNprEvalValues(args[0], args[1], id == BuiltinFunctionId::Npr, pairStatus);
+    }
+    if (pairStatus != 0) {
+      setBinaryBuiltinBroadcastFailure(ctx, fnName, args[0], args[1], pairStatus);
       return makeScalar(0);
     }
-    if (gcdStatus == 2 || gcdStatus == 3) {
-      setNumericErrorInFunction(ctx, fnName);
-      return makeScalar(0);
-    }
-    return gcdOut;
-  }
-  if (id == BuiltinFunctionId::Ncr || id == BuiltinFunctionId::Npr) {
-    if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
-      return makeScalar(0);
-    }
-    int combStatus = 0;
-    EvalValue combOut = applyNcrNprEvalValues(args[0], args[1], id == BuiltinFunctionId::Npr, combStatus);
-    if (combStatus == 1) {
-      setIntegerValuesError(ctx, fnName);
-      return makeScalar(0);
-    }
-    if (combStatus == 2 || combStatus == 3) {
-      setNumericErrorInFunction(ctx, fnName);
-      return makeScalar(0);
-    }
-    return combOut;
+    return out;
   }
 
   const bool hasNonScalarArg = std::any_of(args.begin(), args.end(), [](const EvalValue& v) {
@@ -10399,10 +10406,10 @@ MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::ve
     return tryApplyModScalars(ctx, fnName, aS, bS, outS);
   };
   EvalValue out = mapBinaryBroadcast(args[0], args[1], applyPair, ok);
-  if (!ok && ctx.errorText.empty()) {
-    setNumericErrorInFunction(ctx, fnName);
-  }
   if (!ok) {
+    if (ctx.errorText.empty() && !ctx.parseError) {
+      setBinaryBuiltinBroadcastFailure(ctx, fnName, args[0], args[1], 2);
+    }
     return makeScalar(0);
   }
   return out;

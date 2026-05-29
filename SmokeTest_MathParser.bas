@@ -1835,11 +1835,11 @@ private sub RunGcdLcmNcrNprArrayBroadcastTests()
   if Parser_TryEvaluateEx("gcd((1,2),(3,4,5))", r, rt, ia) then
     print "[gcd-ncr-array] FAIL: mismatched array lengths expected error"
     subFail += 1
-  elseif instr(lcase(Parser_GetLastError()), "numeric error in gcd()") = 0 then
+  elseif instr(lcase(Parser_GetLastError()), "incompatible operands") = 0 then
     print "[gcd-ncr-array] FAIL: gcd length mismatch got """ & Parser_GetLastError() & """"
     subFail += 1
   else
-    print "[gcd-ncr-array] PASS: gcd((1,2),(3,4,5)) -> numeric error"
+    print "[gcd-ncr-array] PASS: gcd((1,2),(3,4,5)) -> incompatible operands"
     subPass += 1
   end if
 
@@ -1857,6 +1857,44 @@ private sub RunGcdLcmNcrNprArrayBroadcastTests()
   g_passed += subPass
   g_failed += subFail
   print "gcd/lcm/ncr/npr array-broadcast sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunBinaryBuiltinArrayLengthMismatchTests()
+  print "=== binary builtin array length mismatch (incompatible operands) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim badExprs(1 to 9) as String
+  badExprs(1) = "atan2((1,2),(3,4,5))"
+  badExprs(2) = "gcd((1,2),(3,4,5))"
+  badExprs(3) = "hypot((1,2),(3,4,5))"
+  badExprs(4) = "lcm((1,2),(3,4,5))"
+  badExprs(5) = "log((1,2),(3,4,5))"
+  badExprs(6) = "mod((1,2),(3,4,5))"
+  badExprs(7) = "ncr((1,2),(3,4,5))"
+  badExprs(8) = "npr((1,2),(3,4,5))"
+  badExprs(9) = "pow((1,2),(3,4,5))"
+  dim bi as Integer
+  for bi = 1 to 9
+    if Parser_TryEvaluateEx(badExprs(bi), r, rt, ia) then
+      print "[bin-array-len] FAIL: """ & badExprs(bi) & """ expected error"
+      subFail += 1
+    elseif instr(lcase(Parser_GetLastError()), "incompatible operands") = 0 then
+      print "[bin-array-len] FAIL: """ & badExprs(bi) & """ got """ & Parser_GetLastError() & """"
+      subFail += 1
+    else
+      print "[bin-array-len] PASS: """ & badExprs(bi) & """"
+      subPass += 1
+    end if
+  next bi
+
+  g_passed += subPass
+  g_failed += subFail
+  print "binary-builtin array-length sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -3461,6 +3499,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunIncompleteFunctionCallHintTests()
 
   RunGcdLcmNcrNprArrayBroadcastTests()
+  RunBinaryBuiltinArrayLengthMismatchTests()
 
   RunTimeValuesSupportOptionTests()
 

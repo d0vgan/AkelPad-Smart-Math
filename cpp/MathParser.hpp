@@ -713,6 +713,13 @@ private:
   void setBitwiseIntegerOperandsError(EvalContext& ctx) const;
   void setModuloIntegerOperandsError(EvalContext& ctx) const;
   void setIncompatibleOperandsError(EvalContext& ctx) const;
+  bool evalValuesHaveMismatchedArrayLengths(const EvalValue& left, const EvalValue& right) const;
+  void setBinaryBuiltinBroadcastFailure(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const EvalValue& left,
+      const EvalValue& right,
+      int pairStatus) const;
   void setUnexpectedCommaError(EvalContext& ctx) const;
   void setIndexingRequiresArrayError(EvalContext& ctx) const;
   void setMissingIndexError(EvalContext& ctx) const;

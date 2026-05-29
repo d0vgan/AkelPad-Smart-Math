@@ -800,8 +800,9 @@ These behaviors may differ from other tools/languages.
   - Fix: match the function signature.
 
 - `incompatible operands`
-  - Often array length mismatch.
+  - Often array length mismatch (operators and two-argument array builtins such as `gcd`, `pow`, `mod`).
   - Example: `(1,2,3) + (10,20)`
+  - Example: `gcd((1,2),(3,4,5))`
   - Fix: use same-length arrays or scalar broadcasting where supported.
 
 - `array index is out of range`

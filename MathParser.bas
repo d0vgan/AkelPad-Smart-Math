@@ -3921,6 +3921,21 @@ private sub SetIncompatibleOperandsError()
   SetParseError(FB_STR_INCOMPATIBLE_OPERANDS)
 end sub
 
+private function EvalValuesHaveMismatchedArrayLengths(byref leftV as EvalValue, byref rightV as EvalValue) as Boolean
+  return (leftV.kind = VK_ARRAY) andalso (rightV.kind = VK_ARRAY) andalso (ValueArrayLen(leftV) <> ValueArrayLen(rightV))
+end function
+
+'' pairStatus: 0 ok, 1 integer operands, 2 numeric/domain, 3 broadcast shape mismatch.
+private sub SetBinaryBuiltinBroadcastFailure(byref fnName as String, byref leftV as EvalValue, byref rightV as EvalValue, byval pairStatus as Integer)
+  if pairStatus = 1 then
+    SetIntegerValuesError(fnName)
+  elseif (pairStatus = 3) orelse EvalValuesHaveMismatchedArrayLengths(leftV, rightV) then
+    SetIncompatibleOperandsError()
+  elseif parseError = 0 then
+    SetNumericErrorInFunction(fnName)
+  end if
+end sub
+
 private sub SetTimeLiteralEmptySegmentError()
   SetParseError(FB_STR_TIME_EMPTY_SEGMENT)
 end sub
@@ -4853,11 +4868,7 @@ private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref
   end if
   dim pairStatus as Integer = 0
   if MapBinaryEvalValueIntegerBuiltin(fnId, args(0), args(1), outV, pairStatus) = FALSE then
-    if pairStatus = 1 then
-      SetIntegerValuesError(fnName)
-    else
-      SetNumericErrorInFunction(fnName)
-    end if
+    SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), pairStatus)
   end if
   return TRUE
 end function
@@ -9348,21 +9359,21 @@ private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as
 
   if fnId = FUNC_LOG then
     if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_LOG, FALSE, outV) = FALSE andalso parseError = 0 then
-      SetNumericErrorInFunction(fnName)
+      SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), 2)
     end if
     return outV
   end if
 
   if fnId = FUNC_ATAN2 then
     if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_ATAN2, TRUE, outV) = FALSE andalso parseError = 0 then
-      SetNumericErrorInFunction(fnName)
+      SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), 2)
     end if
     return outV
   end if
 
   if fnId = FUNC_HYPOT then
     if TryBuiltinMapBinaryTwoArgCore(args(), fnName, FUNC_HYPOT, FALSE, outV) = FALSE andalso parseError = 0 then
-      SetNumericErrorInFunction(fnName)
+      SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), 2)
     end if
     return outV
   end if
@@ -9372,7 +9383,9 @@ private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as
       SetIncompatibleOperandsError()
       return outV
     end if
-    if ValueApplyBinaryInt64(args(0), args(1), OP_BIT_MOD, outV) = FALSE andalso parseError = 0 then SetNumericErrorInFunction(fnName)
+    if ValueApplyBinaryInt64(args(0), args(1), OP_BIT_MOD, outV) = FALSE andalso parseError = 0 then
+      SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), 2)
+    end if
     return outV
   end if
 
@@ -9431,7 +9444,9 @@ private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as
   end if
 
   if fnId = FUNC_POW then
-    if ValueApplyBinary(args(0), args(1), CHAR_CARET, outV) = FALSE then SetNumericErrorInFunction(fnName)
+    if ValueApplyBinary(args(0), args(1), CHAR_CARET, outV) = FALSE andalso parseError = 0 then
+      SetBinaryBuiltinBroadcastFailure(fnName, args(0), args(1), 2)
+    end if
     return outV
   end if
 

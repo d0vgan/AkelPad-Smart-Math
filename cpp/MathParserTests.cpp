@@ -2835,9 +2835,27 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "lcm((6,8),(3,5))", "(6,40)", why)) return false;
                 if (!expectEval(p, "ncr((5,6),(2,3))", "(10,20)", why)) return false;
                 if (!expectEval(p, "npr((5,6),(2,3))", "(20,120)", why)) return false;
-                if (!expectEvalErrorContains(p, "gcd((1,2),(3,4,5))", "numeric error in gcd()", why))
+                if (!expectEvalErrorContains(p, "gcd((1,2),(3,4,5))", "incompatible operands", why))
                   return false;
                 return expectEvalErrorContains(p, "ncr((5,6),(2,7))", "numeric error in ncr()", why);
+              }});
+  t.push_back({"regression/binary builtin array length mismatch", [](std::string& why) {
+                MathParser p;
+                const char* exprs[] = {
+                    "atan2((1,2),(3,4,5))",
+                    "gcd((1,2),(3,4,5))",
+                    "hypot((1,2),(3,4,5))",
+                    "lcm((1,2),(3,4,5))",
+                    "log((1,2),(3,4,5))",
+                    "mod((1,2),(3,4,5))",
+                    "ncr((1,2),(3,4,5))",
+                    "npr((1,2),(3,4,5))",
+                    "pow((1,2),(3,4,5))",
+                };
+                for (const char* expr : exprs) {
+                  if (!expectEvalErrorContains(p, expr, "incompatible operands", why)) return false;
+                }
+                return true;
               }});
   t.push_back({"regression/incomplete function call open paren hints", [](std::string& why) {
                 MathParser p;
