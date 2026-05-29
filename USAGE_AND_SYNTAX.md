@@ -392,77 +392,77 @@ Quick index (alphabetical):
 
 | Function(s) | Category |
 |---|---|
-| `abs(value)` | numeric utility |
-| `acos/arccos(value)` | trigonometric |
-| `acosh(value)` | trigonometric/hyperbolic |
-| `asin/arcsin(value)` | trigonometric |
-| `asinh(value)` | trigonometric/hyperbolic |
-| `atan/arctan(value)` | trigonometric |
-| `atan2(y, x)` | trigonometric |
-| `atanh(value)` | trigonometric/hyperbolic |
-| `avg/mean(...)` | aggregation |
-| `bin(...)` | output formatting |
-| `cart(value)` | complex utility |
-| `ceil(value)` | numeric utility |
-| `clamp(value, min, max)` | numeric utility |
-| `conj(value)` | complex utility |
-| `cos(angle)` | trigonometric |
-| `cosh(value)` | trigonometric/hyperbolic |
-| `days(t)` | time conversion |
-| `deg(...)` | trigonometric conversion |
-| `exp(value)` | logarithmic/exponential |
-| `fact/factorial(n)` | numeric utility |
-| `floor(value)` | numeric utility |
-| `frac/fract(value)` | numeric utility |
-| `gcd(a, b)` | numeric utility |
-| `hex(...)` | output formatting |
-| `hours(t)` | time conversion |
-| `hypot(x, y)` | power/root |
-| `imag(value)` | complex utility |
-| `int(value)` | numeric utility |
-| `lcm(a, b)` | numeric utility |
-| `ln(value)` | logarithmic/exponential |
-| `log(value, base)` | logarithmic/exponential |
-| `log10(value)` | logarithmic/exponential |
-| `max(...)` | aggregation |
-| `median(...)` | aggregation |
-| `milliseconds(t)` | time conversion |
-| `min(...)` | aggregation |
-| `minutes(t)` | time conversion |
-| `mod(value, divisor)` | numeric utility |
-| `ncr(n, r)` | numeric utility |
-| `npr(n, r)` | numeric utility |
-| `oct(...)` | output formatting |
-| `phase(value)` | complex utility |
-| `polar(value)` | complex utility |
-| `pow(value, power)` | power/root |
-| `product/prod(...)` | aggregation |
-| `rad(...)` | trigonometric conversion |
-| `rand()` | random |
-| `random(min, max)` | random |
-| `ratio(value)` | rational display |
-| `real(value)` | complex utility |
-| `reverse/reversed(...)` | array utility |
-| `round(value)` | numeric utility |
-| `seconds(t)` | time conversion |
-| `sign(value)` | numeric utility |
-| `sin(angle)` | trigonometric |
-| `sinh(value)` | trigonometric/hyperbolic |
-| `sort/sorted(...)` | array utility |
-| `sortby(array, func)` | array utility |
-| `sqrt(value)` | power/root |
-| `sqr(value)` | power/root |
-| `stddev(...)` | aggregation |
-| `sum(...)` | aggregation |
-| `tan(angle)` | trigonometric |
-| `tanh(value)` | trigonometric/hyperbolic |
-| `trunc(value)` | numeric utility |
-| `ubin(...)` | output formatting |
-| `uhex(...)` | output formatting |
-| `unique(...)` | array utility |
-| `unpack(...)` | array utility |
-| `uoct(...)` | output formatting |
-| `variance(...)` | aggregation |
+| `abs(value)` | [Numeric Utilities](#numeric-utilities) |
+| `acos/arccos(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `acosh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `asin/arcsin(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `asinh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `atan/arctan(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `atan2(y, x)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `atanh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `avg/mean(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `bin(...)` | [Output Formatting](#output-formatting) |
+| `cart(value)` | [Complex Utilities](#complex-utilities) |
+| `ceil(value)` | [Numeric Utilities](#numeric-utilities) |
+| `clamp(value, min, max)` | [Numeric Utilities](#numeric-utilities) |
+| `conj(value)` | [Complex Utilities](#complex-utilities) |
+| `cos(angle)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `cosh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `days(t)` | [Time Conversion](#time-conversion) |
+| `deg(...)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `exp(value)` | [Logarithmic and Exponential](#logarithmic-and-exponential) |
+| `fact/factorial(n)` | [Numeric Utilities](#numeric-utilities) |
+| `floor(value)` | [Numeric Utilities](#numeric-utilities) |
+| `frac/fract(value)` | [Numeric Utilities](#numeric-utilities) |
+| `gcd(a, b)` | [Numeric Utilities](#numeric-utilities) |
+| `hex(...)` | [Output Formatting](#output-formatting) |
+| `hours(t)` | [Time Conversion](#time-conversion) |
+| `hypot(x, y)` | [Power and Root](#power-and-root) |
+| `imag(value)` | [Complex Utilities](#complex-utilities) |
+| `int(value)` | [Numeric Utilities](#numeric-utilities) |
+| `lcm(a, b)` | [Numeric Utilities](#numeric-utilities) |
+| `ln(value)` | [Logarithmic and Exponential](#logarithmic-and-exponential) |
+| `log(value, base)` | [Logarithmic and Exponential](#logarithmic-and-exponential) |
+| `log10(value)` | [Logarithmic and Exponential](#logarithmic-and-exponential) |
+| `max(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `median(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `milliseconds(t)` | [Time Conversion](#time-conversion) |
+| `min(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `minutes(t)` | [Time Conversion](#time-conversion) |
+| `mod(value, divisor)` | [Numeric Utilities](#numeric-utilities) |
+| `ncr(n, r)` | [Numeric Utilities](#numeric-utilities) |
+| `npr(n, r)` | [Numeric Utilities](#numeric-utilities) |
+| `oct(...)` | [Output Formatting](#output-formatting) |
+| `phase(value)` | [Complex Utilities](#complex-utilities) |
+| `polar(value)` | [Complex Utilities](#complex-utilities) |
+| `pow(value, power)` | [Power and Root](#power-and-root) |
+| `product/prod(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `rad(...)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `rand()` | [Random](#random) |
+| `random(min, max)` | [Random](#random) |
+| `ratio(value)` | [Rational Display](#rational-display) |
+| `real(value)` | [Complex Utilities](#complex-utilities) |
+| `reverse/reversed(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `round(value)` | [Numeric Utilities](#numeric-utilities) |
+| `seconds(t)` | [Time Conversion](#time-conversion) |
+| `sign(value)` | [Numeric Utilities](#numeric-utilities) |
+| `sin(angle)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `sinh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `sort/sorted(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `sortby(array, func)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `sqrt(value)` | [Power and Root](#power-and-root) |
+| `sqr(value)` | [Power and Root](#power-and-root) |
+| `stddev(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `sum(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `tan(angle)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `tanh(value)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
+| `trunc(value)` | [Numeric Utilities](#numeric-utilities) |
+| `ubin(...)` | [Output Formatting](#output-formatting) |
+| `uhex(...)` | [Output Formatting](#output-formatting) |
+| `unique(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `unpack(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
+| `uoct(...)` | [Output Formatting](#output-formatting) |
+| `variance(...)` | [Arrays and Aggregation](#arrays-and-aggregation) |
 
 ### Trigonometric and Hyperbolic
 
@@ -720,11 +720,11 @@ Purpose: complex numbers utilities.
   - `conj(1+2i)` -> `1-2i`
 
 - See also:
-  - Complex Number Operators
-  - Trigonometric and Hyperbolic With Complex Numbers
-  - Logarithmic and Exponential With Complex Numbers
-  - Power and Root With Complex Numbers
-  - Numeric Utilities With Complex Numbers
+  - [Complex Number Operators](#complex-number-operators)
+  - [Trigonometric and Hyperbolic With Complex Numbers](#trigonometric-and-hyperbolic-with-complex-numbers)
+  - [Logarithmic and Exponential With Complex Numbers](#logarithmic-and-exponential-with-complex-numbers)
+  - [Power and Root With Complex Numbers](#power-and-root-with-complex-numbers)
+  - [Numeric Utilities With Complex Numbers](#numeric-utilities-with-complex-numbers)
 
 ### Random
 
