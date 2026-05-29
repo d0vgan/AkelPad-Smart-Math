@@ -3774,6 +3774,24 @@ private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString 
   return (cu = CHAR_NUL orelse cu = CHAR_RPAREN orelse cu = CHAR_RBRACKET orelse cu = CHAR_RBRACE)
 end function
 
+private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String, byval fnIdentStart as ZString ptr) as Boolean
+  if fnIdentStart <> exprStart then return FALSE
+  SkipSpaces()
+  if pStream[0] <> CHAR_NUL then return FALSE
+  dim fnHint as String
+  if IdentMayBeBareBuiltinName(fnName) andalso TryGetBuiltinSignatureHint(fnName, fnHint) then
+    SetParseError(FB_STR_HINT_PREFIX & fnHint)
+    return TRUE
+  end if
+  dim udfIdx as Integer = -1
+  if lbound(userFunctions) <= ubound(userFunctions) then udfIdx = FindFunctionIndex(fnName)
+  if udfIdx >= 0 then
+    SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
+    return TRUE
+  end if
+  return FALSE
+end function
+
 private function TryHandleUnknownIdentifier(byref nam as String, byref outV as EvalValue, byref canIndex as Boolean, byval identStart as ZString ptr) as Boolean
   dim lowNam as String = lcase(nam)
   if IsLogicalBinaryOperatorKeyword(lowNam) then
@@ -4728,34 +4746,6 @@ private function TryApplyGcdLcmScalarPair(byref aV as EvalValue, byref bV as Eva
   return 0
 end function
 
-private function MapGcdLcmBroadcast(byref fixedV as EvalValue, byref varyingV as EvalValue, byval fixedOnLeft as Boolean, byval doLcm as Boolean, byref outV as EvalValue) as Integer
-  dim i as Integer
-  ValueInitArrayLike(outV, lbound(varyingV.arr), ubound(varyingV.arr))
-  for i = lbound(varyingV.arr) to ubound(varyingV.arr)
-    dim elem as EvalValue, r as EvalValue
-    ValueGetArrayElemAsScalar(varyingV, i, elem)
-    dim rc as Integer
-    if fixedOnLeft then
-      rc = TryApplyGcdLcmScalarPair(elem, fixedV, doLcm, r)
-    else
-      rc = TryApplyGcdLcmScalarPair(fixedV, elem, doLcm, r)
-    end if
-    if rc <> 0 then return rc
-    ValueSetArrayElemFromScalar(outV, i, r)
-  next i
-  return 0
-end function
-
-private function ApplyGcdLcm(byref aV as EvalValue, byref bV as EvalValue, byval doLcm as Boolean, byref outV as EvalValue) as Integer
-  if aV.kind = VK_SCALAR andalso bV.kind = VK_SCALAR then
-    return TryApplyGcdLcmScalarPair(aV, bV, doLcm, outV)
-  end if
-  if aV.kind = VK_ARRAY then
-    return MapGcdLcmBroadcast(bV, aV, FALSE, doLcm, outV)
-  end if
-  return MapGcdLcmBroadcast(aV, bV, TRUE, doLcm, outV)
-end function
-
 private function TryApplyNcrNpr(byref nV as EvalValue, byref rV as EvalValue, byval doPerm as Boolean, byref outV as EvalValue) as Boolean
   dim n as LongInt, r as LongInt
   if TryGetScalarInt64Pair(nV, rV, n, r) = FALSE then return FALSE
@@ -4798,6 +4788,61 @@ private function TryApplyNcrNpr(byref nV as EvalValue, byref rV as EvalValue, by
   return TRUE
 end function
 
+'' Per-pair status for gcd/lcm/ncr/npr broadcast: 0 ok, 1 integer operands, 2 numeric/domain, 3 shape mismatch.
+private function ApplyIntegerBuiltinPair(byval fnId as Integer, byref aV as EvalValue, byref bV as EvalValue, byref outV as EvalValue) as Integer
+  if (fnId = FUNC_GCD) orelse (fnId = FUNC_LCM) then
+    return TryApplyGcdLcmScalarPair(aV, bV, (fnId = FUNC_LCM), outV)
+  end if
+  if TryApplyNcrNpr(aV, bV, (fnId = FUNC_NPR), outV) then return 0
+  return 2
+end function
+
+private function MapBinaryEvalValueIntegerBuiltinArrayScalar(byval fnId as Integer, byref arrV as EvalValue, byref scalarV as EvalValue, byval scalarOnLeft as Boolean, byref outV as EvalValue, byref status as Integer) as Boolean
+  dim i as Integer
+  ValueInitArrayLike(outV, lbound(arrV.arr), ubound(arrV.arr))
+  for i = lbound(arrV.arr) to ubound(arrV.arr)
+    dim elem as EvalValue, r as EvalValue
+    ValueGetArrayElemAsScalar(arrV, i, elem)
+    if scalarOnLeft then
+      status = ApplyIntegerBuiltinPair(fnId, scalarV, elem, r)
+    else
+      status = ApplyIntegerBuiltinPair(fnId, elem, scalarV, r)
+    end if
+    if status <> 0 then return FALSE
+    ValueSetArrayElemFromScalar(outV, i, r)
+  next i
+  return TRUE
+end function
+
+private function MapBinaryEvalValueIntegerBuiltin(byval fnId as Integer, byref leftV as EvalValue, byref rightV as EvalValue, byref outV as EvalValue, byref status as Integer) as Boolean
+  status = 0
+  if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
+    status = ApplyIntegerBuiltinPair(fnId, leftV, rightV, outV)
+    return (status = 0)
+  end if
+  if leftV.kind = VK_ARRAY andalso rightV.kind = VK_ARRAY then
+    if ValueArrayLen(leftV) <> ValueArrayLen(rightV) then
+      status = 3
+      return FALSE
+    end if
+    dim i as Integer
+    ValueInitArrayLike(outV, lbound(leftV.arr), ubound(leftV.arr))
+    for i = lbound(leftV.arr) to ubound(leftV.arr)
+      dim aElem as EvalValue, bElem as EvalValue, r as EvalValue
+      ValueGetArrayElemAsScalar(leftV, i, aElem)
+      ValueGetArrayElemAsScalar(rightV, i, bElem)
+      status = ApplyIntegerBuiltinPair(fnId, aElem, bElem, r)
+      if status <> 0 then return FALSE
+      ValueSetArrayElemFromScalar(outV, i, r)
+    next i
+    return TRUE
+  end if
+  if leftV.kind = VK_ARRAY then
+    return MapBinaryEvalValueIntegerBuiltinArrayScalar(fnId, leftV, rightV, FALSE, outV, status)
+  end if
+  return MapBinaryEvalValueIntegerBuiltinArrayScalar(fnId, rightV, leftV, TRUE, outV, status)
+end function
+
 private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
   if (fnId <> FUNC_GCD) andalso (fnId <> FUNC_LCM) andalso (fnId <> FUNC_NCR) andalso (fnId <> FUNC_NPR) then return FALSE
   if Parser_SupportComplexNumbers then
@@ -4806,21 +4851,13 @@ private function TryApplyScalarBinaryIntegerBuiltin(byval fnId as Integer, byref
       return TRUE
     end if
   end if
-  if args(0).kind <> VK_SCALAR orelse args(1).kind <> VK_SCALAR then
-    SetScalarValuesError(fnName)
-    return TRUE
-  end if
-  if (fnId = FUNC_GCD) orelse (fnId = FUNC_LCM) then
-    dim gcdRc as Integer = ApplyGcdLcm(args(0), args(1), (fnId = FUNC_LCM), outV)
-    if gcdRc = 1 then
+  dim pairStatus as Integer = 0
+  if MapBinaryEvalValueIntegerBuiltin(fnId, args(0), args(1), outV, pairStatus) = FALSE then
+    if pairStatus = 1 then
       SetIntegerValuesError(fnName)
-    elseif gcdRc = 2 then
+    else
       SetNumericErrorInFunction(fnName)
     end if
-    return TRUE
-  end if
-  if TryApplyNcrNpr(args(0), args(1), (fnId = FUNC_NPR), outV) = FALSE then
-    SetNumericErrorInFunction(fnName)
   end if
   return TRUE
 end function
@@ -9044,11 +9081,12 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
   end select
 end function
 
-private function ParseFunctionCall(byref fnName as String) as EvalValue
+private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as ZString ptr) as EvalValue
   dim outV as EvalValue
   if pStream[0] <> CHAR_LPAREN then SetMissingOpeningBracketError(): return outV
   pStream += 1
   SkipSpaces()
+  if TrySetIncompleteOpenedFunctionCallHint(fnName, fnIdentStart) then return outV
 
   dim args() as EvalValue
   dim argsCount as Integer = 0
@@ -9705,7 +9743,7 @@ private function ParseFactor() as EvalValue
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
     if pStream[0] = CHAR_LPAREN then
-      n = ParseFunctionCall(nam)
+      n = ParseFunctionCall(nam, identStart)
       if parseError then return n
       dim indexed as EvalValue
       if TryParseArrayIndex(n, indexed) = FALSE then return n

@@ -1741,6 +1741,125 @@ private sub RunBuiltinArityTableTests()
   print ""
 end sub
 
+private sub RunIncompleteFunctionCallHintTests()
+  print "=== Incomplete function call hints (name followed by open paren) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  Parser_ClearVariables()
+  if Parser_TryEvaluateEx("f(x)=x", r, rt, ia) = FALSE then
+    print "[open-paren-hint] FAIL: setup f(x)=x -> " & Parser_GetLastError()
+    subFail += 1
+  end if
+
+  dim hintExprs(1 to 6) as String
+  dim hintNeed(1 to 6) as String
+  hintExprs(1) = "f(": hintNeed(1) = "user-defined function: f(x)"
+  hintExprs(2) = "f (": hintNeed(2) = "user-defined function: f(x)"
+  hintExprs(3) = "abs(": hintNeed(3) = "function: abs(value)"
+  hintExprs(4) = "abs (": hintNeed(4) = "function: abs(value)"
+  hintExprs(5) = "log(": hintNeed(5) = "function: log(value, base)"
+  hintExprs(6) = "log (": hintNeed(6) = "function: log(value, base)"
+  dim hi as Integer
+  for hi = 1 to 6
+    if Parser_TryEvaluateEx(hintExprs(hi), r, rt, ia) then
+      print "[open-paren-hint] FAIL: """ & hintExprs(hi) & """ expected error containing """ & hintNeed(hi) & """ but got """ & rt & """"
+      subFail += 1
+    elseif instr(Parser_GetLastError(), hintNeed(hi)) = 0 then
+      print "[open-paren-hint] FAIL: """ & hintExprs(hi) & """ got """ & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[open-paren-hint] PASS: """ & hintExprs(hi) & """"
+      subPass += 1
+    end if
+  next hi
+
+  dim sortbyExprs(1 to 3) as String
+  dim sortbyNeed as String = "sortby expects exactly one function"
+  sortbyExprs(1) = "sortby((1,2,3), f("
+  sortbyExprs(2) = "sortby((1,2,3), abs("
+  sortbyExprs(3) = "sortby((1,2,3), log("
+  dim si as Integer
+  for si = 1 to 3
+    if Parser_TryEvaluateEx(sortbyExprs(si), r, rt, ia) then
+      print "[open-paren-hint] FAIL: """ & sortbyExprs(si) & """ expected sortby error"
+      subFail += 1
+    elseif instr(lcase(Parser_GetLastError()), lcase(sortbyNeed)) = 0 then
+      print "[open-paren-hint] FAIL: """ & sortbyExprs(si) & """ got """ & Parser_GetLastError() & """"
+      subFail += 1
+    else
+      print "[open-paren-hint] PASS: """ & sortbyExprs(si) & """"
+      subPass += 1
+    end if
+  next si
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Incomplete-open-paren-hint sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunGcdLcmNcrNprArrayBroadcastTests()
+  print "=== gcd/lcm/ncr/npr array broadcast ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 6) as String
+  dim okNeed(1 to 6) as String
+  okExprs(1) = "gcd((84,30),6)": okNeed(1) = "(6,6)"
+  okExprs(2) = "lcm((6,8),3)": okNeed(2) = "(6,24)"
+  okExprs(3) = "lcm((6,8),(3,5))": okNeed(3) = "(6,40)"
+  okExprs(4) = "ncr((5,6),(2,3))": okNeed(4) = "(10,20)"
+  okExprs(5) = "npr((5,6),(2,3))": okNeed(5) = "(20,120)"
+  okExprs(6) = "gcd(6,(84,30))": okNeed(6) = "(6,6)"
+  dim oi as Integer
+  for oi = 1 to 6
+    if Parser_TryEvaluateEx(okExprs(oi), r, rt, ia) = FALSE then
+      print "[gcd-ncr-array] FAIL: """ & okExprs(oi) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(oi)) = FALSE then
+      print "[gcd-ncr-array] FAIL: """ & okExprs(oi) & """ expected """ & okNeed(oi) & """ got """ & rt & """"
+      subFail += 1
+    else
+      print "[gcd-ncr-array] PASS: """ & okExprs(oi) & """"
+      subPass += 1
+    end if
+  next oi
+
+  if Parser_TryEvaluateEx("gcd((1,2),(3,4,5))", r, rt, ia) then
+    print "[gcd-ncr-array] FAIL: mismatched array lengths expected error"
+    subFail += 1
+  elseif instr(lcase(Parser_GetLastError()), "numeric error in gcd()") = 0 then
+    print "[gcd-ncr-array] FAIL: gcd length mismatch got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[gcd-ncr-array] PASS: gcd((1,2),(3,4,5)) -> numeric error"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("ncr((5,6),(2,7))", r, rt, ia) then
+    print "[gcd-ncr-array] FAIL: ncr domain error expected failure"
+    subFail += 1
+  elseif instr(lcase(Parser_GetLastError()), "numeric error in ncr()") = 0 then
+    print "[gcd-ncr-array] FAIL: ncr domain got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[gcd-ncr-array] PASS: ncr((5,6),(2,7)) -> numeric error"
+    subPass += 1
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "gcd/lcm/ncr/npr array-broadcast sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunTimeValuesSupportOptionTests()
   print "=== Time value support (parser-wide option) ==="
 
@@ -2488,10 +2607,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(431).expr = "log((8,100),(2,10))":                       tests(431).expected = "(3,2)"
   tests(432).expr = "clamp((1,9),(0,10),(5,7))":                 tests(432).expectedErrContains = "expects scalar min/max"
   tests(433).expr = "clamp(5,(1,6),(4,7))":                      tests(433).expectedErrContains = "expects scalar min/max"
-  tests(434).expr = "gcd((84,30),6)":                            tests(434).expectedErrContains = "expects scalar values"
-  tests(435).expr = "gcd(6,(84,30))":                            tests(435).expectedErrContains = "expects scalar values"
-  tests(436).expr = "lcm((6,8),3)":                              tests(436).expectedErrContains = "expects scalar values"
-  tests(437).expr = "lcm((6,8),(3,5))":                          tests(437).expectedErrContains = "expects scalar values"
+  tests(434).expr = "gcd((84,30),6)":                            tests(434).expected = "(6,6)" ' [shape/broadcast]
+  tests(435).expr = "gcd(6,(84,30))":                            tests(435).expected = "(6,6)" ' [shape/broadcast]
+  tests(436).expr = "lcm((6,8),3)":                              tests(436).expected = "(6,24)" ' [shape/broadcast]
+  tests(437).expr = "lcm((6,8),(3,5))":                          tests(437).expected = "(6,40)" ' [shape/broadcast]
   tests(438).expr = "16>>1>>2":                                  tests(438).expected = "2"
   tests(439).expr = "7&3|8":                                     tests(439).expected = "11"
   tests(440).expr = "7^3^1":                                     tests(440).expected = "5"
@@ -3338,6 +3457,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunNanInfTests()
 
   RunBuiltinArityTableTests()
+
+  RunIncompleteFunctionCallHintTests()
+
+  RunGcdLcmNcrNprArrayBroadcastTests()
 
   RunTimeValuesSupportOptionTests()
 

@@ -615,6 +615,10 @@ private:
       EvalContext& ctx,
       const std::string& ident,
       const char* identStart) const;
+  bool trySetIncompleteOpenedFunctionCallHint(
+      EvalContext& ctx,
+      const std::string& ident,
+      const char* fnIdentStart) const;
   bool trySetBareUserFunctionNameError(
       EvalContext& ctx,
       const std::string& ident,
@@ -993,13 +997,21 @@ private:
       int& cmpOut,
       CmpScalarIncompatiblePolicy policy) const;
   bool rejectBuiltinArgsWithComplexImaginary(EvalContext& ctx, const std::vector<EvalValue>& args) const;
-  /** @return 0 ok, 1 not integer operands, 2 lcm overflow */
+  /** @return 0 ok, 1 not integer operands, 2 lcm overflow (applyGcdLcmEvalValues also uses 3 = broadcast shape) */
   int tryApplyGcdLcmScalars(
       const EvalValue::ScalarValue& a,
       const EvalValue::ScalarValue& b,
       bool doLcm,
       EvalValue& outV) const;
   EvalValue applyGcdLcmEvalValues(const EvalValue& a, const EvalValue& b, bool doLcm, int& status) const;
+  /** @return 0 ok, 1 not integer operands, 2 domain/overflow, 3 broadcast shape */
+  EvalValue applyNcrNprEvalValues(const EvalValue& n, const EvalValue& r, bool doPerm, int& status) const;
+  bool tryApplyModScalars(
+      EvalContext& ctx,
+      const std::string& fnName,
+      const EvalValue::ScalarValue& a,
+      const EvalValue::ScalarValue& b,
+      EvalValue& out) const;
 #if SMARTMATH_TIME_VALUES
   bool scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const;
   EvalValue mapTimeUnitOverArray(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;

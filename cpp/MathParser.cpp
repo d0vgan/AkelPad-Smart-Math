@@ -2486,6 +2486,27 @@ bool MathParser::trySetMissingFunctionCallError(
   return true;
 }
 
+bool MathParser::trySetIncompleteOpenedFunctionCallHint(
+    EvalContext& ctx,
+    const std::string& ident,
+    const char* fnIdentStart) const {
+  if (!fnIdentStart || fnIdentStart != ctx.start) {
+    return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p != '\0') {
+    return false;
+  }
+  if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, fnIdentStart)) {
+    return true;
+  }
+  if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
+      && trySetBareUserFunctionNameError(ctx, ident, fnIdentStart)) {
+    return true;
+  }
+  return false;
+}
+
 bool MathParser::trySetBareUserFunctionNameError(
     EvalContext& ctx,
     const std::string& ident,
@@ -5787,7 +5808,85 @@ MathParser::EvalValue MathParser::applyGcdLcmEvalValues(const EvalValue& a, cons
     status = tryApplyGcdLcmScalars(leftS, rightS, doLcm, outS);
     return status == 0;
   };
-  return mapBinaryBroadcast(a, b, applyPair, ok);
+  EvalValue result = mapBinaryBroadcast(a, b, applyPair, ok);
+  if (!ok && status == 0) {
+    status = 3;
+  }
+  return result;
+}
+
+MathParser::EvalValue MathParser::applyNcrNprEvalValues(
+    const EvalValue& n,
+    const EvalValue& r,
+    bool doPerm,
+    int& status) const {
+  if (n.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
+    long long nI = 0;
+    long long rI = 0;
+    long long out = 0;
+    if (!tryGetSignedInt64FromScalar(n.scalarValue, nI) ||
+        !tryGetSignedInt64FromScalar(r.scalarValue, rI)) {
+      status = 1;
+      return makeScalar(0);
+    }
+    if (!(doPerm ? tryComputeNprInt64(nI, rI, out) : tryComputeNcrInt64(nI, rI, out))) {
+      status = 2;
+      return makeScalar(0);
+    }
+    status = 0;
+    return makeScalarInt(out);
+  }
+  bool ok = true;
+  const auto applyPair = [&](const EvalValue::ScalarValue& nS, const EvalValue::ScalarValue& rS,
+                             EvalValue& outS) -> bool {
+    long long nI = 0;
+    long long rI = 0;
+    long long out = 0;
+    if (!tryGetSignedInt64FromScalar(nS, nI) || !tryGetSignedInt64FromScalar(rS, rI)) {
+      status = 1;
+      return false;
+    }
+    if (!(doPerm ? tryComputeNprInt64(nI, rI, out) : tryComputeNcrInt64(nI, rI, out))) {
+      status = 2;
+      return false;
+    }
+    status = 0;
+    outS = makeScalarInt(out);
+    return true;
+  };
+  EvalValue result = mapBinaryBroadcast(n, r, applyPair, ok);
+  if (!ok && status == 0) {
+    status = 3;
+  }
+  return result;
+}
+
+bool MathParser::tryApplyModScalars(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const EvalValue::ScalarValue& aS,
+    const EvalValue::ScalarValue& bS,
+    EvalValue& outS) const {
+  if (aS.hasExactUInt64() && bS.hasExactUInt64() && (!aS.hasExactInt64() || !bS.hasExactInt64())) {
+    if (bS.exactUInt64 == 0u) {
+      setNumericErrorInFunction(ctx, fnName);
+      return false;
+    }
+    outS = makeScalarUInt(aS.exactUInt64 % bS.exactUInt64);
+    return true;
+  }
+  long long a = 0;
+  long long b = 0;
+  if (!tryGetSignedInt64FromScalar(aS, a) || !tryGetSignedInt64FromScalar(bS, b)) {
+    setIntegerValuesError(ctx, fnName);
+    return false;
+  }
+  if (b == 0) {
+    setNumericErrorInFunction(ctx, fnName);
+    return false;
+  }
+  outS = makeScalarInt(a % b);
+  return true;
 }
 
 MathParser::EvalValue MathParser::makeArray(const std::vector<double>& v) {
@@ -7466,6 +7565,10 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
   std::string ident;
   assignLowerIdentFromRange(ident, identStart, identEnd);
   ++ctx.p;
+  skipSpaces(ctx);
+  if (trySetIncompleteOpenedFunctionCallHint(ctx, ident, identStart)) {
+    return nullptr;
+  }
   std::vector<std::unique_ptr<Expr>> args;
   const bool isSortbyCall = (ident == STR_SORTBY);
   if (isSortbyCall) {
@@ -10229,6 +10332,39 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
     return builtinApplyClamp(ctx, args[0], args[1], args[2]);
   }
 
+  if (id == BuiltinFunctionId::Gcd || id == BuiltinFunctionId::Lcm) {
+    if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
+      return makeScalar(0);
+    }
+    int gcdStatus = 0;
+    EvalValue gcdOut = applyGcdLcmEvalValues(args[0], args[1], id == BuiltinFunctionId::Lcm, gcdStatus);
+    if (gcdStatus == 1) {
+      setIntegerValuesError(ctx, fnName);
+      return makeScalar(0);
+    }
+    if (gcdStatus == 2 || gcdStatus == 3) {
+      setNumericErrorInFunction(ctx, fnName);
+      return makeScalar(0);
+    }
+    return gcdOut;
+  }
+  if (id == BuiltinFunctionId::Ncr || id == BuiltinFunctionId::Npr) {
+    if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
+      return makeScalar(0);
+    }
+    int combStatus = 0;
+    EvalValue combOut = applyNcrNprEvalValues(args[0], args[1], id == BuiltinFunctionId::Npr, combStatus);
+    if (combStatus == 1) {
+      setIntegerValuesError(ctx, fnName);
+      return makeScalar(0);
+    }
+    if (combStatus == 2 || combStatus == 3) {
+      setNumericErrorInFunction(ctx, fnName);
+      return makeScalar(0);
+    }
+    return combOut;
+  }
+
   const bool hasNonScalarArg = std::any_of(args.begin(), args.end(), [](const EvalValue& v) {
     return v.kind != ValueKind::Scalar;
   });
@@ -10241,42 +10377,6 @@ MathParser::EvalValue MathParser::builtinScalarBinaryFamily(
       return makeScalar(
           args[0].scalarValue.scalar + (args[1].scalarValue.scalar - args[0].scalarValue.scalar) *
               randomUnitScalar());
-    case BuiltinFunctionId::Gcd:
-    case BuiltinFunctionId::Lcm: {
-      if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
-        return makeScalar(0);
-      }
-      int gcdStatus = 0;
-      EvalValue gcdOut = applyGcdLcmEvalValues(args[0], args[1], id == BuiltinFunctionId::Lcm, gcdStatus);
-      if (gcdStatus == 1) {
-        setIntegerValuesError(ctx, fnName);
-        return makeScalar(0);
-      }
-      if (gcdStatus == 2) {
-        setNumericErrorInFunction(ctx, fnName);
-        return makeScalar(0);
-      }
-      return gcdOut;
-    }
-    case BuiltinFunctionId::Ncr:
-    case BuiltinFunctionId::Npr: {
-      if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
-        return makeScalar(0);
-      }
-      long long n = 0, r = 0;
-      if (!tryGetSignedInt64FromScalar(args[0].scalarValue, n) ||
-          !tryGetSignedInt64FromScalar(args[1].scalarValue, r)) {
-        setIntegerValuesError(ctx, fnName);
-        return makeScalar(0);
-      }
-      long long out = 0;
-      const bool ok = (id == BuiltinFunctionId::Npr) ? tryComputeNprInt64(n, r, out) : tryComputeNcrInt64(n, r, out);
-      if (!ok) {
-        setNumericErrorInFunction(ctx, fnName);
-        return makeScalar(0);
-      }
-      return makeScalarInt(out);
-    }
     default:
       break;
   }
@@ -10293,58 +10393,19 @@ MathParser::EvalValue MathParser::builtinModCall(EvalContext& ctx, const std::ve
   if (rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
     return makeScalar(0);
   }
-  auto applyModScalar = [&](const EvalValue::ScalarValue& aS, const EvalValue::ScalarValue& bS, EvalValue& outS) -> bool {
-    if (aS.hasExactUInt64() && bS.hasExactUInt64() && (!aS.hasExactInt64() || !bS.hasExactInt64())) {
-      if (bS.exactUInt64 == 0u) {
-        setNumericErrorInFunction(ctx, fnName);
-        return false;
-      }
-      outS = makeScalarUInt(aS.exactUInt64 % bS.exactUInt64);
-      return true;
-    }
-    long long a = 0, b = 0;
-    if (!tryGetSignedInt64FromScalar(aS, a) || !tryGetSignedInt64FromScalar(bS, b)) {
-      setIntegerValuesError(ctx, fnName);
-      return false;
-    }
-    if (b == 0) {
-      setNumericErrorInFunction(ctx, fnName);
-      return false;
-    }
-    outS = makeScalarInt(a % b);
-    return true;
+  bool ok = true;
+  const auto applyPair = [&](const EvalValue::ScalarValue& aS, const EvalValue::ScalarValue& bS,
+                             EvalValue& outS) -> bool {
+    return tryApplyModScalars(ctx, fnName, aS, bS, outS);
   };
-
-  if (args[0].kind == ValueKind::Scalar && args[1].kind == ValueKind::Scalar) {
-    EvalValue outS;
-    if (!applyModScalar(args[0].scalarValue, args[1].scalarValue, outS)) {
-      return makeScalar(0);
-    }
-    return outS;
-  }
-
-  if (args[0].kind == ValueKind::Array && args[1].kind == ValueKind::Array &&
-      args[0].arr.size() != args[1].arr.size()) {
+  EvalValue out = mapBinaryBroadcast(args[0], args[1], applyPair, ok);
+  if (!ok && ctx.errorText.empty()) {
     setNumericErrorInFunction(ctx, fnName);
+  }
+  if (!ok) {
     return makeScalar(0);
   }
-
-  const std::size_t outCount = (args[0].kind == ValueKind::Array) ? args[0].arr.size() : args[1].arr.size();
-  scratchBinaryOut_.clear();
-  scratchBinaryOut_.reserve(outCount);
-  for (std::size_t i = 0; i < outCount; ++i) {
-    const EvalValue::ScalarValue& aItem = (args[0].kind == ValueKind::Array) ? args[0].arr[i] : args[0].scalarValue;
-    const EvalValue::ScalarValue& bItem = (args[1].kind == ValueKind::Array) ? args[1].arr[i] : args[1].scalarValue;
-    EvalValue outS;
-    if (!applyModScalar(aItem, bItem, outS)) {
-      scratchBinaryOut_.clear();
-      return makeScalar(0);
-    }
-    scratchBinaryOut_.emplace_back(std::move(outS));
-  }
-  EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-  scratchBinaryOut_.clear();
-  return ret;
+  return out;
 }
 
 MathParser::EvalValue MathParser::builtinFactorial(

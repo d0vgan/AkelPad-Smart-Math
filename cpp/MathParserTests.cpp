@@ -2827,6 +2827,36 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "x_1+2", "unknown variable: x_1", why)) return false;
                 return true;
               }});
+  t.push_back({"regression/gcd lcm ncr npr array broadcast", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "gcd((84,30),6)", "(6,6)", why)) return false;
+                if (!expectEval(p, "gcd(6,(84,30))", "(6,6)", why)) return false;
+                if (!expectEval(p, "lcm((6,8),3)", "(6,24)", why)) return false;
+                if (!expectEval(p, "lcm((6,8),(3,5))", "(6,40)", why)) return false;
+                if (!expectEval(p, "ncr((5,6),(2,3))", "(10,20)", why)) return false;
+                if (!expectEval(p, "npr((5,6),(2,3))", "(20,120)", why)) return false;
+                if (!expectEvalErrorContains(p, "gcd((1,2),(3,4,5))", "numeric error in gcd()", why))
+                  return false;
+                return expectEvalErrorContains(p, "ncr((5,6),(2,7))", "numeric error in ncr()", why);
+              }});
+  t.push_back({"regression/incomplete function call open paren hints", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEvalErrorContains(p, "f(", "user-defined function: f(x)", why)) return false;
+                if (!expectEvalErrorContains(p, "f (", "user-defined function: f(x)", why)) return false;
+                if (!expectEvalErrorContains(p, "abs(", "function: abs(value)", why)) return false;
+                if (!expectEvalErrorContains(p, "abs (", "function: abs(value)", why)) return false;
+                if (!expectEvalErrorContains(p, "log(", "function: log(value, base)", why)) return false;
+                if (!expectEvalErrorContains(p, "log (", "function: log(value, base)", why)) return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1,2,3), f(", "sortby expects exactly one function", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1,2,3), abs(", "sortby expects exactly one function", why))
+                  return false;
+                return expectEvalErrorContains(
+                    p, "sortby((1,2,3), log(", "sortby expects exactly one function", why);
+              }});
   t.push_back({"regression/bare function name before semicolon is syntax error", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "atan2;", "unexpected token", why)) return false;
@@ -3756,10 +3786,10 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "log((8,100),(2,10))", "(3,2)"} ,
     {ParityBasicCase::Kind::ErrorContains, "clamp((1,9),(0,10),(5,7))", "expects scalar min/max"} ,
     {ParityBasicCase::Kind::ErrorContains, "clamp(5,(1,6),(4,7))", "expects scalar min/max"} ,
-    {ParityBasicCase::Kind::ErrorContains, "gcd((84,30),6)", "expects scalar values"} ,
-    {ParityBasicCase::Kind::ErrorContains, "gcd(6,(84,30))", "expects scalar values"} ,
-    {ParityBasicCase::Kind::ErrorContains, "lcm((6,8),3)", "expects scalar values"} ,
-    {ParityBasicCase::Kind::ErrorContains, "lcm((6,8),(3,5))", "expects scalar values"} ,
+    {ParityBasicCase::Kind::Expected, "gcd((84,30),6)", "(6,6)"} ,
+    {ParityBasicCase::Kind::Expected, "gcd(6,(84,30))", "(6,6)"} ,
+    {ParityBasicCase::Kind::Expected, "lcm((6,8),3)", "(6,24)"} ,
+    {ParityBasicCase::Kind::Expected, "lcm((6,8),(3,5))", "(6,40)"} ,
     {ParityBasicCase::Kind::Expected, "16>>1>>2", "2"} ,
     {ParityBasicCase::Kind::Expected, "7&3|8", "11"} ,
     {ParityBasicCase::Kind::Expected, "7^3^1", "5"} ,
