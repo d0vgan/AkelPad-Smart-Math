@@ -4753,9 +4753,61 @@ private function GcdInt64(byval a as LongInt, byval b as LongInt) as LongInt
   return CLngInt(GcdULong(CULngInt(abs(a)), CULngInt(abs(b))))
 end function
 
+private sub MulU64Full(byval a as ULongInt, byval b as ULongInt, byref hi as ULongInt, byref lo as ULongInt)
+  const MASK32 as ULongInt = &hFFFFFFFFull
+  dim a0 as ULongInt = a and MASK32
+  dim a1 as ULongInt = a shr 32
+  dim b0 as ULongInt = b and MASK32
+  dim b1 as ULongInt = b shr 32
+  dim w0 as ULongInt = a0 * b0
+  dim w1 as ULongInt = a0 * b1
+  dim w2 as ULongInt = a1 * b0
+  dim w3 as ULongInt = a1 * b1
+  dim t as ULongInt = (w0 shr 32) + (w1 and MASK32) + (w2 and MASK32)
+  lo = (w0 and MASK32) or ((t and MASK32) shl 32)
+  hi = w3 + (w1 shr 32) + (w2 shr 32) + (t shr 32)
+end sub
+
+private function Pow2_64_ModU64(byval modN as ULongInt) as ULongInt
+  if modN <= 1ull then return 0ull
+  dim r as ULongInt = 1ull
+  dim i as Integer
+  for i = 0 to 63
+    dim t as ULongInt = r + r
+    if t >= modN then t -= modN
+    r = t
+  next i
+  return r
+end function
+
+private function ModU128ByU64(byval hi as ULongInt, byval lo as ULongInt, byval modN as ULongInt) as ULongInt
+  if modN <= 1ull then return 0ull
+  dim r as ULongInt = lo mod modN
+  if hi = 0ull then return r
+  hi = hi mod modN
+  if hi = 0ull then return r
+  dim p2 as ULongInt = Pow2_64_ModU64(modN)
+  dim hiBit as ULongInt = 1ull
+  while hiBit <= hi
+    if (hi and hiBit) <> 0ull then
+      dim sum as ULongInt = r + p2
+      if sum >= modN then sum -= modN
+      r = sum
+    end if
+    dim np2 as ULongInt = p2 + p2
+    if np2 >= modN then np2 -= modN
+    p2 = np2
+    hiBit = hiBit shl 1
+  wend
+  return r
+end function
+
 private function MulModU64(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
-  dim prod as UInteger = Cast(UInteger, a) * Cast(UInteger, b)
-  return Cast(ULongInt, prod mod Cast(UInteger, modN))
+  if modN <= 1ull then return 0ull
+  dim hi as ULongInt
+  dim lo as ULongInt
+  MulU64Full(a, b, hi, lo)
+  return ModU128ByU64(hi, lo, modN)
 end function
 
 private function PowModU64(byval baseV as ULongInt, byval expV as ULongInt, byval modN as ULongInt) as ULongInt
@@ -4777,7 +4829,6 @@ private const FACTORINT_RHO_MAX_ITERS_SMALL as Integer = 80000
 private const FACTORINT_FERMAT_MAX_STEPS as Integer = 4096
 private const FACTORINT_FERMAT_MAX_N as ULongInt = 100000000ull
 private const FACTORINT_ODD_TRIAL_MAX_PRIME as ULongInt = 10000000ull
-private const FACTORINT_PROVEN_PRIME_SQRT_CAP as ULongInt = 10000000ull
 
 type FactorintPrimeEntry
   baseU as ULongInt
@@ -4889,13 +4940,17 @@ private function PollardRhoU64(byval n as ULongInt) as ULongInt
   return n
 end function
 
-private function FactorintFullyTrialedToSqrt(byval n as ULongInt) as Boolean
+private function FactorintOddTrialLimit(byval n as ULongInt) as ULongInt
   dim sqrtN as ULongInt = IsqrtU64(n)
-  return sqrtN <= FACTORINT_PROVEN_PRIME_SQRT_CAP
+  if sqrtN > FACTORINT_ODD_TRIAL_MAX_PRIME then return FACTORINT_ODD_TRIAL_MAX_PRIME
+  return sqrtN
+end function
+
+private function FactorintExhaustiveTrialDone(byval n as ULongInt) as Boolean
+  return IsqrtU64(n) <= FactorintOddTrialLimit(n)
 end function
 
 private function FactorintFindSplitFactor(byval n as ULongInt) as ULongInt
-  if FactorintFullyTrialedToSqrt(n) then return n
   if IsPrimeU64(n) then return n
   if n <= FACTORINT_FERMAT_MAX_N then
     dim factor as ULongInt = FermatFactorU64(n)
@@ -4940,10 +4995,8 @@ end sub
 private sub FactorintTrialDivideOdd(byref n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
   dim d as ULongInt = FACTORINT_SMALL_MAX_PRIME + 2ull
   if (d and 1ull) = 0ull then d += 1ull
-  dim sqrtN as ULongInt = IsqrtU64(n)
-  dim limit as ULongInt = sqrtN
-  if limit > FACTORINT_ODD_TRIAL_MAX_PRIME then limit = FACTORINT_ODD_TRIAL_MAX_PRIME
-  while d <= limit andalso d * d <= n
+  dim limit as ULongInt = FactorintOddTrialLimit(n)
+  while d <= limit
     FactorintTrialDividePrime(d, n, entries(), cnt, cap)
     if n <= 1ull then exit sub
     d += 2ull
@@ -4979,7 +5032,7 @@ private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintP
   if n <= 1ull then exit sub
   FactorintTrialDivideOdd(n, entries(), cnt, cap)
   if n <= 1ull then exit sub
-  if FactorintFullyTrialedToSqrt(n) orelse IsPrimeU64(n) then
+  if FactorintExhaustiveTrialDone(n) orelse IsPrimeU64(n) then
     FactorintEntriesAdd(entries(), cnt, cap, n, 1)
     exit sub
   end if

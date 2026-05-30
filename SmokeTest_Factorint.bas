@@ -5,7 +5,7 @@
 
 #include once "Inc\MathParser.bi"
 
-const FACTORINT_TEST_COUNT as Integer = 26
+const FACTORINT_TEST_COUNT as Integer = 27
 
 type FactorintCase
   expr as String
@@ -42,6 +42,8 @@ private sub InitFactorintCases()
   g_cases(24).expr = "factorint(9007199254)": g_cases(24).expected = "(2, 89, 50602243)"
   g_cases(25).expr = "factorint(900719925474)": g_cases(25).expected = "(2, 3, 12907, 11630897)"
   g_cases(26).expr = "factorint(76568758722)": g_cases(26).expected = "(2, 3**2, 47, 101, 896107)"
+  '' Perf regression: 113 * large prime (sqrt(n) > 10^7); was ~10s before MR/trial fixes.
+  g_cases(27).expr = "factorint(76568758722112367)": g_cases(27).expected = "(113, 677599634708959)"
 end sub
 
 private function CasePassed(byref c as FactorintCase, byval ok as Boolean, byref actual as String, byref errText as String) as Boolean
