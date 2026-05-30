@@ -104,6 +104,7 @@ constexpr std::size_t builtinMetaRowCountForAssert() {
 }
 static_assert(builtinMetaRowCountForAssert() == 73, "kBuiltinMeta size mismatch");
 
+#if SMARTMATH_FACTORINT
 struct FactorintPrimeEntry {
   std::uint64_t baseU = 0;
   unsigned int expV = 0;
@@ -122,7 +123,10 @@ constexpr std::uint64_t kFactorintMrBases[] = {
     2u, 32544231u, 2567547226u, 4118087717u, 6700417u, 12917328u, 1297059741u};
 constexpr std::size_t kFactorintMrBaseCount =
     sizeof(kFactorintMrBases) / sizeof(kFactorintMrBases[0]);
+}  // namespace
+#endif
 
+namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
 constexpr int kMaxEvalDepth = 128;
@@ -745,7 +749,6 @@ constexpr const char* STR_UNIQUE = "unique";
 constexpr const char* STR_UNPACK = "unpack";
 constexpr const char* STR_FACT = "fact";
 constexpr const char* STR_FACTORINT = "factorint";
-constexpr const char* STR_DOUBLE_ASTERISK = "**";
 constexpr const char* STR_FACTORIAL = "factorial";
 constexpr const char* STR_AVG = "avg";
 constexpr const char* STR_MEAN = "mean";
@@ -1207,6 +1210,7 @@ long long gcdInt64(long long a, long long b) {
       static_cast<std::uint64_t>(std::llabs(a)), static_cast<std::uint64_t>(std::llabs(b))));
 }
 
+#if SMARTMATH_FACTORINT
 // Portable (a*b)%modN without uint128 (MSVC x86 and similar).
 std::uint64_t mulModU64AddDouble(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
   if (modN <= 1u) {
@@ -1555,6 +1559,7 @@ void sortFactorintEntries(std::vector<FactorintPrimeEntry>& entries) {
   }
   entries.resize(w);
 }
+#endif  // SMARTMATH_FACTORINT
 
 bool tryLcmUInt64(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
   if (a == 0u || b == 0u) {
@@ -3993,7 +3998,9 @@ void MathParser::scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
       }
       break;
   }
+#if SMARTMATH_FACTORINT
   if (!sv.hasRenderIntPower()) {
+#endif
     if (!sv.hasImagExactInt64() && sv.imagExactInt64 != 0) {
       sv.setImagExactInt64Valid(true);
       if (sv.imagExactInt64 >= 0) {
@@ -4007,7 +4014,9 @@ void MathParser::scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
         sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
       }
     }
+#if SMARTMATH_FACTORINT
   }
+#endif
 }
 
 bool MathParser::scalarHasExactIntegerPayload(const EvalValue::ScalarValue& sv) {
@@ -4803,11 +4812,12 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
   return true;
 }
 
+#if SMARTMATH_FACTORINT
 std::string formatIntPowerParts(long long baseV, std::uint64_t expV) {
   if (expV <= 1u) {
     return std::to_string(baseV);
   }
-  return std::to_string(baseV) + STR_DOUBLE_ASTERISK + std::to_string(expV);
+  return std::to_string(baseV) + "**" + std::to_string(expV);
 }
 
 bool MathParser::tryFormatIntPowerScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
@@ -4817,6 +4827,7 @@ bool MathParser::tryFormatIntPowerScalar(const EvalValue::ScalarValue& sv, std::
   outText = formatIntPowerParts(sv.imagExactInt64, sv.imagExactUInt64);
   return true;
 }
+#endif
 
 #if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
@@ -4907,10 +4918,12 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     if (tryFormatRationalScalar(v.scalarValue, ratText)) {
       return ratText;
     }
+#if SMARTMATH_FACTORINT
     std::string powText;
     if (tryFormatIntPowerScalar(v.scalarValue, powText)) {
       return powText;
     }
+#endif
   }
   if (base == RenderBase::Dec) {
     if (v.scalarValue.hasExactInt64()) {
@@ -6436,12 +6449,14 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
       out.rational.denominator = v.exactUInt64;
       return out;
     }
+#if SMARTMATH_FACTORINT
     if (v.hasRenderIntPower() && v.imagExactUInt64 > 1u) {
       out.kind = RawResult::ScalarKind::IntPower;
       out.rational.numerator = v.imagExactInt64;
       out.rational.denominator = v.imagExactUInt64;
       return out;
     }
+#endif
     if (v.hasExactInt64()) {
       out.kind = RawResult::ScalarKind::Int64;
       out.intValue = v.exactInt64;
@@ -6538,7 +6553,9 @@ MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarV
   out.scalarValue.setImagExactUInt64Valid(sv.hasImagExactUInt64());
   out.scalarValue.setRenderRational(sv.hasRenderRational());
   out.scalarValue.setImagRenderRational(sv.hasImagRenderRational());
+#if SMARTMATH_FACTORINT
   out.scalarValue.setRenderIntPower(sv.hasRenderIntPower());
+#endif
   return out;
 }
 
@@ -10951,6 +10968,7 @@ MathParser::EvalValue MathParser::builtinFactorial(
   return makeScalar(factorialScalarFloatFromInt(n));
 }
 
+#if SMARTMATH_FACTORINT
 bool MathParser::tryGetFactorintInput(
     const EvalValue& v,
     bool& isNegative,
@@ -11145,6 +11163,7 @@ MathParser::EvalValue MathParser::builtinFactorint(
   }
   return out;
 }
+#endif  // SMARTMATH_FACTORINT
 
 MathParser::EvalValue MathParser::builtinDegRad(
     EvalContext& ctx,
@@ -11994,7 +12013,12 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinFunctionId::Fact:
       return builtinFactorial(ctx, fnName, args);
     case BuiltinFunctionId::Factorint:
+#if SMARTMATH_FACTORINT
       return builtinFactorint(ctx, fnName, args);
+#else
+      setIncompatibleOperandsError(ctx);
+      return makeScalar(0);
+#endif
     case BuiltinFunctionId::Deg:
     case BuiltinFunctionId::Rad:
       return builtinDegRad(ctx, fnName, id, args);

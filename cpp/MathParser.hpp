@@ -15,6 +15,10 @@
 #define SMARTMATH_TIME_VALUES 1
 #endif
 
+#ifndef SMARTMATH_FACTORINT
+#define SMARTMATH_FACTORINT 1
+#endif
+
 #ifndef SMARTMATH_LAMBDA_FUNCTIONS
 #define SMARTMATH_LAMBDA_FUNCTIONS 1
 #endif
@@ -23,7 +27,11 @@ class MathParser {
 public:
   struct RawResult {
     enum class Kind { None, Scalar, Array };
-    enum class ScalarKind { FloatingPoint, Int64, UInt64, Rational, IntPower, Complex, Time };
+    enum class ScalarKind { FloatingPoint, Int64, UInt64, Rational,
+#if SMARTMATH_FACTORINT
+                            IntPower,
+#endif
+                            Complex, Time };
 
     /// One real or imaginary component. Only the union member for ``kind`` is meaningful.
     struct CartesianScalar {
@@ -44,7 +52,9 @@ public:
       bool isInt64() const { return kind == ScalarKind::Int64; }
       bool isUInt64() const { return kind == ScalarKind::UInt64; }
       bool isRational() const { return kind == ScalarKind::Rational; }
+#if SMARTMATH_FACTORINT
       bool isIntPower() const { return kind == ScalarKind::IntPower; }
+#endif
       bool isTime() const { return kind == ScalarKind::Time; }
     };
 
@@ -232,8 +242,11 @@ private:
         fImagExactInt64Valid = 0x20u,
         fImagExactUInt64Valid = 0x40u,
         fRenderRational = 0x80u,
-        fImagRenderRational = 0x100u,
+        fImagRenderRational = 0x100u
+#if SMARTMATH_FACTORINT
+        ,
         fRenderIntPower = 0x200u
+#endif
       };
       ScalarKind scalarKind = ScalarKind::FloatingPoint;
       unsigned int flags = 0;
@@ -264,8 +277,10 @@ private:
       void setImagRenderRational(bool v) {
         flags = v ? (flags | fImagRenderRational) : (flags & ~fImagRenderRational);
       }
+#if SMARTMATH_FACTORINT
       bool hasRenderIntPower() const { return (flags & fRenderIntPower) != 0; }
       void setRenderIntPower(bool v) { flags = v ? (flags | fRenderIntPower) : (flags & ~fRenderIntPower); }
+#endif
     };
 
     enum : unsigned int {
@@ -874,7 +889,9 @@ private:
   bool tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::ScalarValue& sv, EvalValue& outV) const;
   static std::string formatRationalParts(long long num, std::uint64_t den);
   static bool tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
+#if SMARTMATH_FACTORINT
   static bool tryFormatIntPowerScalar(const EvalValue::ScalarValue& sv, std::string& outText);
+#endif
 #if SMARTMATH_COMPLEX_NUMBERS
   static bool tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
 #endif
@@ -895,6 +912,7 @@ private:
       EvalContext& ctx,
       const std::string& fnName,
       const std::vector<EvalValue>& args) const;
+#if SMARTMATH_FACTORINT
   EvalValue builtinFactorint(
       EvalContext& ctx,
       const std::string& fnName,
@@ -918,6 +936,7 @@ private:
       std::uint64_t valueU,
       bool hasUIntValue);
   EvalValue buildFactorintFromAbsU(bool isNegative, std::uint64_t absU) const;
+#endif
   EvalValue builtinDegRad(
       EvalContext& ctx,
       const std::string& fnName,

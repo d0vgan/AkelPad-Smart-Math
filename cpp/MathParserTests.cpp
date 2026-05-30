@@ -2858,6 +2858,7 @@ std::vector<TestCase> buildRegressionCases() {
                   return false;
                 return expectEvalErrorContains(p, "ncr((5,6),(2,7))", "numeric error in ncr()", why);
               }});
+#if SMARTMATH_FACTORINT
   t.push_back({"regression/factorint prime decomposition", [](std::string& why) {
                 MathParser p;
                 if (!expectEval(p, "factorint(13)", "(13)", why)) return false;
@@ -2883,6 +2884,7 @@ std::vector<TestCase> buildRegressionCases() {
                   return false;
                 return true;
               }});
+#endif
   t.push_back({"regression/binary builtin array length mismatch", [](std::string& why) {
                 MathParser p;
                 const char* exprs[] = {
@@ -3515,6 +3517,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "fact(2.5)", "fact() expects integer values"} ,
     {ParityBasicCase::Kind::Expected, "factorial(21)", "5.109094217170944e+019"} ,
     {ParityBasicCase::Kind::Expected, "fact(171)", "inf"} ,
+#if SMARTMATH_FACTORINT
     {ParityBasicCase::Kind::Expected, "factorint(33)", "(3, 11)"} ,
     {ParityBasicCase::Kind::Expected, "factorint(12)", "(2**2, 3)"} ,
     {ParityBasicCase::Kind::Expected, "factorint(-33)", "(-3, 11)"} ,
@@ -3528,6 +3531,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "prod(factorint(12))", "12"} ,
     {ParityBasicCase::Kind::ErrorContains, "factorint((33,12))", "expects scalar values"} ,
     {ParityBasicCase::Kind::ErrorContains, "factorint(2**64)", "expects integer values"} ,
+#endif
     {ParityBasicCase::Kind::ErrorContains, "rand", "function: rand()"} ,
     {ParityBasicCase::Kind::ErrorContains, "random", "function: random(min, max)"} ,
     {ParityBasicCase::Kind::ErrorContains, "median", "function: median(...)"} ,
