@@ -2248,7 +2248,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1233) as SmokeCase
+  dim tests(1 to 1234) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3536,6 +3536,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1231).expr = "factorint(90071992)": tests(1231).expected = "(2**3, 11258999)" ' [factorint]
   tests(1232).expr = "factorint(9007199254)": tests(1232).expected = "(2, 89, 50602243)" ' [factorint]
   tests(1233).expr = "factorint(900719925474)": tests(1233).expected = "(2, 3, 12907, 11630897)" ' [factorint]
+  tests(1234).expr = "factorint(76568758722)": tests(1234).expected = "(2, 3**2, 47, 101, 896107)" ' [factorint]
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

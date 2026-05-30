@@ -1923,17 +1923,20 @@ private sub ScalarRepairExactMetadata(byref sv as ScalarValue)
       ScalarSetExactUInt64Valid(sv, FALSE)
     end if
   end select
-  if ScalarImagExactInt64Valid(sv) = FALSE andalso sv.imagExactInt64 <> 0 then
-    ScalarSetImagExactInt64Valid(sv, TRUE)
-    if sv.imagExactInt64 >= 0 then
-      ScalarSetImagExactUInt64Valid(sv, TRUE)
-      sv.imagExactUInt64 = CULngInt(sv.imagExactInt64)
-    end if
-  elseif ScalarImagExactUInt64Valid(sv) = FALSE andalso sv.imagExactUInt64 <> 0 then
-    ScalarSetImagExactUInt64Valid(sv, TRUE)
-    if sv.imagExactUInt64 <= FB_I64_MAX_U then
+  '' INT_POWER stores base in imagExactInt64 and exponent in imagExactUInt64; do not remap imag fields.
+  if (sv.flags and SVF_RENDER_INT_POWER) = 0 then
+    if ScalarImagExactInt64Valid(sv) = FALSE andalso sv.imagExactInt64 <> 0 then
       ScalarSetImagExactInt64Valid(sv, TRUE)
-      sv.imagExactInt64 = CLngInt(sv.imagExactUInt64)
+      if sv.imagExactInt64 >= 0 then
+        ScalarSetImagExactUInt64Valid(sv, TRUE)
+        sv.imagExactUInt64 = CULngInt(sv.imagExactInt64)
+      end if
+    elseif ScalarImagExactUInt64Valid(sv) = FALSE andalso sv.imagExactUInt64 <> 0 then
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+      if sv.imagExactUInt64 <= FB_I64_MAX_U then
+        ScalarSetImagExactInt64Valid(sv, TRUE)
+        sv.imagExactInt64 = CLngInt(sv.imagExactUInt64)
+      end if
     end if
   end if
 end sub
@@ -4751,18 +4754,8 @@ private function GcdInt64(byval a as LongInt, byval b as LongInt) as LongInt
 end function
 
 private function MulModU64(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
-  dim res as ULongInt = 0
-  a = a mod modN
-  while b > 0ull
-    if (b and 1ull) <> 0ull then
-      if res >= modN - a then res -= modN
-      res = (res + a) mod modN
-    end if
-    if a >= modN - a then a -= modN
-    a = (a + a) mod modN
-    b = b shr 1
-  wend
-  return res
+  dim prod as UInteger = Cast(UInteger, a) * Cast(UInteger, b)
+  return Cast(ULongInt, prod mod Cast(UInteger, modN))
 end function
 
 private function PowModU64(byval baseV as ULongInt, byval expV as ULongInt, byval modN as ULongInt) as ULongInt
@@ -4778,28 +4771,51 @@ private function PowModU64(byval baseV as ULongInt, byval expV as ULongInt, byva
 end function
 
 private const FACTORINT_ENTRIES_INIT_CAP as Integer = 8
-private const FACTORINT_POLLARD_MAX_OUTER as Integer = 32
-private const FACTORINT_POLLARD_MAX_INNER as ULongInt = 500000ull
+private const FACTORINT_POLLARD_MAX_OUTER as Integer = 48
+private const FACTORINT_RHO_MAX_ITERS as Integer = 400000
+private const FACTORINT_RHO_MAX_ITERS_SMALL as Integer = 80000
+private const FACTORINT_FERMAT_MAX_STEPS as Integer = 4096
+private const FACTORINT_FERMAT_MAX_N as ULongInt = 100000000ull
+private const FACTORINT_ODD_TRIAL_MAX_PRIME as ULongInt = 10000000ull
+private const FACTORINT_PROVEN_PRIME_SQRT_CAP as ULongInt = 10000000ull
 
 type FactorintPrimeEntry
   baseU as ULongInt
   expV as UInteger
 end type
 
+private function IsqrtU64(byval n as ULongInt) as ULongInt
+  if n = 0ull then return 0ull
+  dim x as ULongInt = n
+  dim y as ULongInt = (x + 1ull) \ 2ull
+  while y < x
+    x = y
+    y = (x + n \ x) \ 2ull
+  wend
+  return x
+end function
+
 private function IsPrimeU64(byval n as ULongInt) as Boolean
   if n < 2ull then return FALSE
   if n = 2ull orelse n = 3ull then return TRUE
-  if (n and 1ull) = 0ull orelse (n mod 3ull) = 0ull then return FALSE
+  if (n and 1ull) = 0ull then return FALSE
+  static tinyPrimes(0 to 10) as ULongInt = {3ull, 5ull, 7ull, 11ull, 13ull, 17ull, 19ull, 23ull, 29ull, 31ull, 37ull}
+  static mrBases(0 to 6) as ULongInt = {2ull, 32544231ull, 2567547226ull, 4118087717ull, 6700417ull, 12917328ull, 1297059741ull}
+  dim ti as Integer
+  for ti = 0 to 10
+    dim p as ULongInt = tinyPrimes(ti)
+    if n = p then return TRUE
+    if (n mod p) = 0ull then return FALSE
+  next ti
   dim d as ULongInt = n - 1ull
   dim s as Integer = 0
   while (d and 1ull) = 0ull
     d = d shr 1
     s += 1
   wend
-  static bases(0 to 11) as ULongInt = {2ull, 3ull, 5ull, 7ull, 11ull, 13ull, 17ull, 19ull, 23ull, 29ull, 31ull, 37ull}
   dim i as Integer
-  for i = 0 to 11
-    dim a as ULongInt = bases(i)
+  for i = 0 to 6
+    dim a as ULongInt = mrBases(i)
     if n <= a then exit for
     dim x as ULongInt = PowModU64(a, d, n)
     if x = 1ull orelse x = n - 1ull then continue for
@@ -4817,59 +4833,76 @@ private function IsPrimeU64(byval n as ULongInt) as Boolean
   return TRUE
 end function
 
-private function PollardBrentU64(byval n as ULongInt) as ULongInt
+private function FermatFactorU64(byval n as ULongInt) as ULongInt
+  if (n and 1ull) = 0ull then return 2ull
+  dim a as ULongInt = IsqrtU64(n)
+  if a * a < n then a += 1ull
+  dim b2 as ULongInt = a * a - n
+  dim fermatIter as Integer
+  for fermatIter = 0 to FACTORINT_FERMAT_MAX_STEPS - 1
+    dim b as ULongInt = IsqrtU64(b2)
+    if b * b = b2 then
+      dim p as ULongInt = a - b
+      dim q as ULongInt = a + b
+      if p > 1ull andalso p < n then return p
+      if q > 1ull andalso q < n then return q
+    end if
+    a += 1ull
+    b2 = a * a - n
+  next fermatIter
+  return n
+end function
+
+private function PollardRhoMaxIters(byval n as ULongInt) as Integer
+  if n < 4294967296ull then return FACTORINT_RHO_MAX_ITERS_SMALL
+  return FACTORINT_RHO_MAX_ITERS
+end function
+
+private function PollardRhoU64(byval n as ULongInt) as ULongInt
   if (n and 1ull) = 0ull then return 2ull
   if (n mod 3ull) = 0ull then return 3ull
-  dim seed as ULongInt = n
-  dim c as ULongInt = 1ull
+  dim maxIter as Integer = PollardRhoMaxIters(n)
   dim attempt as Integer
   for attempt = 0 to FACTORINT_POLLARD_MAX_OUTER - 1
-    dim y as ULongInt = 2ull + (seed mod (n - 2ull))
-    dim r as ULongInt = 1ull
-    dim m as ULongInt = 128ull
-    dim g as ULongInt = 1ull
-    dim iterGuard as ULongInt = 0ull
-    while g = 1ull
-      iterGuard += 1ull
-      if iterGuard > FACTORINT_POLLARD_MAX_INNER then exit while
-      dim x as ULongInt = y
-      dim i as ULongInt
-      for i = 1ull to r
-        y = (MulModU64(y, y, n) + c) mod n
-      next
-      dim k as ULongInt = 0ull
-      while k < r andalso g = 1ull
-        dim q as ULongInt = 1ull
-        dim lim as ULongInt = m
-        if r - k < lim then lim = r - k
-        dim j as ULongInt
-        for j = 1ull to lim
-          y = (MulModU64(y, y, n) + c) mod n
-          dim diff as ULongInt
-          if x >= y then diff = x - y else diff = y - x
-          q = MulModU64(q, diff, n)
-        next j
-        g = GcdULong(q, n)
-        k += lim
-      wend
-      r = r shl 1
-      if g = n then
-        g = 1ull
-        dim recoverGuard as ULongInt = 0ull
-        while g = 1ull
-          recoverGuard += 1ull
-          if recoverGuard > FACTORINT_POLLARD_MAX_INNER then exit while
-          y = (MulModU64(y, y, n) + c) mod n
-          dim diff2 as ULongInt
-          if x >= y then diff2 = x - y else diff2 = y - x
-          g = GcdULong(diff2, n)
-        wend
+    dim c as ULongInt = 1ull + CULngInt(attempt)
+    dim y0 as ULongInt = 2ull + ((n mod 1000003ull) + CULngInt(attempt)) mod (n - 2ull)
+    dim x as ULongInt = y0
+    dim y as ULongInt = y0
+    dim d as ULongInt = 1ull
+    dim iter as Integer
+    for iter = 1 to maxIter
+      if d <> 1ull then exit for
+      x = (MulModU64(x, x, n) + c) mod n
+      y = (MulModU64(y, y, n) + c) mod n
+      y = (MulModU64(y, y, n) + c) mod n
+      dim diff as ULongInt
+      if x >= y then diff = x - y else diff = y - x
+      if diff = 0ull then continue for
+      d = GcdULong(diff, n)
+      if d = n then
+        y = x
+        d = 1ull
       end if
-      if g > 1ull andalso g < n then return g
-    wend
-    c += 1ull
-    seed = seed * 6364136223846793005ull + 1ull
+    next iter
+    if d > 1ull andalso d < n then return d
   next attempt
+  return n
+end function
+
+private function FactorintFullyTrialedToSqrt(byval n as ULongInt) as Boolean
+  dim sqrtN as ULongInt = IsqrtU64(n)
+  return sqrtN <= FACTORINT_PROVEN_PRIME_SQRT_CAP
+end function
+
+private function FactorintFindSplitFactor(byval n as ULongInt) as ULongInt
+  if FactorintFullyTrialedToSqrt(n) then return n
+  if IsPrimeU64(n) then return n
+  if n <= FACTORINT_FERMAT_MAX_N then
+    dim factor as ULongInt = FermatFactorU64(n)
+    if factor > 1ull andalso factor < n then return factor
+  end if
+  dim rhoFactor as ULongInt = PollardRhoU64(n)
+  if rhoFactor > 1ull andalso rhoFactor < n then return rhoFactor
   return n
 end function
 
@@ -4883,6 +4916,10 @@ private sub FactorintEntriesEnsure(entries() as FactorintPrimeEntry, byref cap a
 end sub
 
 private sub FactorintEntriesAdd(entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer, byval baseU as ULongInt, byval expV as UInteger)
+  if cnt > 0 andalso entries(cnt - 1).baseU = baseU then
+    entries(cnt - 1).expV += expV
+    exit sub
+  end if
   FactorintEntriesEnsure(entries(), cap, cnt + 1)
   entries(cnt).baseU = baseU
   entries(cnt).expV = expV
@@ -4890,13 +4927,27 @@ private sub FactorintEntriesAdd(entries() as FactorintPrimeEntry, byref cnt as I
 end sub
 
 private sub FactorintTrialDividePrime(byval p as ULongInt, byref n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
+  if n < p then exit sub
   if (n mod p) <> 0ull then exit sub
   dim e as UInteger = 0
-  while (n mod p) = 0ull
-    e += 1
+  do
     n = n \ p
-  wend
+    e += 1
+  loop while (n mod p) = 0ull
   FactorintEntriesAdd(entries(), cnt, cap, p, e)
+end sub
+
+private sub FactorintTrialDivideOdd(byref n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
+  dim d as ULongInt = FACTORINT_SMALL_MAX_PRIME + 2ull
+  if (d and 1ull) = 0ull then d += 1ull
+  dim sqrtN as ULongInt = IsqrtU64(n)
+  dim limit as ULongInt = sqrtN
+  if limit > FACTORINT_ODD_TRIAL_MAX_PRIME then limit = FACTORINT_ODD_TRIAL_MAX_PRIME
+  while d <= limit andalso d * d <= n
+    FactorintTrialDividePrime(d, n, entries(), cnt, cap)
+    if n <= 1ull then exit sub
+    d += 2ull
+  wend
 end sub
 
 private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
@@ -4908,29 +4959,32 @@ private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintP
   wend
   if twoExp > 0 then FactorintEntriesAdd(entries(), cnt, cap, 2ull, twoExp)
   if n <= 1ull then exit sub
-  dim si as Integer
-  dim trialStoppedEarly as Boolean = FALSE
-  for si = 0 to FACTORINT_SMALL_PRIME_COUNT - 1
-    dim p as ULongInt = factorintSmallPrimes(si)
-    if p > n \ p then
-      trialStoppedEarly = TRUE
-      exit for
+  dim lo as Integer = 0
+  dim hi as Integer = FACTORINT_SMALL_PRIME_COUNT
+  while lo < hi
+    dim trialMid as Integer = lo + (hi - lo) \ 2
+    dim pMid as ULongInt = factorintSmallPrimes(trialMid)
+    if pMid <= n \ pMid then
+      lo = trialMid + 1
+    else
+      hi = trialMid
     end if
-    FactorintTrialDividePrime(p, n, entries(), cnt, cap)
+  wend
+  dim trialLimit as Integer = lo
+  dim si as Integer
+  for si = 0 to trialLimit - 1
+    FactorintTrialDividePrime(factorintSmallPrimes(si), n, entries(), cnt, cap)
     if n <= 1ull then exit sub
   next si
   if n <= 1ull then exit sub
-  '' No prime <= sqrt(n) was found: cofactor is prime (early stop or n <= maxSmall^2).
-  if trialStoppedEarly orelse n <= FACTORINT_SMALL_MAX_PRIME * FACTORINT_SMALL_MAX_PRIME then
+  FactorintTrialDivideOdd(n, entries(), cnt, cap)
+  if n <= 1ull then exit sub
+  if FactorintFullyTrialedToSqrt(n) orelse IsPrimeU64(n) then
     FactorintEntriesAdd(entries(), cnt, cap, n, 1)
     exit sub
   end if
-  if IsPrimeU64(n) then
-    FactorintEntriesAdd(entries(), cnt, cap, n, 1)
-    exit sub
-  end if
-  dim factor as ULongInt = PollardBrentU64(n)
-  if factor <= 1ull orelse factor >= n orelse (n mod factor) <> 0ull then
+  dim factor as ULongInt = FactorintFindSplitFactor(n)
+  if factor <= 1ull orelse factor >= n then
     FactorintEntriesAdd(entries(), cnt, cap, n, 1)
     exit sub
   end if
@@ -4938,7 +4992,7 @@ private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintP
   FactorizeU64IntoEntries(n \ factor, entries(), cnt, cap)
 end sub
 
-private sub SortFactorintEntries(entries() as FactorintPrimeEntry, byval cnt as Integer)
+private sub SortFactorintEntries(entries() as FactorintPrimeEntry, byref cnt as Integer)
   if cnt <= 1 then exit sub
   dim i as Integer
   dim j as Integer
@@ -4951,6 +5005,18 @@ private sub SortFactorintEntries(entries() as FactorintPrimeEntry, byval cnt as 
       end if
     next j
   next i
+  i = 1
+  while i < cnt
+    if entries(i).baseU = entries(i - 1).baseU then
+      entries(i - 1).expV += entries(i).expV
+      for j = i to cnt - 2
+        entries(j) = entries(j + 1)
+      next j
+      cnt -= 1
+    else
+      i += 1
+    end if
+  wend
 end sub
 
 private function TryGetFactorintInput(byref v as EvalValue, byref isNegative as Boolean, byref absU as ULongInt) as Boolean

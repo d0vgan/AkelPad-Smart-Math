@@ -14,7 +14,7 @@ if exist "%FB_HOME%\bin\win64" (
 )
 
 set "TIMEOUT_SEC=20"
-set "CASE_COUNT=19"
+set "CASE_COUNT=26"
 set "EXE=SmokeTest_Factorint.exe"
 
 echo ==========================================

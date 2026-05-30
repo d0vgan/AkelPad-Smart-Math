@@ -112,8 +112,17 @@ struct FactorintPrimeEntry {
 namespace {
 #include "FactorintSmallPrimes.inc"
 
-constexpr int kFactorintPollardMaxOuter = 32;
-constexpr std::uint64_t kFactorintPollardMaxInner = 500000u;
+constexpr int kFactorintPollardMaxOuter = 48;
+constexpr int kFactorintRhoMaxIters = 400000;
+constexpr int kFactorintRhoMaxItersSmall = 80000;
+constexpr int kFactorintFermatMaxSteps = 4096;
+constexpr std::uint64_t kFactorintFermatMaxN = 100000000u;
+constexpr std::uint64_t kFactorintOddTrialMaxPrime = 10000000u;
+constexpr std::uint64_t kFactorintProvenPrimeSqrtCap = 10000000u;
+constexpr std::uint64_t kFactorintMrBases[] = {
+    2u, 32544231u, 2567547226u, 4118087717u, 6700417u, 12917328u, 1297059741u};
+constexpr std::size_t kFactorintMrBaseCount =
+    sizeof(kFactorintMrBases) / sizeof(kFactorintMrBases[0]);
 
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
@@ -1199,6 +1208,22 @@ long long gcdInt64(long long a, long long b) {
       static_cast<std::uint64_t>(std::llabs(a)), static_cast<std::uint64_t>(std::llabs(b))));
 }
 
+#if defined(__SIZEOF_INT128__)
+using FactorintU128 = unsigned __int128;
+inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  return static_cast<std::uint64_t>(static_cast<FactorintU128>(a) * static_cast<FactorintU128>(b) %
+                                    static_cast<FactorintU128>(modN));
+}
+#elif defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  unsigned __int64 hi = 0;
+  const unsigned __int64 lo = _umul128(a, b, &hi);
+  unsigned __int64 rem = 0;
+  _udiv128(hi, lo, modN, &rem);
+  return rem;
+}
+#else
 std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
   std::uint64_t res = 0;
   a %= modN;
@@ -1217,6 +1242,7 @@ std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
   }
   return res;
 }
+#endif
 
 std::uint64_t powModU64(std::uint64_t base, std::uint64_t exp, std::uint64_t modN) {
   std::uint64_t res = 1;
@@ -1232,6 +1258,19 @@ std::uint64_t powModU64(std::uint64_t base, std::uint64_t exp, std::uint64_t mod
   return res;
 }
 
+std::uint64_t isqrtU64(std::uint64_t n) {
+  if (n == 0u) {
+    return 0u;
+  }
+  std::uint64_t x = n;
+  std::uint64_t y = (x + 1u) / 2u;
+  while (y < x) {
+    x = y;
+    y = (x + n / x) / 2u;
+  }
+  return x;
+}
+
 bool isPrimeU64(std::uint64_t n) {
   if (n < 2u) {
     return false;
@@ -1239,8 +1278,17 @@ bool isPrimeU64(std::uint64_t n) {
   if (n == 2u || n == 3u) {
     return true;
   }
-  if ((n & 1u) == 0u || (n % 3u) == 0u) {
+  if ((n & 1u) == 0u) {
     return false;
+  }
+  static const std::uint64_t kTinyPrimes[] = {3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37};
+  for (const std::uint64_t p : kTinyPrimes) {
+    if (n == p) {
+      return true;
+    }
+    if ((n % p) == 0u) {
+      return false;
+    }
   }
   std::uint64_t d = n - 1u;
   int s = 0;
@@ -1248,8 +1296,8 @@ bool isPrimeU64(std::uint64_t n) {
     d >>= 1;
     ++s;
   }
-  static const std::uint64_t kBases[] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37};
-  for (const std::uint64_t a : kBases) {
+  for (std::size_t bi = 0; bi < kFactorintMrBaseCount; ++bi) {
+    const std::uint64_t a = kFactorintMrBases[bi];
     if (n <= a) {
       break;
     }
@@ -1272,80 +1320,142 @@ bool isPrimeU64(std::uint64_t n) {
   return true;
 }
 
-std::uint64_t pollardBrentU64(std::uint64_t n) {
+std::uint64_t fermatFactorU64(std::uint64_t n) {
+  if ((n & 1u) == 0u) {
+    return 2u;
+  }
+  std::uint64_t a = isqrtU64(n);
+  if (a * a < n) {
+    ++a;
+  }
+  std::uint64_t b2 = a * a - n;
+  for (int step = 0; step < kFactorintFermatMaxSteps; ++step) {
+    const std::uint64_t b = isqrtU64(b2);
+    if (b * b == b2) {
+      const std::uint64_t p = a - b;
+      const std::uint64_t q = a + b;
+      if (p > 1u && p < n) {
+        return p;
+      }
+      if (q > 1u && q < n) {
+        return q;
+      }
+    }
+    ++a;
+    b2 = a * a - n;
+  }
+  return n;
+}
+
+int pollardRhoMaxIters(std::uint64_t n) {
+  if (n < 4294967296u) {
+    return kFactorintRhoMaxItersSmall;
+  }
+  return kFactorintRhoMaxIters;
+}
+
+std::uint64_t pollardRhoU64(std::uint64_t n) {
   if ((n & 1u) == 0u) {
     return 2u;
   }
   if ((n % 3u) == 0u) {
     return 3u;
   }
-  std::uint64_t seed = n;
-  std::uint64_t c = 1;
+  const int maxIter = pollardRhoMaxIters(n);
   for (int attempt = 0; attempt < kFactorintPollardMaxOuter; ++attempt) {
-    std::uint64_t y = 2u + (seed % (n - 2u));
-    std::uint64_t r = 1;
-    const std::uint64_t m = 128;
-    std::uint64_t g = 1;
-    std::uint64_t iterGuard = 0;
-    while (g == 1u) {
-      if (++iterGuard > kFactorintPollardMaxInner) {
-        break;
+    const std::uint64_t c = 1u + static_cast<std::uint64_t>(attempt);
+    const std::uint64_t y0 = 2u + ((n % 1000003u) + static_cast<std::uint64_t>(attempt)) % (n - 2u);
+    std::uint64_t x = y0;
+    std::uint64_t y = y0;
+    std::uint64_t d = 1;
+    for (int iter = 0; iter < maxIter && d == 1u; ++iter) {
+      x = (mulModU64(x, x, n) + c) % n;
+      y = (mulModU64(y, y, n) + c) % n;
+      y = (mulModU64(y, y, n) + c) % n;
+      const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
+      if (diff == 0u) {
+        continue;
       }
-      const std::uint64_t x = y;
-      for (std::uint64_t i = 0; i < r; ++i) {
-        y = (mulModU64(y, y, n) + c) % n;
-      }
-      std::uint64_t k = 0;
-      while (k < r && g == 1u) {
-        std::uint64_t q = 1;
-        std::uint64_t lim = m;
-        if (r - k < lim) {
-          lim = r - k;
-        }
-        for (std::uint64_t i = 0; i < lim; ++i) {
-          y = (mulModU64(y, y, n) + c) % n;
-          const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
-          q = mulModU64(q, diff, n);
-        }
-        g = gcdUInt64(q, n);
-        k += lim;
-      }
-      r <<= 1;
-      if (g == n) {
-        g = 1;
-        std::uint64_t recoverGuard = 0;
-        while (g == 1u) {
-          if (++recoverGuard > kFactorintPollardMaxInner) {
-            break;
-          }
-          y = (mulModU64(y, y, n) + c) % n;
-          const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
-          g = gcdUInt64(diff, n);
-        }
-      }
-      if (g > 1u && g < n) {
-        return g;
+      d = gcdUInt64(diff, n);
+      if (d == n) {
+        y = x;
+        d = 1;
       }
     }
-    ++c;
-    seed = seed * 6364136223846793005ull + 1ull;
+    if (d > 1u && d < n) {
+      return d;
+    }
   }
   return n;
+}
+
+void factorintEntriesPushMerged(
+    std::vector<FactorintPrimeEntry>& out,
+    std::uint64_t baseU,
+    unsigned int expV) {
+  if (!out.empty() && out.back().baseU == baseU) {
+    out.back().expV += expV;
+    return;
+  }
+  out.push_back({baseU, expV});
 }
 
 void factorintTrialDividePrime(
     std::uint64_t p,
     std::uint64_t& n,
     std::vector<FactorintPrimeEntry>& out) {
+  if (n < p) {
+    return;
+  }
   if ((n % p) != 0u) {
     return;
   }
   unsigned int e = 0;
-  while ((n % p) == 0u) {
-    ++e;
+  do {
     n /= p;
+    ++e;
+  } while ((n % p) == 0u);
+  factorintEntriesPushMerged(out, p, e);
+}
+
+void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>& out) {
+  std::uint64_t d = kFactorintSmallMaxPrime + 2u;
+  if ((d & 1u) == 0u) {
+    ++d;
   }
-  out.push_back({p, e});
+  const std::uint64_t sqrtN = isqrtU64(n);
+  const std::uint64_t limit = (sqrtN < kFactorintOddTrialMaxPrime) ? sqrtN : kFactorintOddTrialMaxPrime;
+  while (d <= limit && d * d <= n) {
+    factorintTrialDividePrime(d, n, out);
+    if (n <= 1u) {
+      return;
+    }
+    d += 2u;
+  }
+}
+
+bool factorintFullyTrialedToSqrt(std::uint64_t n) {
+  return isqrtU64(n) <= kFactorintProvenPrimeSqrtCap;
+}
+
+std::uint64_t factorintFindSplitFactor(std::uint64_t n) {
+  if (factorintFullyTrialedToSqrt(n)) {
+    return n;
+  }
+  if (isPrimeU64(n)) {
+    return n;
+  }
+  if (n <= kFactorintFermatMaxN) {
+    std::uint64_t factor = fermatFactorU64(n);
+    if (factor > 1u && factor < n) {
+      return factor;
+    }
+  }
+  const std::uint64_t factor = pollardRhoU64(n);
+  if (factor > 1u && factor < n) {
+    return factor;
+  }
+  return n;
 }
 
 void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& out) {
@@ -1358,19 +1468,26 @@ void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& 
     n >>= 1;
   }
   if (twoExp > 0u) {
-    out.push_back({2u, twoExp});
+    factorintEntriesPushMerged(out, 2u, twoExp);
   }
   if (n <= 1u) {
     return;
   }
-  bool trialStoppedEarly = false;
-  for (std::size_t si = 0; si < kFactorintSmallPrimeCount; ++si) {
-    const std::uint64_t p = kFactorintSmallPrimes[si];
-    if (p > n / p) {
-      trialStoppedEarly = true;
-      break;
+  std::size_t trialLimit = kFactorintSmallPrimeCount;
+  std::size_t lo = 0;
+  std::size_t hi = kFactorintSmallPrimeCount;
+  while (lo < hi) {
+    const std::size_t mid = lo + (hi - lo) / 2;
+    const std::uint64_t p = kFactorintSmallPrimes[mid];
+    if (p <= n / p) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
     }
-    factorintTrialDividePrime(p, n, out);
+  }
+  trialLimit = lo;
+  for (std::size_t si = 0; si < trialLimit; ++si) {
+    factorintTrialDividePrime(kFactorintSmallPrimes[si], n, out);
     if (n <= 1u) {
       return;
     }
@@ -1378,18 +1495,17 @@ void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& 
   if (n <= 1u) {
     return;
   }
-  const std::uint64_t maxSmallSq = kFactorintSmallMaxPrime * kFactorintSmallMaxPrime;
-  if (trialStoppedEarly || n <= maxSmallSq) {
-    out.push_back({n, 1u});
+  factorintTrialDivideOdd(n, out);
+  if (n <= 1u) {
     return;
   }
-  if (isPrimeU64(n)) {
-    out.push_back({n, 1u});
+  if (factorintFullyTrialedToSqrt(n) || isPrimeU64(n)) {
+    factorintEntriesPushMerged(out, n, 1u);
     return;
   }
-  const std::uint64_t factor = pollardBrentU64(n);
-  if (factor <= 1u || factor >= n || (n % factor) != 0u) {
-    out.push_back({n, 1u});
+  const std::uint64_t factor = factorintFindSplitFactor(n);
+  if (factor <= 1u || factor >= n) {
+    factorintEntriesPushMerged(out, n, 1u);
     return;
   }
   factorizeU64IntoEntries(factor, out);
@@ -1400,6 +1516,18 @@ void sortFactorintEntries(std::vector<FactorintPrimeEntry>& entries) {
   std::sort(entries.begin(), entries.end(), [](const FactorintPrimeEntry& a, const FactorintPrimeEntry& b) {
     return a.baseU < b.baseU;
   });
+  if (entries.size() < 2u) {
+    return;
+  }
+  std::size_t w = 1;
+  for (std::size_t i = 1; i < entries.size(); ++i) {
+    if (entries[i].baseU == entries[w - 1].baseU) {
+      entries[w - 1].expV += entries[i].expV;
+    } else {
+      entries[w++] = entries[i];
+    }
+  }
+  entries.resize(w);
 }
 
 bool tryLcmUInt64(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
@@ -3839,17 +3967,19 @@ void MathParser::scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
       }
       break;
   }
-  if (!sv.hasImagExactInt64() && sv.imagExactInt64 != 0) {
-    sv.setImagExactInt64Valid(true);
-    if (sv.imagExactInt64 >= 0) {
-      sv.setImagExactUInt64Valid(true);
-      sv.imagExactUInt64 = static_cast<std::uint64_t>(sv.imagExactInt64);
-    }
-  } else if (!sv.hasImagExactUInt64() && sv.imagExactUInt64 != 0u) {
-    sv.setImagExactUInt64Valid(true);
-    if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+  if (!sv.hasRenderIntPower()) {
+    if (!sv.hasImagExactInt64() && sv.imagExactInt64 != 0) {
       sv.setImagExactInt64Valid(true);
-      sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
+      if (sv.imagExactInt64 >= 0) {
+        sv.setImagExactUInt64Valid(true);
+        sv.imagExactUInt64 = static_cast<std::uint64_t>(sv.imagExactInt64);
+      }
+    } else if (!sv.hasImagExactUInt64() && sv.imagExactUInt64 != 0u) {
+      sv.setImagExactUInt64Valid(true);
+      if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+        sv.setImagExactInt64Valid(true);
+        sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
+      }
     }
   }
 }

@@ -454,6 +454,136 @@ private sub AssertRawScalarInt64(byref caseName as String, byref raw as RawResul
   end if
 end sub
 
+private sub AssertRawFactorintIntPowerTerm( _
+  byref caseName as String, _
+  byref raw as RawResult, _
+  byval termIdx as Integer, _
+  byval baseV as LongInt, _
+  byval expV as ULongInt, _
+  byref failCount as Integer _
+)
+  if raw.kind <> RRK_ARRAY then
+    print !"[FAIL] "; caseName; !"/raw — expected RRK_ARRAY, kind="; raw.kind
+    failCount += 1
+    exit sub
+  end if
+  if termIdx < lbound(raw.arr) orelse termIdx > ubound(raw.arr) then
+    print !"[FAIL] "; caseName; !"/raw — term index out of range"
+    failCount += 1
+    exit sub
+  end if
+  if raw.arr(termIdx).real.kind <> RSK_INT_POWER orelse raw.arr(termIdx).real.ratNum <> baseV orelse raw.arr(termIdx).real.ratDen <> expV then
+    print !"[FAIL] "; caseName; !"/raw — expected INT_POWER "; baseV; !"**"; expV; !", got kind="; raw.arr(termIdx).real.kind; !" num="; raw.arr(termIdx).real.ratNum; !" den="; raw.arr(termIdx).real.ratDen
+    failCount += 1
+  else
+    print !"[PASS] "; caseName; !"/raw int-power term"
+  end if
+end sub
+
+private sub RunFactorintFormatterTests(byref failCount as Integer)
+  '' Mirror SmokeTest_MathParser.bas factorint cases (tests 1209..1234).
+  print !""
+  print !"-- Parser + formatter integration (factorint, decimals=-1)"
+
+  Parser_ClearVariables()
+  Parser_SetSupportComplexNumbers(FALSE)
+  FormatterTestSetup()
+  g_nDecimals = -1
+  g_bUseThousandsSeparator = FALSE
+  ApplySeparatorDefaults()
+
+  const FACTORINT_FMT_CASE_COUNT as Integer = 26
+  dim expr(1 to FACTORINT_FMT_CASE_COUNT) as String
+  dim want(1 to FACTORINT_FMT_CASE_COUNT) as String
+  dim expectFail(1 to FACTORINT_FMT_CASE_COUNT) as Boolean
+  dim expectArray(1 to FACTORINT_FMT_CASE_COUNT) as Boolean
+
+  expr(1) = "factorint(33)": want(1) = "(3, 11)"
+  expr(2) = "factorint(12)": want(2) = "(2**2, 3)"
+  expr(3) = "factorint(13)": want(3) = "(13)"
+  expr(4) = "factorint(-33)": want(4) = "(-3, 11)"
+  expr(5) = "factorint(-13)": want(5) = "(-13)"
+  expr(6) = "factorint(-12)": want(6) = "(-2, 2, 3)"
+  expr(7) = "factorint(0)": want(7) = "(0)"
+  expr(8) = "factorint(1)": want(8) = "(1)"
+  expr(9) = "factorint(-1)": want(9) = "(-1)"
+  expr(10) = "factorint(2**52)": want(10) = "(2**52)"
+  expr(11) = "factorint(2**63-1)": want(11) = "(7**2, 73, 127, 337, 92737, 649657)"
+  expr(12) = "factorint((33,12))": expectFail(12) = TRUE
+  expr(13) = "factorint(2**64)": expectFail(13) = TRUE
+  expr(14) = "factorint(18446744073709551615)": want(14) = "(3, 5, 17, 257, 641, 65537, 6700417)"
+  expr(15) = "prod(factorint(12))": want(15) = "12": expectArray(15) = FALSE
+  expr(16) = "prod(factorint(-33))": want(16) = "-33": expectArray(16) = FALSE
+  expr(17) = "prod(factorint(2**52))": want(17) = "4503599627370496": expectArray(17) = FALSE
+  expr(18) = "factorint(33.0)": want(18) = "(3, 11)"
+  expr(19) = "factorint(33.5)": expectFail(19) = TRUE
+  expr(20) = "factorint(90)": want(20) = "(2, 3**2, 5)"
+  expr(21) = "factorint(9007)": want(21) = "(9007)"
+  expr(22) = "factorint(900719)": want(22) = "(900719)"
+  expr(23) = "factorint(90071992)": want(23) = "(2**3, 11258999)"
+  expr(24) = "factorint(9007199254)": want(24) = "(2, 89, 50602243)"
+  expr(25) = "factorint(900719925474)": want(25) = "(2, 3, 12907, 11630897)"
+  expr(26) = "factorint(76568758722)": want(26) = "(2, 3**2, 47, 101, 896107)"
+
+  dim ci as Integer
+  for ci = 1 to FACTORINT_FMT_CASE_COUNT
+    if ci <> 12 andalso ci <> 13 andalso ci <> 15 andalso ci <> 16 andalso ci <> 17 andalso ci <> 19 then
+      expectArray(ci) = TRUE
+    end if
+  next ci
+
+  dim raw as RawResult
+  dim fmt as String
+  for ci = 1 to FACTORINT_FMT_CASE_COUNT
+    dim tag as String = "parser-fmt/factorint/" & expr(ci)
+    dim okEval as Boolean = FormatterTryEvaluateAndFormat(expr(ci), fmt, raw)
+    if expectFail(ci) then
+      if okEval then
+        print !"[FAIL] "; tag; !" — expected evaluation error"
+        failCount += 1
+      else
+        print !"[PASS] "; tag; !" (expected error)"
+      end if
+      continue for
+    end if
+    if okEval = FALSE then
+      print !"[FAIL] "; tag; !" — evaluate failed"
+      failCount += 1
+      continue for
+    end if
+    AssertEq(tag, fmt, SMARTMATH_RESULT_PREFIX & want(ci), failCount)
+    if expectArray(ci) then
+      if raw.kind <> RRK_ARRAY then
+        print !"[FAIL] "; tag; !"/raw — expected RRK_ARRAY, kind="; raw.kind
+        failCount += 1
+      else
+        print !"[PASS] "; tag; !"/raw array"
+      end if
+    else
+      if raw.kind <> RRK_SCALAR then
+        print !"[FAIL] "; tag; !"/raw — expected RRK_SCALAR, kind="; raw.kind
+        failCount += 1
+      else
+        print !"[PASS] "; tag; !"/raw scalar"
+      end if
+    end if
+  next ci
+
+  '' Spot-check INT_POWER raw metadata on cases that use ** in formatted output.
+  if FormatterTryEvaluateAndFormat("factorint(12)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/12/raw", raw, 0, 2, 2, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(90)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/90/raw", raw, 1, 3, 2, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(76568758722)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/76568758722/raw", raw, 1, 3, 2, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(90071992)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/90071992/raw", raw, 0, 2, 3, failCount)
+  end if
+end sub
+
 private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
   print !""
   print !"-- Parser + formatter integration (ComplexNumbers ON, 2 decimal places)"
@@ -643,6 +773,8 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
       print !"[PASS] parser-fmt/sqrt(-2**70)/raw float imag"
     end if
   end if
+
+  RunFactorintFormatterTests(failCount)
 
   FormatterTestSetup()
 end sub

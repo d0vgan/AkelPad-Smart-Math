@@ -1,8 +1,8 @@
 #ifndef __FACTORINT_SMALL_PRIMES_BI__
 #define __FACTORINT_SMALL_PRIMES_BI__
 
-const FACTORINT_SMALL_PRIME_COUNT as Integer = 668
-const FACTORINT_SMALL_MAX_PRIME as ULongInt = 4999ull
+const FACTORINT_SMALL_PRIME_COUNT as Integer = 1229
+const FACTORINT_SMALL_MAX_PRIME as ULongInt = 10007ull
 static shared factorintSmallPrimes(0 to FACTORINT_SMALL_PRIME_COUNT - 1) as ULongInt = { _
   3ull, 5ull, 7ull, 11ull, 13ull, 17ull, 19ull, 23ull, 29ull, 31ull, 37ull, 41ull, _
   43ull, 47ull, 53ull, 59ull, 61ull, 67ull, 71ull, 73ull, 79ull, 83ull, 89ull, 97ull, _
@@ -59,7 +59,54 @@ static shared factorintSmallPrimes(0 to FACTORINT_SMALL_PRIME_COUNT - 1) as ULon
   4639ull, 4643ull, 4649ull, 4651ull, 4657ull, 4663ull, 4673ull, 4679ull, 4691ull, 4703ull, 4721ull, 4723ull, _
   4729ull, 4733ull, 4751ull, 4759ull, 4783ull, 4787ull, 4789ull, 4793ull, 4799ull, 4801ull, 4813ull, 4817ull, _
   4831ull, 4861ull, 4871ull, 4877ull, 4889ull, 4903ull, 4909ull, 4919ull, 4931ull, 4933ull, 4937ull, 4943ull, _
-  4951ull, 4957ull, 4967ull, 4969ull, 4973ull, 4987ull, 4993ull, 4999ull _
+  4951ull, 4957ull, 4967ull, 4969ull, 4973ull, 4987ull, 4993ull, 4999ull, 5003ull, 5009ull, 5011ull, 5021ull, _
+  5023ull, 5039ull, 5051ull, 5059ull, 5077ull, 5081ull, 5087ull, 5099ull, 5101ull, 5107ull, 5113ull, 5119ull, _
+  5147ull, 5153ull, 5167ull, 5171ull, 5179ull, 5189ull, 5197ull, 5209ull, 5227ull, 5231ull, 5233ull, 5237ull, _
+  5261ull, 5273ull, 5279ull, 5281ull, 5297ull, 5303ull, 5309ull, 5323ull, 5333ull, 5347ull, 5351ull, 5381ull, _
+  5387ull, 5393ull, 5399ull, 5407ull, 5413ull, 5417ull, 5419ull, 5431ull, 5437ull, 5441ull, 5443ull, 5449ull, _
+  5471ull, 5477ull, 5479ull, 5483ull, 5501ull, 5503ull, 5507ull, 5519ull, 5521ull, 5527ull, 5531ull, 5557ull, _
+  5563ull, 5569ull, 5573ull, 5581ull, 5591ull, 5623ull, 5639ull, 5641ull, 5647ull, 5651ull, 5653ull, 5657ull, _
+  5659ull, 5669ull, 5683ull, 5689ull, 5693ull, 5701ull, 5711ull, 5717ull, 5737ull, 5741ull, 5743ull, 5749ull, _
+  5779ull, 5783ull, 5791ull, 5801ull, 5807ull, 5813ull, 5821ull, 5827ull, 5839ull, 5843ull, 5849ull, 5851ull, _
+  5857ull, 5861ull, 5867ull, 5869ull, 5879ull, 5881ull, 5897ull, 5903ull, 5923ull, 5927ull, 5939ull, 5953ull, _
+  5981ull, 5987ull, 6007ull, 6011ull, 6029ull, 6037ull, 6043ull, 6047ull, 6053ull, 6067ull, 6073ull, 6079ull, _
+  6089ull, 6091ull, 6101ull, 6113ull, 6121ull, 6131ull, 6133ull, 6143ull, 6151ull, 6163ull, 6173ull, 6197ull, _
+  6199ull, 6203ull, 6211ull, 6217ull, 6221ull, 6229ull, 6247ull, 6257ull, 6263ull, 6269ull, 6271ull, 6277ull, _
+  6287ull, 6299ull, 6301ull, 6311ull, 6317ull, 6323ull, 6329ull, 6337ull, 6343ull, 6353ull, 6359ull, 6361ull, _
+  6367ull, 6373ull, 6379ull, 6389ull, 6397ull, 6421ull, 6427ull, 6449ull, 6451ull, 6469ull, 6473ull, 6481ull, _
+  6491ull, 6521ull, 6529ull, 6547ull, 6551ull, 6553ull, 6563ull, 6569ull, 6571ull, 6577ull, 6581ull, 6599ull, _
+  6607ull, 6619ull, 6637ull, 6653ull, 6659ull, 6661ull, 6673ull, 6679ull, 6689ull, 6691ull, 6701ull, 6703ull, _
+  6709ull, 6719ull, 6733ull, 6737ull, 6761ull, 6763ull, 6779ull, 6781ull, 6791ull, 6793ull, 6803ull, 6823ull, _
+  6827ull, 6829ull, 6833ull, 6841ull, 6857ull, 6863ull, 6869ull, 6871ull, 6883ull, 6899ull, 6907ull, 6911ull, _
+  6917ull, 6947ull, 6949ull, 6959ull, 6961ull, 6967ull, 6971ull, 6977ull, 6983ull, 6991ull, 6997ull, 7001ull, _
+  7013ull, 7019ull, 7027ull, 7039ull, 7043ull, 7057ull, 7069ull, 7079ull, 7103ull, 7109ull, 7121ull, 7127ull, _
+  7129ull, 7151ull, 7159ull, 7177ull, 7187ull, 7193ull, 7207ull, 7211ull, 7213ull, 7219ull, 7229ull, 7237ull, _
+  7243ull, 7247ull, 7253ull, 7283ull, 7297ull, 7307ull, 7309ull, 7321ull, 7331ull, 7333ull, 7349ull, 7351ull, _
+  7369ull, 7393ull, 7411ull, 7417ull, 7433ull, 7451ull, 7457ull, 7459ull, 7477ull, 7481ull, 7487ull, 7489ull, _
+  7499ull, 7507ull, 7517ull, 7523ull, 7529ull, 7537ull, 7541ull, 7547ull, 7549ull, 7559ull, 7561ull, 7573ull, _
+  7577ull, 7583ull, 7589ull, 7591ull, 7603ull, 7607ull, 7621ull, 7639ull, 7643ull, 7649ull, 7669ull, 7673ull, _
+  7681ull, 7687ull, 7691ull, 7699ull, 7703ull, 7717ull, 7723ull, 7727ull, 7741ull, 7753ull, 7757ull, 7759ull, _
+  7789ull, 7793ull, 7817ull, 7823ull, 7829ull, 7841ull, 7853ull, 7867ull, 7873ull, 7877ull, 7879ull, 7883ull, _
+  7901ull, 7907ull, 7919ull, 7927ull, 7933ull, 7937ull, 7949ull, 7951ull, 7963ull, 7993ull, 8009ull, 8011ull, _
+  8017ull, 8039ull, 8053ull, 8059ull, 8069ull, 8081ull, 8087ull, 8089ull, 8093ull, 8101ull, 8111ull, 8117ull, _
+  8123ull, 8147ull, 8161ull, 8167ull, 8171ull, 8179ull, 8191ull, 8209ull, 8219ull, 8221ull, 8231ull, 8233ull, _
+  8237ull, 8243ull, 8263ull, 8269ull, 8273ull, 8287ull, 8291ull, 8293ull, 8297ull, 8311ull, 8317ull, 8329ull, _
+  8353ull, 8363ull, 8369ull, 8377ull, 8387ull, 8389ull, 8419ull, 8423ull, 8429ull, 8431ull, 8443ull, 8447ull, _
+  8461ull, 8467ull, 8501ull, 8513ull, 8521ull, 8527ull, 8537ull, 8539ull, 8543ull, 8563ull, 8573ull, 8581ull, _
+  8597ull, 8599ull, 8609ull, 8623ull, 8627ull, 8629ull, 8641ull, 8647ull, 8663ull, 8669ull, 8677ull, 8681ull, _
+  8689ull, 8693ull, 8699ull, 8707ull, 8713ull, 8719ull, 8731ull, 8737ull, 8741ull, 8747ull, 8753ull, 8761ull, _
+  8779ull, 8783ull, 8803ull, 8807ull, 8819ull, 8821ull, 8831ull, 8837ull, 8839ull, 8849ull, 8861ull, 8863ull, _
+  8867ull, 8887ull, 8893ull, 8923ull, 8929ull, 8933ull, 8941ull, 8951ull, 8963ull, 8969ull, 8971ull, 8999ull, _
+  9001ull, 9007ull, 9011ull, 9013ull, 9029ull, 9041ull, 9043ull, 9049ull, 9059ull, 9067ull, 9091ull, 9103ull, _
+  9109ull, 9127ull, 9133ull, 9137ull, 9151ull, 9157ull, 9161ull, 9173ull, 9181ull, 9187ull, 9199ull, 9203ull, _
+  9209ull, 9221ull, 9227ull, 9239ull, 9241ull, 9257ull, 9277ull, 9281ull, 9283ull, 9293ull, 9311ull, 9319ull, _
+  9323ull, 9337ull, 9341ull, 9343ull, 9349ull, 9371ull, 9377ull, 9391ull, 9397ull, 9403ull, 9413ull, 9419ull, _
+  9421ull, 9431ull, 9433ull, 9437ull, 9439ull, 9461ull, 9463ull, 9467ull, 9473ull, 9479ull, 9491ull, 9497ull, _
+  9511ull, 9521ull, 9533ull, 9539ull, 9547ull, 9551ull, 9587ull, 9601ull, 9613ull, 9619ull, 9623ull, 9629ull, _
+  9631ull, 9643ull, 9649ull, 9661ull, 9677ull, 9679ull, 9689ull, 9697ull, 9719ull, 9721ull, 9733ull, 9739ull, _
+  9743ull, 9749ull, 9767ull, 9769ull, 9781ull, 9787ull, 9791ull, 9803ull, 9811ull, 9817ull, 9829ull, 9833ull, _
+  9839ull, 9851ull, 9857ull, 9859ull, 9871ull, 9883ull, 9887ull, 9901ull, 9907ull, 9923ull, 9929ull, 9931ull, _
+  9941ull, 9949ull, 9967ull, 9973ull, 10007ull _
 }
 
 #endif

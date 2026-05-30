@@ -5,7 +5,7 @@
 
 #include once "Inc\MathParser.bi"
 
-const FACTORINT_TEST_COUNT as Integer = 19
+const FACTORINT_TEST_COUNT as Integer = 26
 
 type FactorintCase
   expr as String
@@ -35,6 +35,13 @@ private sub InitFactorintCases()
   g_cases(17).expr = "prod(factorint(2**52))": g_cases(17).expected = "4503599627370496"
   g_cases(18).expr = "factorint(33.0)": g_cases(18).expected = "(3, 11)"
   g_cases(19).expr = "factorint(33.5)": g_cases(19).expectedErrContains = "expects integer values"
+  g_cases(20).expr = "factorint(90)": g_cases(20).expected = "(2, 3**2, 5)"
+  g_cases(21).expr = "factorint(9007)": g_cases(21).expected = "(9007)"
+  g_cases(22).expr = "factorint(900719)": g_cases(22).expected = "(900719)"
+  g_cases(23).expr = "factorint(90071992)": g_cases(23).expected = "(2**3, 11258999)"
+  g_cases(24).expr = "factorint(9007199254)": g_cases(24).expected = "(2, 89, 50602243)"
+  g_cases(25).expr = "factorint(900719925474)": g_cases(25).expected = "(2, 3, 12907, 11630897)"
+  g_cases(26).expr = "factorint(76568758722)": g_cases(26).expected = "(2, 3**2, 47, 101, 896107)"
 end sub
 
 private function CasePassed(byref c as FactorintCase, byval ok as Boolean, byref actual as String, byref errText as String) as Boolean
@@ -89,14 +96,14 @@ sub Main()
   end if
 
   print "=== factorint isolated tests ==="
-  dim failed as Integer = 0
+  dim failCount as Integer = 0
   dim i as Integer
   for i = 1 to FACTORINT_TEST_COUNT
     dim elapsed as Double
-    if RunCaseIndex(i, elapsed) <> 0 then failed += 1
+    if RunCaseIndex(i, elapsed) <> 0 then failCount += 1
   next i
-  print "=== Result: failed " & failed & " / " & FACTORINT_TEST_COUNT & " ==="
-  if failed > 0 then end 1
+  print "=== Result: failed " & failCount & " / " & FACTORINT_TEST_COUNT & " ==="
+  if failCount > 0 then end 1
   end 0
 end sub
 
