@@ -5889,6 +5889,38 @@ private function TryQuotExactInt64(byval num as LongInt, byval den as LongInt, b
   return FALSE
 end function
 
+private function TryQuotExactULong(byval num as ULongInt, byval den as ULongInt, byref quo as ULongInt) as Boolean
+  if den = 0ull then return FALSE
+  quo = num \ den
+  dim prod as ULongInt
+  if TryMulULongChecked(quo, den, prod) = FALSE then return FALSE
+  return (prod = num)
+end function
+
+private function TryApplyExactIntegerDivisionFromQuotient(byref leftS as ScalarValue, byref rightS as ScalarValue, byval r as Double, byref outV as EvalValue) as Boolean
+  if IsNonFiniteValue(r) then return FALSE
+  dim aU as ULongInt, bU as ULongInt
+  if TryGetExactNonNegativeUInt64Scalar(leftS, aU) andalso TryGetExactNonNegativeUInt64Scalar(rightS, bU) then
+    if bU = 0ull then return FALSE
+    dim qU as ULongInt = CULngInt(round(r))
+    dim prodU as ULongInt
+    if TryMulULongChecked(qU, bU, prodU) = FALSE then return FALSE
+    if prodU <> aU then return FALSE
+    ValueSetUInt64(outV, qU)
+    return TRUE
+  end if
+  dim aI as LongInt, bI as LongInt
+  if TryGetExactSignedInt64NoUIntWrapScalar(leftS, aI) = FALSE then return FALSE
+  if TryGetExactSignedInt64NoUIntWrapScalar(rightS, bI) = FALSE then return FALSE
+  if bI = 0 then return FALSE
+  dim qI as LongInt = CLngInt(round(r))
+  dim prodI as LongInt
+  if TryMulInt64(qI, bI, prodI) = FALSE then return FALSE
+  if prodI <> aI then return FALSE
+  ValueSetInt64(outV, qI)
+  return TRUE
+end function
+
 private function TrySubExactCartesianComponents(byref a as ExactCartesianComponent, byref b as ExactCartesianComponent, byref result as ExactCartesianComponent) as Boolean
   ExactCartesianComponentClear(result)
   dim ai as LongInt, bi as LongInt, oi as LongInt
@@ -6650,6 +6682,8 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
         if TrySubInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
       case CHAR_CARET
         if TryPowInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
+      case CHAR_DIVIDE
+        if TryQuotExactInt64(li, ri, ro) then ValueSetInt64(outV, ro): return TRUE
     end select
   end if
 
@@ -6661,6 +6695,9 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
       case CHAR_ASTERISK
         dim outU as ULongInt
         if TryMulULongChecked(lu, ru, outU) then ValueSetUInt64(outV, outU): return TRUE
+      case CHAR_DIVIDE
+        dim quoU as ULongInt
+        if TryQuotExactULong(lu, ru, quoU) then ValueSetUInt64(outV, quoU): return TRUE
     end select
   end if
 
@@ -6670,7 +6707,10 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
       if rightS.scalar = 0 andalso leftS.scalar = 0 then
         ValueSetScalar(outV, MakeNaN())
       else
-        ValueSetScalar(outV, leftS.scalar / rightS.scalar)
+        dim r as Double = leftS.scalar / rightS.scalar
+        if TryApplyExactIntegerDivisionFromQuotient(leftS, rightS, r, outV) = FALSE then
+          ValueSetScalar(outV, r)
+        end if
       end if
     case CHAR_PLUS: ValueSetScalar(outV, leftS.scalar + rightS.scalar)
     case CHAR_MINUS: ValueSetScalar(outV, leftS.scalar - rightS.scalar)

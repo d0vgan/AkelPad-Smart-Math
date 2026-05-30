@@ -5089,6 +5089,72 @@ bool MathParser::tryQuotExactInt64(long long num, long long den, long long& quo)
   return quo * den == num;
 }
 
+bool tryQuotExactUInt64(std::uint64_t num, std::uint64_t den, std::uint64_t& quo) {
+  if (den == 0u) {
+    return false;
+  }
+  quo = num / den;
+  std::uint64_t prod = 0;
+  if (!tryMulUInt64Checked(quo, den, prod)) {
+    return false;
+  }
+  return prod == num;
+}
+
+bool MathParser::tryApplyExactIntegerDivisionFromQuotient(
+    const EvalValue::ScalarValue& leftS,
+    const EvalValue::ScalarValue& rightS,
+    double r,
+    EvalValue& outV) const {
+  if (!std::isfinite(r)) {
+    return false;
+  }
+  std::uint64_t aU = 0;
+  std::uint64_t bU = 0;
+  if (tryGetExactNonNegativeUInt64FromScalar(leftS, aU) && tryGetExactNonNegativeUInt64FromScalar(rightS, bU)) {
+    if (bU == 0u) {
+      return false;
+    }
+    const double rq = std::round(r);
+    if (!isWithinExactIntFromDoubleRange(rq) || rq < 0.0) {
+      return false;
+    }
+    const std::uint64_t qU = static_cast<std::uint64_t>(rq);
+    if (static_cast<double>(qU) != rq) {
+      return false;
+    }
+    std::uint64_t prodU = 0;
+    if (!tryMulUInt64Checked(qU, bU, prodU) || prodU != aU) {
+      return false;
+    }
+    outV = makeScalarUInt(qU);
+    return true;
+  }
+  long long aI = 0;
+  long long bI = 0;
+  if (!tryGetExactSignedInt64NoUIntWrapFromScalar(leftS, aI) ||
+      !tryGetExactSignedInt64NoUIntWrapFromScalar(rightS, bI)) {
+    return false;
+  }
+  if (bI == 0) {
+    return false;
+  }
+  const double rq = std::round(r);
+  if (!isWithinExactIntFromDoubleRange(rq)) {
+    return false;
+  }
+  const long long qI = static_cast<long long>(rq);
+  if (static_cast<double>(qI) != rq) {
+    return false;
+  }
+  long long prodI = 0;
+  if (!checkedMulLL(qI, bI, prodI) || prodI != aI) {
+    return false;
+  }
+  outV = makeScalarInt(qI);
+  return true;
+}
+
 #if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a, const ExactCartesianComponent& b,
                                     ExactCartesianComponent& out) {
@@ -6521,6 +6587,12 @@ bool MathParser::tryCombineBinaryScalars(
           outS = makeScalarUInt(outU);
           return true;
         }
+      } else if (op == '/') {
+        std::uint64_t quoU = 0;
+        if (tryQuotExactUInt64(lv.exactUInt64, rv.exactUInt64, quoU)) {
+          outS = makeScalarUInt(quoU);
+          return true;
+        }
       }
     }
 
@@ -6577,6 +6649,10 @@ bool MathParser::tryCombineBinaryScalars(
         outS = makeScalarInt(outI);
         return true;
       }
+      if (op == '/' && tryQuotExactInt64(li, ri, outI)) {
+        outS = makeScalarInt(outI);
+        return true;
+      }
       if (li >= 0 && ri >= 0) {
         lu = static_cast<std::uint64_t>(li);
         ru = static_cast<std::uint64_t>(ri);
@@ -6611,6 +6687,12 @@ bool MathParser::tryCombineBinaryScalars(
           outS = makeScalarUInt(outU);
           return true;
         }
+      } else if (op == '/') {
+        std::uint64_t quoU = 0;
+        if (tryQuotExactUInt64(lu, ru, quoU)) {
+          outS = makeScalarUInt(quoU);
+          return true;
+        }
       }
     }
     if (op == '+' && lv.hasExactInt64() && lv.exactInt64 == (std::numeric_limits<long long>::max)() && !rv.hasExactInt64() &&
@@ -6631,6 +6713,13 @@ bool MathParser::tryCombineBinaryScalars(
     double outD = 0;
     if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
       return false;
+    }
+    if (op == '/') {
+      EvalValue exactDiv{};
+      if (tryApplyExactIntegerDivisionFromQuotient(lv, rv, outD, exactDiv)) {
+        outS = std::move(exactDiv);
+        return true;
+      }
     }
     outS = makeScalarMaybeExact(outD);
     return true;

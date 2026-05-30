@@ -1885,6 +1885,57 @@ private sub RunGcdLcmNcrNprArrayBroadcastTests()
   print ""
 end sub
 
+private sub RunExactIntegerDivisionTests()
+  print "=== Exact integer division (a/b) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 10) as String
+  dim okNeed(1 to 10) as String
+  okExprs(1) = "10/2": okNeed(1) = "5"
+  okExprs(2) = "-12/4": okNeed(2) = "-3"
+  okExprs(3) = "1955685900012/338822921": okNeed(3) = "5772"
+  okExprs(4) = "111*17618791892/5772": okNeed(4) = "338822921"
+  okExprs(5) = "gcd(111*17618791892,222*76568758786)": okNeed(5) = "5772"
+  okExprs(6) = "(2**63 - 3)/5": okNeed(6) = "1844674407370955161"
+  okExprs(7) = "(-2**63 + 3)/5": okNeed(7) = "-1844674407370955161"
+  okExprs(8) = "(0xFFFFFFFFFFFFFFFF - 5)/5": okNeed(8) = "3689348814741910322"
+  okExprs(9) = "(2**52 - 1)/5": okNeed(9) = "900719925474099"
+  okExprs(10) = "(-2**52 + 1)/5": okNeed(10) = "-900719925474099"
+  dim di as Integer
+  for di = 1 to 10
+    if Parser_TryEvaluateEx(okExprs(di), r, rt, ia) = FALSE then
+      print "[exact-int-div] FAIL: """ & okExprs(di) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(di)) = FALSE then
+      print "[exact-int-div] FAIL: """ & okExprs(di) & """ expected """ & okNeed(di) & """ got """ & rt & """"
+      subFail += 1
+    else
+      print "[exact-int-div] PASS: """ & okExprs(di) & """"
+      subPass += 1
+    end if
+  next di
+
+  if Parser_TryEvaluateEx("7/3", r, rt, ia) = FALSE then
+    print "[exact-int-div] FAIL: ""7/3"" -> " & Parser_GetLastError()
+    subFail += 1
+  elseif instr(rt, ".") = 0 andalso instr(rt, "/") = 0 then
+    print "[exact-int-div] FAIL: ""7/3"" must stay non-integer float, got """ & rt & """"
+    subFail += 1
+  else
+    print "[exact-int-div] PASS: ""7/3"" non-exact quotient stays float"
+    subPass += 1
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Exact-integer-division sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunBinaryBuiltinArrayLengthMismatchTests()
   print "=== binary builtin array length mismatch (incompatible operands) ==="
   dim subPass as Integer = 0
@@ -3524,6 +3575,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunIncompleteFunctionCallHintTests()
 
   RunGcdLcmNcrNprArrayBroadcastTests()
+  RunExactIntegerDivisionTests()
   RunBinaryBuiltinArrayLengthMismatchTests()
 
   RunTimeValuesSupportOptionTests()

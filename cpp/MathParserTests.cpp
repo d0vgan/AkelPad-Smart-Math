@@ -2463,6 +2463,25 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "lcm(21,6)", "42", why);
               }});
+  t.push_back({"regression/exact integer division quotient", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "10/2", "5", why)) return false;
+                if (!expectEval(p, "-12/4", "-3", why)) return false;
+                if (!expectEval(p, "1955685900012/338822921", "5772", why)) return false;
+                if (!expectEval(p, "111*17618791892/5772", "338822921", why)) return false;
+                if (!expectEval(p, "gcd(111*17618791892,222*76568758786)", "5772", why)) return false;
+                if (!expectEval(p, "(2**63 - 3)/5", "1844674407370955161", why)) return false;
+                if (!expectEval(p, "(-2**63 + 3)/5", "-1844674407370955161", why)) return false;
+                if (!expectEval(p, "(0xFFFFFFFFFFFFFFFF - 5)/5", "3689348814741910322", why)) return false;
+                if (!expectEval(p, "(2**52 - 1)/5", "900719925474099", why)) return false;
+                if (!expectEval(p, "(-2**52 + 1)/5", "-900719925474099", why)) return false;
+                p.parseAndEvaluate("7/3");
+                if (p.getResult().find('.') == std::string::npos && p.getResult().find('/') == std::string::npos) {
+                  why = "7/3 must stay non-integer float, got \"" + p.getResult() + "\"";
+                  return false;
+                }
+                return true;
+              }});
   t.push_back({"regression/array-array bitwise or keeps second element exact", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "a=(1,2)|(4,8); hex(a[1])", "0xA", why);
