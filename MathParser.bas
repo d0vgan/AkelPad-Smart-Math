@@ -5122,7 +5122,9 @@ private sub ScalarSetFactorintPowerTerm(byref sv as ScalarValue, byval baseU as 
   ScalarSetFactorintTermValue(sv, signedValueI, valueU, hasUIntValue)
   if expV <= 1 then exit sub
   sv.flags or= SVF_RENDER_INT_POWER
-  sv.imagExactInt64 = CLngInt(baseU)
+  dim displayBase as LongInt = CLngInt(baseU)
+  if signedValueI < 0 andalso baseU <= CULngInt(FB_I64_MAX) then displayBase = -CLngInt(baseU)
+  sv.imagExactInt64 = displayBase
   sv.imagExactUInt64 = CULngInt(expV)
 end sub
 
@@ -5138,14 +5140,6 @@ private sub FactorintAppendScalarTerm( _
   byval expV as Integer, _
   byref applySign as Boolean _
 )
-  if applySign andalso expV > 1 andalso baseU <= CULngInt(FB_I64_MAX) then
-    applySign = FALSE
-    outCount += 1
-    redim preserve outArr(0 to outCount - 1)
-    ScalarSetFactorintTermValue(outArr(outCount - 1), -CLngInt(baseU), baseU, FALSE)
-    FactorintAppendScalarTerm(outArr(), outCount, baseU, expV - 1, applySign)
-    exit sub
-  end if
   dim valueU as ULongInt = baseU
   if expV > 1 then
     if TryPowFactorTermValue(baseU, expV, valueU) = FALSE then exit sub

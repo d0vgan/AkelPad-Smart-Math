@@ -5,7 +5,7 @@
 
 #include once "Inc\MathParser.bi"
 
-const FACTORINT_TEST_COUNT as Integer = 27
+const FACTORINT_TEST_COUNT as Integer = 29
 
 type FactorintCase
   expr as String
@@ -21,7 +21,7 @@ private sub InitFactorintCases()
   g_cases(3).expr = "factorint(13)": g_cases(3).expected = "(13)"
   g_cases(4).expr = "factorint(-33)": g_cases(4).expected = "(-3, 11)"
   g_cases(5).expr = "factorint(-13)": g_cases(5).expected = "(-13)"
-  g_cases(6).expr = "factorint(-12)": g_cases(6).expected = "(-2, 2, 3)"
+  g_cases(6).expr = "factorint(-12)": g_cases(6).expected = "(-2**2, 3)"
   g_cases(7).expr = "factorint(0)": g_cases(7).expected = "(0)"
   g_cases(8).expr = "factorint(1)": g_cases(8).expected = "(1)"
   g_cases(9).expr = "factorint(-1)": g_cases(9).expected = "(-1)"
@@ -44,6 +44,8 @@ private sub InitFactorintCases()
   g_cases(26).expr = "factorint(76568758722)": g_cases(26).expected = "(2, 3**2, 47, 101, 896107)"
   '' Perf regression: 113 * large prime (sqrt(n) > 10^7); was ~10s before MR/trial fixes.
   g_cases(27).expr = "factorint(76568758722112367)": g_cases(27).expected = "(113, 677599634708959)"
+  g_cases(28).expr = "factorint(-3333*9)": g_cases(28).expected = "(-3**3, 11, 101)"
+  g_cases(29).expr = "factorint(-9999)": g_cases(29).expected = "(-3**2, 11, 101)"
 end sub
 
 private function CasePassed(byref c as FactorintCase, byval ok as Boolean, byref actual as String, byref errText as String) as Boolean

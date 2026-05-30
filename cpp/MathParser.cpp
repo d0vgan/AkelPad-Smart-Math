@@ -110,7 +110,7 @@ struct FactorintPrimeEntry {
 };
 
 namespace {
-#include "FactorintSmallPrimes.inc"
+#include "MathParserFactorintSmallPrimes.inc"
 
 constexpr int kFactorintPollardMaxOuter = 48;
 constexpr int kFactorintRhoMaxIters = 400000;
@@ -11044,7 +11044,12 @@ void MathParser::setFactorintPowerTerm(
     return;
   }
   sv.setRenderIntPower(true);
-  sv.imagExactInt64 = static_cast<long long>(baseU);
+  long long displayBase = static_cast<long long>(baseU);
+  if (signedValueI < 0 &&
+      baseU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+    displayBase = -static_cast<long long>(baseU);
+  }
+  sv.imagExactInt64 = displayBase;
   sv.imagExactUInt64 = static_cast<std::uint64_t>(expV);
 }
 
@@ -11053,15 +11058,6 @@ void MathParser::appendFactorintScalarTerm(
     std::uint64_t baseU,
     int expV,
     bool& applySign) const {
-  if (applySign && expV > 1 &&
-      baseU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
-    applySign = false;
-    EvalValue::ScalarValue negSv{};
-    setFactorintTermValue(negSv, -static_cast<long long>(baseU), baseU, false);
-    out.push_back(std::move(negSv));
-    appendFactorintScalarTerm(out, baseU, expV - 1, applySign);
-    return;
-  }
   std::uint64_t valueU = baseU;
   if (expV > 1 && !tryPowUInt64Checked(baseU, static_cast<std::uint64_t>(expV), valueU)) {
     return;

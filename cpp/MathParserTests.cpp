@@ -2863,7 +2863,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "factorint(13)", "(13)", why)) return false;
                 if (!expectEval(p, "factorint(0)", "(0)", why)) return false;
                 if (!expectEval(p, "factorint(-1)", "(-1)", why)) return false;
-                if (!expectEval(p, "factorint(-12)", "(-2, 2, 3)", why)) return false;
+                if (!expectEval(p, "factorint(-12)", "(-2**2, 3)", why)) return false;
                 if (!expectEval(p, "factorint(2**63-1)", "(7**2, 73, 127, 337, 92737, 649657)", why)) return false;
                 if (!expectEval(p, "factorint(18446744073709551615)", "(3, 5, 17, 257, 641, 65537, 6700417)", why))
                   return false;
@@ -2875,6 +2875,8 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "factorint(900719925474)", "(2, 3, 12907, 11630897)", why)) return false;
                 if (!expectEval(p, "factorint(76568758722)", "(2, 3**2, 47, 101, 896107)", why)) return false;
                 if (!expectEval(p, "factorint(76568758722112367)", "(113, 677599634708959)", why)) return false;
+                if (!expectEval(p, "factorint(-3333*9)", "(-3**3, 11, 101)", why)) return false;
+                if (!expectEval(p, "factorint(-9999)", "(-3**2, 11, 101)", why)) return false;
                 if (!expectEval(p, "prod(factorint(-33))", "-33", why)) return false;
                 if (!expectEval(p, "prod(factorint(2**52))", "4503599627370496", why)) return false;
                 if (!expectEvalErrorContains(p, "factorint(33.5)", "factorint() expects integer values", why))

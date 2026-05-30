@@ -2248,7 +2248,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1234) as SmokeCase
+  dim tests(1 to 1236) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3516,7 +3516,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1211).expr = "factorint(13)": tests(1211).expected = "(13)" ' [factorint]
   tests(1212).expr = "factorint(-33)": tests(1212).expected = "(-3, 11)" ' [factorint]
   tests(1213).expr = "factorint(-13)": tests(1213).expected = "(-13)" ' [factorint]
-  tests(1214).expr = "factorint(-12)": tests(1214).expected = "(-2, 2, 3)" ' [factorint]
+  tests(1214).expr = "factorint(-12)": tests(1214).expected = "(-2**2, 3)" ' [factorint]
   tests(1215).expr = "factorint(0)": tests(1215).expected = "(0)" ' [factorint]
   tests(1216).expr = "factorint(1)": tests(1216).expected = "(1)" ' [factorint]
   tests(1217).expr = "factorint(-1)": tests(1217).expected = "(-1)" ' [factorint]
@@ -3537,6 +3537,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1232).expr = "factorint(9007199254)": tests(1232).expected = "(2, 89, 50602243)" ' [factorint]
   tests(1233).expr = "factorint(900719925474)": tests(1233).expected = "(2, 3, 12907, 11630897)" ' [factorint]
   tests(1234).expr = "factorint(76568758722)": tests(1234).expected = "(2, 3**2, 47, 101, 896107)" ' [factorint]
+  tests(1235).expr = "factorint(-3333*9)": tests(1235).expected = "(-3**3, 11, 101)" ' [factorint] signed prime power
+  tests(1236).expr = "factorint(-9999)": tests(1236).expected = "(-3**2, 11, 101)" ' [factorint] signed prime power
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

@@ -492,7 +492,7 @@ private sub RunFactorintFormatterTests(byref failCount as Integer)
   g_bUseThousandsSeparator = FALSE
   ApplySeparatorDefaults()
 
-  const FACTORINT_FMT_CASE_COUNT as Integer = 26
+  const FACTORINT_FMT_CASE_COUNT as Integer = 28
   dim expr(1 to FACTORINT_FMT_CASE_COUNT) as String
   dim want(1 to FACTORINT_FMT_CASE_COUNT) as String
   dim expectFail(1 to FACTORINT_FMT_CASE_COUNT) as Boolean
@@ -503,7 +503,7 @@ private sub RunFactorintFormatterTests(byref failCount as Integer)
   expr(3) = "factorint(13)": want(3) = "(13)"
   expr(4) = "factorint(-33)": want(4) = "(-3, 11)"
   expr(5) = "factorint(-13)": want(5) = "(-13)"
-  expr(6) = "factorint(-12)": want(6) = "(-2, 2, 3)"
+  expr(6) = "factorint(-12)": want(6) = "(-2**2, 3)"
   expr(7) = "factorint(0)": want(7) = "(0)"
   expr(8) = "factorint(1)": want(8) = "(1)"
   expr(9) = "factorint(-1)": want(9) = "(-1)"
@@ -524,6 +524,8 @@ private sub RunFactorintFormatterTests(byref failCount as Integer)
   expr(24) = "factorint(9007199254)": want(24) = "(2, 89, 50602243)"
   expr(25) = "factorint(900719925474)": want(25) = "(2, 3, 12907, 11630897)"
   expr(26) = "factorint(76568758722)": want(26) = "(2, 3**2, 47, 101, 896107)"
+  expr(27) = "factorint(-3333*9)": want(27) = "(-3**3, 11, 101)"
+  expr(28) = "factorint(-9999)": want(28) = "(-3**2, 11, 101)"
 
   dim ci as Integer
   for ci = 1 to FACTORINT_FMT_CASE_COUNT
@@ -581,6 +583,15 @@ private sub RunFactorintFormatterTests(byref failCount as Integer)
   end if
   if FormatterTryEvaluateAndFormat("factorint(90071992)", fmt, raw) then
     AssertRawFactorintIntPowerTerm("parser-fmt/factorint/90071992/raw", raw, 0, 2, 3, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(-3333*9)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/-3333*9/raw", raw, 0, -3, 3, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(-9999)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/-9999/raw", raw, 0, -3, 2, failCount)
+  end if
+  if FormatterTryEvaluateAndFormat("factorint(-12)", fmt, raw) then
+    AssertRawFactorintIntPowerTerm("parser-fmt/factorint/-12/raw", raw, 0, -2, 2, failCount)
   end if
 end sub
 
