@@ -595,7 +595,7 @@ Purpose: rounding, bounds, integer helpers, factorial.
   - `npr(5,2)` -> `20`
   - `fact(21)` -> `5.109094217170944e+019`
   - `factorint(40)` -> `(2**3, 5)`
-  - `factorint(-33)` -> `(-3, 11)`
+  - `factorint(-3333)` -> `(-3, 11, 101)`
 
 #### Numeric Utilities With Complex Numbers
 

@@ -2874,6 +2874,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "factorint(9007199254)", "(2, 89, 50602243)", why)) return false;
                 if (!expectEval(p, "factorint(900719925474)", "(2, 3, 12907, 11630897)", why)) return false;
                 if (!expectEval(p, "factorint(76568758722)", "(2, 3**2, 47, 101, 896107)", why)) return false;
+                if (!expectEval(p, "factorint(76568758722112367)", "(113, 677599634708959)", why)) return false;
                 if (!expectEval(p, "prod(factorint(-33))", "-33", why)) return false;
                 if (!expectEval(p, "prod(factorint(2**52))", "4503599627370496", why)) return false;
                 if (!expectEvalErrorContains(p, "factorint(33.5)", "factorint() expects integer values", why))

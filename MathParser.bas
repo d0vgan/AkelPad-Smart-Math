@@ -4753,61 +4753,30 @@ private function GcdInt64(byval a as LongInt, byval b as LongInt) as LongInt
   return CLngInt(GcdULong(CULngInt(abs(a)), CULngInt(abs(b))))
 end function
 
-private sub MulU64Full(byval a as ULongInt, byval b as ULongInt, byref hi as ULongInt, byref lo as ULongInt)
-  const MASK32 as ULongInt = &hFFFFFFFFull
-  dim a0 as ULongInt = a and MASK32
-  dim a1 as ULongInt = a shr 32
-  dim b0 as ULongInt = b and MASK32
-  dim b1 as ULongInt = b shr 32
-  dim w0 as ULongInt = a0 * b0
-  dim w1 as ULongInt = a0 * b1
-  dim w2 as ULongInt = a1 * b0
-  dim w3 as ULongInt = a1 * b1
-  dim t as ULongInt = (w0 shr 32) + (w1 and MASK32) + (w2 and MASK32)
-  lo = (w0 and MASK32) or ((t and MASK32) shl 32)
-  hi = w3 + (w1 shr 32) + (w2 shr 32) + (t shr 32)
-end sub
-
-private function Pow2_64_ModU64(byval modN as ULongInt) as ULongInt
+private function MulModU64AddDouble(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
   if modN <= 1ull then return 0ull
-  dim r as ULongInt = 1ull
-  dim i as Integer
-  for i = 0 to 63
-    dim t as ULongInt = r + r
-    if t >= modN then t -= modN
-    r = t
-  next i
-  return r
-end function
-
-private function ModU128ByU64(byval hi as ULongInt, byval lo as ULongInt, byval modN as ULongInt) as ULongInt
-  if modN <= 1ull then return 0ull
-  dim r as ULongInt = lo mod modN
-  if hi = 0ull then return r
-  hi = hi mod modN
-  if hi = 0ull then return r
-  dim p2 as ULongInt = Pow2_64_ModU64(modN)
-  dim hiBit as ULongInt = 1ull
-  while hiBit <= hi
-    if (hi and hiBit) <> 0ull then
-      dim sum as ULongInt = r + p2
-      if sum >= modN then sum -= modN
-      r = sum
+  dim res as ULongInt = 0
+  a = a mod modN
+  while b > 0ull
+    if (b and 1ull) <> 0ull then
+      res = (res + a) mod modN
     end if
-    dim np2 as ULongInt = p2 + p2
-    if np2 >= modN then np2 -= modN
-    p2 = np2
-    hiBit = hiBit shl 1
+    b = b shr 1
+    if b = 0ull then exit while
+    a = (a + a) mod modN
   wend
-  return r
+  return res
 end function
 
 private function MulModU64(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
   if modN <= 1ull then return 0ull
-  dim hi as ULongInt
-  dim lo as ULongInt
-  MulU64Full(a, b, hi, lo)
-  return ModU128ByU64(hi, lo, modN)
+  a = a mod modN
+  b = b mod modN
+  if a = 0ull orelse b = 0ull then return 0ull
+  if a > 0ull andalso b <= &hFFFFFFFFFFFFFFFFull \ a then
+    return (a * b) mod modN
+  end if
+  return MulModU64AddDouble(a, b, modN)
 end function
 
 private function PowModU64(byval baseV as ULongInt, byval expV as ULongInt, byval modN as ULongInt) as ULongInt
@@ -5030,6 +4999,10 @@ private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintP
     if n <= 1ull then exit sub
   next si
   if n <= 1ull then exit sub
+  if IsqrtU64(n) > FACTORINT_ODD_TRIAL_MAX_PRIME andalso IsPrimeU64(n) then
+    FactorintEntriesAdd(entries(), cnt, cap, n, 1)
+    exit sub
+  end if
   FactorintTrialDivideOdd(n, entries(), cnt, cap)
   if n <= 1ull then exit sub
   if FactorintExhaustiveTrialDone(n) orelse IsPrimeU64(n) then

@@ -118,7 +118,6 @@ constexpr int kFactorintRhoMaxItersSmall = 80000;
 constexpr int kFactorintFermatMaxSteps = 4096;
 constexpr std::uint64_t kFactorintFermatMaxN = 100000000u;
 constexpr std::uint64_t kFactorintOddTrialMaxPrime = 10000000u;
-constexpr std::uint64_t kFactorintProvenPrimeSqrtCap = 10000000u;
 constexpr std::uint64_t kFactorintMrBases[] = {
     2u, 32544231u, 2567547226u, 4118087717u, 6700417u, 12917328u, 1297059741u};
 constexpr std::size_t kFactorintMrBaseCount =
@@ -1208,6 +1207,41 @@ long long gcdInt64(long long a, long long b) {
       static_cast<std::uint64_t>(std::llabs(a)), static_cast<std::uint64_t>(std::llabs(b))));
 }
 
+// Portable (a*b)%modN without uint128 (MSVC x86 and similar).
+std::uint64_t mulModU64AddDouble(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  if (modN <= 1u) {
+    return 0u;
+  }
+  std::uint64_t res = 0;
+  a %= modN;
+  while (b > 0u) {
+    if ((b & 1u) != 0u) {
+      res = (res + a) % modN;
+    }
+    b >>= 1;
+    if (b == 0u) {
+      break;
+    }
+    a = (a + a) % modN;
+  }
+  return res;
+}
+
+std::uint64_t mulModU64Portable(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  if (modN <= 1u) {
+    return 0u;
+  }
+  a %= modN;
+  b %= modN;
+  if (a == 0u || b == 0u) {
+    return 0u;
+  }
+  if (b <= UINT64_MAX / a) {
+    return (a * b) % modN;
+  }
+  return mulModU64AddDouble(a, b, modN);
+}
+
 #if defined(__SIZEOF_INT128__)
 using FactorintU128 = unsigned __int128;
 inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
@@ -1224,38 +1258,23 @@ inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t m
   return rem;
 }
 #else
-std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
-  std::uint64_t res = 0;
-  a %= modN;
-  while (b > 0u) {
-    if ((b & 1u) != 0u) {
-      if (res >= modN - a) {
-        res -= modN;
-      }
-      res = (res + a) % modN;
-    }
-    if (a >= modN - a) {
-      a -= modN;
-    }
-    a = (a + a) % modN;
-    b >>= 1;
-  }
-  return res;
+inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  return mulModU64Portable(a, b, modN);
 }
 #endif
 
-std::uint64_t powModU64(std::uint64_t base, std::uint64_t exp, std::uint64_t modN) {
-  std::uint64_t res = 1;
-  std::uint64_t b = base % modN;
-  std::uint64_t e = exp;
+std::uint64_t powModU64(std::uint64_t baseVal, std::uint64_t exp, std::uint64_t modN) {
+  volatile std::uint64_t res = 1;
+  volatile std::uint64_t b = baseVal % modN;
+  volatile std::uint64_t e = exp;
   while (e > 0u) {
     if ((e & 1u) != 0u) {
-      res = mulModU64(res, b, modN);
+      res = mulModU64(static_cast<std::uint64_t>(res), static_cast<std::uint64_t>(b), modN);
     }
-    b = mulModU64(b, b, modN);
+    b = mulModU64(static_cast<std::uint64_t>(b), static_cast<std::uint64_t>(b), modN);
     e >>= 1;
   }
-  return res;
+  return static_cast<std::uint64_t>(res);
 }
 
 std::uint64_t isqrtU64(std::uint64_t n) {
@@ -1418,14 +1437,22 @@ void factorintTrialDividePrime(
   factorintEntriesPushMerged(out, p, e);
 }
 
+std::uint64_t factorintOddTrialLimit(std::uint64_t n) {
+  const std::uint64_t sqrtN = isqrtU64(n);
+  return (sqrtN < kFactorintOddTrialMaxPrime) ? sqrtN : kFactorintOddTrialMaxPrime;
+}
+
+bool factorintExhaustiveTrialDone(std::uint64_t n) {
+  return isqrtU64(n) <= factorintOddTrialLimit(n);
+}
+
 void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>& out) {
   std::uint64_t d = kFactorintSmallMaxPrime + 2u;
   if ((d & 1u) == 0u) {
     ++d;
   }
-  const std::uint64_t sqrtN = isqrtU64(n);
-  const std::uint64_t limit = (sqrtN < kFactorintOddTrialMaxPrime) ? sqrtN : kFactorintOddTrialMaxPrime;
-  while (d <= limit && d * d <= n) {
+  const std::uint64_t limit = factorintOddTrialLimit(n);
+  while (d <= limit) {
     factorintTrialDividePrime(d, n, out);
     if (n <= 1u) {
       return;
@@ -1434,14 +1461,7 @@ void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>&
   }
 }
 
-bool factorintFullyTrialedToSqrt(std::uint64_t n) {
-  return isqrtU64(n) <= kFactorintProvenPrimeSqrtCap;
-}
-
 std::uint64_t factorintFindSplitFactor(std::uint64_t n) {
-  if (factorintFullyTrialedToSqrt(n)) {
-    return n;
-  }
   if (isPrimeU64(n)) {
     return n;
   }
@@ -1495,11 +1515,17 @@ void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& 
   if (n <= 1u) {
     return;
   }
+  // When sqrt(n) exceeds the odd-trial cap, trial only reaches 10^7; MR can prove primality
+  // without ~5M divisions (e.g. large prime cofactors after a small factor is stripped).
+  if (isqrtU64(n) > kFactorintOddTrialMaxPrime && isPrimeU64(n)) {
+    factorintEntriesPushMerged(out, n, 1u);
+    return;
+  }
   factorintTrialDivideOdd(n, out);
   if (n <= 1u) {
     return;
   }
-  if (factorintFullyTrialedToSqrt(n) || isPrimeU64(n)) {
+  if (factorintExhaustiveTrialDone(n) || isPrimeU64(n)) {
     factorintEntriesPushMerged(out, n, 1u);
     return;
   }
