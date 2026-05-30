@@ -18,7 +18,27 @@ SmartMath evaluates math expressions inside AkelPad.
 
 ## Quick Start
 
-Copy/paste examples:
+### SmartMath Marker
+
+To enable calculations in your current document, SmartMath requires a specific marker on the very first line.
+
+**Supported Markers:**
+- `# SmartMath` or `#SmartMath`
+- `#smartmath` or `#SMARTMATH`
+
+**How it works:**
+- **Automatic:** When you trigger the SmartMath command from the plugins menu or hotkey, this marker is automatically inserted at the top of your file.
+- **Manual:** You can type any of the supported markers manually on the first line to instantly activate calculations. 
+- If the marker is missing or misspelled (e.g., `#smartma`), no calculations are performed until the marker is corrected.
+
+**Example:**
+```
+# SmartMath
+a = 10                    = 10
+a * 5                     = 50
+```
+
+### Copy/Paste Examples:
 
 - `2+3*4` -> `14`
 - `a=10; a*3` -> `30`
