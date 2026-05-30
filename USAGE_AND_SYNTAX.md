@@ -432,6 +432,7 @@ Quick index (alphabetical):
 | `deg(...)` | [Trigonometric and Hyperbolic](#trigonometric-and-hyperbolic) |
 | `exp(value)` | [Logarithmic and Exponential](#logarithmic-and-exponential) |
 | `fact/factorial(n)` | [Numeric Utilities](#numeric-utilities) |
+| `factorint(n)` | [Numeric Utilities](#numeric-utilities) |
 | `floor(value)` | [Numeric Utilities](#numeric-utilities) |
 | `frac/fract(value)` | [Numeric Utilities](#numeric-utilities) |
 | `gcd(a, b)` | [Numeric Utilities](#numeric-utilities) |
@@ -585,6 +586,7 @@ Purpose: rounding, bounds, integer helpers, factorial.
 - `ncr(n, r)` - combinations (`n` choose `r`)
 - `npr(n, r)` - permutations (`n` permute `r`)
 - `fact(n)`, `factorial(n)` - factorial for non-negative integers
+- `factorint(n)` - prime factorization of integer `n` as an array
 - Examples:
   - `round(2.5)` -> `3`
   - `clamp(15,0,10)` -> `10`
@@ -592,6 +594,8 @@ Purpose: rounding, bounds, integer helpers, factorial.
   - `ncr(5,2)` -> `10`
   - `npr(5,2)` -> `20`
   - `fact(21)` -> `5.109094217170944e+019`
+  - `factorint(40)` -> `(2**3, 5)`
+  - `factorint(-33)` -> `(-3, 11)`
 
 #### Numeric Utilities With Complex Numbers
 

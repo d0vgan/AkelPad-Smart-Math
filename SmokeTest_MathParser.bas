@@ -2248,7 +2248,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1208) as SmokeCase
+  dim tests(1 to 1233) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3510,6 +3510,32 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
       tests(ti).expected = smokeAppendExpected(smokeAi)
     end if
   next smokeAi
+
+  tests(1209).expr = "factorint(33)": tests(1209).expected = "(3, 11)" ' [factorint]
+  tests(1210).expr = "factorint(12)": tests(1210).expected = "(2**2, 3)" ' [factorint]
+  tests(1211).expr = "factorint(13)": tests(1211).expected = "(13)" ' [factorint]
+  tests(1212).expr = "factorint(-33)": tests(1212).expected = "(-3, 11)" ' [factorint]
+  tests(1213).expr = "factorint(-13)": tests(1213).expected = "(-13)" ' [factorint]
+  tests(1214).expr = "factorint(-12)": tests(1214).expected = "(-2, 2, 3)" ' [factorint]
+  tests(1215).expr = "factorint(0)": tests(1215).expected = "(0)" ' [factorint]
+  tests(1216).expr = "factorint(1)": tests(1216).expected = "(1)" ' [factorint]
+  tests(1217).expr = "factorint(-1)": tests(1217).expected = "(-1)" ' [factorint]
+  tests(1218).expr = "factorint(2**52)": tests(1218).expected = "(2**52)" ' [factorint]
+  tests(1219).expr = "factorint(2**63-1)": tests(1219).expected = "(7**2, 73, 127, 337, 92737, 649657)" ' [factorint]
+  tests(1220).expr = "factorint((33,12))": tests(1220).expectedErrContains = "expects scalar values" ' [factorint]
+  tests(1221).expr = "factorint(2**64)": tests(1221).expectedErrContains = "expects integer values" ' [factorint]
+  tests(1222).expr = "factorint(18446744073709551615)": tests(1222).expected = "(3, 5, 17, 257, 641, 65537, 6700417)" ' [factorint]
+  tests(1223).expr = "prod(factorint(12))": tests(1223).expected = "12" ' [factorint] prod inverse
+  tests(1224).expr = "prod(factorint(-33))": tests(1224).expected = "-33" ' [factorint] prod inverse
+  tests(1225).expr = "prod(factorint(2**52))": tests(1225).expected = "4503599627370496" ' [factorint] prod inverse
+  tests(1226).expr = "factorint(33.0)": tests(1226).expected = "(3, 11)" ' [factorint]
+  tests(1227).expr = "factorint(33.5)": tests(1227).expectedErrContains = "expects integer values" ' [factorint]
+  tests(1228).expr = "factorint(90)": tests(1228).expected = "(2, 3**2, 5)" ' [factorint]
+  tests(1229).expr = "factorint(9007)": tests(1229).expected = "(9007)" ' [factorint]
+  tests(1230).expr = "factorint(900719)": tests(1230).expected = "(900719)" ' [factorint]
+  tests(1231).expr = "factorint(90071992)": tests(1231).expected = "(2**3, 11258999)" ' [factorint]
+  tests(1232).expr = "factorint(9007199254)": tests(1232).expected = "(2, 89, 50602243)" ' [factorint]
+  tests(1233).expr = "factorint(900719925474)": tests(1233).expected = "(2, 3, 12907, 11630897)" ' [factorint]
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

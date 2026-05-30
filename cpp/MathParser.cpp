@@ -68,6 +68,7 @@ const MathParser::BuiltinMetaRow MathParser::kBuiltinMeta[] = {
   { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unique
   { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unpack
   { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N },  // Fact
+  { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N },  // Factorint
   { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Avg
   { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Mean
   { BF::IntegerOnly, 2, 2, BHK::ValueDivisor },  // Mod
@@ -101,9 +102,19 @@ const MathParser::BuiltinMetaRow MathParser::kBuiltinMeta[] = {
 constexpr std::size_t builtinMetaRowCountForAssert() {
   return sizeof(MathParser::kBuiltinMeta) / sizeof(MathParser::kBuiltinMeta[0]);
 }
-static_assert(builtinMetaRowCountForAssert() == 72, "kBuiltinMeta size mismatch");
+static_assert(builtinMetaRowCountForAssert() == 73, "kBuiltinMeta size mismatch");
+
+struct FactorintPrimeEntry {
+  std::uint64_t baseU = 0;
+  unsigned int expV = 0;
+};
 
 namespace {
+#include "FactorintSmallPrimes.inc"
+
+constexpr int kFactorintPollardMaxOuter = 32;
+constexpr std::uint64_t kFactorintPollardMaxInner = 500000u;
+
 constexpr double kPi = 3.1415926535897932384626433832795;
 constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
 constexpr int kMaxEvalDepth = 128;
@@ -725,6 +736,8 @@ constexpr const char* STR_REVERSED = "reversed";
 constexpr const char* STR_UNIQUE = "unique";
 constexpr const char* STR_UNPACK = "unpack";
 constexpr const char* STR_FACT = "fact";
+constexpr const char* STR_FACTORINT = "factorint";
+constexpr const char* STR_DOUBLE_ASTERISK = "**";
 constexpr const char* STR_FACTORIAL = "factorial";
 constexpr const char* STR_AVG = "avg";
 constexpr const char* STR_MEAN = "mean";
@@ -1184,6 +1197,209 @@ std::uint64_t gcdUInt64(std::uint64_t a, std::uint64_t b) {
 long long gcdInt64(long long a, long long b) {
   return static_cast<long long>(gcdUInt64(
       static_cast<std::uint64_t>(std::llabs(a)), static_cast<std::uint64_t>(std::llabs(b))));
+}
+
+std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  std::uint64_t res = 0;
+  a %= modN;
+  while (b > 0u) {
+    if ((b & 1u) != 0u) {
+      if (res >= modN - a) {
+        res -= modN;
+      }
+      res = (res + a) % modN;
+    }
+    if (a >= modN - a) {
+      a -= modN;
+    }
+    a = (a + a) % modN;
+    b >>= 1;
+  }
+  return res;
+}
+
+std::uint64_t powModU64(std::uint64_t base, std::uint64_t exp, std::uint64_t modN) {
+  std::uint64_t res = 1;
+  std::uint64_t b = base % modN;
+  std::uint64_t e = exp;
+  while (e > 0u) {
+    if ((e & 1u) != 0u) {
+      res = mulModU64(res, b, modN);
+    }
+    b = mulModU64(b, b, modN);
+    e >>= 1;
+  }
+  return res;
+}
+
+bool isPrimeU64(std::uint64_t n) {
+  if (n < 2u) {
+    return false;
+  }
+  if (n == 2u || n == 3u) {
+    return true;
+  }
+  if ((n & 1u) == 0u || (n % 3u) == 0u) {
+    return false;
+  }
+  std::uint64_t d = n - 1u;
+  int s = 0;
+  while ((d & 1u) == 0u) {
+    d >>= 1;
+    ++s;
+  }
+  static const std::uint64_t kBases[] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37};
+  for (const std::uint64_t a : kBases) {
+    if (n <= a) {
+      break;
+    }
+    std::uint64_t x = powModU64(a, d, n);
+    if (x == 1u || x == n - 1u) {
+      continue;
+    }
+    bool composite = true;
+    for (int r = 1; r < s; ++r) {
+      x = mulModU64(x, x, n);
+      if (x == n - 1u) {
+        composite = false;
+        break;
+      }
+    }
+    if (composite) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::uint64_t pollardBrentU64(std::uint64_t n) {
+  if ((n & 1u) == 0u) {
+    return 2u;
+  }
+  if ((n % 3u) == 0u) {
+    return 3u;
+  }
+  std::uint64_t seed = n;
+  std::uint64_t c = 1;
+  for (int attempt = 0; attempt < kFactorintPollardMaxOuter; ++attempt) {
+    std::uint64_t y = 2u + (seed % (n - 2u));
+    std::uint64_t r = 1;
+    const std::uint64_t m = 128;
+    std::uint64_t g = 1;
+    std::uint64_t iterGuard = 0;
+    while (g == 1u) {
+      if (++iterGuard > kFactorintPollardMaxInner) {
+        break;
+      }
+      const std::uint64_t x = y;
+      for (std::uint64_t i = 0; i < r; ++i) {
+        y = (mulModU64(y, y, n) + c) % n;
+      }
+      std::uint64_t k = 0;
+      while (k < r && g == 1u) {
+        std::uint64_t q = 1;
+        std::uint64_t lim = m;
+        if (r - k < lim) {
+          lim = r - k;
+        }
+        for (std::uint64_t i = 0; i < lim; ++i) {
+          y = (mulModU64(y, y, n) + c) % n;
+          const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
+          q = mulModU64(q, diff, n);
+        }
+        g = gcdUInt64(q, n);
+        k += lim;
+      }
+      r <<= 1;
+      if (g == n) {
+        g = 1;
+        std::uint64_t recoverGuard = 0;
+        while (g == 1u) {
+          if (++recoverGuard > kFactorintPollardMaxInner) {
+            break;
+          }
+          y = (mulModU64(y, y, n) + c) % n;
+          const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
+          g = gcdUInt64(diff, n);
+        }
+      }
+      if (g > 1u && g < n) {
+        return g;
+      }
+    }
+    ++c;
+    seed = seed * 6364136223846793005ull + 1ull;
+  }
+  return n;
+}
+
+void factorintTrialDividePrime(
+    std::uint64_t p,
+    std::uint64_t& n,
+    std::vector<FactorintPrimeEntry>& out) {
+  if ((n % p) != 0u) {
+    return;
+  }
+  unsigned int e = 0;
+  while ((n % p) == 0u) {
+    ++e;
+    n /= p;
+  }
+  out.push_back({p, e});
+}
+
+void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& out) {
+  if (n <= 1u) {
+    return;
+  }
+  unsigned int twoExp = 0;
+  while ((n & 1u) == 0u) {
+    ++twoExp;
+    n >>= 1;
+  }
+  if (twoExp > 0u) {
+    out.push_back({2u, twoExp});
+  }
+  if (n <= 1u) {
+    return;
+  }
+  bool trialStoppedEarly = false;
+  for (std::size_t si = 0; si < kFactorintSmallPrimeCount; ++si) {
+    const std::uint64_t p = kFactorintSmallPrimes[si];
+    if (p > n / p) {
+      trialStoppedEarly = true;
+      break;
+    }
+    factorintTrialDividePrime(p, n, out);
+    if (n <= 1u) {
+      return;
+    }
+  }
+  if (n <= 1u) {
+    return;
+  }
+  const std::uint64_t maxSmallSq = kFactorintSmallMaxPrime * kFactorintSmallMaxPrime;
+  if (trialStoppedEarly || n <= maxSmallSq) {
+    out.push_back({n, 1u});
+    return;
+  }
+  if (isPrimeU64(n)) {
+    out.push_back({n, 1u});
+    return;
+  }
+  const std::uint64_t factor = pollardBrentU64(n);
+  if (factor <= 1u || factor >= n || (n % factor) != 0u) {
+    out.push_back({n, 1u});
+    return;
+  }
+  factorizeU64IntoEntries(factor, out);
+  factorizeU64IntoEntries(n / factor, out);
+}
+
+void sortFactorintEntries(std::vector<FactorintPrimeEntry>& entries) {
+  std::sort(entries.begin(), entries.end(), [](const FactorintPrimeEntry& a, const FactorintPrimeEntry& b) {
+    return a.baseU < b.baseU;
+  });
 }
 
 bool tryLcmUInt64(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
@@ -2265,7 +2481,7 @@ const std::vector<std::string>& MathParser::functionNames() {
       STR_ASIN,   STR_ACOS, STR_ATAN, STR_SINH, STR_COSH,     STR_TANH, STR_ACOSH, STR_ASINH, STR_ATANH, STR_EXP,
       STR_LOG,    STR_LN,     STR_LOG10, STR_SQRT,   STR_SQR,      STR_INT,  STR_FRAC,    STR_ABS,  STR_FLOOR,
       STR_CEIL,   STR_TRUNC,  STR_ROUND, STR_SIGN,   STR_DEG,      STR_RAD,  STR_SUM,   STR_MEDIAN,   STR_VARIANCE, STR_STDDEV,
-      STR_SORT,   STR_SORTBY, STR_RATIO, STR_REVERSE, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_AVG, STR_MEAN,
+      STR_SORT,   STR_SORTBY, STR_RATIO, STR_REVERSE, STR_UNIQUE, STR_UNPACK, STR_FACT, STR_FACTORINT, STR_AVG, STR_MEAN,
       STR_MOD,    STR_CLAMP,  STR_HYPOT, STR_GCD,    STR_LCM,      STR_NCR, STR_NPR, STR_PRODUCT, STR_MIN, STR_MAX,
       STR_UHEX,   STR_UOCT,   STR_UBIN, STR_MILLISECONDS, STR_SECONDS, STR_MINUTES, STR_HOURS, STR_DAYS,
       STR_REAL,   STR_IMAG,   STR_PHASE, STR_POLAR, STR_CART, STR_CONJ};
@@ -4431,6 +4647,21 @@ bool MathParser::tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::
   return true;
 }
 
+std::string formatIntPowerParts(long long baseV, std::uint64_t expV) {
+  if (expV <= 1u) {
+    return std::to_string(baseV);
+  }
+  return std::to_string(baseV) + STR_DOUBLE_ASTERISK + std::to_string(expV);
+}
+
+bool MathParser::tryFormatIntPowerScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
+  if (!sv.hasRenderIntPower() || sv.imagExactUInt64 <= 1u) {
+    return false;
+  }
+  outText = formatIntPowerParts(sv.imagExactInt64, sv.imagExactUInt64);
+  return true;
+}
+
 #if SMARTMATH_COMPLEX_NUMBERS
 bool MathParser::tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText) {
   if (std::isnan(sv.scalar) || std::isnan(sv.imag)) {
@@ -4519,6 +4750,10 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     std::string ratText;
     if (tryFormatRationalScalar(v.scalarValue, ratText)) {
       return ratText;
+    }
+    std::string powText;
+    if (tryFormatIntPowerScalar(v.scalarValue, powText)) {
+      return powText;
     }
   }
   if (base == RenderBase::Dec) {
@@ -6045,6 +6280,12 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
       out.rational.denominator = v.exactUInt64;
       return out;
     }
+    if (v.hasRenderIntPower() && v.imagExactUInt64 > 1u) {
+      out.kind = RawResult::ScalarKind::IntPower;
+      out.rational.numerator = v.imagExactInt64;
+      out.rational.denominator = v.imagExactUInt64;
+      return out;
+    }
     if (v.hasExactInt64()) {
       out.kind = RawResult::ScalarKind::Int64;
       out.intValue = v.exactInt64;
@@ -6141,6 +6382,7 @@ MathParser::EvalValue MathParser::scalarFromScalarValue(const EvalValue::ScalarV
   out.scalarValue.setImagExactUInt64Valid(sv.hasImagExactUInt64());
   out.scalarValue.setRenderRational(sv.hasRenderRational());
   out.scalarValue.setImagRenderRational(sv.hasImagRenderRational());
+  out.scalarValue.setRenderIntPower(sv.hasRenderIntPower());
   return out;
 }
 
@@ -10553,6 +10795,205 @@ MathParser::EvalValue MathParser::builtinFactorial(
   return makeScalar(factorialScalarFloatFromInt(n));
 }
 
+bool MathParser::tryGetFactorintInput(
+    const EvalValue& v,
+    bool& isNegative,
+    std::uint64_t& absU) const {
+  if (v.kind != ValueKind::Scalar) {
+    return false;
+  }
+  const auto& sv = v.scalarValue;
+  if (sv.hasExactInt64()) {
+    const long long iv = sv.exactInt64;
+    if (iv < 0) {
+      isNegative = true;
+      if (iv == std::numeric_limits<long long>::min()) {
+        absU = 9223372036854775808ull;
+      } else {
+        absU = static_cast<std::uint64_t>(-iv);
+      }
+      return true;
+    }
+    isNegative = false;
+    absU = static_cast<std::uint64_t>(iv);
+    return true;
+  }
+  if (sv.hasExactUInt64() || sv.scalarKind == ScalarKind::UInt64) {
+    isNegative = false;
+    absU = sv.exactUInt64;
+    return true;
+  }
+  long long li = 0;
+  if (!tryExtractExactInt64FromDoubleStrict(sv.scalar, li)) {
+    return false;
+  }
+  if (li < 0) {
+    isNegative = true;
+    if (li == std::numeric_limits<long long>::min()) {
+      absU = 9223372036854775808ull;
+    } else {
+      absU = static_cast<std::uint64_t>(-li);
+    }
+    return true;
+  }
+  isNegative = false;
+  absU = static_cast<std::uint64_t>(li);
+  return true;
+}
+
+void MathParser::setFactorintTermValue(
+    EvalValue::ScalarValue& sv,
+    long long signedValueI,
+    std::uint64_t valueU,
+    bool hasUIntValue) {
+  sv.setRenderIntPower(false);
+  sv.imagExactInt64 = 0;
+  sv.imagExactUInt64 = 0;
+  if (hasUIntValue) {
+    sv.scalar = static_cast<double>(valueU);
+    sv.setExactUInt64Valid(true);
+    sv.exactUInt64 = valueU;
+    if (valueU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+      sv.setExactInt64Valid(true);
+      sv.exactInt64 = static_cast<long long>(valueU);
+    } else {
+      sv.setExactInt64Valid(false);
+      sv.exactInt64 = 0;
+    }
+    sv.scalarKind = ScalarKind::UInt64;
+    return;
+  }
+  sv.scalar = static_cast<double>(signedValueI);
+  sv.setExactInt64Valid(true);
+  sv.exactInt64 = signedValueI;
+  if (signedValueI >= 0) {
+    sv.setExactUInt64Valid(true);
+    sv.exactUInt64 = static_cast<std::uint64_t>(signedValueI);
+  } else {
+    sv.setExactUInt64Valid(false);
+    sv.exactUInt64 = 0;
+  }
+  sv.scalarKind = ScalarKind::Int64;
+}
+
+void MathParser::setFactorintPowerTerm(
+    EvalValue::ScalarValue& sv,
+    std::uint64_t baseU,
+    int expV,
+    long long signedValueI,
+    std::uint64_t valueU,
+    bool hasUIntValue) {
+  setFactorintTermValue(sv, signedValueI, valueU, hasUIntValue);
+  if (expV <= 1) {
+    return;
+  }
+  sv.setRenderIntPower(true);
+  sv.imagExactInt64 = static_cast<long long>(baseU);
+  sv.imagExactUInt64 = static_cast<std::uint64_t>(expV);
+}
+
+void MathParser::appendFactorintScalarTerm(
+    std::vector<EvalValue::ScalarValue>& out,
+    std::uint64_t baseU,
+    int expV,
+    bool& applySign) const {
+  if (applySign && expV > 1 &&
+      baseU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+    applySign = false;
+    EvalValue::ScalarValue negSv{};
+    setFactorintTermValue(negSv, -static_cast<long long>(baseU), baseU, false);
+    out.push_back(std::move(negSv));
+    appendFactorintScalarTerm(out, baseU, expV - 1, applySign);
+    return;
+  }
+  std::uint64_t valueU = baseU;
+  if (expV > 1 && !tryPowUInt64Checked(baseU, static_cast<std::uint64_t>(expV), valueU)) {
+    return;
+  }
+  long long signedI = static_cast<long long>(valueU);
+  bool hasUInt = false;
+  if (applySign) {
+    applySign = false;
+    if (valueU > static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+      hasUInt = true;
+      signedI = 0;
+    } else {
+      signedI = -static_cast<long long>(valueU);
+    }
+  } else if (valueU > static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+    hasUInt = true;
+    signedI = 0;
+  }
+  EvalValue::ScalarValue sv{};
+  if (expV > 1) {
+    setFactorintPowerTerm(sv, baseU, expV, signedI, valueU, hasUInt);
+  } else {
+    setFactorintTermValue(sv, signedI, valueU, hasUInt);
+  }
+  out.push_back(std::move(sv));
+}
+
+MathParser::EvalValue MathParser::buildFactorintFromAbsU(
+    bool isNegative,
+    std::uint64_t absU) const {
+  EvalValue outV{};
+  std::vector<EvalValue::ScalarValue> terms;
+  if (absU == 0u) {
+    EvalValue::ScalarValue sv{};
+    setFactorintTermValue(sv, 0, 0u, false);
+    terms.push_back(std::move(sv));
+  } else if (absU == 1u) {
+    EvalValue::ScalarValue sv{};
+    setFactorintTermValue(sv, isNegative ? -1LL : 1LL, 1u, false);
+    terms.push_back(std::move(sv));
+  } else {
+    std::vector<FactorintPrimeEntry> entries;
+    factorizeU64IntoEntries(absU, entries);
+    if (entries.empty()) {
+      return makeScalar(0);
+    }
+    sortFactorintEntries(entries);
+    for (std::size_t ei = 0; ei < entries.size(); ++ei) {
+      bool applySign = isNegative && ei == 0;
+      appendFactorintScalarTerm(
+          terms, entries[ei].baseU, static_cast<int>(entries[ei].expV), applySign);
+    }
+  }
+  if (terms.empty()) {
+    return makeScalar(0);
+  }
+  outV.kind = ValueKind::Array;
+  outV.arr = std::move(terms);
+  return outV;
+}
+
+MathParser::EvalValue MathParser::builtinFactorint(
+    EvalContext& ctx,
+    const std::string& fnName,
+    const std::vector<EvalValue>& args) const {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (getSupportComplexNumbers() && rejectBuiltinArgsWithComplexImaginary(ctx, args)) {
+    return makeScalar(0);
+  }
+#endif
+  if (args[0].kind == ValueKind::Array) {
+    setScalarValuesError(ctx, fnName);
+    return makeScalar(0);
+  }
+  bool isNegative = false;
+  std::uint64_t absU = 0;
+  if (!tryGetFactorintInput(args[0], isNegative, absU)) {
+    setIntegerValuesError(ctx, fnName);
+    return makeScalar(0);
+  }
+  EvalValue out = buildFactorintFromAbsU(isNegative, absU);
+  if (out.kind != ValueKind::Array) {
+    setIntegerValuesError(ctx, fnName);
+    return makeScalar(0);
+  }
+  return out;
+}
+
 MathParser::EvalValue MathParser::builtinDegRad(
     EvalContext& ctx,
     const std::string& fnName,
@@ -11400,6 +11841,8 @@ MathParser::EvalValue MathParser::evalFunctionCall(
       return builtinModCall(ctx, args);
     case BuiltinFunctionId::Fact:
       return builtinFactorial(ctx, fnName, args);
+    case BuiltinFunctionId::Factorint:
+      return builtinFactorint(ctx, fnName, args);
     case BuiltinFunctionId::Deg:
     case BuiltinFunctionId::Rad:
       return builtinDegRad(ctx, fnName, id, args);

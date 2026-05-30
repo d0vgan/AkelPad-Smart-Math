@@ -500,6 +500,9 @@ private function FormatRawCartesianComponentText(byref c as RawCartesianScalar) 
   case RSK_RATIONAL
     if c.ratDen = 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
     return AddThousandsSeparator(ltrim(str(c.ratNum))) & "/" & AddThousandsSeparator(ltrim(str(c.ratDen)))
+  case RSK_INT_POWER
+    if c.ratDen <= 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
+    return AddThousandsSeparator(ltrim(str(c.ratNum))) & "**" & AddThousandsSeparator(ltrim(str(c.ratDen)))
   case else
     return FormatRawFloatingValue(c.floatValue)
   end select

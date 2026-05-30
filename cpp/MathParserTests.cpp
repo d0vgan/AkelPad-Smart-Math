@@ -2858,6 +2858,27 @@ std::vector<TestCase> buildRegressionCases() {
                   return false;
                 return expectEvalErrorContains(p, "ncr((5,6),(2,7))", "numeric error in ncr()", why);
               }});
+  t.push_back({"regression/factorint prime decomposition", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "factorint(13)", "(13)", why)) return false;
+                if (!expectEval(p, "factorint(0)", "(0)", why)) return false;
+                if (!expectEval(p, "factorint(-1)", "(-1)", why)) return false;
+                if (!expectEval(p, "factorint(-12)", "(-2, 2, 3)", why)) return false;
+                if (!expectEval(p, "factorint(2**63-1)", "(7**2, 73, 127, 337, 92737, 649657)", why)) return false;
+                if (!expectEval(p, "factorint(18446744073709551615)", "(3, 5, 17, 257, 641, 65537, 6700417)", why))
+                  return false;
+                if (!expectEval(p, "factorint(90)", "(2, 3**2, 5)", why)) return false;
+                if (!expectEval(p, "factorint(9007)", "(9007)", why)) return false;
+                if (!expectEval(p, "factorint(900719)", "(900719)", why)) return false;
+                if (!expectEval(p, "factorint(90071992)", "(2**3, 11258999)", why)) return false;
+                if (!expectEval(p, "factorint(9007199254)", "(2, 89, 50602243)", why)) return false;
+                if (!expectEval(p, "factorint(900719925474)", "(2, 3, 12907, 11630897)", why)) return false;
+                if (!expectEval(p, "prod(factorint(-33))", "-33", why)) return false;
+                if (!expectEval(p, "prod(factorint(2**52))", "4503599627370496", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint(33.5)", "factorint() expects integer values", why))
+                  return false;
+                return true;
+              }});
   t.push_back({"regression/binary builtin array length mismatch", [](std::string& why) {
                 MathParser p;
                 const char* exprs[] = {
@@ -3490,6 +3511,19 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "fact(2.5)", "fact() expects integer values"} ,
     {ParityBasicCase::Kind::Expected, "factorial(21)", "5.109094217170944e+019"} ,
     {ParityBasicCase::Kind::Expected, "fact(171)", "inf"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(33)", "(3, 11)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(12)", "(2**2, 3)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(-33)", "(-3, 11)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(2**52)", "(2**52)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(90)", "(2, 3**2, 5)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(9007)", "(9007)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(900719)", "(900719)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(90071992)", "(2**3, 11258999)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(9007199254)", "(2, 89, 50602243)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(900719925474)", "(2, 3, 12907, 11630897)"} ,
+    {ParityBasicCase::Kind::Expected, "prod(factorint(12))", "12"} ,
+    {ParityBasicCase::Kind::ErrorContains, "factorint((33,12))", "expects scalar values"} ,
+    {ParityBasicCase::Kind::ErrorContains, "factorint(2**64)", "expects integer values"} ,
     {ParityBasicCase::Kind::ErrorContains, "rand", "function: rand()"} ,
     {ParityBasicCase::Kind::ErrorContains, "random", "function: random(min, max)"} ,
     {ParityBasicCase::Kind::ErrorContains, "median", "function: median(...)"} ,

@@ -14,6 +14,7 @@ enum RawScalarKind
   RSK_RATIONAL = 3
   RSK_COMPLEX = 4
   RSK_TIME = 5
+  RSK_INT_POWER = 6
 end enum
 
 '' One real or imaginary component. Only the fields for ``kind`` are meaningful.
@@ -22,8 +23,8 @@ type RawCartesianScalar
   floatValue as Double   '' for RSK_FLOATING
   intValue as LongInt    '' for RSK_INT64 and RSK_TIME (total milliseconds)
   uintValue as ULongInt  '' for RSK_UINT64
-  ratNum as LongInt      '' for RSK_RATIONAL (ratNum / ratDen)
-  ratDen as ULongInt     '' for RSK_RATIONAL
+  ratNum as LongInt      '' for RSK_RATIONAL (ratNum / ratDen); RSK_INT_POWER base (signed)
+  ratDen as ULongInt     '' for RSK_RATIONAL; RSK_INT_POWER exponent
 end type
 
 '' Non-complex values: payload in ``real`` only; ``imag`` cleared; ``kind`` mirrors ``real.kind``.
