@@ -3770,8 +3770,23 @@ end sub
 private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString ptr) as Boolean
   if identStart <> exprStart then return FALSE
   SkipSpaces()
+  return (pStream[0] = CHAR_NUL)
+end function
+
+private function TrySetBareFunctionImmediateCloserError(byval identStart as ZString ptr) as Boolean
+  if identStart <> exprStart then return FALSE
   dim cu as UByte = pStream[0]
-  return (cu = CHAR_NUL orelse cu = CHAR_RPAREN orelse cu = CHAR_RBRACKET orelse cu = CHAR_RBRACE)
+  if cu = CHAR_RPAREN then
+    SetParseError(FB_STR_MISMATCHED_CLOSING_PARENTHESIS)
+    return TRUE
+  elseif cu = CHAR_RBRACKET then
+    SetParseError(FB_STR_MISMATCHED_CLOSING_BRACKET)
+    return TRUE
+  elseif cu = CHAR_RBRACE then
+    SetParseError(FB_STR_MISMATCHED_CLOSING_BRACE)
+    return TRUE
+  end if
+  return FALSE
 end function
 
 private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String, byval fnIdentStart as ZString ptr) as Boolean
@@ -3807,6 +3822,8 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
     end if
     if IsBareFunctionNameAtExpressionTail(identStart) then
       SetParseError(FB_STR_HINT_PREFIX & fnHint)
+    elseif TrySetBareFunctionImmediateCloserError(identStart) then
+      ' mismatched closer already set
     else
       SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
     end if
@@ -3822,6 +3839,8 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
     end if
     if IsBareFunctionNameAtExpressionTail(identStart) then
       SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
+    elseif TrySetBareFunctionImmediateCloserError(identStart) then
+      ' mismatched closer already set
     else
       SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
     end if

@@ -607,6 +607,7 @@ private:
   const char* getReservedIdentifierError(const std::string& ident) const;
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
   bool isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const;
+  bool trySetBareFunctionImmediateCloserError(EvalContext& ctx, const char* identStart) const;
   bool identIsBareFunctionOrUdfName(const std::string& ident, const EvalContext& ctx) const;
   bool trimmedStmtIsBareFunctionOrUdfName(const std::string& stmt) const;
   bool trimmedStmtIsBareFunctionOrUdfName(const char* begin, const char* end) const;

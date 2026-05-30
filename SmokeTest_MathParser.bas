@@ -1796,6 +1796,31 @@ private sub RunIncompleteFunctionCallHintTests()
     end if
   next si
 
+  dim badCloserExprs(1 to 5) as String
+  dim badCloserNeed(1 to 5) as String
+  dim badCloserMustNot(1 to 5) as String
+  badCloserExprs(1) = "sin)": badCloserNeed(1) = "mismatched closing parenthesis": badCloserMustNot(1) = "function:"
+  badCloserExprs(2) = "sin]": badCloserNeed(2) = "mismatched closing bracket": badCloserMustNot(2) = "function:"
+  badCloserExprs(3) = "sin}": badCloserNeed(3) = "mismatched closing brace": badCloserMustNot(3) = "function:"
+  badCloserExprs(4) = "f(x)=x; f)": badCloserNeed(4) = "mismatched closing parenthesis": badCloserMustNot(4) = "user-defined function:"
+  badCloserExprs(5) = "sin)(1)": badCloserNeed(5) = "mismatched closing parenthesis": badCloserMustNot(5) = "function:"
+  dim bi as Integer
+  for bi = 1 to 5
+    if Parser_TryEvaluateEx(badCloserExprs(bi), r, rt, ia) then
+      print "[bare-fn-closer] FAIL: """ & badCloserExprs(bi) & """ expected error, got """ & rt & """"
+      subFail += 1
+    elseif instr(Parser_GetLastError(), badCloserNeed(bi)) = 0 then
+      print "[bare-fn-closer] FAIL: """ & badCloserExprs(bi) & """ got """ & Parser_GetLastError() & """"
+      subFail += 1
+    elseif instr(Parser_GetLastError(), badCloserMustNot(bi)) > 0 then
+      print "[bare-fn-closer] FAIL: """ & badCloserExprs(bi) & """ must not hint: """ & Parser_GetLastError() & """"
+      subFail += 1
+    else
+      print "[bare-fn-closer] PASS: """ & badCloserExprs(bi) & """"
+      subPass += 1
+    end if
+  next bi
+
   g_passed += subPass
   g_failed += subFail
   print "Incomplete-open-paren-hint sub-tests: passed " & str(subPass) & ", failed " & str(subFail)

@@ -2875,6 +2875,36 @@ std::vector<TestCase> buildRegressionCases() {
                 return expectEvalErrorContains(
                     p, "sortby((1,2,3), log(", "sortby expects exactly one function", why);
               }});
+  t.push_back({"regression/bare function name followed by immediate closer", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "sin)", "mismatched closing parenthesis", why)) return false;
+                if (p.getError().find("function:") != std::string::npos) {
+                  why = "sin): must not emit function hint";
+                  return false;
+                }
+                if (!expectEvalErrorContains(p, "sin]", "mismatched closing bracket", why)) return false;
+                if (p.getError().find("function:") != std::string::npos) {
+                  why = "sin]: must not emit function hint";
+                  return false;
+                }
+                if (!expectEvalErrorContains(p, "sin}", "mismatched closing brace", why)) return false;
+                if (p.getError().find("function:") != std::string::npos) {
+                  why = "sin}: must not emit function hint";
+                  return false;
+                }
+                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEvalErrorContains(p, "f(x)=x; f)", "mismatched closing parenthesis", why)) return false;
+                if (p.getError().find("user-defined function:") != std::string::npos) {
+                  why = "f(x)=x; f): must not emit UDF signature hint";
+                  return false;
+                }
+                if (!expectEvalErrorContains(p, "sin)(1)", "mismatched closing parenthesis", why)) return false;
+                if (p.getError().find("function:") != std::string::npos) {
+                  why = "sin)(1): must not emit function hint";
+                  return false;
+                }
+                return true;
+              }});
   t.push_back({"regression/bare function name before semicolon is syntax error", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "atan2;", "unexpected token", why)) return false;

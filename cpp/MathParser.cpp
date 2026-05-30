@@ -793,6 +793,9 @@ constexpr const char* STR_INVALID_OCTAL_LITERAL = "invalid octal literal";
 constexpr const char* STR_INVALID_NUMERIC_LITERAL = "invalid numeric literal";
 constexpr const char* STR_MISSING_INDEX = "missing index";
 constexpr const char* STR_MISSING_CLOSING_BRACKET = "missing closing bracket";
+constexpr const char* STR_MISMATCHED_CLOSING_PARENTHESIS = "mismatched closing parenthesis";
+constexpr const char* STR_MISMATCHED_CLOSING_BRACKET = "mismatched closing bracket";
+constexpr const char* STR_MISMATCHED_CLOSING_BRACE = "mismatched closing brace";
 constexpr const char* STR_LT_EQ = "<=";
 constexpr const char* STR_GT_EQ = ">=";
 constexpr const char* STR_EQ_EQ = "==";
@@ -2402,8 +2405,28 @@ bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char
     return false;
   }
   skipSpaces(ctx);
-  const char c = *ctx.p;
-  return c == '\0' || c == ')' || c == ']' || c == '}';
+  return *ctx.p == '\0';
+}
+
+bool MathParser::trySetBareFunctionImmediateCloserError(
+    EvalContext& ctx,
+    const char* identStart) const {
+  if (!ctx.p || !identStart || !ctx.start || identStart != ctx.start) {
+    return false;
+  }
+  switch (*ctx.p) {
+    case ')':
+      setError(ctx, STR_MISMATCHED_CLOSING_PARENTHESIS);
+      return true;
+    case ']':
+      setError(ctx, STR_MISMATCHED_CLOSING_BRACKET);
+      return true;
+    case '}':
+      setError(ctx, STR_MISMATCHED_CLOSING_BRACE);
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool MathParser::identIsBareFunctionOrUdfName(const std::string& ident, const EvalContext& ctx) const {
@@ -2477,6 +2500,9 @@ bool MathParser::trySetMissingFunctionCallError(
     return true;
   }
   if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
+    if (trySetBareFunctionImmediateCloserError(ctx, identStart)) {
+      return true;
+    }
     setError(ctx, buildUnknownVariableErrorText(ident));
     return true;
   }
@@ -2528,6 +2554,9 @@ bool MathParser::trySetBareUserFunctionNameError(
     return true;
   }
   if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
+    if (trySetBareFunctionImmediateCloserError(ctx, identStart)) {
+      return true;
+    }
     setError(ctx, buildUnknownVariableErrorText(ident));
     return true;
   }
