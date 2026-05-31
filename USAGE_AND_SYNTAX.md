@@ -28,7 +28,7 @@ To enable calculations in your current document, SmartMath requires a specific m
 
 **How it works:**
 - **Automatic:** When you trigger the SmartMath command from the plugins menu or hotkey, this marker is automatically inserted at the top of your file.
-- **Manual:** You can type any of the supported markers manually on the first line to instantly activate calculations. 
+- **Manual:** You can type any of the supported markers manually on the first line to instantly activate calculations.
 - If the marker is missing or misspelled (e.g., `#smartma`), no calculations are performed until the marker is corrected.
 
 **Example:**

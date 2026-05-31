@@ -4643,7 +4643,7 @@ void MathParser::applyComplexCaretPrincipalEval(
 #endif
 
 MathParser::EvalValue MathParser::applyUnarySqrtEval(const EvalValue::ScalarValue& s) const {
-#if SMARTMATH_COMPLEX_NUMBERS  
+#if SMARTMATH_COMPLEX_NUMBERS
   if (getSupportComplexNumbers()) {
     if (scalarHasNonzeroImaginaryPart(s)) {
       return applySqrtComplexPrincipalUnary(s);
@@ -4899,7 +4899,7 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
     return formatTimeCanonicalFromMs(timeTotalMsFromScalarValue(v.scalarValue));
   }
 #endif
-#if SMARTMATH_COMPLEX_NUMBERS  
+#if SMARTMATH_COMPLEX_NUMBERS
   if (getSupportComplexNumbers() && scalarHasNonzeroImaginaryPart(v.scalarValue)) {
     if (base == RenderBase::Dec) {
       std::string ratCx;
@@ -5111,8 +5111,8 @@ bool MathParser::getSupportLambdaFunctions() const {
 }
 
 void MathParser::syncLambdaSupportDispatch() {
-  parseSortbyKeyArgImpl_ = 
-#if SMARTMATH_LAMBDA_FUNCTIONS  
+  parseSortbyKeyArgImpl_ =
+#if SMARTMATH_LAMBDA_FUNCTIONS
   getSupportLambdaFunctions() ? &MathParser::parseSortbyKeyArgWithLambda :
 #endif
     &MathParser::parseSortbyKeyArgFunctionRefOnly;
@@ -6174,7 +6174,7 @@ bool MathParser::cmpScalarValuesForCompare(
     return true;
   }
 #endif
-#if SMARTMATH_COMPLEX_NUMBERS  
+#if SMARTMATH_COMPLEX_NUMBERS
   if (ha || hb) {
     double ar = 0.0;
     double ai = 0.0;
@@ -10708,7 +10708,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       values = std::move(out);
       return;
     }
-#endif    
+#endif
     std::unordered_set<std::uint64_t> seen;
     seen.reserve(values.size() * 2 + 1);
     std::size_t writePos = 0;

@@ -1038,7 +1038,7 @@ private:
       const std::string& rePart,
       const std::string& imagTail,
       bool negUnitImag,
-      bool reZero);  
+      bool reZero);
   std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv) const;
   std::string formatComplexScalarWithRenderBase(const EvalValue::ScalarValue& sv, RenderBase base, bool asUnsigned) const;
   static bool isComplexUnaryTrigBuiltin(BuiltinFunctionId id);

@@ -13,7 +13,7 @@ sub ShowAboutDialog(byval hWnd as HWND)
            "Parser build: " & __DATE__ & " " & __TIME__ & wchr(13, 10) & _
            "Special thanks to the FreeBASIC community." & wchr(13, 10, 13, 10) & _
            "Open official GitHub repository?"
-  
+
   if MessageBoxW(hWnd, @sAbout, wstr("SmartMath - Information"), MB_YESNOCANCEL or MB_ICONINFORMATION) = IDYES then
     ShellExecuteW(0, wstr("open"), wstr("https://github.com/c-sanchez/AkelPad-Smart-Math"), 0, 0, SW_SHOWNORMAL)
   end if

@@ -35,7 +35,7 @@ sub UpdateMenuChecks()
       CheckMenuItem(hSubMenuColor, IDM_COLOR_BASE + j, MF_BYCOMMAND or st)
     next j
   end if
-  
+
   if hSmartMathMenu <> 0 then
     dim stThou as UINT
     if g_bUseThousandsSeparator then stThou = MF_CHECKED else stThou = MF_UNCHECKED
@@ -93,17 +93,17 @@ sub InitSmartMathMenu()
   if hSubMenuDecimals <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuDecimals), wstr("Decimal Places"))
   end if
-  
+
   if hSubMenuColor <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuColor), wstr("Text Color"))
   end if
-  
+
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_THOUSANDS_SEPARATOR, wstr("Use Thousands Separator"))
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_COMPLEX_NUMBERS, wstr("Complex Numbers"))
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_ABOUT, wstr("About..."))
-  
+
   InsertMenuW(g_hMainMenu, MENU_ABOUT_POSITION + 1, MF_BYPOSITION or MF_POPUP, cast(UINT_PTR, hSmartMathMenu), wstr("SmartMath"))
   DrawMenuBar(g_hMainWnd)
   UpdateMenuChecks()
