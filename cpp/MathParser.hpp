@@ -628,7 +628,31 @@ private:
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
   bool isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const;
   bool trySetBareFunctionImmediateCloserError(EvalContext& ctx, const char* identStart) const;
+  static bool passExactAbsFloatFactorGates(double f, bool strictAbsFAboveOne);
+  static bool getExactRoundedIntFromFloatResult(double r, bool boundAbsResultTo2_53, long long& outI);
+  static bool verifyExactIntFloatOpResidueSigned(long long intI, double f, long long resultI, bool isMultiply);
+  static bool verifyExactIntFloatOpCrossMultiplySigned(long long intI, double f, long long resultI, long long ratA,
+                                                       long long ratB, bool isMultiply);
+  static bool tryPromoteExactIntFromFloatOpSigned(long long intI, double f, double r, bool isMultiply, EvalValue& outV);
+  static bool verifyExactIntFloatOpResidueUnsigned(std::uint64_t intU, double f, std::uint64_t resultU, bool isMultiply);
+  static bool verifyExactIntFloatOpCrossMultiplyUnsigned(std::uint64_t intU, std::uint64_t resultU, long long ratA,
+                                                         long long ratB, bool isMultiply);
+  static bool tryPromoteExactIntFromFloatOpUnsigned(std::uint64_t intU, double f, double r, bool isMultiply,
+                                                    EvalValue& outV);
+  static bool tryPromoteExactDivisionByFloatDivisorSigned(
+      long long intI, double f, double r, EvalValue& outV);
+  static bool tryPromoteExactDivisionByFloatDivisorUnsigned(
+      std::uint64_t intU, double f, double r, EvalValue& outV);
+  static bool tryPromoteExactMultiplicationByFloatFactorSigned(
+      long long intI, double f, double r, EvalValue& outV);
+  static bool tryPromoteExactMultiplicationByFloatFactorUnsigned(
+      std::uint64_t intU, double f, double r, EvalValue& outV);
   bool tryApplyExactIntegerDivisionFromQuotient(
+      const EvalValue::ScalarValue& leftS,
+      const EvalValue::ScalarValue& rightS,
+      double r,
+      EvalValue& outV) const;
+  bool tryApplyExactIntegerMultiplicationFromProduct(
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       double r,

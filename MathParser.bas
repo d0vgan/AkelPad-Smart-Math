@@ -6385,6 +6385,155 @@ private function TryQuotExactULong(byval num as ULongInt, byval den as ULongInt,
   return (prod = num)
 end function
 
+private function RelCloseDouble(byval a as Double, byval b as Double) as Boolean
+  const EPS as Double = 1e-12
+  dim scale as Double = abs(b)
+  if scale < 1.0 then scale = 1.0
+  return abs(a - b) <= EPS * scale
+end function
+
+private function TryRecoverReducedRationalFromFloatAbs(byval absFVal as Double, byref outNum as LongInt, byref outDen as LongInt) as Boolean
+  const EPS as Double = 1e-12
+  const MAX_B as LongInt = 4096
+  dim bestErr as Double = 1e300
+  dim bestA as LongInt = 0
+  dim bestB as LongInt = 0
+  dim denIter as LongInt
+  for denIter = 1 to MAX_B
+    dim numV as LongInt = CLngInt(round(absFVal * CDbl(denIter)))
+    if numV < 1 then continue for
+    dim denV as LongInt = denIter
+    dim g as LongInt = GcdInt64(numV, denV)
+    numV \= g
+    denV \= g
+    dim approx as Double = CDbl(numV) / CDbl(denV)
+    dim ratErr as Double = abs(absFVal - approx)
+    if ratErr < bestErr then
+      bestErr = ratErr
+      bestA = numV
+      bestB = denV
+    end if
+  next denIter
+  if bestA < 1 orelse bestB < 1 then return FALSE
+  dim scale as Double = absFVal
+  if scale < 1.0 then scale = 1.0
+  if bestErr > EPS * scale then return FALSE
+  outNum = bestA
+  outDen = bestB
+  return TRUE
+end function
+
+private function TryPassExactAbsFloatFactorGates(byval floatV as Double, byval strictAbsFAboveOne as Boolean) as Boolean
+  if IsNonFiniteValue(floatV) orelse floatV = 0 then return FALSE
+  if strictAbsFAboveOne then
+    if abs(floatV) <= 1.0 then return FALSE
+  else
+    if abs(floatV) < 1.0 then return FALSE
+  end if
+  dim tmpI as LongInt
+  if TryGetExactInt64FromDouble(floatV, tmpI) then return FALSE
+  return TRUE
+end function
+
+private function TryGetExactRoundedIntFromFloatResult(byval r as Double, byval boundAbsResultTo2_53 as Boolean, byref outI as LongInt) as Boolean
+  dim roundedI as LongInt = CLngInt(round(r))
+  if CDbl(roundedI) <> r orelse roundedI = 0 then return FALSE
+  if boundAbsResultTo2_53 andalso abs(CDbl(roundedI)) > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
+  outI = roundedI
+  return TRUE
+end function
+
+private function TryVerifyExactIntFloatOpResidueSigned(byval intI as LongInt, byval floatV as Double, byval resultI as LongInt, byval isMultiply as Boolean) as Boolean
+  if isMultiply then
+    return RelCloseDouble(CDbl(resultI) - CDbl(intI) * floatV, 0.0)
+  end if
+  return RelCloseDouble(CDbl(intI) - CDbl(resultI) * floatV, 0.0)
+end function
+
+private function TryVerifyExactIntFloatOpCrossMultiplySigned(byval intI as LongInt, byval floatV as Double, byval resultI as LongInt, byval ratA as LongInt, byval ratB as LongInt, byval isMultiply as Boolean) as Boolean
+  dim signF as LongInt = 1
+  if floatV < 0 then signF = -1
+  dim resultSigned as LongInt
+  dim lhs as LongInt
+  dim rhs as LongInt
+  if TryMulInt64(resultI, signF, resultSigned) = FALSE then return FALSE
+  if isMultiply then
+    if TryMulInt64(resultSigned, ratB, lhs) = FALSE then return FALSE
+    if TryMulInt64(intI, ratA, rhs) = FALSE then return FALSE
+  else
+    if TryMulInt64(resultSigned, ratA, lhs) = FALSE then return FALSE
+    if TryMulInt64(intI, ratB, rhs) = FALSE then return FALSE
+  end if
+  return (lhs = rhs)
+end function
+
+private function TryPromoteExactIntFromFloatOpSigned(byval intI as LongInt, byval floatV as Double, byval r as Double, byval isMultiply as Boolean, byref outV as EvalValue) as Boolean
+  if TryPassExactAbsFloatFactorGates(floatV, isMultiply) = FALSE then return FALSE
+  if abs(CDbl(intI)) > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
+  dim resultI as LongInt
+  if TryGetExactRoundedIntFromFloatResult(r, isMultiply, resultI) = FALSE then return FALSE
+  if TryVerifyExactIntFloatOpResidueSigned(intI, floatV, resultI, isMultiply) = FALSE then return FALSE
+  dim ratA as LongInt
+  dim ratB as LongInt
+  if TryRecoverReducedRationalFromFloatAbs(abs(floatV), ratA, ratB) = FALSE then return FALSE
+  if TryVerifyExactIntFloatOpCrossMultiplySigned(intI, floatV, resultI, ratA, ratB, isMultiply) = FALSE then return FALSE
+  ValueSetInt64(outV, resultI)
+  return TRUE
+end function
+
+private function TryVerifyExactIntFloatOpResidueUnsigned(byval intU as ULongInt, byval floatV as Double, byval resultU as ULongInt, byval isMultiply as Boolean) as Boolean
+  if isMultiply then
+    return RelCloseDouble(CDbl(resultU) - CDbl(intU) * floatV, 0.0)
+  end if
+  return RelCloseDouble(CDbl(intU) - CDbl(resultU) * floatV, 0.0)
+end function
+
+private function TryVerifyExactIntFloatOpCrossMultiplyUnsigned(byval intU as ULongInt, byval resultU as ULongInt, byval ratA as LongInt, byval ratB as LongInt, byval isMultiply as Boolean) as Boolean
+  dim lhs as ULongInt
+  dim rhs as ULongInt
+  if isMultiply then
+    if TryMulULongChecked(resultU, CULngInt(ratB), lhs) = FALSE then return FALSE
+    if TryMulULongChecked(intU, CULngInt(ratA), rhs) = FALSE then return FALSE
+  else
+    if TryMulULongChecked(resultU, CULngInt(ratA), lhs) = FALSE then return FALSE
+    if TryMulULongChecked(intU, CULngInt(ratB), rhs) = FALSE then return FALSE
+  end if
+  return (lhs = rhs)
+end function
+
+private function TryPromoteExactIntFromFloatOpUnsigned(byval intU as ULongInt, byval floatV as Double, byval r as Double, byval isMultiply as Boolean, byref outV as EvalValue) as Boolean
+  if TryPassExactAbsFloatFactorGates(floatV, isMultiply) = FALSE then return FALSE
+  if floatV < 0 then return FALSE
+  if CDbl(intU) > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
+  dim resultI as LongInt
+  if TryGetExactRoundedIntFromFloatResult(r, isMultiply, resultI) = FALSE orelse resultI < 0 then return FALSE
+  dim resultU as ULongInt = CULngInt(resultI)
+  if isMultiply andalso CDbl(resultU) > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
+  if TryVerifyExactIntFloatOpResidueUnsigned(intU, floatV, resultU, isMultiply) = FALSE then return FALSE
+  dim ratA as LongInt
+  dim ratB as LongInt
+  if TryRecoverReducedRationalFromFloatAbs(abs(floatV), ratA, ratB) = FALSE then return FALSE
+  if TryVerifyExactIntFloatOpCrossMultiplyUnsigned(intU, resultU, ratA, ratB, isMultiply) = FALSE then return FALSE
+  ValueSetUInt64(outV, resultU)
+  return TRUE
+end function
+
+private function TryPromoteExactDivisionByFloatDivisorSigned(byval intI as LongInt, byval floatV as Double, byval r as Double, byref outV as EvalValue) as Boolean
+  return TryPromoteExactIntFromFloatOpSigned(intI, floatV, r, FALSE, outV)
+end function
+
+private function TryPromoteExactDivisionByFloatDivisorUnsigned(byval intU as ULongInt, byval floatV as Double, byval r as Double, byref outV as EvalValue) as Boolean
+  return TryPromoteExactIntFromFloatOpUnsigned(intU, floatV, r, FALSE, outV)
+end function
+
+private function TryPromoteExactMultiplicationByFloatFactorSigned(byval intI as LongInt, byval floatV as Double, byval r as Double, byref outV as EvalValue) as Boolean
+  return TryPromoteExactIntFromFloatOpSigned(intI, floatV, r, TRUE, outV)
+end function
+
+private function TryPromoteExactMultiplicationByFloatFactorUnsigned(byval intU as ULongInt, byval floatV as Double, byval r as Double, byref outV as EvalValue) as Boolean
+  return TryPromoteExactIntFromFloatOpUnsigned(intU, floatV, r, TRUE, outV)
+end function
+
 private function TryApplyExactIntegerDivisionFromQuotient(byref leftS as ScalarValue, byref rightS as ScalarValue, byval r as Double, byref outV as EvalValue) as Boolean
   if IsNonFiniteValue(r) then return FALSE
   dim aU as ULongInt, bU as ULongInt
@@ -6398,15 +6547,168 @@ private function TryApplyExactIntegerDivisionFromQuotient(byref leftS as ScalarV
     return TRUE
   end if
   dim aI as LongInt, bI as LongInt
-  if TryGetExactSignedInt64NoUIntWrapScalar(leftS, aI) = FALSE then return FALSE
-  if TryGetExactSignedInt64NoUIntWrapScalar(rightS, bI) = FALSE then return FALSE
-  if bI = 0 then return FALSE
-  dim qI as LongInt = CLngInt(round(r))
-  dim prodI as LongInt
-  if TryMulInt64(qI, bI, prodI) = FALSE then return FALSE
-  if prodI <> aI then return FALSE
-  ValueSetInt64(outV, qI)
-  return TRUE
+  if TryGetExactSignedInt64NoUIntWrapScalar(leftS, aI) andalso TryGetExactSignedInt64NoUIntWrapScalar(rightS, bI) then
+    if bI = 0 then return FALSE
+    dim qI as LongInt = CLngInt(round(r))
+    dim prodI as LongInt
+    if TryMulInt64(qI, bI, prodI) = FALSE then return FALSE
+    if prodI <> aI then return FALSE
+    ValueSetInt64(outV, qI)
+    return TRUE
+  end if
+
+  dim intU as ULongInt
+  dim intI as LongInt
+  dim floatV as Double
+  dim inv as Double
+  dim invRounded as Double
+  dim nU as ULongInt
+  dim nI as LongInt
+  dim qI as LongInt
+  dim qU as ULongInt
+  dim tmpI as LongInt
+  const EPS as Double = 1e-12
+
+  if TryGetExactNonNegativeUInt64Scalar(leftS, intU) andalso ScalarHasExactIntegerPayload(rightS) = FALSE then
+    floatV = rightS.scalar
+    if IsNonFiniteValue(floatV) = FALSE andalso floatV <> 0 andalso abs(floatV) < 1 then
+      if TryGetExactInt64FromDouble(floatV, tmpI) = FALSE then
+        inv = 1.0 / floatV
+        invRounded = round(inv)
+        if abs(invRounded) > 1.0 andalso abs(invRounded) <= CDbl(FB_U64_MAX) then
+          if abs(inv - invRounded) <= EPS * IIf(abs(inv) > 1.0, abs(inv), 1.0) then
+            if invRounded > 0 then
+              nU = CULngInt(invRounded)
+              if TryMulULongChecked(intU, nU, qU) then
+                ValueSetUInt64(outV, qU)
+                return TRUE
+              end if
+            elseif invRounded < 0 then
+              nU = CULngInt(-invRounded)
+              if TryMulULongChecked(intU, nU, qU) andalso qU <= FB_I64_MAX_U then
+                qI = -CLngInt(qU)
+                ValueSetInt64(outV, qI)
+                return TRUE
+              end if
+            end if
+          end if
+        end if
+      end if
+    elseif TryPromoteExactDivisionByFloatDivisorUnsigned(intU, floatV, r, outV) then
+      return TRUE
+    end if
+  end if
+
+  if TryGetExactSignedInt64NoUIntWrapScalar(leftS, intI) andalso ScalarHasExactIntegerPayload(rightS) = FALSE then
+    floatV = rightS.scalar
+    if IsNonFiniteValue(floatV) = FALSE andalso floatV <> 0 andalso abs(floatV) < 1 then
+      if TryGetExactInt64FromDouble(floatV, tmpI) = FALSE then
+        inv = 1.0 / floatV
+        invRounded = round(inv)
+        if abs(invRounded) > 1.0 andalso abs(invRounded) <= CDbl(FB_I64_MAX) then
+          if abs(inv - invRounded) <= EPS * IIf(abs(inv) > 1.0, abs(inv), 1.0) then
+            nI = CLngInt(invRounded)
+            if TryMulInt64(intI, nI, qI) then
+              ValueSetInt64(outV, qI)
+              return TRUE
+            elseif intI >= 0 andalso nI > 0 then
+              nU = CULngInt(nI)
+              if TryMulULongChecked(CULngInt(intI), nU, qU) then
+                ValueSetUInt64(outV, qU)
+                return TRUE
+              end if
+            end if
+          end if
+        end if
+      end if
+    elseif TryPromoteExactDivisionByFloatDivisorSigned(intI, floatV, r, outV) then
+      return TRUE
+    end if
+  end if
+
+  return FALSE
+end function
+
+private function TryApplyExactIntegerMultiplicationFromProduct(byref leftS as ScalarValue, byref rightS as ScalarValue, byval r as Double, byref outV as EvalValue) as Boolean
+  if IsNonFiniteValue(r) then return FALSE
+
+  dim intU as ULongInt
+  dim intI as LongInt
+  dim hasUnsigned as Boolean
+  dim hasSigned as Boolean
+  dim floatV as Double
+  dim inv as Double
+  dim invAbs as Double
+  dim invRounded as Double
+  dim nU as ULongInt
+  dim nI as LongInt
+  dim qI as LongInt
+  dim tmpI as LongInt
+  const EPS as Double = 1e-12
+
+  hasUnsigned = FALSE
+  if TryGetExactNonNegativeUInt64Scalar(leftS, intU) andalso ScalarHasExactIntegerPayload(rightS) = FALSE then
+    floatV = rightS.scalar
+    hasUnsigned = TRUE
+  elseif TryGetExactNonNegativeUInt64Scalar(rightS, intU) andalso ScalarHasExactIntegerPayload(leftS) = FALSE then
+    floatV = leftS.scalar
+    hasUnsigned = TRUE
+  end if
+
+  if hasUnsigned then
+    if IsNonFiniteValue(floatV) = FALSE andalso floatV > 0 andalso floatV < 1 then
+      if TryGetExactInt64FromDouble(floatV, tmpI) = FALSE then
+        inv = 1.0 / floatV
+        invRounded = round(inv)
+        if invRounded > 1.0 andalso invRounded <= CDbl(FB_U64_MAX) then
+          if abs(inv - invRounded) <= EPS * IIf(abs(inv) > 1.0, abs(inv), 1.0) then
+            nU = CULngInt(invRounded)
+            if nU <> 0ull andalso (intU mod nU) = 0ull then
+              ValueSetUInt64(outV, intU \ nU)
+              return TRUE
+            end if
+          end if
+        end if
+      end if
+    elseif TryPromoteExactMultiplicationByFloatFactorUnsigned(intU, floatV, r, outV) then
+      return TRUE
+    end if
+  end if
+
+  hasSigned = FALSE
+  if TryGetExactSignedInt64NoUIntWrapScalar(leftS, intI) andalso ScalarHasExactIntegerPayload(rightS) = FALSE then
+    floatV = rightS.scalar
+    hasSigned = TRUE
+  elseif TryGetExactSignedInt64NoUIntWrapScalar(rightS, intI) andalso ScalarHasExactIntegerPayload(leftS) = FALSE then
+    floatV = leftS.scalar
+    hasSigned = TRUE
+  end if
+
+  if hasSigned = FALSE then return FALSE
+  if IsNonFiniteValue(floatV) orelse floatV = 0 then return FALSE
+  if abs(floatV) < 1.0 then
+    if TryGetExactInt64FromDouble(floatV, tmpI) then return FALSE
+    inv = 1.0 / floatV
+    invAbs = abs(inv)
+    invRounded = round(invAbs)
+    if invRounded <= 1.0 then return FALSE
+    if abs(invAbs - invRounded) > EPS * IIf(invAbs > 1.0, invAbs, 1.0) then return FALSE
+    if invRounded > CDbl(FB_I64_MAX) then return FALSE
+    nI = CLngInt(invRounded)
+    if nI <= 1 then return FALSE
+    if (intI mod nI) <> 0 then return FALSE
+    qI = intI \ nI
+    if floatV < 0 then
+      if qI = FB_I64_MIN then return FALSE
+      qI = -qI
+    end if
+    ValueSetInt64(outV, qI)
+    return TRUE
+  elseif TryPromoteExactMultiplicationByFloatFactorSigned(intI, floatV, r, outV) then
+    return TRUE
+  end if
+
+  return FALSE
 end function
 
 private function TrySubExactCartesianComponents(byref a as ExactCartesianComponent, byref b as ExactCartesianComponent, byref result as ExactCartesianComponent) as Boolean
@@ -7190,7 +7492,11 @@ private function ValueApplyBinaryScalars(byref leftS as ScalarValue, byref right
   end if
 
   select case op
-    case CHAR_ASTERISK: ValueSetScalar(outV, leftS.scalar * rightS.scalar)
+    case CHAR_ASTERISK
+      dim r as Double = leftS.scalar * rightS.scalar
+      if TryApplyExactIntegerMultiplicationFromProduct(leftS, rightS, r, outV) = FALSE then
+        ValueSetScalar(outV, r)
+      end if
     case CHAR_DIVIDE
       if rightS.scalar = 0 andalso leftS.scalar = 0 then
         ValueSetScalar(outV, MakeNaN())

@@ -2475,6 +2475,38 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "(0xFFFFFFFFFFFFFFFF - 5)/5", "3689348814741910322", why)) return false;
                 if (!expectEval(p, "(2**52 - 1)/5", "900719925474099", why)) return false;
                 if (!expectEval(p, "(-2**52 + 1)/5", "-900719925474099", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(1/11)", "14493870343628933411", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(1/7)", "9223372036854775807", why)) return false;
+                if (!expectEval(p, "-1317624576693539401/(1/7)", "-9223372036854775807", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(-1/7)", "-9223372036854775807", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF/(1/8)", "7.37869762948382e+019", why)) return false;
+                if (!expectEval(p, "2**64/(1/2)", "3.68934881474191e+019", why)) return false;
+                if (!expectEval(p, "1317624576693539401*(1/11)", "1.197840524266854e+017", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF*(-1/8)", "-1.152921504606847e+018", why)) return false;
+                if (!expectEval(p, "100/(5/2)", "40", why)) return false;
+                if (!expectEval(p, "100/(10/3+1e-15)", "29.99999999999999", why)) return false;
+                if (!expectEval(p, "-50/(5/2)", "-20", why)) return false;
+                if (!expectEval(p, "-50/((10/3)+1e-9)", "-14.9999999955", why)) return false;
+                if (!expectEval(p, "700000000/(5/2)", "280000000", why)) return false;
+                if (!expectEval(p, "700000000/(10/3+1e-15)", "209999999.9999999", why)) return false;
+                if (!expectEval(p, "-300000000/(5/2)", "-120000000", why)) return false;
+                if (!expectEval(p, "-300000000/(10/3+1e-15)", "-89999999.99999997", why)) return false;
+                if (!expectEval(p, "(2**51-8)/(5/2)", "900719925474096", why)) return false;
+                if (!expectEval(p, "(2**51-8)/((5/2)+1e-12)", "900719925473735.6", why)) return false;
+                if (!expectEval(p, "-(2**50-1)/(3/2)", "-750599937895082", why)) return false;
+                if (!expectEval(p, "-(2**50-1)/((3/2)+1e-12)", "-750599937894581.5", why)) return false;
+                if (!expectEval(p, "100*(5/2)", "250", why)) return false;
+                if (!expectEval(p, "100*((5/2)+1e-12)", "250.0000000001", why)) return false;
+                if (!expectEval(p, "-50*(5/2)", "-125", why)) return false;
+                if (!expectEval(p, "-50*((5/2)+1e-9)", "-125.00000005", why)) return false;
+                if (!expectEval(p, "700000000*(5/2)", "1750000000", why)) return false;
+                if (!expectEval(p, "700000000*((5/2)+1e-12)", "1750000000.0007", why)) return false;
+                if (!expectEval(p, "-300000000*(5/2)", "-750000000", why)) return false;
+                if (!expectEval(p, "-300000000*((5/2)+1e-12)", "-750000000.0003", why)) return false;
+                if (!expectEval(p, "(2**51-8)*(5/2)", "5629499534213100", why)) return false;
+                if (!expectEval(p, "(2**51-8)*((5/2)+1e-12)", "5629499534215352", why)) return false;
+                if (!expectEval(p, "-(2**50-1)*2", "-2251799813685246", why)) return false;
+                if (!expectEval(p, "-(2**50-1)*(2.0001)", "-225191240367593", why)) return false;
                 p.parseAndEvaluate("7/3");
                 if (p.getResult().find('.') == std::string::npos && p.getResult().find('/') == std::string::npos) {
                   why = "7/3 must stay non-integer float, got \"" + p.getResult() + "\"";
@@ -2856,6 +2888,30 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "npr((5,6),(2,3))", "(20,120)", why)) return false;
                 if (!expectEvalErrorContains(p, "gcd((1,2),(3,4,5))", "incompatible operands", why))
                   return false;
+                if (!expectEval(p, "6*(1/2)", "3", why)) return false;
+                if (!expectEval(p, "6*(1/3)", "2", why)) return false;
+                if (!expectEval(p, "5*(1/3)", "1.666666666666667", why)) return false;
+                if (!expectEval(p, "0xFFFFFFFFFFFFFFFF*(1/5)", "3689348814741910323", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF*(1/7)", "1317624576693539401", why)) return false;
+                if (!expectEval(p, "2**64*(1/2)", "9.223372036854776e+018", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF*(1/8)", "1.152921504606847e+018", why)) return false;
+                if (!expectEval(p, "2**52*(1/3)", "1.501199875790165e+015", why)) return false;
+                if (!expectEval(p, "-0x7FFFFFFFFFFFFFFF*(1/7)", "-1317624576693539401", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF*(-1/7)", "-1317624576693539401", why)) return false;
+                if (!expectEval(p, "-2**52*(1/2)", "-2251799813685248", why)) return false;
+                if (!expectEval(p, "2**52*(-1/2)", "-2251799813685248", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(1/11)", "14493870343628933411", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(1/7)", "9223372036854775807", why)) return false;
+                if (!expectEval(p, "-1317624576693539401/(1/7)", "-9223372036854775807", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(-1/7)", "-9223372036854775807", why)) return false;
+                if (!expectEval(p, "1317624576693539401/(1/8)", "10540996613548315208", why)) return false;
+                if (!expectEval(p, "5/(1/3)", "15", why)) return false;
+                if (!expectEval(p, "-5/(1/3)", "-15", why)) return false;
+                if (!expectEval(p, "5/(-1/3)", "-15", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF/(1/8)", "7.37869762948382e+019", why)) return false;
+                if (!expectEval(p, "2**64/(1/2)", "3.68934881474191e+019", why)) return false;
+                if (!expectEval(p, "1317624576693539401*(1/11)", "1.197840524266854e+017", why)) return false;
+                if (!expectEval(p, "0x7FFFFFFFFFFFFFFF*(-1/8)", "-1.152921504606847e+018", why)) return false;
                 return expectEvalErrorContains(p, "ncr((5,6),(2,7))", "numeric error in ncr()", why);
               }});
 #if SMARTMATH_FACTORINT
@@ -3517,6 +3573,30 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "fact(2.5)", "fact() expects integer values"} ,
     {ParityBasicCase::Kind::Expected, "factorial(21)", "5.109094217170944e+019"} ,
     {ParityBasicCase::Kind::Expected, "fact(171)", "inf"} ,
+    {ParityBasicCase::Kind::Expected, "6*(1/2)", "3"} ,
+    {ParityBasicCase::Kind::Expected, "6*(1/3)", "2"} ,
+    {ParityBasicCase::Kind::Expected, "5*(1/3)", "1.666666666666667"} ,
+    {ParityBasicCase::Kind::Expected, "0xFFFFFFFFFFFFFFFF*(1/5)", "3689348814741910323"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*(1/7)", "1317624576693539401"} ,
+    {ParityBasicCase::Kind::Expected, "2**64*(1/2)", "9.223372036854776e+018"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*(1/8)", "1.152921504606847e+018"} ,
+    {ParityBasicCase::Kind::Expected, "2**52*(1/3)", "1.501199875790165e+015"} ,
+    {ParityBasicCase::Kind::Expected, "-0x7FFFFFFFFFFFFFFF*(1/7)", "-1317624576693539401"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*(-1/7)", "-1317624576693539401"} ,
+    {ParityBasicCase::Kind::Expected, "-2**52*(1/2)", "-2251799813685248"} ,
+    {ParityBasicCase::Kind::Expected, "2**52*(-1/2)", "-2251799813685248"} ,
+    {ParityBasicCase::Kind::Expected, "1317624576693539401/(1/11)", "14493870343628933411"} ,
+    {ParityBasicCase::Kind::Expected, "1317624576693539401/(1/7)", "9223372036854775807"} ,
+    {ParityBasicCase::Kind::Expected, "-1317624576693539401/(1/7)", "-9223372036854775807"} ,
+    {ParityBasicCase::Kind::Expected, "1317624576693539401/(-1/7)", "-9223372036854775807"} ,
+    {ParityBasicCase::Kind::Expected, "1317624576693539401/(1/8)", "10540996613548315208"} ,
+    {ParityBasicCase::Kind::Expected, "5/(1/3)", "15"} ,
+    {ParityBasicCase::Kind::Expected, "-5/(1/3)", "-15"} ,
+    {ParityBasicCase::Kind::Expected, "5/(-1/3)", "-15"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF/(1/8)", "7.37869762948382e+019"} ,
+    {ParityBasicCase::Kind::Expected, "2**64/(1/2)", "3.68934881474191e+019"} ,
+    {ParityBasicCase::Kind::Expected, "1317624576693539401*(1/11)", "1.197840524266854e+017"} ,
+    {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*(-1/8)", "-1.152921504606847e+018"} ,
 #if SMARTMATH_FACTORINT
     {ParityBasicCase::Kind::Expected, "factorint(33)", "(3, 11)"} ,
     {ParityBasicCase::Kind::Expected, "factorint(12)", "(2**2, 3)"} ,

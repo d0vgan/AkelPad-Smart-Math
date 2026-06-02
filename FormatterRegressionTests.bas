@@ -689,6 +689,215 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
     end if
   next fi
 
+  if FormatterTryEvaluateAndFormat("6*(1/2)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/6*(1/2)", fmt, SMARTMATH_RESULT_PREFIX & "3", failCount)
+    AssertRawScalarInt64("parser-fmt/exact-mul/6*(1/2)/raw", raw, failCount)
+  else
+    print !"[FAIL] parser-fmt/exact-mul/6*(1/2) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("6*(1/3)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/6*(1/3)", fmt, SMARTMATH_RESULT_PREFIX & "2", failCount)
+    AssertRawScalarInt64("parser-fmt/exact-mul/6*(1/3)/raw", raw, failCount)
+  else
+    print !"[FAIL] parser-fmt/exact-mul/6*(1/3) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0xFFFFFFFFFFFFFFFF*(1/5)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/0xFFFFFFFFFFFFFFFF*(1/5)", fmt, SMARTMATH_RESULT_PREFIX & "3689348814741910323", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_UINT64 andalso raw.scalar.kind <> RSK_INT64) then
+      print !"[FAIL] parser-fmt/exact-mul/0xFFFFFFFFFFFFFFFF*(1/5)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/0xFFFFFFFFFFFFFFFF*(1/5)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/0xFFFFFFFFFFFFFFFF*(1/5) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0x7FFFFFFFFFFFFFFF*(1/7)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/7)", fmt, SMARTMATH_RESULT_PREFIX & "1317624576693539401", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_INT64 andalso raw.scalar.kind <> RSK_UINT64) then
+      print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/7)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/7)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/7) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("2**64*(1/2)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-mul/2**64*(1/2)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-mul/2**64*(1/2)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/2**64*(1/2)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/2**64*(1/2) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0x7FFFFFFFFFFFFFFF*(1/8)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/8)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/8)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/8)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(1/8) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("2**52*(1/3)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-mul/2**52*(1/3)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-mul/2**52*(1/3)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/2**52*(1/3)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/2**52*(1/3) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("-0x7FFFFFFFFFFFFFFF*(1/7)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/-0x7FFFFFFFFFFFFFFF*(1/7)", fmt, SMARTMATH_RESULT_PREFIX & "-1317624576693539401", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_INT64 andalso raw.scalar.kind <> RSK_UINT64) then
+      print !"[FAIL] parser-fmt/exact-mul/-0x7FFFFFFFFFFFFFFF*(1/7)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/-0x7FFFFFFFFFFFFFFF*(1/7)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/-0x7FFFFFFFFFFFFFFF*(1/7) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0x7FFFFFFFFFFFFFFF*(-1/7)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/7)", fmt, SMARTMATH_RESULT_PREFIX & "-1317624576693539401", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_INT64 andalso raw.scalar.kind <> RSK_UINT64) then
+      print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/7)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/7)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/7) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("-2**52*(1/2)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/-2**52*(1/2)", fmt, SMARTMATH_RESULT_PREFIX & "-2251799813685248", failCount)
+    AssertRawScalarInt64("parser-fmt/exact-mul/-2**52*(1/2)/raw", raw, failCount)
+  else
+    print !"[FAIL] parser-fmt/exact-mul/-2**52*(1/2) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("2**52*(-1/2)", fmt, raw) then
+    AssertEq("parser-fmt/exact-mul/2**52*(-1/2)", fmt, SMARTMATH_RESULT_PREFIX & "-2251799813685248", failCount)
+    AssertRawScalarInt64("parser-fmt/exact-mul/2**52*(-1/2)/raw", raw, failCount)
+  else
+    print !"[FAIL] parser-fmt/exact-mul/2**52*(-1/2) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("1317624576693539401*(1/11)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-mul/1317624576693539401*(1/11)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-mul/1317624576693539401*(1/11)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/1317624576693539401*(1/11)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/1317624576693539401*(1/11) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0x7FFFFFFFFFFFFFFF*(-1/8)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/8)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/8)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/8)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-mul/0x7FFFFFFFFFFFFFFF*(-1/8) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("1317624576693539401/(1/11)", fmt, raw) then
+    AssertEq("parser-fmt/exact-div/1317624576693539401/(1/11)", fmt, SMARTMATH_RESULT_PREFIX & "14493870343628933411", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_INT64 andalso raw.scalar.kind <> RSK_UINT64) then
+      print !"[FAIL] parser-fmt/exact-div/1317624576693539401/(1/11)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-div/1317624576693539401/(1/11)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-div/1317624576693539401/(1/11) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("1317624576693539401/(1/7)", fmt, raw) then
+    AssertEq("parser-fmt/exact-div/1317624576693539401/(1/7)", fmt, SMARTMATH_RESULT_PREFIX & "9223372036854775807", failCount)
+    if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_INT64 andalso raw.scalar.kind <> RSK_UINT64) then
+      print !"[FAIL] parser-fmt/exact-div/1317624576693539401/(1/7)/raw — expected integer scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-div/1317624576693539401/(1/7)/raw raw integer scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-div/1317624576693539401/(1/7) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("-1317624576693539401/(1/7)", fmt, raw) then
+    AssertEq("parser-fmt/exact-div/-1317624576693539401/(1/7)", fmt, SMARTMATH_RESULT_PREFIX & "-9223372036854775807", failCount)
+    AssertRawScalarInt64("parser-fmt/exact-div/-1317624576693539401/(1/7)/raw", raw, failCount)
+  else
+    print !"[FAIL] parser-fmt/exact-div/-1317624576693539401/(1/7) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("0x7FFFFFFFFFFFFFFF/(1/8)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-div/0x7FFFFFFFFFFFFFFF/(1/8)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-div/0x7FFFFFFFFFFFFFFF/(1/8)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-div/0x7FFFFFFFFFFFFFFF/(1/8)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-div/0x7FFFFFFFFFFFFFFF/(1/8) — evaluate failed"
+    failCount += 1
+  end if
+
+  if FormatterTryEvaluateAndFormat("2**64/(1/2)", fmt, raw) then
+    AssertTrue("parser-fmt/exact-div/2**64/(1/2)/sci", InStr(1, fmt, "e+") > 0 orelse InStr(1, fmt, "e-") > 0, failCount)
+    if raw.kind <> RRK_SCALAR orelse raw.scalar.kind <> RSK_FLOATING then
+      print !"[FAIL] parser-fmt/exact-div/2**64/(1/2)/raw — expected RSK_FLOATING scalar"
+      failCount += 1
+    else
+      print !"[PASS] parser-fmt/exact-div/2**64/(1/2)/raw raw float scalar"
+    end if
+  else
+    print !"[FAIL] parser-fmt/exact-div/2**64/(1/2) — evaluate failed"
+    failCount += 1
+  end if
+
   '' Regression guard: float raw export must not be used for these magnitudes (shows sci at 2 decimals).
   FormatterTestSetup()
   g_nDecimals = 2

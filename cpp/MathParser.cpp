@@ -5505,6 +5505,213 @@ bool tryQuotExactUInt64(std::uint64_t num, std::uint64_t den, std::uint64_t& quo
   return prod == num;
 }
 
+namespace {
+
+constexpr double kExactIntFloatEps = 1e-12;
+
+bool relCloseExactIntFloat(double a, double b) {
+  const double scale = std::max(1.0, std::fabs(b));
+  return std::fabs(a - b) <= kExactIntFloatEps * scale;
+}
+
+bool tryRecoverReducedRationalFromFloatAbs(double fAbs, long long& outNum, long long& outDen) {
+  constexpr long long kMaxB = 4096;
+  double bestErr = 1e300;
+  long long bestA = 0;
+  long long bestB = 0;
+  for (long long b = 1; b <= kMaxB; ++b) {
+    long long a = static_cast<long long>(std::llround(fAbs * static_cast<double>(b)));
+    if (a < 1) {
+      continue;
+    }
+    const long long g = gcdInt64(a, b);
+    a /= g;
+    const long long bReduced = b / g;
+    const double approx = static_cast<double>(a) / static_cast<double>(bReduced);
+    const double err = std::fabs(fAbs - approx);
+    if (err < bestErr) {
+      bestErr = err;
+      bestA = a;
+      bestB = bReduced;
+    }
+  }
+  if (bestA < 1 || bestB < 1) {
+    return false;
+  }
+  const double scale = std::max(1.0, fAbs);
+  if (bestErr > kExactIntFloatEps * scale) {
+    return false;
+  }
+  outNum = bestA;
+  outDen = bestB;
+  return true;
+}
+
+bool relCloseExactIntFloatForParser(double a, double b) {
+  return relCloseExactIntFloat(a, b);
+}
+
+}  // namespace
+
+bool MathParser::passExactAbsFloatFactorGates(double f, bool strictAbsFAboveOne) {
+  if (!std::isfinite(f) || f == 0.0) {
+    return false;
+  }
+  if (strictAbsFAboveOne) {
+    if (std::fabs(f) <= 1.0) {
+      return false;
+    }
+  } else if (std::fabs(f) < 1.0) {
+    return false;
+  }
+  long long tmp = 0;
+  return !nearlyInt(f, tmp);
+}
+
+bool MathParser::getExactRoundedIntFromFloatResult(double r, bool boundAbsResultTo2_53, long long& outI) {
+  const double rounded = std::round(r);
+  if (!isWithinExactIntFromDoubleRange(rounded)) {
+    return false;
+  }
+  const long long roundedI = static_cast<long long>(rounded);
+  if (static_cast<double>(roundedI) != r || roundedI == 0) {
+    return false;
+  }
+  if (boundAbsResultTo2_53 && std::fabs(static_cast<double>(roundedI)) > K_MAX_EXACT_INT_FROM_DOUBLE) {
+    return false;
+  }
+  outI = roundedI;
+  return true;
+}
+
+bool MathParser::verifyExactIntFloatOpResidueSigned(long long intI, double f, long long resultI, bool isMultiply) {
+  if (isMultiply) {
+    return relCloseExactIntFloatForParser(static_cast<double>(resultI) - static_cast<double>(intI) * f, 0.0);
+  }
+  return relCloseExactIntFloatForParser(static_cast<double>(intI) - static_cast<double>(resultI) * f, 0.0);
+}
+
+bool MathParser::verifyExactIntFloatOpCrossMultiplySigned(long long intI, double f, long long resultI, long long ratA,
+                                                            long long ratB, bool isMultiply) {
+  const long long signF = f < 0.0 ? -1 : 1;
+  long long resultSigned = 0;
+  long long lhs = 0;
+  long long rhs = 0;
+  if (!checkedMulLL(resultI, signF, resultSigned)) {
+    return false;
+  }
+  if (isMultiply) {
+    if (!checkedMulLL(resultSigned, ratB, lhs) || !checkedMulLL(intI, ratA, rhs)) {
+      return false;
+    }
+  } else if (!checkedMulLL(resultSigned, ratA, lhs) || !checkedMulLL(intI, ratB, rhs)) {
+    return false;
+  }
+  return lhs == rhs;
+}
+
+bool MathParser::tryPromoteExactIntFromFloatOpSigned(long long intI, double f, double r, bool isMultiply,
+                                                     EvalValue& outV) {
+  if (!passExactAbsFloatFactorGates(f, isMultiply)) {
+    return false;
+  }
+  if (std::fabs(static_cast<double>(intI)) > K_MAX_EXACT_INT_FROM_DOUBLE) {
+    return false;
+  }
+  long long resultI = 0;
+  if (!getExactRoundedIntFromFloatResult(r, isMultiply, resultI)) {
+    return false;
+  }
+  if (!verifyExactIntFloatOpResidueSigned(intI, f, resultI, isMultiply)) {
+    return false;
+  }
+  long long ratA = 0;
+  long long ratB = 0;
+  if (!tryRecoverReducedRationalFromFloatAbs(std::fabs(f), ratA, ratB)) {
+    return false;
+  }
+  if (!verifyExactIntFloatOpCrossMultiplySigned(intI, f, resultI, ratA, ratB, isMultiply)) {
+    return false;
+  }
+  outV = makeScalarInt(resultI);
+  return true;
+}
+
+bool MathParser::verifyExactIntFloatOpResidueUnsigned(std::uint64_t intU, double f, std::uint64_t resultU,
+                                                      bool isMultiply) {
+  if (isMultiply) {
+    return relCloseExactIntFloatForParser(static_cast<double>(resultU) - static_cast<double>(intU) * f, 0.0);
+  }
+  return relCloseExactIntFloatForParser(static_cast<double>(intU) - static_cast<double>(resultU) * f, 0.0);
+}
+
+bool MathParser::verifyExactIntFloatOpCrossMultiplyUnsigned(std::uint64_t intU, std::uint64_t resultU, long long ratA,
+                                                            long long ratB, bool isMultiply) {
+  std::uint64_t lhs = 0;
+  std::uint64_t rhs = 0;
+  if (isMultiply) {
+    if (!tryMulUInt64Checked(resultU, static_cast<std::uint64_t>(ratB), lhs) ||
+        !tryMulUInt64Checked(intU, static_cast<std::uint64_t>(ratA), rhs)) {
+      return false;
+    }
+  } else if (!tryMulUInt64Checked(resultU, static_cast<std::uint64_t>(ratA), lhs) ||
+             !tryMulUInt64Checked(intU, static_cast<std::uint64_t>(ratB), rhs)) {
+    return false;
+  }
+  return lhs == rhs;
+}
+
+bool MathParser::tryPromoteExactIntFromFloatOpUnsigned(std::uint64_t intU, double f, double r, bool isMultiply,
+                                                       EvalValue& outV) {
+  if (!passExactAbsFloatFactorGates(f, isMultiply) || f < 0.0) {
+    return false;
+  }
+  if (static_cast<double>(intU) > K_MAX_EXACT_INT_FROM_DOUBLE) {
+    return false;
+  }
+  long long resultI = 0;
+  if (!getExactRoundedIntFromFloatResult(r, isMultiply, resultI) || resultI < 0) {
+    return false;
+  }
+  const auto resultU = static_cast<std::uint64_t>(resultI);
+  if (isMultiply && static_cast<double>(resultU) > K_MAX_EXACT_INT_FROM_DOUBLE) {
+    return false;
+  }
+  if (!verifyExactIntFloatOpResidueUnsigned(intU, f, resultU, isMultiply)) {
+    return false;
+  }
+  long long ratA = 0;
+  long long ratB = 0;
+  if (!tryRecoverReducedRationalFromFloatAbs(std::fabs(f), ratA, ratB)) {
+    return false;
+  }
+  if (!verifyExactIntFloatOpCrossMultiplyUnsigned(intU, resultU, ratA, ratB, isMultiply)) {
+    return false;
+  }
+  outV = makeScalarUInt(resultU);
+  return true;
+}
+
+bool MathParser::tryPromoteExactDivisionByFloatDivisorSigned(
+    long long intI, double f, double r, EvalValue& outV) {
+  return tryPromoteExactIntFromFloatOpSigned(intI, f, r, false, outV);
+}
+
+bool MathParser::tryPromoteExactDivisionByFloatDivisorUnsigned(
+    std::uint64_t intU, double f, double r, EvalValue& outV) {
+  return tryPromoteExactIntFromFloatOpUnsigned(intU, f, r, false, outV);
+}
+
+bool MathParser::tryPromoteExactMultiplicationByFloatFactorSigned(
+    long long intI, double f, double r, EvalValue& outV) {
+  return tryPromoteExactIntFromFloatOpSigned(intI, f, r, true, outV);
+}
+
+bool MathParser::tryPromoteExactMultiplicationByFloatFactorUnsigned(
+    std::uint64_t intU, double f, double r, EvalValue& outV) {
+  return tryPromoteExactIntFromFloatOpUnsigned(intU, f, r, true, outV);
+}
+
 bool MathParser::tryApplyExactIntegerDivisionFromQuotient(
     const EvalValue::ScalarValue& leftS,
     const EvalValue::ScalarValue& rightS,
@@ -5536,27 +5743,173 @@ bool MathParser::tryApplyExactIntegerDivisionFromQuotient(
   }
   long long aI = 0;
   long long bI = 0;
-  if (!tryGetExactSignedInt64NoUIntWrapFromScalar(leftS, aI) ||
-      !tryGetExactSignedInt64NoUIntWrapFromScalar(rightS, bI)) {
+  if (tryGetExactSignedInt64NoUIntWrapFromScalar(leftS, aI) &&
+      tryGetExactSignedInt64NoUIntWrapFromScalar(rightS, bI)) {
+    if (bI == 0) {
+      return false;
+    }
+    const double rq = std::round(r);
+    if (!isWithinExactIntFromDoubleRange(rq)) {
+      return false;
+    }
+    const long long qI = static_cast<long long>(rq);
+    if (static_cast<double>(qI) != rq) {
+      return false;
+    }
+    long long prodI = 0;
+    if (!checkedMulLL(qI, bI, prodI) || prodI != aI) {
+      return false;
+    }
+    outV = makeScalarInt(qI);
+    return true;
+  }
+
+  constexpr double kEps = 1e-12;
+  long long tmp = 0;
+  std::uint64_t intU = 0;
+  double f = 0.0;
+  if (tryGetExactNonNegativeUInt64FromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
+    f = rightS.scalar;
+    if (std::isfinite(f) && f != 0.0 && std::fabs(f) < 1.0 && !nearlyInt(f, tmp)) {
+      const double inv = 1.0 / f;
+      const double invRound = std::round(inv);
+      if (std::fabs(invRound) > 1.0 &&
+          std::fabs(invRound) <= static_cast<double>((std::numeric_limits<std::uint64_t>::max)()) &&
+          std::fabs(inv - invRound) <= kEps * std::max(1.0, std::fabs(inv))) {
+        if (invRound > 0.0) {
+          const std::uint64_t nU = static_cast<std::uint64_t>(invRound);
+          std::uint64_t qU = 0;
+          if (tryMulUInt64Checked(intU, nU, qU)) {
+            outV = makeScalarUInt(qU);
+            return true;
+          }
+        } else if (invRound < 0.0) {
+          const std::uint64_t nU = static_cast<std::uint64_t>(-invRound);
+          std::uint64_t qU = 0;
+          if (tryMulUInt64Checked(intU, nU, qU) &&
+              qU <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+            outV = makeScalarInt(-static_cast<long long>(qU));
+            return true;
+          }
+        }
+      }
+    } else if (tryPromoteExactDivisionByFloatDivisorUnsigned(intU, f, r, outV)) {
+      return true;
+    }
+  }
+
+  long long intI = 0;
+  if (tryGetExactSignedInt64NoUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
+    f = rightS.scalar;
+    if (std::isfinite(f) && f != 0.0 && std::fabs(f) < 1.0 && !nearlyInt(f, tmp)) {
+      const double inv = 1.0 / f;
+      const double invRound = std::round(inv);
+      if (std::fabs(invRound) > 1.0 &&
+          std::fabs(invRound) <= static_cast<double>((std::numeric_limits<long long>::max)()) &&
+          std::fabs(inv - invRound) <= kEps * std::max(1.0, std::fabs(inv))) {
+        const long long nI = static_cast<long long>(invRound);
+        long long qI = 0;
+        if (checkedMulLL(intI, nI, qI)) {
+          outV = makeScalarInt(qI);
+          return true;
+        }
+        if (intI >= 0 && nI > 0) {
+          const std::uint64_t nU = static_cast<std::uint64_t>(nI);
+          std::uint64_t qU = 0;
+          if (tryMulUInt64Checked(static_cast<std::uint64_t>(intI), nU, qU)) {
+            outV = makeScalarUInt(qU);
+            return true;
+          }
+        }
+      }
+    } else if (tryPromoteExactDivisionByFloatDivisorSigned(intI, f, r, outV)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool MathParser::tryApplyExactIntegerMultiplicationFromProduct(
+    const EvalValue::ScalarValue& leftS,
+    const EvalValue::ScalarValue& rightS,
+    double r,
+    EvalValue& outV) const {
+  if (!std::isfinite(r)) {
     return false;
   }
-  if (bI == 0) {
+  constexpr double kEps = 1e-12;
+  long long tmp = 0;
+  std::uint64_t intU = 0;
+  double f = 0.0;
+  bool hasUnsigned = false;
+  if (tryGetExactNonNegativeUInt64FromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
+    f = rightS.scalar;
+    hasUnsigned = true;
+  } else if (tryGetExactNonNegativeUInt64FromScalar(rightS, intU) && !scalarHasExactIntegerPayload(leftS)) {
+    f = leftS.scalar;
+    hasUnsigned = true;
+  }
+  if (hasUnsigned && std::isfinite(f) && f > 0.0) {
+    if (f < 1.0 && !nearlyInt(f, tmp)) {
+      const double inv = 1.0 / f;
+      const double invRound = std::round(inv);
+      if (invRound > 1.0 &&
+          invRound <= static_cast<double>((std::numeric_limits<std::uint64_t>::max)()) &&
+          std::fabs(inv - invRound) <= kEps * std::max(1.0, std::fabs(inv))) {
+        const std::uint64_t nU = static_cast<std::uint64_t>(invRound);
+        if (nU != 0u && (intU % nU) == 0u) {
+          outV = makeScalarUInt(intU / nU);
+          return true;
+        }
+      }
+    } else if (tryPromoteExactMultiplicationByFloatFactorUnsigned(intU, f, r, outV)) {
+      return true;
+    }
+  }
+
+  long long intI = 0;
+  bool hasSigned = false;
+  if (tryGetExactSignedInt64NoUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
+    f = rightS.scalar;
+    hasSigned = true;
+  } else if (tryGetExactSignedInt64NoUIntWrapFromScalar(rightS, intI) && !scalarHasExactIntegerPayload(leftS)) {
+    f = leftS.scalar;
+    hasSigned = true;
+  }
+  if (!hasSigned || !std::isfinite(f) || f == 0.0) {
     return false;
   }
-  const double rq = std::round(r);
-  if (!isWithinExactIntFromDoubleRange(rq)) {
-    return false;
+  if (std::fabs(f) < 1.0) {
+    if (nearlyInt(f, tmp)) {
+      return false;
+    }
+    const double inv = 1.0 / f;
+    const double invAbs = std::fabs(inv);
+    const double invRound = std::round(invAbs);
+    if (invRound <= 1.0 ||
+        invRound > static_cast<double>((std::numeric_limits<long long>::max)()) ||
+        std::fabs(invAbs - invRound) > kEps * std::max(1.0, invAbs)) {
+      return false;
+    }
+    const long long nI = static_cast<long long>(invRound);
+    if (nI <= 1 || (intI % nI) != 0) {
+      return false;
+    }
+    long long qI = intI / nI;
+    if (f < 0.0) {
+      if (qI == (std::numeric_limits<long long>::min)()) {
+        return false;
+      }
+      qI = -qI;
+    }
+    outV = makeScalarInt(qI);
+    return true;
   }
-  const long long qI = static_cast<long long>(rq);
-  if (static_cast<double>(qI) != rq) {
-    return false;
+  if (tryPromoteExactMultiplicationByFloatFactorSigned(intI, f, r, outV)) {
+    return true;
   }
-  long long prodI = 0;
-  if (!checkedMulLL(qI, bI, prodI) || prodI != aI) {
-    return false;
-  }
-  outV = makeScalarInt(qI);
-  return true;
+  return false;
 }
 
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -7128,6 +7481,13 @@ bool MathParser::tryCombineBinaryScalars(
     double outD = 0;
     if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
       return false;
+    }
+    if (op == '*') {
+      EvalValue exactMul{};
+      if (tryApplyExactIntegerMultiplicationFromProduct(lv, rv, outD, exactMul)) {
+        outS = std::move(exactMul);
+        return true;
+      }
     }
     if (op == '/') {
       EvalValue exactDiv{};

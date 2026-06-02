@@ -1893,8 +1893,8 @@ private sub RunExactIntegerDivisionTests()
   dim rt as String
   dim ia as Boolean
 
-  dim okExprs(1 to 10) as String
-  dim okNeed(1 to 10) as String
+  dim okExprs(1 to 19) as String
+  dim okNeed(1 to 19) as String
   okExprs(1) = "10/2": okNeed(1) = "5"
   okExprs(2) = "-12/4": okNeed(2) = "-3"
   okExprs(3) = "1955685900012/338822921": okNeed(3) = "5772"
@@ -1905,8 +1905,17 @@ private sub RunExactIntegerDivisionTests()
   okExprs(8) = "(0xFFFFFFFFFFFFFFFF - 5)/5": okNeed(8) = "3689348814741910322"
   okExprs(9) = "(2**52 - 1)/5": okNeed(9) = "900719925474099"
   okExprs(10) = "(-2**52 + 1)/5": okNeed(10) = "-900719925474099"
+  okExprs(11) = "1317624576693539401/(1/11)": okNeed(11) = "14493870343628933411"
+  okExprs(12) = "1317624576693539401/(1/7)": okNeed(12) = "9223372036854775807"
+  okExprs(13) = "-1317624576693539401/(1/7)": okNeed(13) = "-9223372036854775807"
+  okExprs(14) = "100/(5/2)": okNeed(14) = "40"
+  okExprs(15) = "-50/(5/2)": okNeed(15) = "-20"
+  okExprs(16) = "700000000/(5/2)": okNeed(16) = "280000000"
+  okExprs(17) = "-300000000/(5/2)": okNeed(17) = "-120000000"
+  okExprs(18) = "(2**51-8)/(5/2)": okNeed(18) = "900719925474096"
+  okExprs(19) = "-(2**50-1)/(3/2)": okNeed(19) = "-750599937895082"
   dim di as Integer
-  for di = 1 to 10
+  for di = 1 to 19
     if Parser_TryEvaluateEx(okExprs(di), r, rt, ia) = FALSE then
       print "[exact-int-div] FAIL: """ & okExprs(di) & """ -> " & Parser_GetLastError()
       subFail += 1
@@ -1930,9 +1939,104 @@ private sub RunExactIntegerDivisionTests()
     subPass += 1
   end if
 
+  dim noExprs(1 to 10) as String
+  noExprs(1) = "0x7FFFFFFFFFFFFFFF/(1/8)"
+  noExprs(2) = "2**64/(1/2)"
+  noExprs(3) = "1317624576693539401*(1/11)"
+  noExprs(4) = "0x7FFFFFFFFFFFFFFF*(-1/8)"
+  noExprs(5) = "100/(10/3+1e-15)"
+  noExprs(6) = "-50/((10/3)+1e-9)"
+  noExprs(7) = "700000000/(10/3+1e-15)"
+  noExprs(8) = "-300000000/(10/3+1e-15)"
+  noExprs(9) = "(2**51-8)/((5/2)+1e-12)"
+  noExprs(10) = "-(2**50-1)/((3/2)+1e-12)"
+  dim ni as Integer
+  for ni = 1 to 10
+    if Parser_TryEvaluateEx(noExprs(ni), r, rt, ia) = FALSE then
+      print "[exact-int-div] FAIL: """ & noExprs(ni) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif instr(rt, "e+") > 0 orelse instr(rt, "e-") > 0 orelse instr(rt, ".") > 0 then
+      print "[exact-int-div] PASS: """ & noExprs(ni) & """ stays float"
+      subPass += 1
+    else
+      print "[exact-int-div] FAIL: """ & noExprs(ni) & """ must stay non-integer float, got """ & rt & """"
+      subFail += 1
+    end if
+  next ni
+
   g_passed += subPass
   g_failed += subFail
   print "Exact-integer-division sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunExactIntegerMultiplicationTests()
+  print "=== Exact integer multiplication (N*f) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 7) as String
+  dim okNeed(1 to 7) as String
+  okExprs(1) = "100*(5/2)": okNeed(1) = "250"
+  okExprs(2) = "-50*(5/2)": okNeed(2) = "-125"
+  okExprs(3) = "700000000*(5/2)": okNeed(3) = "1750000000"
+  okExprs(4) = "-300000000*(5/2)": okNeed(4) = "-750000000"
+  okExprs(5) = "(2**51-8)*(5/2)": okNeed(5) = "5629499534213100"
+  okExprs(6) = "(2**50)*(3/2)": okNeed(6) = "1688849860263936"
+  okExprs(7) = "-(2**50-1)*2": okNeed(7) = "-2251799813685246"
+  dim di as Integer
+  for di = 1 to 7
+    if Parser_TryEvaluateEx(okExprs(di), r, rt, ia) = FALSE then
+      print "[exact-int-mul] FAIL: """ & okExprs(di) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(di)) = FALSE then
+      print "[exact-int-mul] FAIL: """ & okExprs(di) & """ expected """ & okNeed(di) & """ got """ & rt & """"
+      subFail += 1
+    else
+      print "[exact-int-mul] PASS: """ & okExprs(di) & """"
+      subPass += 1
+    end if
+  next di
+
+  if Parser_TryEvaluateEx("5*(7/3)", r, rt, ia) = FALSE then
+    print "[exact-int-mul] FAIL: ""5*(7/3)"" -> " & Parser_GetLastError()
+    subFail += 1
+  elseif instr(rt, ".") = 0 andalso instr(rt, "/") = 0 then
+    print "[exact-int-mul] FAIL: ""5*(7/3)"" must stay non-integer float, got """ & rt & """"
+    subFail += 1
+  else
+    print "[exact-int-mul] PASS: ""5*(7/3)"" non-exact product stays float"
+    subPass += 1
+  end if
+
+  dim noExprs(1 to 6) as String
+  noExprs(1) = "100*((5/2)+1e-12)"
+  noExprs(2) = "-50*((5/2)+1e-9)"
+  noExprs(3) = "700000000*((5/2)+1e-12)"
+  noExprs(4) = "-300000000*((5/2)+1e-12)"
+  noExprs(5) = "(2**51-8)*((5/2)+1e-12)"
+  noExprs(6) = "-(2**50-1)*(2.0001)"
+  dim raw as RawResult
+  dim ni as Integer
+  for ni = 1 to 6
+    if Parser_TryEvaluateEx(noExprs(ni), r, rt, ia) = FALSE then
+      print "[exact-int-mul] FAIL: """ & noExprs(ni) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_FLOATING then
+      print "[exact-int-mul] FAIL: """ & noExprs(ni) & """ must stay floating scalar, got """ & rt & """"
+      subFail += 1
+    else
+      print "[exact-int-mul] PASS: """ & noExprs(ni) & """ stays float"
+      subPass += 1
+    end if
+  next ni
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Exact-integer-multiplication sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -2248,7 +2352,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1236) as SmokeCase
+  dim tests(1 to 1284) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3539,6 +3643,54 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1234).expr = "factorint(76568758722)": tests(1234).expected = "(2, 3**2, 47, 101, 896107)" ' [factorint]
   tests(1235).expr = "factorint(-3333*9)": tests(1235).expected = "(-3**3, 11, 101)" ' [factorint] signed prime power
   tests(1236).expr = "factorint(-9999)": tests(1236).expected = "(-3**2, 11, 101)" ' [factorint] signed prime power
+  tests(1237).expr = "6*(1/2)": tests(1237).expected = "3" ' [exact-int] integer multiplied by fractional float
+  tests(1238).expr = "6*(1/3)": tests(1238).expected = "2" ' [exact-int] integer multiplied by fractional float
+  tests(1239).expr = "5*(1/3)": tests(1239).expected = "1.666666666666667" ' [exact-int] non-integer product stays float
+  tests(1240).expr = "0xFFFFFFFFFFFFFFFF*(1/5)": tests(1240).expected = "3689348814741910323" ' [exact-int] uint64 * fractional float
+  tests(1241).expr = "0x7FFFFFFFFFFFFFFF*(1/7)": tests(1241).expected = "1317624576693539401" ' [exact-int] int64 * fractional float
+  tests(1242).expr = "2**64*(1/2)": tests(1242).expected = "9.223372036854776e+018" ' [exact-int] non-exact input stays float
+  tests(1243).expr = "0x7FFFFFFFFFFFFFFF*(1/8)": tests(1243).expected = "1.152921504606847e+018" ' [exact-int] non-integer product stays float
+  tests(1244).expr = "2**52*(1/3)": tests(1244).expected = "1.501199875790165e+015" ' [exact-int] non-integer product stays float
+  tests(1245).expr = "-0x7FFFFFFFFFFFFFFF*(1/7)": tests(1245).expected = "-1317624576693539401" ' [exact-int] signed integer with positive reciprocal
+  tests(1246).expr = "0x7FFFFFFFFFFFFFFF*(-1/7)": tests(1246).expected = "-1317624576693539401" ' [exact-int] signed integer with negative reciprocal
+  tests(1247).expr = "-2**52*(1/2)": tests(1247).expected = "-2251799813685248" ' [exact-int] signed exact power-of-two halving
+  tests(1248).expr = "2**52*(-1/2)": tests(1248).expected = "-2251799813685248" ' [exact-int] signed exact power-of-two halving
+  tests(1249).expr = "1317624576693539401/(1/11)": tests(1249).expected = "14493870343628933411" ' [exact-int] integer divided by fractional float
+  tests(1250).expr = "1317624576693539401/(1/7)": tests(1250).expected = "9223372036854775807" ' [exact-int] integer divided by fractional float
+  tests(1251).expr = "-1317624576693539401/(1/7)": tests(1251).expected = "-9223372036854775807" ' [exact-int] signed integer divided by fractional float
+  tests(1252).expr = "1317624576693539401/(-1/7)": tests(1252).expected = "-9223372036854775807" ' [exact-int] integer divided by negative fractional float
+  tests(1253).expr = "0x7FFFFFFFFFFFFFFF/(1/8)": tests(1253).expected = "7.37869762948382e+019" ' [exact-int] overflow quotient stays float
+  tests(1254).expr = "2**64/(1/2)": tests(1254).expected = "3.68934881474191e+019" ' [exact-int] overflow quotient stays float
+  tests(1255).expr = "1317624576693539401*(1/11)": tests(1255).expected = "1.197840524266854e+017" ' [exact-int] non-integer product stays float
+  tests(1256).expr = "0x7FFFFFFFFFFFFFFF*(-1/8)": tests(1256).expected = "-1.152921504606847e+018" ' [exact-int] non-integer product stays float
+  tests(1257).expr = "1317624576693539401/(1/8)": tests(1257).expected = "10540996613548315208" ' [exact-int] large exact quotient via uint64
+  tests(1258).expr = "5/(1/3)": tests(1258).expected = "15" ' [exact-int] small exact quotient
+  tests(1259).expr = "-5/(1/3)": tests(1259).expected = "-15" ' [exact-int] signed small exact quotient
+  tests(1260).expr = "5/(-1/3)": tests(1260).expected = "-15" ' [exact-int] signed divisor reciprocal
+  tests(1261).expr = "100/(5/2)": tests(1261).expected = "40" ' [exact-int] abs(f)>=1 float divisor
+  tests(1262).expr = "100/(10/3+1e-15)": tests(1262).expected = "29.99999999999999" ' [exact-int] near-integer quotient stays float
+  tests(1263).expr = "-50/(5/2)": tests(1263).expected = "-20" ' [exact-int] abs(f)>=1 negative N
+  tests(1264).expr = "-50/((10/3)+1e-9)": tests(1264).expected = "-14.9999999955" ' [exact-int] near-integer quotient stays float
+  tests(1265).expr = "700000000/(5/2)": tests(1265).expected = "280000000" ' [exact-int] abs(f)>=1 large N
+  tests(1266).expr = "700000000/(10/3+1e-15)": tests(1266).expected = "209999999.9999999" ' [exact-int] near-integer quotient stays float
+  tests(1267).expr = "-300000000/(5/2)": tests(1267).expected = "-120000000" ' [exact-int] abs(f)>=1 large negative N
+  tests(1268).expr = "-300000000/(10/3+1e-15)": tests(1268).expected = "-89999999.99999997" ' [exact-int] near-integer quotient stays float
+  tests(1269).expr = "(2**51-8)/(5/2)": tests(1269).expected = "900719925474096" ' [exact-int] abs(f)>=1 near 2^53
+  tests(1270).expr = "(2**51-8)/((5/2)+1e-12)": tests(1270).expected = "900719925473735.6" ' [exact-int] near-integer quotient stays float
+  tests(1271).expr = "-(2**50-1)/(3/2)": tests(1271).expected = "-750599937895082" ' [exact-int] abs(f)>=1 negative N
+  tests(1272).expr = "-(2**50-1)/((3/2)+1e-12)": tests(1272).expected = "-750599937894581.5" ' [exact-int] near-integer quotient stays float
+  tests(1273).expr = "100*(5/2)": tests(1273).expected = "250" ' [exact-int] abs(f)>1 float factor
+  tests(1274).expr = "100*((5/2)+1e-12)": tests(1274).expected = "250.0000000001" ' [exact-int] near-integer product stays float
+  tests(1275).expr = "-50*(5/2)": tests(1275).expected = "-125" ' [exact-int] abs(f)>1 negative N
+  tests(1276).expr = "-50*((5/2)+1e-9)": tests(1276).expected = "-125.00000005" ' [exact-int] near-integer product stays float
+  tests(1277).expr = "700000000*(5/2)": tests(1277).expected = "1750000000" ' [exact-int] abs(f)>1 large N
+  tests(1278).expr = "700000000*((5/2)+1e-12)": tests(1278).expected = "1750000000.0007" ' [exact-int] near-integer product stays float
+  tests(1279).expr = "-300000000*(5/2)": tests(1279).expected = "-750000000" ' [exact-int] abs(f)>1 large negative N
+  tests(1280).expr = "-300000000*((5/2)+1e-12)": tests(1280).expected = "-750000000.0003" ' [exact-int] near-integer product stays float
+  tests(1281).expr = "(2**51-8)*(5/2)": tests(1281).expected = "5629499534213100" ' [exact-int] abs(f)>1 near 2^53
+  tests(1282).expr = "(2**51-8)*((5/2)+1e-12)": tests(1282).expected = "5629499534215352" ' [exact-int] near-integer product stays float
+  tests(1283).expr = "-(2**50-1)*2": tests(1283).expected = "-2251799813685246" ' [exact-int] abs(f)>1 negative N
+  tests(1284).expr = "-(2**50-1)*(2.0001)": tests(1284).expected = "-2251912403675931" ' [exact-int] near-integer product stays float
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -3605,6 +3757,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
 
   RunGcdLcmNcrNprArrayBroadcastTests()
   RunExactIntegerDivisionTests()
+  RunExactIntegerMultiplicationTests()
   RunBinaryBuiltinArrayLengthMismatchTests()
 
   RunTimeValuesSupportOptionTests()
