@@ -3350,7 +3350,7 @@ std::vector<TestCase> buildRatioInExpressionCases() {
                  if (!expectEval(p, "prod(ratio(1.3456),1)", "1.3456", why)) return false;
                  if (!expectEval(p, "product(ratio(1.3456),1)", "1.3456", why)) return false;
                  if (!expectEval(p, "sum(ratio(0.5),ratio(0.5))", "1", why)) return false;
-                 if (!expectEval(p, "min(ratio(1.3456), 2)", "1.3456", why)) return false;
+                 if (!expectEval(p, "min(ratio(1.3456), 2)", "841/625", why)) return false;
                  if (!expectEval(p, "max(ratio(1.3456), 2)", "2", why)) return false;
                  if (!expectEval(p, "abs(ratio(-0.5))", "0.5", why)) return false;
                  if (!expectEval(p, "sign(ratio(-0.5))", "-1", why)) return false;
@@ -3377,6 +3377,44 @@ std::vector<TestCase> buildRatioInExpressionCases() {
                  if (!expectEval(p, "ratio(0.5+0.25i)+1", "1.5+0.25i", why)) return false;
 #endif
                  return true;
+               }});
+  return t;
+}
+
+std::vector<TestCase> buildMinMaxPreserveWinnerCases() {
+  std::vector<TestCase> t;
+  t.push_back({"minmax/winner: mixed float keeps exact integer display",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "max(1,2**54,2)", "18014398509481984", why)) return false;
+                 if (!expectEval(p, "max(1.1,2**54,2)", "18014398509481984", why)) return false;
+                 if (!expectEval(p, "max(2**54,1.1,2)", "18014398509481984", why)) return false;
+                 if (!expectEval(p, "min(3,1,2.1)", "1", why)) return false;
+                 if (!expectEval(p, "min(1.0,1)", "1", why)) return false;
+                 return expectEval(p, "min(1,1.0)", "1", why);
+               }});
+  t.push_back({"minmax/winner: arrays and ratio operands",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "min((3,1,2))", "1", why)) return false;
+                 if (!expectEval(p, "max((1,2**54,2))", "18014398509481984", why)) return false;
+                 if (!expectEval(p, "min(ratio(0.5),1)", "1/2", why)) return false;
+                 return expectEval(p, "max(ratio(1.3456),2)", "2", why);
+               }});
+  t.push_back({"minmax/winner: NaN skipped when non-NaN present",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "max(1,nan)", "1", why)) return false;
+                 if (!expectEval(p, "min(nan,1)", "1", why)) return false;
+                 if (!expectEval(p, "min(nan,1,2)", "1", why)) return false;
+                 if (!expectEval(p, "max(nan,1,2)", "2", why)) return false;
+                 if (!expectEval(p, "min(nan,nan)", "nan", why)) return false;
+                 return expectEval(p, "max(nan,nan,nan)", "nan", why);
+               }});
+  t.push_back({"minmax/winner: all-integer ties",
+               [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "min(1,1,1)", "1", why);
                }});
   return t;
 }
@@ -5713,6 +5751,7 @@ int main(int argc, char** argv) {
   const auto lambdaFunctionsSupportOption = buildLambdaFunctionsSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
   const auto ratioInExpression = buildRatioInExpressionCases();
+  const auto minMaxPreserveWinner = buildMinMaxPreserveWinnerCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -5738,6 +5777,7 @@ int main(int argc, char** argv) {
 #endif
   runSuite("Sortby/Ratio", sortbyRatio, s);
   runSuite("Ratio in expressions", ratioInExpression, s);
+  runSuite("Min/max preserve winner", minMaxPreserveWinner, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

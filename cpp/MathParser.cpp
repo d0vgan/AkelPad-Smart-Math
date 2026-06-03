@@ -10240,8 +10240,64 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
         }
       }
     }
+    if (id == BuiltinFunctionId::Min || id == BuiltinFunctionId::Max) {
+      const bool wantMin = (id == BuiltinFunctionId::Min);
+      const auto hasExactIntegerMetadata = [](const EvalValue::ScalarValue& sv) {
+        if (sv.hasRenderRational()) {
+          return false;
+        }
+        return sv.hasExactInt64() || sv.hasExactUInt64();
+      };
+      const auto shouldReplace = [&](double v, double winnerV, bool hasWinner) {
+        if (!hasWinner) {
+          return true;
+        }
+        return wantMin ? (v < winnerV) : (v > winnerV);
+      };
+      const auto shouldPreferOnTie = [&](const EvalValue::ScalarValue& winnerSv,
+                                       const EvalValue::ScalarValue& candidateSv) {
+        if (!hasExactIntegerMetadata(candidateSv)) {
+          return false;
+        }
+        if (hasExactIntegerMetadata(winnerSv)) {
+          return false;
+        }
+        return true;
+      };
+      EvalValue::ScalarValue winnerSv{};
+      double winnerV = 0.0;
+      bool hasWinner = false;
+      bool hasNonNanWinner = false;
+      std::size_t itemCount = 0;
+      forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+        ++itemCount;
+        const double v = scalarNumericReal(s);
+        if (std::isnan(v)) {
+          if (!hasNonNanWinner && !hasWinner) {
+            winnerSv = s;
+            winnerV = v;
+            hasWinner = true;
+          }
+          return;
+        }
+        if (!hasWinner || std::isnan(winnerV) || shouldReplace(v, winnerV, true)) {
+          winnerSv = s;
+          winnerV = v;
+          hasWinner = true;
+          hasNonNanWinner = true;
+        } else if (v == winnerV) {
+          if (shouldPreferOnTie(winnerSv, s)) {
+            winnerSv = s;
+          }
+        }
+      });
+      if (itemCount == 0) {
+        setAtLeastOneArgError(ctx, fnName);
+        return makeScalar(0);
+      }
+      return scalarFromScalarValue(winnerSv);
+    }
     double acc = 0.0;
-    bool hasValue = false;
     std::size_t n = 0;
     if (id == BuiltinFunctionId::Product) {
       acc = 1.0;
@@ -10255,19 +10311,9 @@ MathParser::EvalValue MathParser::builtinAggregateFamily(
           stopProduct = true;
         }
       });
-    } else if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
+    } else {
       acc = 0.0;
       n = forEachArgScalar([&](double v) { acc += v; });
-    } else if (id == BuiltinFunctionId::Min) {
-      n = forEachArgScalar([&](double v) {
-        if (!hasValue || v < acc) acc = v;
-        hasValue = true;
-      });
-    } else {
-      n = forEachArgScalar([&](double v) {
-        if (!hasValue || v > acc) acc = v;
-        hasValue = true;
-      });
     }
 
     if (n == 0) {

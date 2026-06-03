@@ -1930,7 +1930,7 @@ private sub RunRatioInExpressionTests()
   okExprs(25) = "(ratio(0.5),ratio(0.25))": okNeed(25) = "(1/2, 1/4)"
   okExprs(26) = "ratio(1.3456)-ratio(1.3456)": okNeed(26) = "0"
   okExprs(27) = "round(ratio(1.3456))": okNeed(27) = "1"
-  okExprs(28) = "min(ratio(1.3456), 2)": okNeed(28) = "1.3456"
+  okExprs(28) = "min(ratio(1.3456), 2)": okNeed(28) = "841/625"
   okExprs(29) = "max(ratio(1.3456), 2)": okNeed(29) = "2"
   dim ri as Integer
   for ri = 1 to 29
@@ -1949,6 +1949,52 @@ private sub RunRatioInExpressionTests()
   g_passed += subPass
   g_failed += subFail
   print "ratio-in-expression sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunMinMaxPreserveWinnerTests()
+  print "=== min/max preserve winning operand metadata ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 18) as String
+  dim okNeed(1 to 18) as String
+  okExprs(1) = "max(1,2**54,2)": okNeed(1) = "18014398509481984"
+  okExprs(2) = "max(1.1,2**54,2)": okNeed(2) = "18014398509481984"
+  okExprs(3) = "max(2**54,1.1,2)": okNeed(3) = "18014398509481984"
+  okExprs(4) = "min(3,1,2)": okNeed(4) = "1"
+  okExprs(5) = "min(3,1,2.1)": okNeed(5) = "1"
+  okExprs(6) = "min(1.0,1)": okNeed(6) = "1"
+  okExprs(7) = "min(1,1.0)": okNeed(7) = "1"
+  okExprs(8) = "min((3,1,2))": okNeed(8) = "1"
+  okExprs(9) = "max((1,2**54,2))": okNeed(9) = "18014398509481984"
+  okExprs(10) = "min(ratio(0.5),1)": okNeed(10) = "1/2"
+  okExprs(11) = "max(ratio(1.3456),2)": okNeed(11) = "2"
+  okExprs(12) = "max(1,nan)": okNeed(12) = "1"
+  okExprs(13) = "min(nan,1)": okNeed(13) = "1"
+  okExprs(14) = "min(1,1,1)": okNeed(14) = "1"
+  okExprs(15) = "min(nan,1,2)": okNeed(15) = "1"
+  okExprs(16) = "max(nan,1,2)": okNeed(16) = "2"
+  okExprs(17) = "min(nan,nan)": okNeed(17) = "nan"
+  okExprs(18) = "max(nan,nan,nan)": okNeed(18) = "nan"
+  dim mi as Integer
+  for mi = 1 to 18
+    if Parser_TryEvaluateEx(okExprs(mi), r, rt, ia) = FALSE then
+      print "[minmax-winner] FAIL: """ & okExprs(mi) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif rt <> okNeed(mi) then
+      print "[minmax-winner] FAIL: """ & okExprs(mi) & """ got """ & rt & """ want """ & okNeed(mi) & """"
+      subFail += 1
+    else
+      subPass += 1
+    end if
+  next mi
+  g_passed += subPass
+  g_failed += subFail
+  print "minmax-preserve-winner sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -3824,6 +3870,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
 
   RunGcdLcmNcrNprArrayBroadcastTests()
   RunRatioInExpressionTests()
+  RunMinMaxPreserveWinnerTests()
 
   RunExactIntegerDivisionTests()
   RunExactIntegerMultiplicationTests()

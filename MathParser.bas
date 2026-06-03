@@ -2083,8 +2083,8 @@ private sub EvalScalarFromScalarValue(byref s as ScalarValue, byref outV as Eval
   outV.scalarValue.imag = s.imag
   outV.scalarValue.imagExactInt64 = s.imagExactInt64
   outV.scalarValue.imagExactUInt64 = s.imagExactUInt64
-  dim extraFlags as UInteger = s.flags and (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)
-  outV.scalarValue.flags = (outV.scalarValue.flags and not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH)) or extraFlags
+  dim extraFlags as UInteger = s.flags and (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH or SVF_RENDER_RATIONAL or SVF_IMAG_RENDER_RATIONAL or SVF_RENDER_INT_POWER)
+  outV.scalarValue.flags = (outV.scalarValue.flags and not (SVF_IMAG_EXACT_INT64_VALID or SVF_IMAG_EXACT_UINT64_VALID or SVF_DEC_SCI_POW63_HIGH or SVF_RENDER_RATIONAL or SVF_IMAG_RENDER_RATIONAL or SVF_RENDER_INT_POWER)) or extraFlags
   ScalarRepairExactMetadata(outV.scalarValue)
 end sub
 
@@ -8509,6 +8509,60 @@ private function ArgScalarValueWalkNext(args() as EvalValue, byref argIdx as Int
   return TRUE
 end function
 
+'' Exact integer metadata for min/max winner tie-break (not render-rational storage).
+private function ScalarHasExactIntegerMetadata(byref sv as ScalarValue) as Boolean
+  if ScalarHasRenderRational(sv) then return FALSE
+  return ScalarExactInt64Valid(sv) orelse ScalarExactUInt64Valid(sv)
+end function
+
+private function ScalarMinMaxShouldReplaceWinner(byval wantMin as Boolean, byval v as Double, byval winnerV as Double, byval hasWinner as Boolean) as Boolean
+  if hasWinner = FALSE then return TRUE
+  if wantMin then
+    return v < winnerV
+  end if
+  return v > winnerV
+end function
+
+private function ScalarMinMaxShouldPreferOnTie(byref winner as ScalarValue, byref candidate as ScalarValue) as Boolean
+  if ScalarHasExactIntegerMetadata(candidate) = FALSE then return FALSE
+  if ScalarHasExactIntegerMetadata(winner) then return FALSE
+  return TRUE
+end function
+
+private function TryMinMaxPreserveWinner(args() as EvalValue, byval wantMin as Boolean, byref outV as EvalValue) as Boolean
+  dim argIdx as Integer = lbound(args)
+  dim elemIdx as Integer = -1
+  dim sv as ScalarValue
+  dim winnerSv as ScalarValue
+  dim winnerV as Double
+  dim hasWinner as Boolean = FALSE
+  dim hasNonNanWinner as Boolean = FALSE
+  dim itemCount as Integer = 0
+  while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
+    itemCount += 1
+    dim v as Double = ScalarNumericReal(sv)
+    if IsNaNValue(v) then
+      if hasNonNanWinner = FALSE andalso hasWinner = FALSE then
+        winnerSv = sv
+        winnerV = v
+        hasWinner = TRUE
+      end if
+    else
+      if (hasWinner = FALSE) orelse IsNaNValue(winnerV) orelse ScalarMinMaxShouldReplaceWinner(wantMin, v, winnerV, TRUE) then
+        winnerSv = sv
+        winnerV = v
+        hasWinner = TRUE
+        hasNonNanWinner = TRUE
+      elseif v = winnerV then
+        if ScalarMinMaxShouldPreferOnTie(winnerSv, sv) then winnerSv = sv
+      end if
+    end if
+  wend
+  if itemCount <= 0 then return FALSE
+  EvalScalarFromScalarValue(winnerSv, outV)
+  return TRUE
+end function
+
 private function TryFoldExactComplexCartesian(args() as EvalValue, byval op as UByte, byref outV as EvalValue) as Boolean
   dim argIdx as Integer = lbound(args)
   dim elemIdx as Integer = -1
@@ -10070,17 +10124,18 @@ private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as
       if (fnId = FUNC_SUM) orelse (fnId = FUNC_PRODUCT) orelse (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
         if TryAggSimpleExactInteger(args(), fnId, outV) then return outV
       end if
+      if (fnId = FUNC_MIN) orelse (fnId = FUNC_MAX) then
+        dim wantMinAgg as Boolean = (fnId = FUNC_MIN)
+        if TryMinMaxPreserveWinner(args(), wantMinAgg, outV) = FALSE then
+          SetAtLeastOneArgError(fnName)
+        end if
+        return outV
+      end if
       dim argIdx as Integer = lbound(args)
       dim elemIdx as Integer = -1
       dim v as Double
       while ArgScalarWalkNext(args(), argIdx, elemIdx, v)
-        if fnId = FUNC_MIN then
-          if (hasValue = FALSE) orelse (v < acc) then acc = v
-          hasValue = TRUE
-        elseif fnId = FUNC_MAX then
-          if (hasValue = FALSE) orelse (v > acc) then acc = v
-          hasValue = TRUE
-        elseif fnId = FUNC_PRODUCT then
+        if fnId = FUNC_PRODUCT then
           acc *= v
           if IsNonFiniteValue(acc) then exit while
         else
