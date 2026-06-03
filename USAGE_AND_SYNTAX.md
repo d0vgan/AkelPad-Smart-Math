@@ -610,6 +610,24 @@ With complex numbers, the meaning of some utilities is different:
   - `(1+2i)/abs(1+2i)` -> `0.447214+0.894427i`
   - `fact(1+2i)` -> `0.112294+0.323613i`
 
+### Rational Display
+
+Purpose: show a plain numeric value as a reduced fraction when it is (or is close to) rational.
+
+- Key functions:
+- `ratio(x)` - reduced `n/m` with `m > 0` and sign in `n`
+- Examples:
+  - `ratio(-0.5)` -> `-1/2`
+  - `ratio(1/3)` and `ratio(0.3333333333333333)` -> `1/3`
+  - `ratio(15m/1h)` -> `1/4`
+  - `ratio(hours(1:00))` -> `1/60` (argument of `ratio` must be a plain number, not a duration)
+  - `ratio(0.5+0.25i)` -> `1/2+1/4*i`
+- Notes:
+  - `nan` / `inf` pass through;
+  - duration arguments are rejected (`ratio(1:00)` -> `incompatible operands`);
+  - non-exact values use the best reduced fraction `n/m` with `m <= 10_000_000` (for example `ratio(sqrt(2))` -> `13250218/9369319`);
+  - exact decimal powers of ten may use a larger denominator (for example `ratio(7.73e-8)` -> `773/10000000000`).
+
 ### Arrays and Aggregation
 
 Purpose: aggregate and transform values/lists.
@@ -652,24 +670,6 @@ Notes:
   - `sum`, `product`, `avg`, `reverse`, `unique`, and `unpack` accept complex scalars and arrays;
   - `min`, `max`, `sort`, `median`, `variance`, and `stddev` do not;
   - `sortby` accepts complex arrays when the key function supports complex scalars (for example `abs`).
-
-### Rational Display
-
-Purpose: show a plain numeric value as a reduced fraction when it is (or is close to) rational.
-
-- Key functions:
-- `ratio(x)` - reduced `n/m` with `m > 0` and sign in `n`
-- Examples:
-  - `ratio(-0.5)` -> `-1/2`
-  - `ratio(1/3)` and `ratio(0.3333333333333333)` -> `1/3`
-  - `ratio(15m/1h)` -> `1/4`
-  - `ratio(hours(1:00))` -> `1/60` (argument of `ratio` must be a plain number, not a duration)
-  - `ratio(0.5+0.25i)` -> `1/2+1/4*i`
-- Notes:
-  - `nan` / `inf` pass through;
-  - duration arguments are rejected (`ratio(1:00)` -> `incompatible operands`);
-  - non-exact values use the best reduced fraction `n/m` with `m <= 10_000_000` (for example `ratio(sqrt(2))` -> `13250218/9369319`);
-  - exact decimal powers of ten may use a larger denominator (for example `ratio(7.73e-8)` -> `773/10000000000`).
 
 ### Output Formatting
 
