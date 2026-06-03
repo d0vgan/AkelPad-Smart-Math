@@ -1517,6 +1517,14 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next sri
 
+  if Parser_TryEvaluateEx("ratio(0.5+0.25i)+1", r, rt, ia) = FALSE orelse ResultCloseEnough(rt, "1.5+0.25i") = FALSE then
+    print "[complex-opt] FAIL: ratio(0.5+0.25i)+1 -> """ & rt & """ want ~1.5+0.25i err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: ratio(0.5+0.25i)+1 -> """ & rt & """"
+    subPass += 1
+  end if
+
   print "=== Negative argument magnitude bands (complex, 3 ranges) ==="
   dim negCxPass as Integer = 0
   dim negCxFail as Integer = 0
@@ -1882,6 +1890,65 @@ private sub RunGcdLcmNcrNprArrayBroadcastTests()
   g_passed += subPass
   g_failed += subFail
   print "gcd/lcm/ncr/npr array-broadcast sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunRatioInExpressionTests()
+  print "=== ratio() in expressions (numeric value, not numerator metadata) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 29) as String
+  dim okNeed(1 to 29) as String
+  okExprs(1) = "ratio(1.3456)+1": okNeed(1) = "2.3456"
+  okExprs(2) = "ratio(1.3456)*10": okNeed(2) = "13.456"
+  okExprs(3) = "ratio(1.3456)-1": okNeed(3) = "0.3456"
+  okExprs(4) = "int(ratio(1.3456))": okNeed(4) = "1"
+  okExprs(5) = "trunc(ratio(1.3456))": okNeed(5) = "1"
+  okExprs(6) = "floor(ratio(1.3456))": okNeed(6) = "1"
+  okExprs(7) = "prod(ratio(1.3456),1)": okNeed(7) = "1.3456"
+  okExprs(8) = "product(ratio(1.3456),1)": okNeed(8) = "1.3456"
+  okExprs(9) = "sum(ratio(0.5),ratio(0.5))": okNeed(9) = "1"
+  okExprs(10) = "f(x)=x-1; f(ratio(1.3456))": okNeed(10) = "0.3456"
+  okExprs(11) = "g(x)=x*2; g(ratio(0.25))": okNeed(11) = "0.5"
+  okExprs(12) = "ratio(1.3456)+ratio(0.5)": okNeed(12) = "1.8456"
+  okExprs(13) = "abs(ratio(-0.5))": okNeed(13) = "0.5"
+  okExprs(14) = "sign(ratio(-0.5))": okNeed(14) = "-1"
+  okExprs(15) = "clamp(ratio(1.3456),0,2)": okNeed(15) = "1.3456"
+  okExprs(16) = "ratio(0.5)+1": okNeed(16) = "1.5"
+  okExprs(17) = "ratio(0.5)*3": okNeed(17) = "1.5"
+  okExprs(18) = "ratio(1.3456)/2": okNeed(18) = "0.6728"
+  okExprs(19) = "reverse(ratio(2),ratio(1))": okNeed(19) = "(1, 2)"
+  okExprs(20) = "unpack(ratio(1),ratio(2))": okNeed(20) = "(1, 2)"
+  okExprs(21) = "unique(ratio(1),ratio(0.5),ratio(1))": okNeed(21) = "(1, 1/2)"
+  okExprs(22) = "sort((ratio(3),ratio(1),ratio(2)))": okNeed(22) = "(1, 2, 3)"
+  okExprs(23) = "sortby((ratio(3),ratio(1)),x:x)": okNeed(23) = "(1, 3)"
+  okExprs(24) = "sortby((ratio(3),ratio(1)),abs)": okNeed(24) = "(1, 3)"
+  okExprs(25) = "(ratio(0.5),ratio(0.25))": okNeed(25) = "(1/2, 1/4)"
+  okExprs(26) = "ratio(1.3456)-ratio(1.3456)": okNeed(26) = "0"
+  okExprs(27) = "round(ratio(1.3456))": okNeed(27) = "1"
+  okExprs(28) = "min(ratio(1.3456), 2)": okNeed(28) = "1.3456"
+  okExprs(29) = "max(ratio(1.3456), 2)": okNeed(29) = "2"
+  dim ri as Integer
+  for ri = 1 to 29
+    if Parser_TryEvaluateEx(okExprs(ri), r, rt, ia) = FALSE then
+      print "[ratio-expr] FAIL: """ & okExprs(ri) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(ri)) = FALSE then
+      print "[ratio-expr] FAIL: """ & okExprs(ri) & """ expected """ & okNeed(ri) & """ got """ & rt & """"
+      subFail += 1
+    else
+      print "[ratio-expr] PASS: """ & okExprs(ri) & """"
+      subPass += 1
+    end if
+  next ri
+
+  g_passed += subPass
+  g_failed += subFail
+  print "ratio-in-expression sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -3756,6 +3823,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunIncompleteFunctionCallHintTests()
 
   RunGcdLcmNcrNprArrayBroadcastTests()
+  RunRatioInExpressionTests()
+
   RunExactIntegerDivisionTests()
   RunExactIntegerMultiplicationTests()
   RunBinaryBuiltinArrayLengthMismatchTests()

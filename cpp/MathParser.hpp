@@ -249,25 +249,34 @@ private:
 #endif
       };
       ScalarKind scalarKind = ScalarKind::FloatingPoint;
+      /// Do not read for exact-int policy; use hasExactInt64() / hasRenderRational().
       unsigned int flags = 0;
       double scalar = 0.0;
+      /// Numerator for render-rational and exact integers; prefer hasExactInt64() in eval paths.
       long long exactInt64 = 0;
+      /// Denominator for render-rational and exact uintegers; prefer hasExactUInt64() in eval paths.
       std::uint64_t exactUInt64 = 0;
       double imag = 0.0;
       long long imagExactInt64 = 0;
       std::uint64_t imagExactUInt64 = 0;
 
-      bool hasExactInt64() const { return (flags & fExactInt64Valid) != 0; }
+      bool hasExactInt64Metadata() const { return (flags & fExactInt64Valid) != 0; }
+      bool hasExactUInt64Metadata() const { return (flags & fExactUInt64Valid) != 0; }
+      bool hasImagExactInt64Metadata() const { return (flags & fImagExactInt64Valid) != 0; }
+      bool hasImagExactUInt64Metadata() const { return (flags & fImagExactUInt64Valid) != 0; }
+      /// Exact int64 for arithmetic (not render-rational numerator storage).
+      bool hasExactInt64() const { return hasExactInt64Metadata() && !hasRenderRational(); }
       void setExactInt64Valid(bool v) { flags = v ? (flags | fExactInt64Valid) : (flags & ~fExactInt64Valid); }
-      bool hasExactUInt64() const { return (flags & fExactUInt64Valid) != 0; }
+      /// Exact uint64 for arithmetic (not render-rational denominator storage).
+      bool hasExactUInt64() const { return hasExactUInt64Metadata() && !hasRenderRational(); }
       void setExactUInt64Valid(bool v) { flags = v ? (flags | fExactUInt64Valid) : (flags & ~fExactUInt64Valid); }
       bool hasDecScientificPow63High() const { return (flags & fDecScientificPow63High) != 0; }
       void setDecScientificPow63High(bool v) {
         flags = v ? (flags | fDecScientificPow63High) : (flags & ~fDecScientificPow63High);
       }
-      bool hasImagExactInt64() const { return (flags & fImagExactInt64Valid) != 0; }
+      bool hasImagExactInt64() const { return hasImagExactInt64Metadata() && !hasImagRenderRational(); }
       void setImagExactInt64Valid(bool v) { flags = v ? (flags | fImagExactInt64Valid) : (flags & ~fImagExactInt64Valid); }
-      bool hasImagExactUInt64() const { return (flags & fImagExactUInt64Valid) != 0; }
+      bool hasImagExactUInt64() const { return hasImagExactUInt64Metadata() && !hasImagRenderRational(); }
       void setImagExactUInt64Valid(bool v) {
         flags = v ? (flags | fImagExactUInt64Valid) : (flags & ~fImagExactUInt64Valid);
       }
@@ -1014,6 +1023,8 @@ private:
 #endif
   static bool scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s);
   static void scalarClearImaginary(EvalValue::ScalarValue& s);
+  static double scalarNumericReal(const EvalValue::ScalarValue& s);
+  static double scalarNumericImag(const EvalValue::ScalarValue& s);
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
 #if SMARTMATH_COMPLEX_NUMBERS
   static EvalValue makeImaginaryUnit();

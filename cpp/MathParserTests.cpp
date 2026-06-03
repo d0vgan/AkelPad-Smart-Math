@@ -3329,6 +3329,58 @@ std::vector<TestCase> buildSortbyRatioCases() {
   return t;
 }
 
+std::vector<TestCase> buildRatioInExpressionCases() {
+  std::vector<TestCase> t;
+  t.push_back({"ratio/expr: arithmetic and unary on ratio values",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "ratio(1.3456)+1", "2.3456", why)) return false;
+                 if (!expectEval(p, "ratio(1.3456)*10", "13.456", why)) return false;
+                 if (!expectEval(p, "ratio(1.3456)-1", "0.3456", why)) return false;
+                 if (!expectEval(p, "int(ratio(1.3456))", "1", why)) return false;
+                 if (!expectEval(p, "trunc(ratio(1.3456))", "1", why)) return false;
+                 if (!expectEval(p, "floor(ratio(1.3456))", "1", why)) return false;
+                 if (!expectEval(p, "round(ratio(1.3456))", "1", why)) return false;
+                 if (!expectEval(p, "ratio(1.3456)-ratio(1.3456)", "0", why)) return false;
+                 return true;
+               }});
+  t.push_back({"ratio/expr: aggregates, builtins, and UDF",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "prod(ratio(1.3456),1)", "1.3456", why)) return false;
+                 if (!expectEval(p, "product(ratio(1.3456),1)", "1.3456", why)) return false;
+                 if (!expectEval(p, "sum(ratio(0.5),ratio(0.5))", "1", why)) return false;
+                 if (!expectEval(p, "min(ratio(1.3456), 2)", "1.3456", why)) return false;
+                 if (!expectEval(p, "max(ratio(1.3456), 2)", "2", why)) return false;
+                 if (!expectEval(p, "abs(ratio(-0.5))", "0.5", why)) return false;
+                 if (!expectEval(p, "sign(ratio(-0.5))", "-1", why)) return false;
+                 if (!expectEval(p, "clamp(ratio(1.3456),0,2)", "1.3456", why)) return false;
+                 p.addUserFunction("f(x)=x-1");
+                 if (!expectEval(p, "f(ratio(1.3456))", "0.3456", why)) return false;
+                 p.addUserFunction("g(x)=x*2");
+                 return expectEval(p, "g(ratio(0.25))", "0.5", why);
+               }});
+  t.push_back({"ratio/expr: structure-preserving and sort paths",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "reverse(ratio(2),ratio(1))", "(1, 2)", why)) return false;
+                 if (!expectEval(p, "unpack(ratio(1),ratio(2))", "(1, 2)", why)) return false;
+                 if (!expectEval(p, "unique(ratio(1),ratio(0.5),ratio(1))", "(1, 1/2)", why)) return false;
+                 if (!expectEval(p, "sort((ratio(3),ratio(1),ratio(2)))", "(1, 2, 3)", why)) return false;
+#if SMARTMATH_LAMBDA_FUNCTIONS
+                 if (!expectEval(p, "sortby((ratio(3),ratio(1)),x:x)", "(1, 3)", why)) return false;
+#endif
+                 if (!expectEval(p, "sortby((ratio(3),ratio(1)),abs)", "(1, 3)", why)) return false;
+                 if (!expectEval(p, "(ratio(0.5),ratio(0.25))", "(1/2, 1/4)", why)) return false;
+#if SMARTMATH_COMPLEX_NUMBERS
+                 p.setSupportComplexNumbers(true);
+                 if (!expectEval(p, "ratio(0.5+0.25i)+1", "1.5+0.25i", why)) return false;
+#endif
+                 return true;
+               }});
+  return t;
+}
+
 // Parity port from Basic smoke tests (SmokeTest_MathParser.bas) for expression-evaluation coverage.
 // This keeps C++ independent: only literal expr/expected/error-substring strings are copied in.
 struct ParityBasicCase {
@@ -5660,6 +5712,7 @@ int main(int argc, char** argv) {
   const auto timeValuesSupportOption = buildTimeValuesSupportOptionCases();
   const auto lambdaFunctionsSupportOption = buildLambdaFunctionsSupportOptionCases();
   const auto sortbyRatio = buildSortbyRatioCases();
+  const auto ratioInExpression = buildRatioInExpressionCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -5684,6 +5737,7 @@ int main(int argc, char** argv) {
   runSuite("Lambda function support (parser option)", lambdaFunctionsSupportOption, s);
 #endif
   runSuite("Sortby/Ratio", sortbyRatio, s);
+  runSuite("Ratio in expressions", ratioInExpression, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;
