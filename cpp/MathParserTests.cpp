@@ -5247,6 +5247,10 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"sortby((3+4i, 1+2i), polar)", "(1+2i,3+4i)"},
                      {"ratio(1+2i)", "1+2i"},
                      {"ratio(0.5+0.25i)", "1/2+1/4*i"},
+                     {"ratio(0.25i)", "1/4*i"},
+                     {"ratio(-0.5+0.25i)", "-1/2+1/4*i"},
+                     {"ratio(3+0.25i)", "3+1/4*i"},
+                     {"ratio(0.5+0.25i)+1", "1.5+0.25i"},
                      {"ratio(2+3i)", "2+3i"},
                      {"ratio(e+10i)", "14665106/5394991+10i"},
                  };

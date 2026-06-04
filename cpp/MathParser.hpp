@@ -1025,6 +1025,12 @@ private:
   static void scalarClearImaginary(EvalValue::ScalarValue& s);
   static double scalarNumericReal(const EvalValue::ScalarValue& s);
   static double scalarNumericImag(const EvalValue::ScalarValue& s);
+  static bool imagExactMetadataMatchesFloat(const EvalValue::ScalarValue& s);
+  static void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s);
+  static void scalarApplyExactInt64Part(EvalValue::ScalarValue& s, bool imagPart, long long n);
+  static void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, long long num,
+                                            std::uint64_t den);
+  static RawResult::CartesianScalar rawCartesianAssignReducedRational(long long num, std::uint64_t den);
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
 #if SMARTMATH_COMPLEX_NUMBERS
   static EvalValue makeImaginaryUnit();

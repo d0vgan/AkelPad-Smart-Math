@@ -1497,16 +1497,20 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next uei
 
-  dim cxSortRatioOk(1 to 6) as String
-  dim cxSortRatioExpect(1 to 6) as String
+  dim cxSortRatioOk(1 to 10) as String
+  dim cxSortRatioExpect(1 to 10) as String
   cxSortRatioOk(1) = "sortby((3+4i, 1+2i), abs)": cxSortRatioExpect(1) = "(1+2i, 3+4i)"
   cxSortRatioOk(6) = "sortby((3+4i, 1+2i), polar)": cxSortRatioExpect(6) = "(1+2i, 3+4i)"
   cxSortRatioOk(2) = "ratio(1+2i)": cxSortRatioExpect(2) = "1+2i"
   cxSortRatioOk(3) = "ratio(0.5+0.25i)": cxSortRatioExpect(3) = "1/2+1/4*i"
   cxSortRatioOk(4) = "ratio(2+3i)": cxSortRatioExpect(4) = "2+3i"
   cxSortRatioOk(5) = "ratio(e+10i)": cxSortRatioExpect(5) = "14665106/5394991+10i"
+  cxSortRatioOk(7) = "ratio(0.25i)": cxSortRatioExpect(7) = "1/4*i"
+  cxSortRatioOk(8) = "ratio(0.5+0.25i)+1": cxSortRatioExpect(8) = "1.5+0.25i"
+  cxSortRatioOk(9) = "ratio(-0.5+0.25i)": cxSortRatioExpect(9) = "-1/2+1/4*i"
+  cxSortRatioOk(10) = "ratio(3+0.25i)": cxSortRatioExpect(10) = "3+1/4*i"
   dim sri as Integer
-  for sri = 1 to 6
+  for sri = 1 to 10
     if Parser_TryEvaluateEx(cxSortRatioOk(sri), r, rt, ia) = FALSE orelse rt <> cxSortRatioExpect(sri) then
       print "[complex-opt] FAIL: """ & cxSortRatioOk(sri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       print "[complex-opt]      want: """ & cxSortRatioExpect(sri) & """"
@@ -1516,14 +1520,6 @@ private sub RunComplexNumberSupportOptionTests()
       subPass += 1
     end if
   next sri
-
-  if Parser_TryEvaluateEx("ratio(0.5+0.25i)+1", r, rt, ia) = FALSE orelse ResultCloseEnough(rt, "1.5+0.25i") = FALSE then
-    print "[complex-opt] FAIL: ratio(0.5+0.25i)+1 -> """ & rt & """ want ~1.5+0.25i err=" & Parser_GetLastError()
-    subFail += 1
-  else
-    print "[complex-opt] PASS: ratio(0.5+0.25i)+1 -> """ & rt & """"
-    subPass += 1
-  end if
 
   print "=== Negative argument magnitude bands (complex, 3 ranges) ==="
   dim negCxPass as Integer = 0

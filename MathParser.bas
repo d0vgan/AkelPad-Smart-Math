@@ -515,6 +515,12 @@ declare function ScalarExactInt64Valid(byref sv as ScalarValue) as Boolean
 declare function ScalarExactUInt64Valid(byref sv as ScalarValue) as Boolean
 declare function ScalarImagExactInt64Valid(byref sv as ScalarValue) as Boolean
 declare function ScalarImagExactUInt64Valid(byref sv as ScalarValue) as Boolean
+declare function ScalarImagExactMetadataMatchesFloat(byref sv as ScalarValue) as Boolean
+declare sub ScalarClearCartesianRenderExact(byref sv as ScalarValue)
+declare sub ScalarApplyExactInt64Part(byref sv as ScalarValue, byval imagPart as Boolean, byval n as LongInt)
+declare sub ScalarApplyReducedRationalPart(byref sv as ScalarValue, byval imagPart as Boolean, byval num as LongInt, byval den as ULongInt)
+declare sub RawCartesianAssignReducedRational(byval num as LongInt, byval den as ULongInt, byref outC as RawCartesianScalar)
+declare function TryGetExactInt64FromDouble(byval n as Double, byref outV as LongInt) as Boolean
 declare sub ScalarRepairExactMetadata(byref sv as ScalarValue)
 declare function ScalarNumericReal(byref sv as ScalarValue) as Double
 declare function ScalarNumericImag(byref sv as ScalarValue) as Double
@@ -1924,19 +1930,14 @@ private function ScalarNumericImag(byref sv as ScalarValue) as Double
     if sv.imagExactUInt64 = 0 then return sv.imag
     return CDbl(sv.imagExactInt64) / CDbl(sv.imagExactUInt64)
   end if
+  if ScalarImagExactInt64Valid(sv) orelse ScalarImagExactUInt64Valid(sv) then
+    if ScalarImagExactMetadataMatchesFloat(sv) = FALSE then return sv.imag
+  end if
   if ScalarImagExactInt64Valid(sv) then
-    dim ai as Double = CDbl(sv.imagExactInt64)
-    if ai = 0.0 then
-      if IsNaNValue(sv.imag) orelse IsInfValue(sv.imag) orelse sv.imag <> 0.0 then return sv.imag
-    end if
-    return ai
+    return CDbl(sv.imagExactInt64)
   end if
   if ScalarImagExactUInt64Valid(sv) then
-    dim ai as Double = CDbl(sv.imagExactUInt64)
-    if ai = 0.0 then
-      if IsNaNValue(sv.imag) orelse IsInfValue(sv.imag) orelse sv.imag <> 0.0 then return sv.imag
-    end if
-    return ai
+    return CDbl(sv.imagExactUInt64)
   end if
   return sv.imag
 end function
@@ -2011,17 +2012,22 @@ private sub ScalarRepairExactMetadata(byref sv as ScalarValue)
   end select
   '' INT_POWER stores base in imagExactInt64 and exponent in imagExactUInt64; do not remap imag fields.
   if (sv.flags and SVF_RENDER_INT_POWER) = 0 then
+    dim tIm as LongInt
     if ScalarImagExactInt64Valid(sv) = FALSE andalso sv.imagExactInt64 <> 0 then
-      ScalarSetImagExactInt64Valid(sv, TRUE)
-      if sv.imagExactInt64 >= 0 then
-        ScalarSetImagExactUInt64Valid(sv, TRUE)
-        sv.imagExactUInt64 = CULngInt(sv.imagExactInt64)
+      if TryGetExactInt64FromDouble(sv.imag, tIm) andalso tIm = sv.imagExactInt64 then
+        ScalarSetImagExactInt64Valid(sv, TRUE)
+        if sv.imagExactInt64 >= 0 then
+          ScalarSetImagExactUInt64Valid(sv, TRUE)
+          sv.imagExactUInt64 = CULngInt(sv.imagExactInt64)
+        end if
       end if
     elseif ScalarImagExactUInt64Valid(sv) = FALSE andalso sv.imagExactUInt64 <> 0 then
-      ScalarSetImagExactUInt64Valid(sv, TRUE)
-      if sv.imagExactUInt64 <= FB_I64_MAX_U then
-        ScalarSetImagExactInt64Valid(sv, TRUE)
-        sv.imagExactInt64 = CLngInt(sv.imagExactUInt64)
+      if TryGetExactInt64FromDouble(sv.imag, tIm) andalso CULngInt(tIm) = sv.imagExactUInt64 then
+        ScalarSetImagExactUInt64Valid(sv, TRUE)
+        if sv.imagExactUInt64 <= FB_I64_MAX_U then
+          ScalarSetImagExactInt64Valid(sv, TRUE)
+          sv.imagExactInt64 = CLngInt(sv.imagExactUInt64)
+        end if
       end if
     end if
   end if
@@ -2197,6 +2203,15 @@ private function TryGetExactInt64FromDouble(byval n as Double, byref outV as Lon
   if n <> CDbl(t) then return FALSE
   outV = t
   return TRUE
+end function
+
+'' True when imag exact metadata matches the stored float imag (guards stale imagExactInt64).
+private function ScalarImagExactMetadataMatchesFloat(byref sv as ScalarValue) as Boolean
+  dim t as LongInt
+  if TryGetExactInt64FromDouble(sv.imag, t) = FALSE then return FALSE
+  if ScalarImagExactInt64MetadataValid(sv) andalso t = sv.imagExactInt64 then return TRUE
+  if ScalarImagExactUInt64MetadataValid(sv) andalso CULngInt(t) = sv.imagExactUInt64 then return TRUE
+  return FALSE
 end function
 
 private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as Double, byval im as Double)
@@ -4806,6 +4821,77 @@ private function GcdInt64(byval a as LongInt, byval b as LongInt) as LongInt
   return CLngInt(GcdULong(CULngInt(abs(a)), CULngInt(abs(b))))
 end function
 
+private sub ScalarClearCartesianRenderExact(byref sv as ScalarValue)
+  sv.flags = sv.flags and not (SVF_RENDER_RATIONAL or SVF_IMAG_RENDER_RATIONAL)
+  ScalarSetExactUInt64Valid(sv, FALSE)
+  ScalarSetImagExactUInt64Valid(sv, FALSE)
+end sub
+
+private sub ScalarApplyExactInt64Part(byref sv as ScalarValue, byval imagPart as Boolean, byval n as LongInt)
+  if imagPart then
+    sv.imagExactInt64 = n
+    ScalarSetImagExactInt64Valid(sv, TRUE)
+    ScalarSetImagExactUInt64Valid(sv, FALSE)
+    sv.flags = sv.flags and not SVF_IMAG_RENDER_RATIONAL
+  else
+    sv.exactInt64 = n
+    ScalarSetExactInt64Valid(sv, TRUE)
+    ScalarSetExactUInt64Valid(sv, FALSE)
+    sv.flags = sv.flags and not SVF_RENDER_RATIONAL
+  end if
+end sub
+
+private sub ScalarApplyReducedRationalPart(byref sv as ScalarValue, byval imagPart as Boolean, byval num as LongInt, byval den as ULongInt)
+  dim n as LongInt = num
+  dim d as ULongInt = den
+  dim g as LongInt = GcdInt64(abs(n), CLngInt(d))
+  if g > 0 then
+    n = n \ g
+    d = CULngInt(CLngInt(d) \ g)
+  end if
+  if imagPart then
+    sv.imagExactInt64 = n
+    ScalarSetImagExactInt64Valid(sv, TRUE)
+    if d = 1ull then
+      ScalarSetImagExactUInt64Valid(sv, FALSE)
+      sv.flags = sv.flags and not SVF_IMAG_RENDER_RATIONAL
+    else
+      sv.imagExactUInt64 = d
+      ScalarSetImagExactUInt64Valid(sv, TRUE)
+      sv.flags = sv.flags or SVF_IMAG_RENDER_RATIONAL
+    end if
+  else
+    sv.exactInt64 = n
+    ScalarSetExactInt64Valid(sv, TRUE)
+    if d = 1ull then
+      ScalarSetExactUInt64Valid(sv, FALSE)
+      sv.flags = sv.flags and not SVF_RENDER_RATIONAL
+    else
+      sv.exactUInt64 = d
+      ScalarSetExactUInt64Valid(sv, TRUE)
+      sv.flags = sv.flags or SVF_RENDER_RATIONAL
+    end if
+  end if
+end sub
+
+private sub RawCartesianAssignReducedRational(byval num as LongInt, byval den as ULongInt, byref outC as RawCartesianScalar)
+  dim n as LongInt = num
+  dim d as ULongInt = den
+  dim g as LongInt = GcdInt64(abs(n), CLngInt(d))
+  if g > 0 then
+    n = n \ g
+    d = CULngInt(CLngInt(d) \ g)
+  end if
+  if d = 1ull then
+    outC.kind = RSK_INT64
+    outC.intValue = n
+  else
+    outC.kind = RSK_RATIONAL
+    outC.ratNum = n
+    outC.ratDen = d
+  end if
+end sub
+
 private function MulModU64AddDouble(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
   if modN <= 1ull then return 0ull
   dim res as ULongInt = 0
@@ -6330,17 +6416,19 @@ private function TryExtractExactImagComponent(byref sv as ScalarValue, byref c a
     ExactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64)
     return TRUE
   end if
-  if ScalarImagExactInt64MetadataValid(sv) andalso sv.imagExactInt64 <> 0 then
-    ExactCartesianComponentAssignFromInt64(c, sv.imagExactInt64)
-    if sv.imagExactInt64 < 0 andalso ScalarImagExactUInt64MetadataValid(sv) then
-      c.hasUInt = 1
-      c.uintV = sv.imagExactUInt64
+  if ScalarImagExactMetadataMatchesFloat(sv) then
+    if ScalarImagExactInt64MetadataValid(sv) then
+      ExactCartesianComponentAssignFromInt64(c, sv.imagExactInt64)
+      if sv.imagExactInt64 < 0 andalso ScalarImagExactUInt64MetadataValid(sv) then
+        c.hasUInt = 1
+        c.uintV = sv.imagExactUInt64
+      end if
+      return TRUE
     end if
-    return TRUE
-  end if
-  if ScalarImagExactUInt64MetadataValid(sv) andalso sv.imagExactUInt64 <> 0 then
-    ExactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64)
-    return TRUE
+    if ScalarImagExactUInt64MetadataValid(sv) then
+      ExactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64)
+      return TRUE
+    end if
   end if
   if ScalarHasNonzeroImaginaryPart(sv) = FALSE then
     ExactCartesianComponentClear(c)
@@ -9402,55 +9490,36 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
   if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
     dim numR as LongInt, denR as ULongInt
     dim numI as LongInt, denI as ULongInt
-    dim hasRealRat as Boolean = FALSE
-    dim hasImagRat as Boolean = FALSE
-    dim imagIsInt as Boolean = FALSE
+    dim reC as ExactCartesianComponent
     dim aiScale as Double = abs(ai)
     if aiScale < 1.0 then aiScale = 1.0
     dim arScale as Double = abs(ar)
     if arScale < 1.0 then arScale = 1.0
-    dim nearImagInt as LongInt
-    if ScalarImagExactInt64MetadataValid(sv) andalso ScalarHasImagRenderRational(sv) = FALSE _
-      andalso TryGetExactInt64FromDouble(sv.imag, nearImagInt) andalso nearImagInt = sv.imagExactInt64 then
-      imagIsInt = TRUE
-      numI = nearImagInt
-      denI = 1
+    outV.kind = VK_SCALAR
+    outV.scalarValue = sv
+    outV.flags = 0
+    ScalarClearCartesianRenderExact(outV.scalarValue)
+    if ScalarImagExactInt64Valid(sv) andalso ScalarImagExactMetadataMatchesFloat(sv) then
+      ScalarApplyExactInt64Part(outV.scalarValue, TRUE, sv.imagExactInt64)
     elseif abs(ai) >= RATIO_APPROX_EPS * aiScale then
       if TryApproximateRational(ai, numI, denI) = FALSE then
         SetIncompatibleOperandsError()
         return TRUE
       end if
-      hasImagRat = TRUE
+      ScalarApplyReducedRationalPart(outV.scalarValue, TRUE, numI, denI)
     end if
-    if abs(ar) >= RATIO_APPROX_EPS * arScale then
+    if TryExtractExactRealComponent(sv, reC) andalso TryExactCartesianComponentToInt64(reC, numR) then
+      ScalarApplyExactInt64Part(outV.scalarValue, FALSE, numR)
+    elseif TryGetExactInt64FromDouble(ar, numR) then
+      ScalarApplyExactInt64Part(outV.scalarValue, FALSE, numR)
+    elseif abs(ar) >= RATIO_APPROX_EPS * arScale then
       if TryApproximateRational(ar, numR, denR) = FALSE then
         SetIncompatibleOperandsError()
         return TRUE
       end if
-      hasRealRat = TRUE
-    end if
-    outV.kind = VK_SCALAR
-    outV.scalarValue = sv
-    outV.flags = 0
-    if hasRealRat then
-      outV.scalarValue.exactInt64 = numR
-      outV.scalarValue.exactUInt64 = denR
-      outV.scalarValue.exactInt64Valid = TRUE
-      outV.scalarValue.exactUInt64Valid = TRUE
-      outV.scalarValue.flags or= SVF_RENDER_RATIONAL
+      ScalarApplyReducedRationalPart(outV.scalarValue, FALSE, numR, denR)
     elseif sv.exactInt64Valid then
-      outV.scalarValue.exactInt64 = sv.exactInt64
-      outV.scalarValue.exactInt64Valid = TRUE
-    end if
-    if hasImagRat then
-      outV.scalarValue.imagExactInt64 = numI
-      outV.scalarValue.imagExactUInt64 = denI
-      ScalarSetImagExactInt64Valid(outV.scalarValue, TRUE)
-      ScalarSetImagExactUInt64Valid(outV.scalarValue, TRUE)
-      outV.scalarValue.flags or= SVF_IMAG_RENDER_RATIONAL
-    elseif imagIsInt then
-      outV.scalarValue.imagExactInt64 = numI
-      ScalarSetImagExactInt64Valid(outV.scalarValue, TRUE)
+      ScalarApplyExactInt64Part(outV.scalarValue, FALSE, sv.exactInt64)
     end if
     return TRUE
   end if
@@ -11337,9 +11406,7 @@ private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart 
     end if
     if ScalarHasRenderRational(sv) then
       if ScalarExactUInt64MetadataValid(sv) orelse sv.exactUInt64 <> 0 then
-        outC.kind = RSK_RATIONAL
-        outC.ratNum = sv.exactInt64
-        outC.ratDen = sv.exactUInt64
+        RawCartesianAssignReducedRational(sv.exactInt64, sv.exactUInt64, outC)
         exit sub
       end if
     end if
@@ -11377,9 +11444,7 @@ private sub RawCartesianFromScalarValue(byref sv as ScalarValue, byval imagPart 
   end if
   if ScalarHasImagRenderRational(sv) then
     if ScalarImagExactUInt64MetadataValid(sv) orelse sv.imagExactUInt64 <> 0 then
-      outC.kind = RSK_RATIONAL
-      outC.ratNum = sv.imagExactInt64
-      outC.ratDen = sv.imagExactUInt64
+      RawCartesianAssignReducedRational(sv.imagExactInt64, sv.imagExactUInt64, outC)
       exit sub
     end if
   end if

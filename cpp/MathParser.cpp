@@ -4002,16 +4002,23 @@ void MathParser::scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
   if (!sv.hasRenderIntPower()) {
 #endif
     if (!sv.hasImagExactInt64() && sv.imagExactInt64 != 0) {
-      sv.setImagExactInt64Valid(true);
-      if (sv.imagExactInt64 >= 0) {
-        sv.setImagExactUInt64Valid(true);
-        sv.imagExactUInt64 = static_cast<std::uint64_t>(sv.imagExactInt64);
+      long long tIm = 0;
+      if (tryExtractExactInt64FromDoubleStrict(sv.imag, tIm) && tIm == sv.imagExactInt64) {
+        sv.setImagExactInt64Valid(true);
+        if (sv.imagExactInt64 >= 0) {
+          sv.setImagExactUInt64Valid(true);
+          sv.imagExactUInt64 = static_cast<std::uint64_t>(sv.imagExactInt64);
+        }
       }
     } else if (!sv.hasImagExactUInt64() && sv.imagExactUInt64 != 0u) {
-      sv.setImagExactUInt64Valid(true);
-      if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-        sv.setImagExactInt64Valid(true);
-        sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
+      long long tIm = 0;
+      if (tryExtractExactInt64FromDoubleStrict(sv.imag, tIm) &&
+          static_cast<std::uint64_t>(tIm) == sv.imagExactUInt64) {
+        sv.setImagExactUInt64Valid(true);
+        if (sv.imagExactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+          sv.setImagExactInt64Valid(true);
+          sv.imagExactInt64 = static_cast<long long>(sv.imagExactUInt64);
+        }
       }
     }
 #if SMARTMATH_FACTORINT
@@ -5200,19 +5207,16 @@ double MathParser::scalarNumericImag(const EvalValue::ScalarValue& s) {
     }
     return static_cast<double>(sv.imagExactInt64) / static_cast<double>(sv.imagExactUInt64);
   }
-  if (sv.hasImagExactInt64()) {
-    double im = static_cast<double>(sv.imagExactInt64);
-    if (im == 0.0 && s.imag != 0.0) {
-      return s.imag;
+  if (sv.hasImagExactInt64() || sv.hasImagExactUInt64()) {
+    if (!imagExactMetadataMatchesFloat(sv)) {
+      return sv.imag;
     }
-    return im;
+  }
+  if (sv.hasImagExactInt64()) {
+    return static_cast<double>(sv.imagExactInt64);
   }
   if (sv.hasImagExactUInt64()) {
-    double im = static_cast<double>(sv.imagExactUInt64);
-    if (im == 0.0 && s.imag != 0.0) {
-      return s.imag;
-    }
-    return im;
+    return static_cast<double>(sv.imagExactUInt64);
   }
   return sv.imag;
 }
@@ -5220,6 +5224,96 @@ double MathParser::scalarNumericImag(const EvalValue::ScalarValue& s) {
 void MathParser::scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im) {
   re = scalarNumericReal(s);
   im = scalarNumericImag(s);
+}
+
+bool MathParser::imagExactMetadataMatchesFloat(const EvalValue::ScalarValue& sv) {
+  long long t = 0;
+  if (!tryExtractExactInt64FromDoubleStrict(sv.imag, t)) {
+    return false;
+  }
+  if (sv.hasImagExactInt64Metadata() && t == sv.imagExactInt64) {
+    return true;
+  }
+  if (sv.hasImagExactUInt64Metadata() && static_cast<std::uint64_t>(t) == sv.imagExactUInt64) {
+    return true;
+  }
+  return false;
+}
+
+void MathParser::scalarClearCartesianRenderExact(EvalValue::ScalarValue& s) {
+  s.setRenderRational(false);
+  s.setImagRenderRational(false);
+  s.setExactUInt64Valid(false);
+  s.setImagExactUInt64Valid(false);
+}
+
+void MathParser::scalarApplyExactInt64Part(EvalValue::ScalarValue& s, bool imagPart, long long n) {
+  if (imagPart) {
+    s.imagExactInt64 = n;
+    s.setImagExactInt64Valid(true);
+    s.setImagExactUInt64Valid(false);
+    s.setImagRenderRational(false);
+  } else {
+    s.exactInt64 = n;
+    s.setExactInt64Valid(true);
+    s.setExactUInt64Valid(false);
+    s.setRenderRational(false);
+  }
+}
+
+void MathParser::scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, long long num,
+                                                std::uint64_t den) {
+  long long n = num;
+  std::uint64_t d = den;
+  const long long g = gcdInt64(std::llabs(n), static_cast<long long>(d));
+  if (g > 0) {
+    n /= g;
+    d = static_cast<std::uint64_t>(static_cast<long long>(d) / g);
+  }
+  if (imagPart) {
+    s.imagExactInt64 = n;
+    s.setImagExactInt64Valid(true);
+    if (d == 1u) {
+      s.setImagExactUInt64Valid(false);
+      s.setImagRenderRational(false);
+    } else {
+      s.imagExactUInt64 = d;
+      s.setImagExactUInt64Valid(true);
+      s.setImagRenderRational(true);
+    }
+  } else {
+    s.exactInt64 = n;
+    s.setExactInt64Valid(true);
+    if (d == 1u) {
+      s.setExactUInt64Valid(false);
+      s.setRenderRational(false);
+    } else {
+      s.exactUInt64 = d;
+      s.setExactUInt64Valid(true);
+      s.setRenderRational(true);
+    }
+  }
+}
+
+MathParser::RawResult::CartesianScalar MathParser::rawCartesianAssignReducedRational(long long num,
+                                                                                    std::uint64_t den) {
+  RawResult::CartesianScalar out;
+  long long n = num;
+  std::uint64_t d = den;
+  const long long g = gcdInt64(std::llabs(n), static_cast<long long>(d));
+  if (g > 0) {
+    n /= g;
+    d = static_cast<std::uint64_t>(static_cast<long long>(d) / g);
+  }
+  if (d == 1u) {
+    out.kind = RawResult::ScalarKind::Int64;
+    out.intValue = n;
+  } else {
+    out.kind = RawResult::ScalarKind::Rational;
+    out.rational.numerator = n;
+    out.rational.denominator = d;
+  }
+  return out;
 }
 
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -5416,13 +5510,25 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
     return true;
   }
   if (sv.hasImagExactUInt64()) {
-    // If exact imag metadata is present but equals 0 while the stored float imag is nonzero,
-    // treat it as "not exact" so `imag()` can return the correct float component.
     if (sv.imagExactUInt64 == 0u && sv.imag != 0.0) {
       return false;
     }
     exactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64);
     return true;
+  }
+  if (imagExactMetadataMatchesFloat(sv)) {
+    if (sv.hasImagExactInt64Metadata()) {
+      exactCartesianComponentAssignFromInt64(c, sv.imagExactInt64);
+      if (sv.imagExactInt64 < 0 && sv.hasImagExactUInt64Metadata()) {
+        c.hasUInt = true;
+        c.uintV = sv.imagExactUInt64;
+      }
+      return true;
+    }
+    if (sv.hasImagExactUInt64Metadata()) {
+      exactCartesianComponentAssignFromUInt64(c, sv.imagExactUInt64);
+      return true;
+    }
   }
   if (!scalarHasNonzeroImaginaryPart(sv)) {
     exactCartesianComponentClear(c);
@@ -6856,10 +6962,7 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
     }
 #endif
     if (v.hasRenderRational() && (v.hasExactUInt64Metadata() || v.exactUInt64 != 0)) {
-      out.kind = RawResult::ScalarKind::Rational;
-      out.rational.numerator = v.exactInt64;
-      out.rational.denominator = v.exactUInt64;
-      return out;
+      return rawCartesianAssignReducedRational(v.exactInt64, v.exactUInt64);
     }
 #if SMARTMATH_FACTORINT
     if (v.hasRenderIntPower() && v.imagExactUInt64 > 1u) {
@@ -6895,10 +6998,7 @@ MathParser::RawResult::CartesianScalar MathParser::toRawCartesianScalar(const Ev
   }
 
   if (v.hasImagRenderRational() && (v.hasImagExactUInt64Metadata() || v.imagExactUInt64 != 0)) {
-    out.kind = RawResult::ScalarKind::Rational;
-    out.rational.numerator = v.imagExactInt64;
-    out.rational.denominator = v.imagExactUInt64;
-    return out;
+    return rawCartesianAssignReducedRational(v.imagExactInt64, v.imagExactUInt64);
   }
   if (v.hasImagExactInt64()) {
     out.kind = RawResult::ScalarKind::Int64;
@@ -10563,11 +10663,7 @@ bool MathParser::sortbyStableSortIndicesFromKeys(
 
 MathParser::EvalValue MathParser::makeRationalReduced(long long num, std::uint64_t den) {
   EvalValue out = makeScalarMaybeExact(static_cast<double>(num) / static_cast<double>(den));
-  out.scalarValue.setExactInt64Valid(true);
-  out.scalarValue.exactInt64 = num;
-  out.scalarValue.setExactUInt64Valid(true);
-  out.scalarValue.exactUInt64 = den;
-  out.scalarValue.setRenderRational(true);
+  scalarApplyReducedRationalPart(out.scalarValue, false, num, den);
   return out;
 }
 
@@ -10790,9 +10886,7 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     std::uint64_t denR = 1;
     long long numI = 0;
     std::uint64_t denI = 1;
-    bool hasRealRat = false;
-    bool hasImagRat = false;
-    bool imagIsInt = false;
+    ExactCartesianComponent reC;
     double aiScale = std::fabs(ai);
     if (aiScale < 1.0) {
       aiScale = 1.0;
@@ -10801,46 +10895,29 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     if (arScale < 1.0) {
       arScale = 1.0;
     }
-    long long nearImagInt = 0;
-    if (!sv.hasImagRenderRational() && sv.hasImagExactInt64Metadata() &&
-        tryExtractExactInt64FromDoubleStrict(sv.imag, nearImagInt) && nearImagInt == sv.imagExactInt64) {
-      imagIsInt = true;
-      numI = nearImagInt;
-      denI = 1;
+    outV = scalarFromScalarValue(sv);
+    scalarClearCartesianRenderExact(outV.scalarValue);
+    if (sv.hasImagExactInt64() && imagExactMetadataMatchesFloat(sv)) {
+      scalarApplyExactInt64Part(outV.scalarValue, true, sv.imagExactInt64);
     } else if (std::fabs(ai) >= RATIO_APPROX_EPS * aiScale) {
       if (!tryApproximateRational(ai, numI, denI)) {
         ctx.parseError = true;
         return false;
       }
-      hasImagRat = true;
+      scalarApplyReducedRationalPart(outV.scalarValue, true, numI, denI);
     }
-    if (std::fabs(ar) >= RATIO_APPROX_EPS * arScale) {
+    if (tryExtractExactRealComponent(sv, reC) && tryExactCartesianComponentToInt64(reC, numR)) {
+      scalarApplyExactInt64Part(outV.scalarValue, false, numR);
+    } else if (tryExtractExactInt64FromDoubleStrict(ar, numR)) {
+      scalarApplyExactInt64Part(outV.scalarValue, false, numR);
+    } else if (std::fabs(ar) >= RATIO_APPROX_EPS * arScale) {
       if (!tryApproximateRational(ar, numR, denR)) {
         ctx.parseError = true;
         return false;
       }
-      hasRealRat = true;
-    }
-    outV = scalarFromScalarValue(sv);
-    if (hasRealRat) {
-      outV.scalarValue.setExactInt64Valid(true);
-      outV.scalarValue.exactInt64 = numR;
-      outV.scalarValue.setExactUInt64Valid(true);
-      outV.scalarValue.exactUInt64 = denR;
-      outV.scalarValue.setRenderRational(true);
+      scalarApplyReducedRationalPart(outV.scalarValue, false, numR, denR);
     } else if (sv.hasExactInt64()) {
-      outV.scalarValue.setExactInt64Valid(true);
-      outV.scalarValue.exactInt64 = sv.exactInt64;
-    }
-    if (hasImagRat) {
-      outV.scalarValue.setImagExactInt64Valid(true);
-      outV.scalarValue.imagExactInt64 = numI;
-      outV.scalarValue.setImagExactUInt64Valid(true);
-      outV.scalarValue.imagExactUInt64 = denI;
-      outV.scalarValue.setImagRenderRational(true);
-    } else if (imagIsInt) {
-      outV.scalarValue.setImagExactInt64Valid(true);
-      outV.scalarValue.imagExactInt64 = numI;
+      scalarApplyExactInt64Part(outV.scalarValue, false, sv.exactInt64);
     }
     return true;
   }

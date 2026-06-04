@@ -705,6 +705,26 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
     failCount += 1
   end if
 
+  dim ratioCxExpr(1 to 4) as String
+  dim ratioCxWant(1 to 4) as String
+  ratioCxExpr(1) = "ratio(0.5+0.25i)": ratioCxWant(1) = SMARTMATH_RESULT_PREFIX & "1/2 + 1/4*i"
+  ratioCxExpr(2) = "ratio(0.25i)": ratioCxWant(2) = SMARTMATH_RESULT_PREFIX & "1/4*i"
+  ratioCxExpr(3) = "ratio(2+3i)": ratioCxWant(3) = SMARTMATH_RESULT_PREFIX & "2 + 3i"
+  ratioCxExpr(4) = "ratio(0.5+0.25i)+1": ratioCxWant(4) = SMARTMATH_RESULT_PREFIX & "1.5 + 0.25i"
+  dim rcx as Integer
+  for rcx = 1 to 4
+    dim tagRatioCx as String = "parser-fmt/" & ratioCxExpr(rcx)
+    if FormatterTryEvaluateAndFormat(ratioCxExpr(rcx), fmt, raw) = FALSE then
+      print !"[FAIL] "; tagRatioCx; !" — evaluate failed"
+      failCount += 1
+    else
+      AssertEq(tagRatioCx, fmt, ratioCxWant(rcx), failCount)
+      if rcx = 4 then
+        AssertNoSubstr(tagRatioCx & "/no-wrong-imag-unit", fmt, "1*i", failCount)
+      end if
+    end if
+  next rcx
+
   if FormatterTryEvaluateAndFormat("0xFFFFFFFFFFFFFFFF*(1/5)", fmt, raw) then
     AssertEq("parser-fmt/exact-mul/0xFFFFFFFFFFFFFFFF*(1/5)", fmt, SMARTMATH_RESULT_PREFIX & "3689348814741910323", failCount)
     if raw.kind <> RRK_SCALAR orelse (raw.scalar.kind <> RSK_UINT64 andalso raw.scalar.kind <> RSK_INT64) then
