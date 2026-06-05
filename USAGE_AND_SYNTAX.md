@@ -153,6 +153,12 @@ Use parentheses for operations with complex numbers:
 - `(1+2i)*(3+4i)` -> `-5+10i`
 - `(1+2i)/2` -> `0.5+i`
 
+Notes:
+- `1/2i` means `1/(2i)`, unlike `(1/2)i` and `1/2*i`;
+- `2**7i` means `2**(7i)`, unlike `(2**7)i` and `2**7*i`;
+- `(1+2)i` means `((1+2)i)`;
+- `func(1+2)i` means `(func(1+2)i)`.
+
 ### Arrays
 
 - Make arrays with commas in parentheses:
@@ -857,8 +863,11 @@ Example:
 
 ### Parser runtime flags (plugin / reference API)
 
-- **Complex number support (off by default):** `Parser_SetSupportComplexNumbers` / `Parser_GetSupportComplexNumbers` in the FreeBASIC plugin parser. Default is off: behavior stays real-only (non-real domains keep producing `NaN` or an error as they do today). When set on, the parser registers the imaginary unit as the reserved constant **`i`** (lowercase), accepts Cartesian-style complex literals and expressions such as `10+5i`, `-1+3i`, `2-3*i`, and `-i+5` (including implicit multiplication before `i`, for example `5i`).
+- **Complex number support (off by default):** `Parser_SetSupportComplexNumbers` / `Parser_GetSupportComplexNumbers` in the FreeBASIC plugin parser. Default is off: behavior stays real-only (non-real domains yield `NaN` or an error as they do today). When set on, the parser registers the imaginary unit as the reserved constant **`i`** (lowercase), accepts Cartesian-style complex literals and expressions such as `10+5i`, `-1+3i`, `2-3*i`, and `-i+5`.
+A tight `i` suffix on a numeric literal (decimal/scientific or `0x`/`0b`/`0o`, no space) is parsed as a pure imaginary value before any operator binds, including `**`: `3i`, `0x10i`, `2/3i` -> `2/(3i)`, `7**20i` -> `7**(20i)`. The same tight `i` after a closing `)` multiplies the parenthesized value: `(1+2)i` is the same as `((1+2)*i)`, and `1/(1+2)i` -> `1/((1+2)i)`. Spaced forms such as `3 i` are not valid (no operator between the tokens). An explicit `*` before `i` keeps the usual grouping (`2*i`, `1/(1+2)*i`, `7**20*i` -> `(7**20)*i`).
+
 - **Time value support (on by default):** `Parser_SetSupportTimeValues` / `Parser_GetSupportTimeValues`. Default is on: colon and compact unit-suffix duration literals (`1:30`, `1d2h3m4s5ms`), duration constants (`millisecond`, `second`, `minute`, `hour`, `day`), and duration-aware arithmetic, comparisons, aggregates, and converter builtins (`milliseconds`, `seconds`, etc.) are active. When set off, the parser skips time-literal parsing and time-specific evaluation paths (plain numeric parsing only), and duration constants/converters are unavailable.
+
 - **Lambda function support (on by default):** `Parser_SetSupportLambdaFunctions` / `Parser_GetSupportLambdaFunctions`. Default is on: lambda-style user function definitions (`f=x,x+1`, `f=(x,y):(x+y)`, etc.) and anonymous lambda keys in `sortby` (`sortby((3,1,2), x:-x)`) are active. When set off, the parser skips lambda parse and evaluation paths; any input that uses lambda definition syntax fails with `unexpected token`, while ordinary `sortby` with a named function reference (for example `sortby((-3,-1,2), abs)`) still works.
 
 ## SmartMath Options

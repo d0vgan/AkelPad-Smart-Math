@@ -258,6 +258,70 @@ bool smokeScalarCloseEnough(const std::string& actual, const std::string& expect
   return std::fabs(da - de) <= tol;
 }
 
+namespace {
+
+bool splitComplexText(const std::string& s, std::string& rePart, std::string& imPart) {
+  std::string t = trimSmokeToken(s);
+  if (t.empty()) {
+    rePart = "0";
+    imPart = "0";
+    return true;
+  }
+  const char last = static_cast<char>(std::tolower(static_cast<unsigned char>(t.back())));
+  if (last != 'i') {
+    return false;
+  }
+  std::size_t splitAt = 0;
+  for (std::size_t i = t.size(); i >= 2; --i) {
+    const char ch = t[i - 1];
+    if (ch == '+' || ch == '-') {
+      if (i > 1) {
+        const char prevCh = static_cast<char>(std::tolower(static_cast<unsigned char>(t[i - 2])));
+        if (prevCh != 'e') {
+          splitAt = i - 1;
+          break;
+        }
+      } else if (ch == '-') {
+        splitAt = i - 1;
+        break;
+      }
+    }
+  }
+  if (splitAt == 0) {
+    rePart = "0";
+    imPart = t.substr(0, t.size() - 1);
+    return true;
+  }
+  rePart = trimSmokeToken(t.substr(0, splitAt));
+  if (rePart.empty()) {
+    rePart = "0";
+  }
+  imPart = trimSmokeToken(t.substr(splitAt));
+  if (!imPart.empty() && imPart.front() == '+') {
+    imPart.erase(imPart.begin());
+  }
+  if (!imPart.empty()) {
+    const char imLast = static_cast<char>(std::tolower(static_cast<unsigned char>(imPart.back())));
+    if (imLast == 'i') {
+      imPart.pop_back();
+    }
+  }
+  return true;
+}
+
+bool complexResultCloseEnough(const std::string& actual, const std::string& expected) {
+  std::string aRe;
+  std::string aIm;
+  std::string eRe;
+  std::string eIm;
+  if (!splitComplexText(actual, aRe, aIm) || !splitComplexText(expected, eRe, eIm)) {
+    return false;
+  }
+  return smokeScalarCloseEnough(aRe, eRe) && smokeScalarCloseEnough(aIm, eIm);
+}
+
+}  // namespace
+
 bool smokeResultCloseEnough(const std::string& actual, const std::string& expected) {
   if (actual == expected) {
     return true;
@@ -275,6 +339,17 @@ bool smokeResultCloseEnough(const std::string& actual, const std::string& expect
       }
     }
     return true;
+  }
+  const auto looksLikeComplexLiteral = [](const std::string& s) {
+    const std::string t = trimSmokeToken(s);
+    if (t.empty()) {
+      return false;
+    }
+    const char last = static_cast<char>(std::tolower(static_cast<unsigned char>(t.back())));
+    return last == 'i';
+  };
+  if (looksLikeComplexLiteral(actual) || looksLikeComplexLiteral(expected)) {
+    return complexResultCloseEnough(actual, expected);
   }
   return smokeScalarCloseEnough(actual, expected);
 }
@@ -3687,6 +3762,10 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "2**64/(1/2)", "3.68934881474191e+019"} ,
     {ParityBasicCase::Kind::Expected, "1317624576693539401*(1/11)", "1.197840524266854e+017"} ,
     {ParityBasicCase::Kind::Expected, "0x7FFFFFFFFFFFFFFF*(-1/8)", "-1.152921504606847e+018"} ,
+    {ParityBasicCase::Kind::Expected, "6/(10,20,30)", "(0.6, 0.3, 0.2)"} ,
+    {ParityBasicCase::Kind::Expected, "ratio(6/(10,20,30))", "(3/5, 3/10, 1/5)"} ,
+    {ParityBasicCase::Kind::Expected, "sort(ratio(6/(10,20,30)))", "(1/5, 3/10, 3/5)"} ,
+    {ParityBasicCase::Kind::Expected, "unique(abs((2,-1,2,3,-3,1)))", "(2, 1, 3)"} ,
 #if SMARTMATH_FACTORINT
     {ParityBasicCase::Kind::Expected, "factorint(33)", "(3, 11)"} ,
     {ParityBasicCase::Kind::Expected, "factorint(12)", "(2**2, 3)"} ,
@@ -4386,7 +4465,7 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                  }
                  return true;
                }});
-  t.push_back({"time-opt: sum/avg/mean/min/max on duration values (parity with Basic timeAggOk)",
+  t.push_back({"time-opt: sum/avg/mean/min/max/ratio on duration values (parity with Basic timeAggOk)",
                [](std::string& why) {
                  MathParser p;
                  p.setSupportTimeValues(true);
@@ -4403,6 +4482,7 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                      {"reverse(0:30, Inf, 1:00)", "(01:00,inf,00:30)"},
                      {"unpack(0:30, Inf)", "(00:30,inf)"},
                      {"unique(0:30, Inf, 0:30)", "(00:30,inf)"},
+                     {"ratio((hours(1:00), 15m/1h))", "(1/60,1/4)"}
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);
@@ -4917,6 +4997,73 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: imaginary suffix precedence (parity Basic cxSuffix*)",
+               [](std::string& why) {
+                 MathParser p;
+                 p.setSupportComplexNumbers(true);
+                 static const struct {
+                   const char* expr;
+                   const char* expect;
+                 } kRows[] = {
+                     {"cart(3i)", "3i"},
+                     {"cart(0x10i)", "16i"},
+                     {"cart(0b101i)", "5i"},
+                     {"cart(0o7i)", "7i"},
+                     {"cart(-3i)", "-3i"},
+                     {"cart(2i)", "2i"},
+                     {"cart(2*i)", "2i"},
+                     {"cart((2**3)i)", "8i"},
+                     {"cart((2*3)i)", "6i"},
+                     {"cart((2/3)i)", "0.6666666666666666i"},
+                     {"cart((2%3)i)", "2i"},
+                     {"cart((1+2)i)", "3i"},
+                     {"cart((1+2)*i)", "3i"},
+                     {"cart(2*3i)", "6i"},
+                     {"cart(2/3i)", "-0.6666666666666666i"},
+                     {"cart(1/2i)", "-0.5i"},
+                     {"cart(1/2*i)", "0.5i"},
+                     {"cart(1/(1+2)i)", "-0.3333333333333333i"},
+                     {"cart(1/(1+2)*i)", "0.3333333333333333i"},
+                     {"cart(1/2/3i)", "-0.1666666666666666i"},
+                     {"ratio(1/2i)", "-1/2*i"},
+                     {"cart(-2**57/3**30+2**55/7**20*i)",
+                      "-699.9582090286702+0.4515324440664775i"},
+                     {"cart(2**3i)", "-0.4869944179657813+0.8734050817748715i"},
+                     {"cart(7**20i)", "0.3444991159598805+0.9387866419495224i"},
+                     {"cart(7**2i)", "-0.7315336785874539-0.681805307321898i"},
+                 };
+                 for (const auto& row : kRows) {
+                   if (!expectEval(p, row.expr, row.expect, why)) {
+                     return false;
+                   }
+                 }
+                 p.parseAndEvaluate("3 i");
+                 if (p.getError().empty()) {
+                   why = "expected error for \"3 i\"";
+                   return false;
+                 }
+                 std::string el = p.getError();
+                 std::transform(el.begin(), el.end(), el.begin(),
+                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (el.find("unexpected") == std::string::npos) {
+                   why = std::string("3 i: ") + p.getError();
+                   return false;
+                 }
+                 p.parseAndEvaluate("2%3i");
+                 if (p.getError().empty()) {
+                   why = "expected error for \"2%3i\"";
+                   return false;
+                 }
+                 std::string em = p.getError();
+                 std::transform(em.begin(), em.end(), em.begin(),
+                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 if (em.find("incompatible operands") == std::string::npos &&
+                     em.find("integer operands") == std::string::npos) {
+                   why = std::string("2%3i: ") + p.getError();
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: complex component unaries on reals with support off (parity Basic cxRealOffOk)",
                [](std::string& why) {
                  MathParser p;
@@ -5253,6 +5400,20 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"ratio(0.5+0.25i)+1", "1.5+0.25i"},
                      {"ratio(2+3i)", "2+3i"},
                      {"ratio(e+10i)", "14665106/5394991+10i"},
+                     {"ratio(-2**57/3**30+2**55/7**20*i)", "-113792906/162571+1293463/2864607*i"},
+                     {"ratio(-2**57/3**30+2**55/7**20i)", "12411888722130364-33823353366914148i"},
+                     {"ratio((1+2i)/(3+4i))", "11/25+2/25*i"},
+                     {"ratio((1.11+2.33i)*(3.37+4.71i))", "-4521/625+65401/5000*i"},
+                     {"ratio((1+i)**(2+3i))", "-740749/4531935+329494/3432051*i"},
+                     {"ratio(1/(1+i))", "1/2-1/2*i"},
+                     {"ratio((1+3i)/2)", "1/2+3/2*i"},
+                     {"ratio((1+2i)/2)", "1/2+i"},
+                     {"ratio(2/(1+3i))", "1/5-3/5*i"},
+                     {"ratio((2+3i)**2)", "-5+12i"},
+                     {"ratio((1+i)/(1-i))", "i"},
+                     {"ratio(3i/2)", "3/2*i"},
+                     {"ratio(1/2+3i/4)", "1/2+3/4*i"},
+                     {"3+ratio(0.2)i", "3+0.2i"}
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

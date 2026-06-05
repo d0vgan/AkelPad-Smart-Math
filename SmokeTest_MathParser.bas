@@ -870,6 +870,41 @@ private sub RunComplexNumberSupportOptionTests()
   complexCases(6) = "10+5i-10-5i": complexExpect(6) = "0"
   complexCases(7) = "(1+2i)/i": complexExpect(7) = "2-i"
 
+  dim cxSuffixOk(1 to 25) as String
+  dim cxSuffixExpect(1 to 25) as String
+  cxSuffixOk(1) = "cart(3i)": cxSuffixExpect(1) = "3i"
+  cxSuffixOk(2) = "cart(0x10i)": cxSuffixExpect(2) = "16i"
+  cxSuffixOk(3) = "cart(0b101i)": cxSuffixExpect(3) = "5i"
+  cxSuffixOk(4) = "cart(0o7i)": cxSuffixExpect(4) = "7i"
+  cxSuffixOk(5) = "cart(-3i)": cxSuffixExpect(5) = "-3i"
+  cxSuffixOk(6) = "cart(2i)": cxSuffixExpect(6) = "2i"
+  cxSuffixOk(7) = "cart(2*i)": cxSuffixExpect(7) = "2i"
+  cxSuffixOk(8) = "cart((2**3)i)": cxSuffixExpect(8) = "8i"
+  cxSuffixOk(9) = "cart((2*3)i)": cxSuffixExpect(9) = "6i"
+  cxSuffixOk(10) = "cart((2/3)i)": cxSuffixExpect(10) = "0.6666666666666666i"
+  cxSuffixOk(11) = "cart((2%3)i)": cxSuffixExpect(11) = "2i"
+  cxSuffixOk(12) = "cart((1+2)i)": cxSuffixExpect(12) = "3i"
+  cxSuffixOk(13) = "cart((1+2)*i)": cxSuffixExpect(13) = "3i"
+  cxSuffixOk(14) = "cart(2*3i)": cxSuffixExpect(14) = "6i"
+  cxSuffixOk(15) = "cart(2/3i)": cxSuffixExpect(15) = "-0.6666666666666666i"
+  cxSuffixOk(16) = "cart(1/2i)": cxSuffixExpect(16) = "-0.5i"
+  cxSuffixOk(17) = "cart(1/2*i)": cxSuffixExpect(17) = "0.5i"
+  cxSuffixOk(18) = "cart(1/(1+2)i)": cxSuffixExpect(18) = "-0.3333333333333333i"
+  cxSuffixOk(19) = "cart(1/(1+2)*i)": cxSuffixExpect(19) = "0.3333333333333333i"
+  cxSuffixOk(20) = "cart(1/2/3i)": cxSuffixExpect(20) = "-0.1666666666666667i"
+  cxSuffixOk(21) = "ratio(1/2i)": cxSuffixExpect(21) = "-1/2*i"
+  cxSuffixOk(22) = "cart(-2**57/3**30+2**55/7**20*i)": cxSuffixExpect(22) = "-699.9582090286702+0.4515324440664775i"
+  cxSuffixOk(23) = "cart(2**3i)": cxSuffixExpect(23) = "-0.4869944179657813+0.8734050817748715i"
+  cxSuffixOk(24) = "cart(7**20i)": cxSuffixExpect(24) = "0.3444991159598805+0.9387866419495224i"
+  cxSuffixOk(25) = "cart(7**2i)": cxSuffixExpect(25) = "-0.7315336785874539-0.681805307321898i"
+
+  dim cxSuffixErr(1 to 2) as String
+  dim cxSuffixErrSub(1 to 2) as String
+  cxSuffixErr(1) = "3 i"
+  cxSuffixErrSub(1) = "unexpected"
+  cxSuffixErr(2) = "2%3i"
+  cxSuffixErrSub(2) = "incompatible operands"
+
   dim ci as Integer
   for ci = 1 to 7
     if Parser_TryEvaluateEx(complexCases(ci), r, rt, ia) = FALSE orelse rt <> complexExpect(ci) then
@@ -880,6 +915,32 @@ private sub RunComplexNumberSupportOptionTests()
       subPass += 1
     end if
   next ci
+
+  dim si as Integer
+  for si = 1 to 25
+    if Parser_TryEvaluateEx(cxSuffixOk(si), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxSuffixExpect(si)) = FALSE then
+      print "[complex-opt] FAIL: """ & cxSuffixOk(si) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      print "[complex-opt]      want: """ & cxSuffixExpect(si) & """"
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxSuffixOk(si) & """ -> """ & rt & """"
+      subPass += 1
+    end if
+  next si
+
+  dim se as Integer
+  for se = 1 to 2
+    if Parser_TryEvaluateEx(cxSuffixErr(se), r, rt, ia) then
+      print "[complex-opt] FAIL: """ & cxSuffixErr(se) & """ expected error, got """ & rt & """"
+      subFail += 1
+    elseif instr(lcase(Parser_GetLastError()), lcase(cxSuffixErrSub(se))) = 0 then
+      print "[complex-opt] FAIL: """ & cxSuffixErr(se) & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxSuffixErr(se) & """ -> error as expected"
+      subPass += 1
+    end if
+  next se
 
   ' Mixed real/complex arrays: element-wise broadcast (+ - * /) for array+scalar, scalar+array, array+array.
   dim arrCases(1 to 12) as String
@@ -1497,8 +1558,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next uei
 
-  dim cxSortRatioOk(1 to 10) as String
-  dim cxSortRatioExpect(1 to 10) as String
+  dim cxSortRatioOk(1 to 24) as String
+  dim cxSortRatioExpect(1 to 24) as String
   cxSortRatioOk(1) = "sortby((3+4i, 1+2i), abs)": cxSortRatioExpect(1) = "(1+2i, 3+4i)"
   cxSortRatioOk(6) = "sortby((3+4i, 1+2i), polar)": cxSortRatioExpect(6) = "(1+2i, 3+4i)"
   cxSortRatioOk(2) = "ratio(1+2i)": cxSortRatioExpect(2) = "1+2i"
@@ -1509,8 +1570,22 @@ private sub RunComplexNumberSupportOptionTests()
   cxSortRatioOk(8) = "ratio(0.5+0.25i)+1": cxSortRatioExpect(8) = "1.5+0.25i"
   cxSortRatioOk(9) = "ratio(-0.5+0.25i)": cxSortRatioExpect(9) = "-1/2+1/4*i"
   cxSortRatioOk(10) = "ratio(3+0.25i)": cxSortRatioExpect(10) = "3+1/4*i"
+  cxSortRatioOk(11) = "ratio(-2**57/3**30+2**55/7**20*i)": cxSortRatioExpect(11) = "-113792906/162571+1293463/2864607*i"
+  cxSortRatioOk(12) = "ratio(-2**57/3**30+2**55/7**20i)": cxSortRatioExpect(12) = "12411888722130364-33823353366914148i"
+  cxSortRatioOk(13) = "ratio((1+2i)/(3+4i))": cxSortRatioExpect(13) = "11/25+2/25*i"
+  cxSortRatioOk(14) = "ratio((1.11+2.33i)*(3.37+4.71i))": cxSortRatioExpect(14) = "-4521/625+65401/5000*i"
+  cxSortRatioOk(15) = "ratio((1+i)**(2+3i))": cxSortRatioExpect(15) = "-740749/4531935+329494/3432051*i"
+  cxSortRatioOk(16) = "ratio(1/(1+i))": cxSortRatioExpect(16) = "1/2-1/2*i"
+  cxSortRatioOk(17) = "ratio((1+3i)/2)": cxSortRatioExpect(17) = "1/2+3/2*i"
+  cxSortRatioOk(18) = "ratio((1+2i)/2)": cxSortRatioExpect(18) = "1/2+i"
+  cxSortRatioOk(19) = "ratio(2/(1+3i))": cxSortRatioExpect(19) = "1/5-3/5*i"
+  cxSortRatioOk(20) = "ratio((2+3i)**2)": cxSortRatioExpect(20) = "-5+12i"
+  cxSortRatioOk(21) = "ratio((1+i)/(1-i))": cxSortRatioExpect(21) = "i"
+  cxSortRatioOk(22) = "ratio(3i/2)": cxSortRatioExpect(22) = "3/2*i"
+  cxSortRatioOk(23) = "ratio(1/2+3i/4)": cxSortRatioExpect(23) = "1/2+3/4*i"
+  cxSortRatioOk(24) = "3+ratio(0.2)i": cxSortRatioExpect(24) = "3+0.2i"
   dim sri as Integer
-  for sri = 1 to 10
+  for sri = 1 to 24
     if Parser_TryEvaluateEx(cxSortRatioOk(sri), r, rt, ia) = FALSE orelse rt <> cxSortRatioExpect(sri) then
       print "[complex-opt] FAIL: """ & cxSortRatioOk(sri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       print "[complex-opt]      want: """ & cxSortRatioExpect(sri) & """"
@@ -2313,8 +2388,8 @@ private sub RunTimeValuesSupportOptionTests()
     end if
   end if
 
-  dim timeAggOk(1 to 9) as String
-  dim timeAggExpect(1 to 9) as String
+  dim timeAggOk(1 to 10) as String
+  dim timeAggExpect(1 to 10) as String
   timeAggOk(1) = "sum(0:30, 1:00)": timeAggExpect(1) = "01:30"
   timeAggOk(2) = "avg(0:30, 1:30)": timeAggExpect(2) = "01:00"
   timeAggOk(3) = "mean(0:20, 1:00)": timeAggExpect(3) = "00:40"
@@ -2324,8 +2399,9 @@ private sub RunTimeValuesSupportOptionTests()
   timeAggOk(7) = "reverse(0:30, Inf, 1:00)": timeAggExpect(7) = "(01:00, inf, 00:30)"
   timeAggOk(8) = "unpack(0:30, Inf)": timeAggExpect(8) = "(00:30, inf)"
   timeAggOk(9) = "unique(0:30, Inf, 0:30)": timeAggExpect(9) = "(00:30, inf)"
+  timeAggOk(10) = "ratio((hours(1:00), 15m/1h))": timeAggExpect(10) = "(1/60, 1/4)"
   dim tai as Integer
-  for tai = 1 to 9
+  for tai = 1 to 10
     if Parser_TryEvaluateEx(timeAggOk(tai), r, rt, ia) = FALSE orelse rt <> timeAggExpect(tai) then
       print "[time-opt] FAIL: """ & timeAggOk(tai) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -2461,7 +2537,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1284) as SmokeCase
+  dim tests(1 to 1288) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3657,12 +3733,12 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1137).expr = "npr()": tests(1137).expectedErrContains = "expects 2 argument(s)" ' [arity-table]
   tests(1138).expr = "random(1)": tests(1138).expectedErrContains = "expects 2 argument(s)" ' [arity-table]
   tests(1139).expr = "clamp(1)": tests(1139).expectedErrContains = "expects 3 argument(s)" ' [arity-table]
-  tests(1140).expr = "fact()": tests(1140).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
+  tests(1140).expr = "fact(5,6)": tests(1140).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
   tests(1141).expr = "deg(1,2)": tests(1141).expected = "(57.29577951308232, 114.5915590261647)" ' [arity-table] variadic deg
   tests(1142).expr = "hex(1,2,3)": tests(1142).expected = "(0x1,0x2,0x3)" ' [arity-table] variadic hex
   tests(1143).expr = "sum(1,2,3)": tests(1143).expected = "6" ' [arity-table] variadic sum
   tests(1144).expr = "unpack(1,2)": tests(1144).expected = "(1,2)" ' [arity-table] variadic unpack
-  tests(1145).expr = "sin()": tests(1145).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
+  tests(1145).expr = "sin(1,2,3)": tests(1145).expectedErrContains = "expects 1 argument(s)" ' [arity-table]
   tests(1146).expr = "abs(0x7FFFFFFFFFFFFFFF+20)": tests(1146).expected = "9223372036854775827" ' [abs-exact-int]
   tests(1147).expr = "hex(abs(0x7FFFFFFFFFFFFFFF+20))": tests(1147).expected = "0x8000000000000013" ' [abs-exact-int]
   tests(1148).expr = "abs(-9223372036854775808)": tests(1148).expected = "9223372036854775808" ' [abs-exact-int] |INT64_MIN|
@@ -3800,6 +3876,10 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1282).expr = "(2**51-8)*((5/2)+1e-12)": tests(1282).expected = "5629499534215352" ' [exact-int] near-integer product stays float
   tests(1283).expr = "-(2**50-1)*2": tests(1283).expected = "-2251799813685246" ' [exact-int] abs(f)>1 negative N
   tests(1284).expr = "-(2**50-1)*(2.0001)": tests(1284).expected = "-2251912403675931" ' [exact-int] near-integer product stays float
+  tests(1285).expr = "6/(10,20,30)": tests(1285).expected = "(0.6, 0.3, 0.2)" ' array division
+  tests(1286).expr = "ratio(6/(10,20,30))": tests(1286).expected = "(3/5, 3/10, 1/5)" ' array ratio
+  tests(1287).expr = "sort(ratio(6/(10,20,30)))": tests(1287).expected = "(1/5, 3/10, 3/5)" ' sorted array ratio
+  tests(1288).expr = "unique(abs((2,-1,2,3,-3,1)))": tests(1288).expected = "(2, 1, 3)" ' unique elements
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

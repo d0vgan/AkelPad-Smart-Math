@@ -1817,35 +1817,21 @@ private function TryMulULongChecked(byval a as ULongInt, byval b as ULongInt, by
   return TRUE
 end function
 
-private function TryMult10_N_TimesImpl(byval x as ULongInt, byval N as Integer, byval useChecked as Boolean, byref outV as ULongInt) as Boolean
+private function TryMult10_N_TimesImpl(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
   outV = x
   if N <= 0 then return TRUE
 
   while N >= 19
-    if useChecked then
-      if TryMulULongChecked(outV, Pow10U64(19), outV) = FALSE then return FALSE
-    else
-      outV = outV * Pow10U64(19)
-    end if
+    if TryMulULongChecked(outV, Pow10U64(19), outV) = FALSE then return FALSE
     N -= 19
   wend
 
   if N > 0 then
     dim m as ULongInt = Pow10U64(N)
-    if useChecked then
-      if TryMulULongChecked(outV, m, outV) = FALSE then return FALSE
-    else
-      outV = outV * m
-    end if
+    if TryMulULongChecked(outV, m, outV) = FALSE then return FALSE
   end if
 
   return TRUE
-end function
-
-private function mult10_N_times(byval x as ULongInt, byval N as Integer) as ULongInt
-  dim result as ULongInt
-  TryMult10_N_TimesImpl(x, N, FALSE, result)
-  return result
 end function
 
 private function quickMult10(byval x as ULongInt) as ULongInt
@@ -1860,7 +1846,7 @@ private function TryMult10OnceChecked(byval x as ULongInt, byref outV as ULongIn
 end function
 
 private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
-  return TryMult10_N_TimesImpl(x, N, TRUE, outV)
+  return TryMult10_N_TimesImpl(x, N, outV)
 end function
 
 '' sin/cos/tan use MinGW libc for |theta| < 2^53; at 2^53 and above, results are rejected.
@@ -3805,11 +3791,6 @@ private function PeekRhsMayBeLambdaSyntaxAt(byval p as ZString ptr) as Boolean
     return PeekRhsMayBeLambdaSyntaxAt(p + 1)
   end if
   return PeekUnwrappedLambdaParamsThenColon(p)
-end function
-
-private function PeekRhsMayBeLambdaDefinition(byval p as ZString ptr) as Boolean
-  if Parser_SupportLambdaFunctions = FALSE then return FALSE
-  return PeekRhsMayBeLambdaSyntaxAt(p)
 end function
 
 private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
@@ -8402,14 +8383,28 @@ private function IsPercentageTail() as Boolean
   return FALSE
 end function
 
-private function IsImplicitMulStart() as Boolean
-  if pStream[0] = CHAR_LPAREN then return TRUE
-  if Parser_SupportComplexNumbers then
-    if pStream[0] = CHAR_LC_I orelse pStream[0] = CHAR_I then
-      dim peekIdent as UByte = pStream[1]
-      if IsIdentChar(peekIdent) = FALSE then return TRUE
+private sub TryApplyTightImagSuffixToEvalValue(byref v as EvalValue)
+  if Parser_SupportComplexNumbers = FALSE then exit sub
+  if pStream[0] = CHAR_LC_I orelse pStream[0] = CHAR_I then
+    dim peekIdent as UByte = pStream[1]
+    if IsIdentChar(peekIdent) = FALSE then
+      pStream += 1
+      dim imagV as EvalValue
+      ValueSetPureImaginaryFromMagnitudeScalar(imagV, v.scalarValue)
+      v = imagV
     end if
   end if
+end sub
+
+private sub TryOverrideBareImagUnitIdent(byref v as EvalValue, byval firstB as UByte, byref nam as String)
+  if Parser_SupportComplexNumbers = FALSE then exit sub
+  if len(nam) > 1 then exit sub
+  if firstB <> CHAR_LC_I andalso firstB <> CHAR_I then exit sub
+  ValueSetImagUnit(v)
+end sub
+
+private function IsImplicitMulStart() as Boolean
+  if pStream[0] = CHAR_LPAREN then return TRUE
   return FALSE
 end function
 
@@ -9498,6 +9493,9 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
     outV.kind = VK_SCALAR
     outV.scalarValue = sv
     outV.flags = 0
+    if ScalarHasRenderRational(sv) orelse ScalarHasImagRenderRational(sv) then
+      return TRUE
+    end if
     ScalarClearCartesianRenderExact(outV.scalarValue)
     if ScalarImagExactInt64Valid(sv) andalso ScalarImagExactMetadataMatchesFloat(sv) then
       ScalarApplyExactInt64Part(outV.scalarValue, TRUE, sv.imagExactInt64)
@@ -9509,8 +9507,6 @@ private function TryBuiltinRatioScalar(byref sv as ScalarValue, byref outV as Ev
       ScalarApplyReducedRationalPart(outV.scalarValue, TRUE, numI, denI)
     end if
     if TryExtractExactRealComponent(sv, reC) andalso TryExactCartesianComponentToInt64(reC, numR) then
-      ScalarApplyExactInt64Part(outV.scalarValue, FALSE, numR)
-    elseif TryGetExactInt64FromDouble(ar, numR) then
       ScalarApplyExactInt64Part(outV.scalarValue, FALSE, numR)
     elseif abs(ar) >= RATIO_APPROX_EPS * arScale then
       if TryApproximateRational(ar, numR, denR) = FALSE then
@@ -10546,6 +10542,7 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
   dim keepInt as LongInt = 0
   dim keepExactUInt as Boolean = FALSE
   dim keepUInt as ULongInt = 0
+  dim numIntDigits as Integer = 0
 
   if IsDecimalRadixPrefixedAt(pStream) then
     dim prefixLower as UByte = 0
@@ -10580,7 +10577,6 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
     dim fract as Double = 1
     dim decIntAcc as ULongInt = 0
     dim decFracAcc as ULongInt = 0
-    dim numIntDigits as Integer = 0
     dim numFracDigits as Integer = 0
     dim decIntOverflow as Boolean = FALSE
     dim intPartStarted as Boolean = FALSE
@@ -10788,6 +10784,7 @@ private function ParseFactor() as EvalValue
   dim n as EvalValue
   ValueSetInt64(n, 0)
   wasPercentage = FALSE
+  dim skipTightImagSuffix as Boolean = FALSE
 
   SkipSpaces()
   if IsNumericLiteralStartChar(asc(pStream[0])) then
@@ -10795,10 +10792,13 @@ private function ParseFactor() as EvalValue
       select case ClassifyNumericLiteralAtCursor()
       case NLK_COLON_TIME
         if TryParseScalarTimeLiteral(n) = FALSE then return n
+        skipTightImagSuffix = TRUE
       case NLK_COMPACT_TIME
         if TryParseCompactSuffixTimeLiteral(n) = FALSE then
           if parseError then return n
           if not ParseScalarNumericValue(n) then return n
+        else
+          skipTightImagSuffix = TRUE
         end if
       case else
         if not ParseScalarNumericValue(n) then return n
@@ -10824,11 +10824,7 @@ private function ParseFactor() as EvalValue
           if TryHandleUnknownIdentifier(nam, n, canIndex, identStart) = FALSE then return n
         end if
       end if
-      if Parser_SupportComplexNumbers then
-        if (firstIdentB = CHAR_LC_I orelse firstIdentB = CHAR_I) andalso len(nam) <= 1 then
-          ValueSetImagUnit(n)
-        end if
-      end if
+      TryOverrideBareImagUnitIdent(n, firstIdentB, nam)
       if canIndex then
         dim indexed as EvalValue
         if TryParseArrayIndex(n, indexed) = FALSE then return n
@@ -10888,6 +10884,7 @@ private function ParseFactor() as EvalValue
     SetUnexpectedTokenError()
   end if
 
+  if parseError = FALSE andalso skipTightImagSuffix = FALSE then TryApplyTightImagSuffixToEvalValue(n)
   return n
 end function
 
@@ -11854,7 +11851,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
         if Parser_SupportLambdaFunctions then
           dim lamP() as string
           dim lamB as string = ""
-          if PeekRhsMayBeLambdaDefinition(afterEq) andalso TryParseLambdaAssignmentRhs(lamP(), lamB) then
+          if PeekRhsMayBeLambdaSyntaxAt(afterEq) andalso TryParseLambdaAssignmentRhs(lamP(), lamB) then
           dim lamUdfErr as string = ""
           if TryValidateUserFunctionDefinition(varName, lamP(), lamB, lamUdfErr) = FALSE then
             SetValidationError(lamUdfErr)

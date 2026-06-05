@@ -904,28 +904,9 @@ static constexpr std::uint64_t pow10_u64[20] = {
   10000000000000000000ull
 };
 
-inline int quickMult10(int x) {
-  // x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
-  return ((x << 3) + (x << 1));
-}
-
 inline std::uint64_t quickMult10(std::uint64_t x) {
   // x*10 = x*(8+2) = x*8 + x*2 = (x<<3) + (x<<1)
   return ((x << 3) + (x << 1));
-}
-
-std::uint64_t mult10_N_times(std::uint64_t x, int N) {
-  if (N <= 0) {
-    return x;
-  }
-  while (N >= 19) {
-    x *= pow10_u64[19];
-    N -= 19;
-  }
-  if (N > 0) {
-    x *= pow10_u64[N];
-  }
-  return x;
 }
 
 bool identAsciiEqualsLower(const std::string& body, std::size_t i0, std::size_t len, const std::string& bLower) {
@@ -3811,12 +3792,6 @@ bool MathParser::tryConsumeMulDivModOp(EvalContext& ctx, Expr::BinaryOp& outOp) 
     outOp = Expr::BinaryOp::Mul;
     return true;
   }
-#if SMARTMATH_COMPLEX_NUMBERS
-  if (getSupportComplexNumbers() && *ctx.p == 'i' && !isIdentChar(ctx.p[1])) {
-    outOp = Expr::BinaryOp::Mul;
-    return true;
-  }
-#endif
   return false;
 }
 
@@ -4777,8 +4752,8 @@ bool MathParser::tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, lo
 
 bool MathParser::isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
   return (a.scalarKind == ScalarKind::FloatingPoint) && (b.scalarKind == ScalarKind::FloatingPoint) &&
-      (a.scalarKind != ScalarKind::Time) && (b.scalarKind != ScalarKind::Time) && !a.hasExactInt64() && !a.hasExactUInt64() && !b.hasExactInt64() &&
-      !b.hasExactUInt64() && !scalarHasNonzeroImaginaryPart(a) && !scalarHasNonzeroImaginaryPart(b);
+      !a.hasExactInt64() && !a.hasExactUInt64() && !b.hasExactInt64() && !b.hasExactUInt64() &&
+      !scalarHasNonzeroImaginaryPart(a) && !scalarHasNonzeroImaginaryPart(b);
 }
 
 bool MathParser::parseUInt64FromDouble(double v, std::uint64_t& out) {
@@ -5395,10 +5370,6 @@ void MathParser::exactCartesianComponentAssignFromSignedInt64(ExactCartesianComp
   c.uintV = static_cast<std::uint64_t>(n);
 }
 
-void MathParser::exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n) {
-  exactCartesianComponentAssignFromSignedInt64(c, n);
-}
-
 void MathParser::exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u) {
   exactCartesianComponentClear(c);
   c.hasUInt = true;
@@ -5473,7 +5444,7 @@ bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, 
     return false;
   }
   if (sv.hasExactInt64()) {
-    exactCartesianComponentAssignFromInt64(c, sv.exactInt64);
+    exactCartesianComponentAssignFromSignedInt64(c, sv.exactInt64);
     if (sv.exactInt64 < 0 && sv.hasExactUInt64()) {
       c.hasUInt = true;
       c.uintV = sv.exactUInt64;
@@ -5486,7 +5457,7 @@ bool MathParser::tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, 
   }
   long long t = 0;
   if (tryExtractExactInt64FromDoubleStrict(sv.scalar, t)) {
-    exactCartesianComponentAssignFromInt64(c, t);
+    exactCartesianComponentAssignFromSignedInt64(c, t);
     return true;
   }
   exactCartesianComponentClear(c);
@@ -5502,7 +5473,7 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
     if (sv.imagExactInt64 == 0 && sv.imag != 0.0) {
       return false;
     }
-    exactCartesianComponentAssignFromInt64(c, sv.imagExactInt64);
+    exactCartesianComponentAssignFromSignedInt64(c, sv.imagExactInt64);
     if (sv.imagExactInt64 < 0 && sv.hasImagExactUInt64()) {
       c.hasUInt = true;
       c.uintV = sv.imagExactUInt64;
@@ -5518,7 +5489,7 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
   }
   if (imagExactMetadataMatchesFloat(sv)) {
     if (sv.hasImagExactInt64Metadata()) {
-      exactCartesianComponentAssignFromInt64(c, sv.imagExactInt64);
+      exactCartesianComponentAssignFromSignedInt64(c, sv.imagExactInt64);
       if (sv.imagExactInt64 < 0 && sv.hasImagExactUInt64Metadata()) {
         c.hasUInt = true;
         c.uintV = sv.imagExactUInt64;
@@ -5539,7 +5510,7 @@ bool MathParser::tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, 
     if (t == 0 && sv.imag != 0.0) {
       return false;
     }
-    exactCartesianComponentAssignFromInt64(c, t);
+    exactCartesianComponentAssignFromSignedInt64(c, t);
     return true;
   }
   exactCartesianComponentClear(c);
@@ -5632,7 +5603,7 @@ bool MathParser::tryAddExactCartesianComponents(const ExactCartesianComponent& a
   long long oi = 0;
   if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
       checkedAddLL(ai, bi, oi)) {
-    exactCartesianComponentAssignFromInt64(out, oi);
+    exactCartesianComponentAssignFromSignedInt64(out, oi);
     return true;
   }
   if (a.hasUInt && b.hasUInt) {
@@ -5708,10 +5679,6 @@ bool tryRecoverReducedRationalFromFloatAbs(double fAbs, long long& outNum, long 
   return true;
 }
 
-bool relCloseExactIntFloatForParser(double a, double b) {
-  return relCloseExactIntFloat(a, b);
-}
-
 }  // namespace
 
 bool MathParser::passExactAbsFloatFactorGates(double f, bool strictAbsFAboveOne) {
@@ -5747,9 +5714,9 @@ bool MathParser::getExactRoundedIntFromFloatResult(double r, bool boundAbsResult
 
 bool MathParser::verifyExactIntFloatOpResidueSigned(long long intI, double f, long long resultI, bool isMultiply) {
   if (isMultiply) {
-    return relCloseExactIntFloatForParser(static_cast<double>(resultI) - static_cast<double>(intI) * f, 0.0);
+    return relCloseExactIntFloat(static_cast<double>(resultI) - static_cast<double>(intI) * f, 0.0);
   }
-  return relCloseExactIntFloatForParser(static_cast<double>(intI) - static_cast<double>(resultI) * f, 0.0);
+  return relCloseExactIntFloat(static_cast<double>(intI) - static_cast<double>(resultI) * f, 0.0);
 }
 
 bool MathParser::verifyExactIntFloatOpCrossMultiplySigned(long long intI, double f, long long resultI, long long ratA,
@@ -5801,9 +5768,9 @@ bool MathParser::tryPromoteExactIntFromFloatOpSigned(long long intI, double f, d
 bool MathParser::verifyExactIntFloatOpResidueUnsigned(std::uint64_t intU, double f, std::uint64_t resultU,
                                                       bool isMultiply) {
   if (isMultiply) {
-    return relCloseExactIntFloatForParser(static_cast<double>(resultU) - static_cast<double>(intU) * f, 0.0);
+    return relCloseExactIntFloat(static_cast<double>(resultU) - static_cast<double>(intU) * f, 0.0);
   }
-  return relCloseExactIntFloatForParser(static_cast<double>(intU) - static_cast<double>(resultU) * f, 0.0);
+  return relCloseExactIntFloat(static_cast<double>(intU) - static_cast<double>(resultU) * f, 0.0);
 }
 
 bool MathParser::verifyExactIntFloatOpCrossMultiplyUnsigned(std::uint64_t intU, std::uint64_t resultU, long long ratA,
@@ -6082,7 +6049,7 @@ bool MathParser::trySubExactCartesianComponents(const ExactCartesianComponent& a
   long long oi = 0;
   if (tryExactCartesianComponentToInt64(a, ai) && tryExactCartesianComponentToInt64(b, bi) &&
       checkedSubLL(ai, bi, oi)) {
-    exactCartesianComponentAssignFromInt64(out, oi);
+    exactCartesianComponentAssignFromSignedInt64(out, oi);
     return true;
   }
   return false;
@@ -6136,8 +6103,8 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
         !checkedMulLL(lai, lbr, p4) || !checkedSubLL(p1, p2, oreI) || !checkedAddLL(p3, p4, oimI)) {
       return false;
     }
-    exactCartesianComponentAssignFromInt64(oRe, oreI);
-    exactCartesianComponentAssignFromInt64(oIm, oimI);
+    exactCartesianComponentAssignFromSignedInt64(oRe, oreI);
+    exactCartesianComponentAssignFromSignedInt64(oIm, oimI);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -6166,8 +6133,8 @@ bool MathParser::tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValu
         !tryQuotExactInt64(numIm, denom, qIm)) {
       return false;
     }
-    exactCartesianComponentAssignFromInt64(oRe, qRe);
-    exactCartesianComponentAssignFromInt64(oIm, qIm);
+    exactCartesianComponentAssignFromSignedInt64(oRe, qRe);
+    exactCartesianComponentAssignFromSignedInt64(oIm, qIm);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -6189,37 +6156,39 @@ MathParser::EvalValue MathParser::setScalarComplexFromEvalRealImagParts(const Ev
 #endif
 
 void MathParser::setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv) {
+  // Copy first: callers may pass outV.scalarValue (e.g. tight-imag suffix on a literal).
+  const EvalValue::ScalarValue mag = magSv;
   outV = makeScalarInt(0);
-  if (scalarHasExactIntegerPayload(magSv)) {
-    if (magSv.hasExactInt64()) {
+  if (scalarHasExactIntegerPayload(mag)) {
+    if (mag.hasExactInt64()) {
       outV.scalarValue.setImagExactInt64Valid(true);
-      outV.scalarValue.imagExactInt64 = magSv.exactInt64;
-      if (magSv.exactInt64 >= 0) {
+      outV.scalarValue.imagExactInt64 = mag.exactInt64;
+      if (mag.exactInt64 >= 0) {
         outV.scalarValue.setImagExactUInt64Valid(true);
-        outV.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(magSv.exactInt64);
+        outV.scalarValue.imagExactUInt64 = static_cast<std::uint64_t>(mag.exactInt64);
       } else {
         outV.scalarValue.setImagExactUInt64Valid(false);
         outV.scalarValue.imagExactUInt64 = 0;
       }
-      outV.scalarValue.imag = static_cast<double>(magSv.exactInt64);
-    } else if (magSv.hasExactUInt64()) {
+      outV.scalarValue.imag = static_cast<double>(mag.exactInt64);
+    } else if (mag.hasExactUInt64()) {
       outV.scalarValue.setImagExactUInt64Valid(true);
-      outV.scalarValue.imagExactUInt64 = magSv.exactUInt64;
-      outV.scalarValue.imag = static_cast<double>(magSv.exactUInt64);
-      if (magSv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      outV.scalarValue.imagExactUInt64 = mag.exactUInt64;
+      outV.scalarValue.imag = static_cast<double>(mag.exactUInt64);
+      if (mag.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
         outV.scalarValue.setImagExactInt64Valid(true);
-        outV.scalarValue.imagExactInt64 = static_cast<long long>(magSv.exactUInt64);
+        outV.scalarValue.imagExactInt64 = static_cast<long long>(mag.exactUInt64);
       } else {
         outV.scalarValue.setImagExactInt64Valid(false);
         outV.scalarValue.imagExactInt64 = 0;
       }
     } else {
-      outV.scalarValue.imag = magSv.scalar;
+      outV.scalarValue.imag = mag.scalar;
       outV.scalarValue.setImagExactInt64Valid(false);
       outV.scalarValue.setImagExactUInt64Valid(false);
     }
   } else {
-    outV.scalarValue.imag = magSv.scalar;
+    outV.scalarValue.imag = mag.scalar;
     outV.scalarValue.setImagExactInt64Valid(false);
     outV.scalarValue.setImagExactUInt64Valid(false);
     outV.scalarValue.imagExactInt64 = 0;
@@ -6316,8 +6285,8 @@ bool MathParser::tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t it
       !tryQuotExactInt64(reI, n, qRe) || !tryQuotExactInt64(imI, n, qIm)) {
     return false;
   }
-  exactCartesianComponentAssignFromInt64(oRe, qRe);
-  exactCartesianComponentAssignFromInt64(oIm, qIm);
+  exactCartesianComponentAssignFromSignedInt64(oRe, qRe);
+  exactCartesianComponentAssignFromSignedInt64(oIm, qIm);
   setScalarComplexFromExactCartesian(out, oRe, oIm);
   return true;
 }
@@ -8168,19 +8137,52 @@ std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgFunctionRefOnly(E
   return parseSortbyFunctionRef(ctx);
 }
 
+bool MathParser::isTightImagUnitSuffixAt(const char* p) {
+  if (*p != 'i' && *p != 'I') {
+    return false;
+  }
+  const unsigned char next = static_cast<unsigned char>(p[1]);
+  return !(std::isalnum(next) || next == '_');
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::wrapExprWithTightImagSuffixIfPresent(
+    EvalContext& ctx,
+    std::unique_ptr<Expr> expr) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (!getSupportComplexNumbers() || !expr || !isTightImagUnitSuffixAt(ctx.p)) {
+    return expr;
+  }
+  ++ctx.p;
+  if (expr->tag == Expr::Tag::Literal) {
+    setPureImaginaryFromMagnitudeScalar(expr->literalValue, expr->literalValue.scalarValue);
+    return expr;
+  }
+  auto imagLit = std::make_unique<Expr>();
+  imagLit->tag = Expr::Tag::Literal;
+  imagLit->literalValue = makeImaginaryUnit();
+  return makeBinaryExpr(std::move(expr), std::move(imagLit), Expr::BinaryOp::Mul, false);
+#else
+  return expr;
+#endif
+}
+
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimary(EvalContext& ctx) {
   skipSpaces(ctx);
+  std::unique_ptr<Expr> prim;
   if (*ctx.p == '(') {
-    return parsePrimaryParenthesized(ctx);
-  }
-  if (isNumericLiteralStart(*ctx.p)) {
+    prim = parsePrimaryParenthesized(ctx);
+  } else if (isNumericLiteralStart(*ctx.p)) {
     return parsePrimaryNumericLiteral(ctx);
+  } else if (isIdentStart(*ctx.p)) {
+    prim = parsePrimaryIdentifierOrCall(ctx);
+  } else {
+    setUnexpectedTokenError(ctx);
+    return nullptr;
   }
-  if (isIdentStart(*ctx.p)) {
-    return parsePrimaryIdentifierOrCall(ctx);
+  if (ctx.parseError || !prim) {
+    return nullptr;
   }
-  setUnexpectedTokenError(ctx);
-  return nullptr;
+  return wrapExprWithTightImagSuffixIfPresent(ctx, std::move(prim));
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryParenthesized(EvalContext& ctx) {
@@ -8487,6 +8489,16 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
 #endif
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalContext& ctx) {
+  auto emitNumericLiteral = [&](EvalValue litV) -> std::unique_ptr<Expr> {
+    auto lit = std::make_unique<Expr>();
+    lit->tag = Expr::Tag::Literal;
+    lit->literalValue = std::move(litV);
+    return lit;
+  };
+  auto finishNumericLiteral = [&](std::unique_ptr<Expr> lit) -> std::unique_ptr<Expr> {
+    return wrapExprWithTightImagSuffixIfPresent(ctx, std::move(lit));
+  };
+
   const char* parsedEnd = nullptr;
   std::uint64_t parsedUInt = 0;
   if (ctx.p[0] == '0') {
@@ -8505,14 +8517,10 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
         return nullptr;
       }
       ctx.p = parsedEnd;
-      auto lit = std::make_unique<Expr>();
-      lit->tag = Expr::Tag::Literal;
       if (parsedUInt > static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-        lit->literalValue = makeScalarUInt(parsedUInt);
-      } else {
-        lit->literalValue = makeScalarInt(static_cast<long long>(parsedUInt));
+        return finishNumericLiteral(emitNumericLiteral(makeScalarUInt(parsedUInt)));
       }
-      return lit;
+      return finishNumericLiteral(emitNumericLiteral(makeScalarInt(static_cast<long long>(parsedUInt))));
     }
   }
 #if SMARTMATH_TIME_VALUES
@@ -8562,12 +8570,10 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
 
   if (tryParseInputNumberAsInteger(numStart, numEnd, parsedUInt)) {
     ctx.p = numEnd;
-    auto lit = std::make_unique<Expr>();
-    lit->tag = Expr::Tag::Literal;
-    lit->literalValue = (parsedUInt <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)()))
-        ? makeScalarInt(static_cast<long long>(parsedUInt))
-        : makeScalarUInt(parsedUInt);
-    return lit;
+    if (parsedUInt <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      return finishNumericLiteral(emitNumericLiteral(makeScalarInt(static_cast<long long>(parsedUInt))));
+    }
+    return finishNumericLiteral(emitNumericLiteral(makeScalarUInt(parsedUInt)));
   }
 
   char* end = nullptr;
@@ -8591,10 +8597,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
     }
   }
   ctx.p = end;
-  auto lit = std::make_unique<Expr>();
-  lit->tag = Expr::Tag::Literal;
-  lit->literalValue = makeScalar(d);
-  return lit;
+  return finishNumericLiteral(emitNumericLiteral(makeScalar(d)));
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalContext& ctx) {
@@ -8767,6 +8770,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
     return nullptr;
   }
   skipSpaces(ctx);
+  std::unique_ptr<Expr> out;
   // AST parser uses '**' for exponentiation.
   if (ctx.p[0] == '*' && ctx.p[1] == '*') {
     ctx.p += 2;
@@ -8774,14 +8778,15 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePower(EvalContext& ctx) {
     if (ctx.parseError || !right) {
       return nullptr;
     }
-    auto out = std::make_unique<Expr>();
+    out = std::make_unique<Expr>();
     out->tag = Expr::Tag::Binary;
     out->binaryOp = Expr::BinaryOp::Pow;
     out->left = std::move(left);
     out->right = std::move(right);
-    return out;
+  } else {
+    out = std::move(left);
   }
-  return left;
+  return out;
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseMulDivMod(EvalContext& ctx) {
@@ -9009,6 +9014,12 @@ bool MathParser::exprIsScalarOnly(const Expr& e) const {
       if (e.literalValue.kind == ValueKind::InlineLambda) {
         return false;
       }
+#if SMARTMATH_COMPLEX_NUMBERS
+      if (e.literalValue.kind == ValueKind::Scalar &&
+          scalarHasNonzeroImaginaryPart(e.literalValue.scalarValue)) {
+        return false;
+      }
+#endif
       return true;
     case Expr::Tag::Variable:
       return true;
@@ -9496,6 +9507,14 @@ MathParser::EvalValue MathParser::evalExprScalar(
             r.scalarValue.setExactUInt64Valid(false);
             r.scalarValue.scalarKind = ScalarKind::FloatingPoint;
           }
+
+#if SMARTMATH_COMPLEX_NUMBERS
+          if (getSupportComplexNumbers() &&
+              (scalarHasNonzeroImaginaryPart(l.scalarValue) ||
+               scalarHasNonzeroImaginaryPart(r.scalarValue))) {
+            return evalMappedBinaryOp(ctx, e.binaryOp, l, r);
+          }
+#endif
 
           if (!e.rhsIsDirectPostfixPercent &&
               (e.binaryOp == Expr::BinaryOp::Mul || e.binaryOp == Expr::BinaryOp::Add ||
@@ -10896,6 +10915,9 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
       arScale = 1.0;
     }
     outV = scalarFromScalarValue(sv);
+    if (sv.hasRenderRational() || sv.hasImagRenderRational()) {
+      return true;
+    }
     scalarClearCartesianRenderExact(outV.scalarValue);
     if (sv.hasImagExactInt64() && imagExactMetadataMatchesFloat(sv)) {
       scalarApplyExactInt64Part(outV.scalarValue, true, sv.imagExactInt64);
@@ -10907,8 +10929,6 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
       scalarApplyReducedRationalPart(outV.scalarValue, true, numI, denI);
     }
     if (tryExtractExactRealComponent(sv, reC) && tryExactCartesianComponentToInt64(reC, numR)) {
-      scalarApplyExactInt64Part(outV.scalarValue, false, numR);
-    } else if (tryExtractExactInt64FromDoubleStrict(ar, numR)) {
       scalarApplyExactInt64Part(outV.scalarValue, false, numR);
     } else if (std::fabs(ar) >= RATIO_APPROX_EPS * arScale) {
       if (!tryApproximateRational(ar, numR, denR)) {
@@ -11925,9 +11945,9 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
         if (den == 1u) {
           ExactCartesianComponent cIm{};
           if (num < 0) {
-            exactCartesianComponentAssignFromInt64(cIm, num);
+            exactCartesianComponentAssignFromSignedInt64(cIm, num);
           } else {
-            exactCartesianComponentAssignFromInt64(cIm, num);
+            exactCartesianComponentAssignFromSignedInt64(cIm, num);
           }
           setScalarFromExactCartesianComponent(out, cIm);
           return true;
@@ -11942,7 +11962,7 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
       // floating component loaded from the scalar (used by complex formatting).
       if (sv.hasImagExactInt64() && sv.imagExactInt64 != 0LL) {
         ExactCartesianComponent cIm{};
-        exactCartesianComponentAssignFromInt64(cIm, sv.imagExactInt64);
+        exactCartesianComponentAssignFromSignedInt64(cIm, sv.imagExactInt64);
         setScalarFromExactCartesianComponent(out, cIm);
         return true;
       }

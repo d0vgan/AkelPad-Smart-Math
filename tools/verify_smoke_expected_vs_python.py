@@ -28,8 +28,9 @@ switch to a dedicated reference path:
     converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
     enough to mirror the smoke *expected* strings for the time block.
 
-Float agreement uses the same tolerance idea as SmokeTest_MathParser.bas:
-  tol = 16 * eps * max(1, |a|, |b|)
+Float agreement uses the same tolerance as ``ScalarCloseEnough`` in
+``SmokeTest_MathParser.bas``:
+  tol = max(256 * eps * max(1, |a|, |b|), 1e-14)
 
 Sources parsed (in addition to ``tests(N)`` rows):
   * ``tools/neg_band_cases_generated.bas`` (neg/pos real + complex magnitude bands)
@@ -42,12 +43,15 @@ Sources parsed (in addition to ``tests(N)`` rows):
   * Paired ``*Ok``/``*Expect`` and ``*Expr``/``*Expect`` rows anywhere in smoke source
   * ``*Err`` / ``errExprs`` error-probe tables in smoke subs (time, complex, arity, …)
   * Inline ``Parser_TryEvaluateEx(...) orelse rt <> "..."`` numeric probes in smoke subs
-  * ``RunComplexNumberSupportOptionTests`` (dedicated block parser)
-  * ``RunRawResultApiTests`` inline success probes
+  * All ``Run*Tests`` subs in ``SmokeTest_MathParser.bas`` (paired ``*Ok/*Expect``,
+    ``*Cases/*Expect``, ``*Exprs/*Need``, ``*Expr/*Expect`` with ``&`` concat,
+    error tables, inline ``rt <>`` probes)
+  * ``RunComplexNumberSupportOptionTests`` (large complex-opt block)
+  * ``RunRawResultApiTests`` (display-string probes where comparable)
 
-Use ``--audit-coverage`` to print discovered vs parsed row counts per source (before
-the Python reference pass). Use ``--audit-only`` to run the audit and exit (fast).
-C++ ``MathParserTests.cpp`` suites are not parsed (Basic smoke is the reference corpus).
+Use ``--audit-coverage`` to print discovered vs parsed row counts per source and per
+``Run*Tests`` sub (before the Python reference pass). Use ``--audit-only`` to exit
+after the audit (fast). C++ ``MathParserTests.cpp`` is not parsed (Basic smoke corpus).
 """
 
 from __future__ import annotations
@@ -83,6 +87,17 @@ class Duration:
     """Signed duration stored in milliseconds (may be fractional)."""
 
     ms: float
+
+
+@dataclass(frozen=True)
+class ExactComplex:
+    """Cartesian complex with exact integer components (Smart-Math int64 path)."""
+
+    real: int
+    imag: int
+
+    def conjugate(self) -> "ExactComplex":
+        return ExactComplex(self.real, -self.imag)
 
     def __add__(self, other: object) -> "Duration":
         if isinstance(other, Duration):
@@ -393,28 +408,169 @@ def sum_dur_sm(*args: object) -> Duration:
 # --- Complex helpers ---------------------------------------------------------
 
 
+_RE_TIGHT_NUM_IMAG = re.compile(
+    r"(?<![A-Za-z0-9_.])"
+    r"("
+    r"0[xX][0-9a-fA-F]+"
+    r"|0[bB][01]+"
+    r"|0[oO][0-7]+"
+    r"|\d+\.?\d*|\.\d+"
+    r"(?:[eE][-+]?\d+)?"
+    r")"
+    r"[iI](?![A-Za-z0-9_])",
+    re.I,
+)
+
+# Back-compat alias for heuristics that only need decimal/scientific suffix probes.
 _RE_SMART_IMAG_SUFFIX = re.compile(
     r"(?<!\*)(?<![A-Za-z0-9_.])(\d+\.?\d*(?:[eE][-+]?\d+)?)i(?![A-Za-z0-9_])",
     re.I,
 )
 
+_IMAG_UNIT_PY = "1j"
+
+
+def _is_tight_imag_at(s: str, pos: int) -> bool:
+    if pos < 0 or pos >= len(s) or s[pos] not in "iI":
+        return False
+    nxt = s[pos + 1] if pos + 1 < len(s) else ""
+    return not (nxt.isalnum() or nxt == "_")
+
+
+def _find_matching_open_paren(s: str, close_index: int) -> Optional[int]:
+    depth = 1
+    j = close_index - 1
+    while j >= 0:
+        if s[j] == ")":
+            depth += 1
+        elif s[j] == "(":
+            depth -= 1
+            if depth == 0:
+                return j
+        j -= 1
+    return None
+
+
+def _ident_start_before(s: str, pos: int) -> Optional[int]:
+    """Return identifier start when an identifier ends immediately before ``pos``."""
+    q = pos - 1
+    while q >= 0 and s[q].isspace():
+        q -= 1
+    if q < 0 or not (s[q].isalnum() or s[q] == "_"):
+        return None
+    end = q + 1
+    while q >= 0 and (s[q].isalnum() or s[q] == "_"):
+        q -= 1
+    start = q + 1
+    if start > 0 and (s[start - 1].isalnum() or s[start - 1] in "._"):
+        return None
+    return start
+
+
+def _tight_imag_replacement(s: str, i_pos: int) -> Optional[tuple[int, int, str]]:
+    """
+    Smart-Math tight-``i`` lowering (rightmost ``i_pos`` only):
+
+    * ``Xi`` -> ``(X*j)`` for numeric literals ``X`` (decimal/scientific/``0x``/``0b``/``0o``)
+    * ``(expr)i`` -> ``((expr)*j)``
+    * ``func(expr)i`` -> ``(func(expr)*j)`` (``func`` is a normal identifier call)
+    """
+    if not _is_tight_imag_at(s, i_pos):
+        return None
+
+    k = i_pos - 1
+    while k >= 0 and s[k].isspace():
+        k -= 1
+    if k < 0:
+        return None
+
+    if s[k] == ")":
+        open_paren = _find_matching_open_paren(s, k)
+        if open_paren is None:
+            return None
+        call_start = _ident_start_before(s, open_paren)
+        if call_start is not None:
+            call_text = s[call_start:i_pos]
+            return (call_start, i_pos + 1, f"({call_text}*{_IMAG_UNIT_PY})")
+        expr = s[open_paren + 1 : k]
+        return (open_paren, i_pos + 1, f"(({expr})*{_IMAG_UNIT_PY})")
+
+    tail = s[: i_pos + 1]
+    m = None
+    for m in _RE_TIGHT_NUM_IMAG.finditer(tail):
+        pass
+    if m is None or m.end() != i_pos + 1:
+        return None
+    x = m.group(1)
+    return (m.start(), i_pos + 1, f"({x}*{_IMAG_UNIT_PY})")
+
+
+def _apply_tight_imag_suffix_rules(expr: str) -> str:
+    """Lower every Smart-Math tight ``i`` suffix using the three primary rules."""
+    s = expr
+    while True:
+        i_pos = -1
+        for p in range(len(s) - 1, -1, -1):
+            if _is_tight_imag_at(s, p):
+                i_pos = p
+                break
+        if i_pos < 0:
+            break
+        repl = _tight_imag_replacement(s, i_pos)
+        if repl is None:
+            break
+        start, end, text = repl
+        s = s[:start] + text + s[end:]
+    return s
+
+
+_RE_EXACT_INT_COMPLEX_ADD = re.compile(r"(-?\d+)\+\((-?\d+)\*1j\)")
+_RE_EXACT_INT_COMPLEX_SUB = re.compile(r"(-?\d+)-\((-?\d+)\*1j\)")
+
+
+def exact_int_complex(re: Any, im: Any = 0) -> ExactComplex:
+    """Build exact integer complex (avoids IEEE float loss on int64-sized literals)."""
+    return ExactComplex(int(re), int(im))
+
+
+def _lower_exact_int_complex_literals(expr: str) -> str:
+    """
+    ``922...+922...*1j`` cannot be evaluated as native Python ``complex`` without
+    rounding int64-sized parts; lower to ``exact_int_complex(re, im)`` instead.
+    """
+
+    def repl_sub(m: re.Match) -> str:
+        return f"exact_int_complex({m.group(1)}, -{m.group(2)})"
+
+    def repl_add(m: re.Match) -> str:
+        return f"exact_int_complex({m.group(1)}, {m.group(2)})"
+
+    s = _RE_EXACT_INT_COMPLEX_SUB.sub(repl_sub, expr)
+    return _RE_EXACT_INT_COMPLEX_ADD.sub(repl_add, s)
+
 
 def _preprocess_complex_surface(expr: str) -> str:
     """
-    Turn Smart-Math complex surface syntax into Python ``complex`` literals
-    (``...j``), without leaving a bare ``i`` identifier.
+    Turn Smart-Math complex surface syntax into Python ``complex`` literals.
 
-    ``5i`` / ``1.123e+20i`` are imaginary suffixes; ``20*i`` is multiply-by-``i``
-    and must not treat the exponent digits as the suffix (``20i``).
+    Tight ``i`` suffixes (no space, not part of a longer identifier):
+
+    * ``Xi`` -> ``(X*1j)`` for numeric ``X``
+    * ``(expr)i`` -> ``((expr)*1j)``
+    * ``func(expr)i`` -> ``(func(expr)*1j)``
+
+    Remaining bare ``i`` tokens (e.g. ``2*i``, ``1/2*i``) become ``(1j)``.
     """
-    s = _RE_SMART_IMAG_SUFFIX.sub(r"\1j", expr)
+    s = _apply_tight_imag_suffix_rules(expr)
     s = re.sub(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", "(1j)", s)
     return s
 
 
 def _looks_like_complex_expr(expr: str) -> bool:
     e = _strip_line_comment(expr)
-    if _RE_SMART_IMAG_SUFFIX.search(e):
+    if _RE_TIGHT_NUM_IMAG.search(e) or _RE_SMART_IMAG_SUFFIX.search(e):
+        return True
+    if re.search(r"\)[iI](?![A-Za-z0-9_])", e):
         return True
     if re.search(r"(?<![A-Za-z0-9_])i(?![A-Za-z0-9_])", e):
         return True
@@ -585,6 +741,28 @@ def _format_float_scalar_smoke(x: float) -> str:
     return s.rstrip("0").rstrip(".")
 
 
+def _format_exact_imag_coeff(ai: int) -> str:
+    if ai == 1:
+        return "i"
+    if ai == -1:
+        return "-i"
+    return f"{ai}i"
+
+
+def _format_exact_complex_smoke(z: ExactComplex) -> str:
+    if z.imag == 0:
+        return str(z.real)
+    if z.real == 0:
+        return _format_exact_imag_coeff(z.imag)
+    ti = _format_exact_imag_coeff(z.imag)
+    tr = str(z.real)
+    if z.imag > 0:
+        return f"{tr}+{ti}"
+    if z.imag == -1:
+        return f"{tr}-i"
+    return f"{tr}{ti}"
+
+
 def _format_complex_smoke(z: complex) -> str:
     """Emit strings closer to Smart-Math smoke (``-5+10i``, ``5-i``, ``i``)."""
     r, i = z.real, z.imag
@@ -631,26 +809,142 @@ def _format_complex_smoke(z: complex) -> str:
 
 
 def smoke_tol(a: float, b: float) -> float:
+    """Mirror ``ScalarCloseEnough`` in ``SmokeTest_MathParser.bas``."""
     scale = max(1.0, abs(a), abs(b))
-    return 16.0 * EPS * scale
+    tol = 256.0 * EPS * scale
+    if tol < 1e-14:
+        tol = 1e-14
+    return tol
 
 
-def close_enough_str(actual: str, expected: str) -> bool:
-    if actual.strip() == expected.strip():
-        return True
+_RE_DECIMAL_SCALAR = re.compile(r"^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$")
+_RE_RATIONAL_SCALAR = re.compile(r"^([-+]?\d+)\s*/\s*(\d+)\s*$")
 
-    def try_float(s: str) -> Optional[float]:
-        s = s.strip()
-        if re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", s):
-            return float(s)
+
+def try_parse_decimal_scalar(s: str) -> Optional[float]:
+    s = s.strip()
+    if _RE_DECIMAL_SCALAR.fullmatch(s):
+        return float(s)
+    return None
+
+
+def try_parse_rational_scalar(s: str) -> Optional[float]:
+    """Smoke ``ratio()`` / ``n/d`` display token (optional ``*`` suffix already stripped)."""
+    s = s.strip()
+    if s.endswith("*"):
+        s = s[:-1].strip()
+    m = _RE_RATIONAL_SCALAR.fullmatch(s)
+    if not m:
         return None
+    num = int(m.group(1))
+    den = int(m.group(2))
+    if den == 0:
+        return None
+    return num / den
 
-    da, de = try_float(actual), try_float(expected)
+
+def try_parse_smoke_scalar(s: str) -> Optional[float]:
+    """Decimal/scientific literal or reduced rational ``n/d``."""
+    s = s.strip()
+    if not s:
+        return 0.0
+    rat = try_parse_rational_scalar(s)
+    if rat is not None:
+        return rat
+    return try_parse_decimal_scalar(s)
+
+
+def _parse_smoke_imag_coeff(im_s: str) -> Optional[float]:
+    """Imaginary coefficient after ``SplitComplexText`` (``+i``/``-i`` -> ``±1``)."""
+    t = im_s.strip()
+    if not t:
+        return 1.0
+    if t == "-":
+        return -1.0
+    return try_parse_smoke_scalar(t)
+
+
+def split_complex_text_smoke(s: str) -> Optional[tuple[str, str]]:
+    """Mirror ``SplitComplexText`` in ``SmokeTest_MathParser.bas``."""
+    t = s.strip()
+    if not t:
+        return ("0", "0")
+    if t[-1].lower() != "i":
+        return None
+    split_at = 0
+    for i in range(len(t) - 1, 0, -1):
+        ch = t[i]
+        if ch in "+-":
+            if i > 0 and t[i - 1].lower() not in "e":
+                split_at = i
+                break
+            if ch == "-" and i == 0:
+                split_at = i
+                break
+    if split_at == 0:
+        return ("0", t[:-1])
+    re_part = t[:split_at].strip() or "0"
+    im_part = t[split_at:].strip()
+    if im_part.startswith("+"):
+        im_part = im_part[1:].strip()
+    if im_part.endswith(("i", "I")):
+        im_part = im_part[:-1].strip()
+    if im_part.endswith("*"):
+        im_part = im_part[:-1].strip()
+    return (re_part, im_part)
+
+
+def try_parse_smoke_complex(s: str) -> Optional[complex]:
+    t = s.strip().replace(" ", "")
+    if not t:
+        return complex(0.0, 0.0)
+    parts = split_complex_text_smoke(t)
+    if parts is None:
+        re_v = try_parse_smoke_scalar(t)
+        return complex(re_v, 0.0) if re_v is not None else None
+    re_s, im_s = parts
+    re_v = try_parse_smoke_scalar(re_s)
+    im_v = _parse_smoke_imag_coeff(im_s)
+    if re_v is None or im_v is None:
+        return None
+    return complex(re_v, im_v)
+
+
+def scalar_display_close_enough(actual: str, expected: str) -> bool:
+    """Float/scientific or rational ``n/d`` tokens (smoke ``ratio()`` display family)."""
+    ea, ee = actual.strip(), expected.strip()
+    if ea == ee:
+        return True
+    da = try_parse_smoke_scalar(ea)
+    de = try_parse_smoke_scalar(ee)
     if da is None or de is None:
         return False
     if da == de:
         return True
     return abs(da - de) <= smoke_tol(da, de)
+
+
+def complex_display_close_enough(actual: str, expected: str) -> bool:
+    """Cartesian complex strings; rationals in either part compare numerically."""
+    ca = try_parse_smoke_complex(actual)
+    ce = try_parse_smoke_complex(expected)
+    if ca is not None and ce is not None:
+        return _complex_close(ca, ce)
+    a_parts = split_complex_text_smoke(actual.strip())
+    e_parts = split_complex_text_smoke(expected.strip())
+    if a_parts is None or e_parts is None:
+        return False
+    re_ok = scalar_display_close_enough(a_parts[0], e_parts[0])
+    im_a = _parse_smoke_imag_coeff(a_parts[1])
+    im_e = _parse_smoke_imag_coeff(e_parts[1])
+    if im_a is None or im_e is None:
+        return False
+    im_ok = im_a == im_e or abs(im_a - im_e) <= smoke_tol(im_a, im_e)
+    return re_ok and im_ok
+
+
+def close_enough_str(actual: str, expected: str) -> bool:
+    return scalar_display_close_enough(actual, expected)
 
 
 def split_top_level_tuple(s: str) -> Optional[list[str]]:
@@ -675,29 +969,54 @@ def split_top_level_tuple(s: str) -> Optional[list[str]]:
     return parts
 
 
-def tuple_close_enough(actual: str, expected: str) -> bool:
+def tuple_display_close_enough(actual: str, expected: str) -> bool:
     pa, pe = split_top_level_tuple(actual), split_top_level_tuple(expected)
     if pa is None or pe is None or len(pa) != len(pe):
         return False
     for a, e in zip(pa, pe):
-        if not (close_enough_str(a, e) or a == e):
+        if scalar_display_close_enough(a, e):
+            continue
+        if complex_display_close_enough(a, e):
+            continue
+        if a.strip() != e.strip():
             return False
     return True
+
+
+def tuple_close_enough(actual: str, expected: str) -> bool:
+    return tuple_display_close_enough(actual, expected)
 
 
 def tuple_close_enough_complex(actual: str, expected: str) -> bool:
-    pa, pe = split_top_level_tuple(actual), split_top_level_tuple(expected)
-    if pa is None or pe is None or len(pa) != len(pe):
-        return False
-    for a, e in zip(pa, pe):
-        ca, ce = _smoke_str_to_complex(a), _smoke_str_to_complex(e)
-        if ca is not None and ce is not None:
-            if not _complex_close(ca, ce):
-                return False
-            continue
-        if not (close_enough_str(a, e) or a == e):
-            return False
-    return True
+    return tuple_display_close_enough(actual, expected)
+
+
+def _looks_like_ratio_display(expected: str, got: str, *, expr: str = "") -> bool:
+    if "ratio(" in expr:
+        return True
+    exp = expected.strip()
+    if _RE_RATIONAL_SCALAR.search(exp.replace(" ", "")):
+        return True
+    if "i" in exp.lower() and "/" in exp:
+        return True
+    if got.strip().startswith("(") and "/" in exp:
+        return True
+    return False
+
+
+def ratio_display_close_enough(expected: str, got: str, *, expr: str = "") -> bool:
+    """
+    ``ratio()`` smoke output is often ``n/d`` or ``a/b+c/d*i``; Python reference uses floats.
+    Compare numerically with smoke tolerance (not string identity).
+    """
+    exp, got_s = expected.strip(), got.strip()
+    if exp == got_s:
+        return True
+    if exp.startswith("(") or got_s.startswith("("):
+        return tuple_display_close_enough(got_s, exp)
+    if "i" in exp.lower() or "i" in got_s.lower():
+        return complex_display_close_enough(got_s, exp)
+    return scalar_display_close_enough(got_s, exp)
 
 
 def round_half_away_from_zero(x: float) -> float:
@@ -968,14 +1287,25 @@ def pole_inf_ok(expected: str, got: str) -> bool:
     return False
 
 
-def results_match(expected: str, got_str: str, *, mode: str = "real") -> bool:
+def results_match(
+    expected: str, got_str: str, *, mode: str = "real", expr: str = ""
+) -> bool:
     exp, got = expected.strip(), got_str.strip()
     if got == exp:
         return True
+    if _looks_like_ratio_display(exp, got, expr=expr):
+        if ratio_display_close_enough(exp, got, expr=expr):
+            return True
     if mode == "complex":
+        if complex_display_close_enough(got, exp):
+            return True
         if tuple_close_enough_complex(got, exp):
             return True
-        ca, ce = _smoke_str_to_complex(got), _smoke_str_to_complex(exp)
+        ca, ce = try_parse_smoke_complex(got), try_parse_smoke_complex(exp)
+        if ca is None:
+            ca = _smoke_str_to_complex(got)
+        if ce is None:
+            ce = _smoke_str_to_complex(exp)
         if ca is not None and ce is not None and _complex_close(ca, ce):
             return True
         if close_enough_str(got, exp) or tuple_close_enough(got, exp):
@@ -992,6 +1322,8 @@ def results_match(expected: str, got_str: str, *, mode: str = "real") -> bool:
         if ge == gg or tuple_close_enough(ge, gg) or close_enough_str(ge, gg):
             return True
         return False
+    if complex_display_close_enough(got, exp):
+        return True
     if close_enough_str(got, exp) or tuple_close_enough(got, exp):
         return True
     if trig_near_zero_ok(exp, got) or pole_inf_ok(exp, got):
@@ -1047,19 +1379,68 @@ _RE_RUN_COMPLEX_SUB = re.compile(
     re.MULTILINE,
 )
 
-# Same-line paired table row: fooCases(3) or fooOk(3) = "expr": fooExpect(3) = "expect"
-_RE_COMPLEX_OPT_PAIRED_ROW = re.compile(
-    r'([A-Za-z_][A-Za-z0-9_]*)(?:Cases|Ok)\s*\(\s*(\d+)\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"\s*:\s*'
-    r'\1Expect\s*\(\s*\2\s*\)\s*=\s*"((?:[^"\\]|\\.)*)"',
+# Quoted FB string or unquoted rhs (rhs may contain ``:`` only inside quotes).
+_RE_FB_RHS_TOKEN = r'(?:"(?:[^"\\]|\\.)*"|[^:\r\n]+)'
+
+# Same-line paired table row: fooCases|fooOk|fooExprs(n) = <expr> : fooExpect|fooNeed(n) = <expect>
+_RE_PAIRED_TABLE_ROW = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)(?:Cases|Ok|Exprs)\s*\(\s*(\d+)\s*\)\s*=\s*"
+    rf"({_RE_FB_RHS_TOKEN})\s*:\s*"
+    r"\1(?:Expect|Need)\s*\(\s*\2\s*\)\s*=\s*"
+    rf"({_RE_FB_RHS_TOKEN})",
     re.I,
 )
 
-# fooExpr(n) = "real(" & var & ")": fooExpect(n) = "..." or fooExpect(n) = otherVar
-_RE_COMPLEX_OPT_PAIRED_EXPR_ROW = re.compile(
-    r"([A-Za-z_][A-Za-z0-9_]*)Expr\s*\(\s*(\d+)\s*\)\s*=\s*([^:\r\n]+?)\s*:\s*"
-    r"\1Expect\s*\(\s*\2\s*\)\s*=\s*([^:\r\n]+)",
+# fooExpr(n) = <expr> : fooExpect(n) = <expect>  (expr may use & string concat)
+_RE_PAIRED_EXPR_EXPECT_ROW = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)Expr\s*\(\s*(\d+)\s*\)\s*=\s*"
+    rf"({_RE_FB_RHS_TOKEN}(?:\s*&\s*{_RE_FB_RHS_TOKEN})*)\s*:\s*"
+    r"\1Expect\s*\(\s*\2\s*\)\s*=\s*"
+    rf"({_RE_FB_RHS_TOKEN}(?:\s*&\s*{_RE_FB_RHS_TOKEN})*)",
     re.I,
 )
+
+# Legacy alias (quote-only rows are a subset of _RE_PAIRED_TABLE_ROW).
+_RE_COMPLEX_OPT_PAIRED_ROW = _RE_PAIRED_TABLE_ROW
+
+_RE_COMPLEX_OPT_PAIRED_EXPR_ROW = _RE_PAIRED_EXPR_EXPECT_ROW
+
+# Split-line table rows (expr and expect on separate lines).
+_RE_SPLIT_TABLE_LHS = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)(?:Cases|Ok|Exprs)\s*\(\s*(\d+)\s*\)\s*=\s*(.+?)\s*$",
+    re.I,
+)
+_RE_SPLIT_TABLE_RHS = re.compile(
+    r"([A-Za-z_][A-Za-z0-9_]*)(?:Expect|Need)\s*\(\s*(\d+)\s*\)\s*=\s*(.+?)\s*$",
+    re.I,
+)
+
+_RE_RUN_SUB_BODY = re.compile(
+    r"(?is)(?:private\s+)?sub\s+(Run\w+Tests)\s*\([^)]*\)\s*(.*?)(?:^\s*end\s+sub\s*$)",
+    re.MULTILINE,
+)
+
+# SmokeTest_MathParser.bas Run* subs (Main() driver order).
+SMOKE_RUN_SUB_SOURCES: dict[str, str] = {
+    "RunRawResultApiTests": "raw_api",
+    "RunOperatorPrecedenceDocTests": "precedence_doc",
+    "RunTrigAngleReductionTests": "trig_reduction",
+    "RunComplexNumberSupportOptionTests": "complex_opt",
+    "RunNegativeArgumentMagnitudeBandTests": "magnitude_band",
+    "RunPositiveArgumentMagnitudeBandTests": "magnitude_band",
+    "RunFloatMagnitudeLiteralTests": "float_magnitude",
+    "RunNanInfTests": "naninf_mirror",
+    "RunBuiltinArityTableTests": "builtin_arity",
+    "RunIncompleteFunctionCallHintTests": "open_paren_hint",
+    "RunGcdLcmNcrNprArrayBroadcastTests": "gcd_ncr_array",
+    "RunRatioInExpressionTests": "ratio_in_expression",
+    "RunMinMaxPreserveWinnerTests": "minmax_winner",
+    "RunExactIntegerDivisionTests": "exact_int_div",
+    "RunExactIntegerMultiplicationTests": "exact_int_mul",
+    "RunBinaryBuiltinArrayLengthMismatchTests": "bin_array_len",
+    "RunTimeValuesSupportOptionTests": "time_opt",
+    "RunLambdaFunctionsSupportOptionTests": "lambda_opt",
+}
 
 _RE_DIM_STRING_CONST = re.compile(
     r'dim\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+String\s*=\s*"((?:[^"\\]|\\.)*)"',
@@ -1146,8 +1527,59 @@ def _resolve_fb_expect_rhs(rhs: str, consts: dict[str, str]) -> str:
     return rhs
 
 
-def _parse_paired_expr_expect_tables(block: str, consts: dict[str, str], add_case) -> None:
-    for m in _RE_COMPLEX_OPT_PAIRED_EXPR_ROW.finditer(block):
+def _table_stem_prefix(name: str) -> str:
+    for suffix in ("Exprs", "Cases", "Ok", "Expect", "Need", "Expr"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def _paired_table_idx_from_match(m: re.Match) -> str:
+    lhs_m = re.match(
+        r"([A-Za-z_][A-Za-z0-9_]*(?:Cases|Ok|Exprs))\s*\(\s*(\d+)\s*\)",
+        m.group(0),
+        re.I,
+    )
+    if lhs_m:
+        return f"{lhs_m.group(1)}({lhs_m.group(2)})"
+    stem, n_s = m.group(1), m.group(2)
+    return f"{stem}({n_s})"
+
+
+def _infer_case_ref_mode(expr: str, expected: str, *, default: str = "real") -> str:
+    return infer_ref_mode(expr, expected) if expected else infer_ref_mode(expr, "")
+
+
+def _add_paired_table_case(
+    add_case,
+    *,
+    idx: str,
+    expr: str,
+    expected: str,
+    source: str,
+    ref_mode: Optional[str] = None,
+) -> None:
+    mode = ref_mode or _infer_case_ref_mode(expr, expected)
+    add_case(
+        {
+            "idx": idx,
+            "expr": expr,
+            "expected": expected,
+            "ref_mode": mode,
+            "source": source,
+        }
+    )
+
+
+def _parse_paired_table_rows_in_block(
+    block: str,
+    *,
+    source: str,
+    consts: dict[str, str],
+    add_case,
+) -> None:
+    """Parse same-line *Cases/*Ok/*Exprs paired with *Expect/*Need."""
+    for m in _RE_PAIRED_TABLE_ROW.finditer(block):
         stem, n_s, expr_rhs, exp_rhs = m.group(1), m.group(2), m.group(3), m.group(4)
         n = int(n_s)
         try:
@@ -1155,15 +1587,163 @@ def _parse_paired_expr_expect_tables(block: str, consts: dict[str, str], add_cas
             expected = _resolve_fb_expect_rhs(exp_rhs, consts)
         except ValueError:
             continue
+        _add_paired_table_case(
+            add_case,
+            idx=_paired_table_idx_from_match(m),
+            expr=expr,
+            expected=expected,
+            source=source,
+        )
+
+    for m in _RE_PAIRED_EXPR_EXPECT_ROW.finditer(block):
+        stem, n_s, expr_rhs, exp_rhs = m.group(1), m.group(2), m.group(3), m.group(4)
+        n = int(n_s)
+        try:
+            expr = _resolve_fb_string_expr(expr_rhs, consts)
+            expected = _resolve_fb_expect_rhs(exp_rhs, consts)
+        except ValueError:
+            continue
+        _add_paired_table_case(
+            add_case,
+            idx=f"{stem}Expr({n})",
+            expr=expr,
+            expected=expected,
+            source=source,
+        )
+
+
+def _parse_split_line_table_rows_in_block(
+    block: str,
+    *,
+    source: str,
+    consts: dict[str, str],
+    add_case,
+) -> None:
+    """Pair ``fooOk(3) = ...`` on one line with ``fooExpect(3) = ...`` on another."""
+    lhs: dict[tuple[str, int], tuple[str, str]] = {}
+    for line in block.splitlines():
+        m = _RE_SPLIT_TABLE_LHS.match(line.strip())
+        if not m:
+            continue
+        stem, n_s, rhs = m.group(1), m.group(2), m.group(3)
+        if ":" in rhs:
+            continue
+        try:
+            expr = _resolve_fb_string_expr(rhs, consts)
+        except ValueError:
+            continue
+        lhs[(_table_stem_prefix(stem), int(n_s))] = (stem, expr)
+    for line in block.splitlines():
+        m = _RE_SPLIT_TABLE_RHS.match(line.strip())
+        if not m:
+            continue
+        stem, n_s, rhs = m.group(1), m.group(2), m.group(3)
+        key = (_table_stem_prefix(stem), int(n_s))
+        if key not in lhs:
+            continue
+        lhs_stem, expr = lhs[key]
+        try:
+            expected = _resolve_fb_expect_rhs(rhs, consts)
+        except ValueError:
+            continue
+        _add_paired_table_case(
+            add_case,
+            idx=f"{lhs_stem}({n_s})",
+            expr=expr,
+            expected=expected,
+            source=source,
+        )
+
+
+_RE_ERR_ONLY_EXPRS_ROW = re.compile(
+    r"(?:badExprs|sortbyExprs|rejectExprs|noExprs|timeAggErr|badCloserExprs)\s*\(\s*(\d+)\s*\)\s*=\s*"
+    r'"((?:[^"\\]|\\.)*)"',
+    re.I,
+)
+
+
+def _parse_err_tables_in_block(block: str, *, source: str, add_case) -> None:
+    for m in _RE_ERR_ONLY_EXPRS_ROW.finditer(block):
+        n_s, expr_s = m.group(1), m.group(2)
+        expr = _unescape_fb(expr_s)
         add_case(
             {
-                "idx": f"{stem}Expr({n})",
+                "idx": f"err-only/{expr[:40]}({n_s})",
                 "expr": expr,
-                "expected": expected,
-                "ref_mode": "complex",
-                "source": "complex_opt",
+                "expect_error": True,
+                "ref_mode": infer_ref_mode(expr, ""),
+                "source": source,
             }
         )
+    for m in _RE_COMPLEX_OPT_ERR_ROW.finditer(block):
+        stem, n_s, expr_s = m.group(1), m.group(2), m.group(3)
+        expr = _unescape_fb(expr_s)
+        add_case(
+            {
+                "idx": f"errtbl/{stem}({n_s})",
+                "expr": expr,
+                "expect_error": True,
+                "ref_mode": infer_ref_mode(expr, ""),
+                "source": source,
+            }
+        )
+    for m in _RE_ERR_EXPR_NEED.finditer(block):
+        n_s, expr_s, need_s = m.group(1), m.group(2), m.group(3)
+        expr = _unescape_fb(expr_s)
+        add_case(
+            {
+                "idx": f"arity-err/{n_s}",
+                "expr": expr,
+                "expect_error": True,
+                "expected_err_substr": _unescape_fb(need_s),
+                "ref_mode": infer_ref_mode(expr, ""),
+                "source": source,
+            }
+        )
+
+
+def _parse_inline_probes_in_block(block: str, *, source: str, add_case) -> None:
+    for m in _RE_INLINE_NUMERIC.finditer(block):
+        expr = _unescape_fb(m.group(1))
+        expected = _unescape_fb(m.group(2))
+        add_case(
+            {
+                "idx": f"inline:{expr[:80]}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": _infer_case_ref_mode(expr, expected),
+                "source": source,
+            }
+        )
+    for m in _RE_COMPLEX_OPT_INLINE_SUCCESS.finditer(block):
+        expr = _unescape_fb_string(m.group(1))
+        expected = _unescape_fb_string(m.group(2))
+        add_case(
+            {
+                "idx": f"inline:{expr[:80]}",
+                "expr": expr,
+                "expected": expected,
+                "ref_mode": _infer_case_ref_mode(expr, expected),
+                "source": source,
+            }
+        )
+    for m in _RE_COMPLEX_OPT_INLINE_PROBE.finditer(block):
+        expr = _unescape_fb_string(m.group(1))
+        tail = block[m.end() : m.end() + 400]
+        if re.search(r"expected\s+error|expected\s+failure", tail, re.I):
+            add_case(
+                {
+                    "idx": f"inline-err:{expr[:80]}",
+                    "expr": expr,
+                    "expect_error": True,
+                    "ref_mode": infer_ref_mode(expr, ""),
+                    "source": source,
+                }
+            )
+
+
+def _parse_paired_expr_expect_tables(block: str, consts: dict[str, str], add_case, *, source: str = "complex_opt") -> None:
+    _parse_paired_table_rows_in_block(block, source=source, consts=consts, add_case=add_case)
 
 
 def parse_smoke_synthetic_recent_cases() -> list[dict]:
@@ -1426,12 +2006,77 @@ def parse_tools_generated_cases(tools_dir: str) -> list[dict]:
     return out
 
 
-def parse_smoke_global_tables(path: str) -> list[dict]:
+def parse_smoke_run_sub_cases(path: str) -> list[dict]:
     """
-    Paired ``*Ok``/``*Expect``, ``*Err*`` expr tables, and arity ``errExprs`` rows
-    anywhere in ``SmokeTest_MathParser.bas`` (outside complex-opt-only parsing).
+    Parse every ``Run*Tests`` sub in ``SmokeTest_MathParser.bas``: paired tables,
+    error tables, and inline numeric/error probes.
     """
     text = open(path, encoding="utf-8", errors="replace").read()
+    file_consts = _collect_dim_string_constants(text)
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def add(entry: dict) -> None:
+        key = "|".join(
+            (
+                entry.get("source", ""),
+                entry.get("idx", ""),
+                entry.get("expr", ""),
+                entry.get("expected", ""),
+                str(entry.get("expect_error", "")),
+            )
+        )
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(entry)
+
+    for m in _RE_RUN_SUB_BODY.finditer(text):
+        sub_name = m.group(1)
+        body = m.group(2)
+        source = SMOKE_RUN_SUB_SOURCES.get(sub_name, sub_name)
+        consts = {**file_consts, **_collect_dim_string_constants(body)}
+        _parse_paired_table_rows_in_block(body, source=source, consts=consts, add_case=add)
+        _parse_split_line_table_rows_in_block(body, source=source, consts=consts, add_case=add)
+        _parse_err_tables_in_block(body, source=source, add_case=add)
+        _parse_inline_probes_in_block(body, source=source, add_case=add)
+
+        if sub_name == "RunComplexNumberSupportOptionTests":
+            for vm in _RE_COMPLEX_OPT_VAR_PROBE.finditer(body):
+                var, lit_exp, id_exp = vm.group(1), vm.group(2), vm.group(3)
+                if var not in consts:
+                    continue
+                expr = consts[var]
+                if lit_exp is not None:
+                    expected = _unescape_fb_string(lit_exp)
+                elif id_exp in consts:
+                    expected = consts[id_exp]
+                else:
+                    continue
+                add(
+                    {
+                        "idx": f"var:{var}",
+                        "expr": expr,
+                        "expected": expected,
+                        "ref_mode": "complex",
+                        "source": source,
+                    }
+                )
+
+    return out
+
+
+def parse_smoke_global_tables(path: str) -> list[dict]:
+    """
+    Legacy/global scan for paired and error tables outside ``Run*Tests`` subs
+    (e.g. ``Main()``). Most rows are covered by ``parse_smoke_run_sub_cases``.
+    """
+    text = open(path, encoding="utf-8", errors="replace").read()
+    run_spans = [(m.start(), m.end()) for m in _RE_RUN_SUB_BODY.finditer(text)]
+
+    def outside_run_subs(pos: int) -> bool:
+        return not any(s <= pos < e for s, e in run_spans)
+
     out: list[dict] = []
     seen: set[str] = set()
 
@@ -1442,24 +2087,37 @@ def parse_smoke_global_tables(path: str) -> list[dict]:
         seen.add(key)
         out.append(entry)
 
-    for m in _RE_COMPLEX_OPT_PAIRED_ROW.finditer(text):
-        stem, n_s, expr_s, exp_s = m.group(1), m.group(2), m.group(3), m.group(4)
-        expr = _unescape_fb(expr_s)
-        expected = _unescape_fb(exp_s)
+    consts = _collect_dim_string_constants(text)
+    for m in _RE_PAIRED_TABLE_ROW.finditer(text):
+        if not outside_run_subs(m.start()):
+            continue
+        _parse_paired_table_rows_in_block(
+            m.group(0),
+            source="paired_ok_expect",
+            consts=consts,
+            add_case=add,
+        )
+    for m in _RE_PAIRED_EXPR_EXPECT_ROW.finditer(text):
+        if not outside_run_subs(m.start()):
+            continue
+        try:
+            expr = _resolve_fb_string_expr(m.group(3), consts)
+            expected = _resolve_fb_expect_rhs(m.group(4), consts)
+        except ValueError:
+            continue
         add(
             {
-                "idx": f"paired/{stem}({n_s})",
+                "idx": f"{m.group(1)}Expr({m.group(2)})",
                 "expr": expr,
                 "expected": expected,
-                "ref_mode": infer_ref_mode(expr, expected),
-                "source": "paired_ok_expect",
+                "ref_mode": _infer_case_ref_mode(expr, expected),
+                "source": "paired_expr_expect",
             }
         )
 
-    consts = _collect_dim_string_constants(text)
-    _parse_paired_expr_expect_tables(text, consts, add)
-
     for m in _RE_COMPLEX_OPT_ERR_ROW.finditer(text):
+        if not outside_run_subs(m.start()):
+            continue
         stem, n_s, expr_s = m.group(1), m.group(2), m.group(3)
         expr = _unescape_fb(expr_s)
         add(
@@ -1469,20 +2127,6 @@ def parse_smoke_global_tables(path: str) -> list[dict]:
                 "expect_error": True,
                 "ref_mode": infer_ref_mode(expr, ""),
                 "source": "error_expr_table",
-            }
-        )
-
-    for m in _RE_ERR_EXPR_NEED.finditer(text):
-        n_s, expr_s, need_s = m.group(1), m.group(2), m.group(3)
-        expr = _unescape_fb(expr_s)
-        add(
-            {
-                "idx": f"arity-err/{n_s}",
-                "expr": expr,
-                "expect_error": True,
-                "expected_err_substr": _unescape_fb(need_s),
-                "ref_mode": infer_ref_mode(expr, ""),
-                "source": "builtin_arity",
             }
         )
 
@@ -1513,13 +2157,11 @@ def dedupe_cases(cases: list[dict]) -> list[dict]:
 def collect_all_numeric_cases(smoke_bas: str, band_bas: str, tools_dir: str) -> list[dict]:
     batches = (
         parse_smoke_cases(smoke_bas)
+        + parse_smoke_run_sub_cases(smoke_bas)
         + parse_smoke_sub_array_cases(smoke_bas)
-        + parse_smoke_inline_numeric_probes(smoke_bas)
         + parse_smoke_global_tables(smoke_bas)
         + parse_band_cases_file(band_bas)
         + parse_tools_generated_cases(tools_dir)
-        + parse_smoke_complex_opt_cases(smoke_bas)
-        + parse_smoke_raw_api_cases(smoke_bas)
         + parse_smoke_synthetic_recent_cases()
     )
     return dedupe_cases(batches)
@@ -1527,6 +2169,21 @@ def collect_all_numeric_cases(smoke_bas: str, band_bas: str, tools_dir: str) -> 
 
 def _count_table_expr_rows(text: str, stem: str) -> int:
     return len(re.findall(rf"{re.escape(stem)}Expr\s*\(\s*\d+\s*\)\s*=", text, re.I))
+
+
+def _count_discovered_rows_in_block(block: str) -> dict[str, int]:
+    return {
+        "paired_table": len(_RE_PAIRED_TABLE_ROW.findall(block)),
+        "paired_expr": len(_RE_PAIRED_EXPR_EXPECT_ROW.findall(block)),
+        "err_table": len(_RE_COMPLEX_OPT_ERR_ROW.findall(block)),
+        "err_only_exprs": len(_RE_ERR_ONLY_EXPRS_ROW.findall(block)),
+        "arity_err": len(_RE_ERR_EXPR_NEED.findall(block)),
+        "inline_success": len(_RE_INLINE_NUMERIC.findall(block))
+        + len(_RE_COMPLEX_OPT_INLINE_SUCCESS.findall(block)),
+        "inline_err_probe": len(_RE_COMPLEX_OPT_INLINE_PROBE.findall(block)),
+        "trig_nonzero": len(_RE_TRIG_NONZERO.findall(block)),
+        "trig_nearzero": len(_RE_TRIG_NEARZERO.findall(block)),
+    }
 
 
 def audit_coverage(smoke_bas: str, band_bas: str, tools_dir: str, cases: list[dict]) -> None:
@@ -1539,16 +2196,38 @@ def audit_coverage(smoke_bas: str, band_bas: str, tools_dir: str, cases: list[di
 
     re_tests_expr = re.compile(r"tests\(\d+\)\.expr\s*=", re.I)
     re_tests_expected = re.compile(r"tests\(\d+\)\.expected\s*=", re.I)
+    re_tests_err = re.compile(r"tests\(\d+\)\.expectedErrContains\s*=", re.I)
     print("=== Parser coverage audit ===")
-    print(f"tests(N).expr rows (smoke):           {len(re_tests_expr.findall(smoke_text))}")
-    print(f"tests(N).expected rows:               {len(re_tests_expected.findall(smoke_text))}")
-    print(f"Paired *Ok/*Expect (smoke file):       {len(_RE_COMPLEX_OPT_PAIRED_ROW.findall(smoke_text))}")
-    print(f"Paired *Expr/*Expect (smoke file):     {len(_RE_PAIRED_EXPR_EXPECT.findall(smoke_text))}")
-    print(f"*Err* expr table rows (smoke file):   {len(_RE_COMPLEX_OPT_ERR_ROW.findall(smoke_text))}")
-    print(f"Inline rt<> probes (smoke file):      {len(_RE_INLINE_NUMERIC.findall(smoke_text))}")
-    cx = _extract_run_complex_number_support_sub_body(smoke_text)
-    if cx:
-        print(f"Paired rows in complex-opt sub only:  {len(_RE_COMPLEX_OPT_PAIRED_ROW.findall(cx))}")
+    print(f"tests(N).expr rows (Main table):      {len(re_tests_expr.findall(smoke_text))}")
+    print(f"tests(N).expected rows:             {len(re_tests_expected.findall(smoke_text))}")
+    print(f"tests(N).expectedErrContains rows:  {len(re_tests_err.findall(smoke_text))}")
+    print(f"Paired *Cases|*Ok|*Exprs rows:      {len(_RE_PAIRED_TABLE_ROW.findall(smoke_text))}")
+    print(f"Paired *Expr/*Expect rows:           {len(_RE_PAIRED_EXPR_EXPECT_ROW.findall(smoke_text))}")
+    print(f"*Err* expr table rows:              {len(_RE_COMPLEX_OPT_ERR_ROW.findall(smoke_text))}")
+    print(f"Inline rt<> success probes:         {len(_RE_INLINE_NUMERIC.findall(smoke_text))}")
+    print(f"Run*Tests subs found:               {len(_RE_RUN_SUB_BODY.findall(smoke_text))}")
+    print()
+    print("Run*Tests sub inventory (discovered rows in source vs parsed by source tag):")
+    for m in _RE_RUN_SUB_BODY.finditer(smoke_text):
+        sub_name = m.group(1)
+        body = m.group(2)
+        source = SMOKE_RUN_SUB_SOURCES.get(sub_name, sub_name)
+        disc = _count_discovered_rows_in_block(body)
+        disc_total = sum(disc.values())
+        parsed = parsed_by_source.get(source, 0)
+        if parsed >= disc_total or disc_total == 0:
+            flag = " OK"
+        elif parsed >= disc_total - 6:
+            flag = " OK (dedupe with tests(N) likely)"
+        else:
+            flag = " GAP"
+        print(
+            f"  {sub_name}: discovered~{disc_total} "
+            f"(paired={disc['paired_table']+disc['paired_expr']} "
+            f"err={disc['err_table']+disc['err_only_exprs']+disc['arity_err']} "
+            f"inline={disc['inline_success']}) parsed={parsed}{flag}"
+        )
+    print()
     for label, path, stem in (
         ("neg/pos band", band_bas, "negBandReal"),
         ("cxCov", f"{tools_dir}/complex_coverage_generated.bas", "cxCov"),
@@ -1565,9 +2244,18 @@ def audit_coverage(smoke_bas: str, band_bas: str, tools_dir: str, cases: list[di
                 )
             else:
                 n = _count_table_expr_rows(t, stem)
-            print(f"{label} Expr rows in file:              {n}")
+            src_tag = {
+                "negBandReal": "magnitude_band",
+                "cxCov": "complex_coverage",
+                "naninf": "naninf_mirror",
+                "floatMag": "float_magnitude",
+                "smokeAppend": "smoke_append",
+            }[stem]
+            parsed = parsed_by_source.get(src_tag, 0)
+            print(f"{label} Expr rows in file: {n}  (parsed tag {src_tag}: {parsed})")
         except OSError:
             print(f"{label}: (file missing)")
+    print()
     print("Parsed cases by source tag:")
     for src in sorted(parsed_by_source):
         print(f"  {src}: {parsed_by_source[src]}")
@@ -1577,6 +2265,11 @@ def audit_coverage(smoke_bas: str, band_bas: str, tools_dir: str, cases: list[di
         if "expected" in c or c.get("assert_kind") or c.get("expect_error")
     )
     print(f"Total deduped cases with expected/assert/error: {comparable}")
+    missing_run_subs = [
+        name for name in SMOKE_RUN_SUB_SOURCES if name not in {m.group(1) for m in _RE_RUN_SUB_BODY.finditer(smoke_text)}
+    ]
+    if missing_run_subs:
+        print(f"WARNING: expected Run* subs not found: {', '.join(missing_run_subs)}")
     print()
 
 
@@ -1898,6 +2591,7 @@ def _translate_functions(expr: str, *, mode: str = "real") -> Optional[str]:
             "uoct": "uoct_sm",
             "ubin": "ubin_sm",
             "sqrt": "sqrt_sm_real",
+            "ratio": "ratio_sm",
         }
     )
     if mode == "complex":
@@ -2055,6 +2749,17 @@ def sqr_sm(x):
     return x * x
 
 
+def ratio_sm(x: Any) -> Any:
+    """``ratio()`` value used in further arithmetic (not rational string output)."""
+    if isinstance(x, tuple):
+        return tuple(ratio_sm(e) for e in x)
+    if isinstance(x, complex):
+        if abs(x.imag) < 1e-15:
+            return float(x.real)
+        return complex(float(x.real), float(x.imag))
+    return float(x)
+
+
 def prod_sm(*args):
     if len(args) == 1 and isinstance(args[0], tuple):
         return math.prod(args[0])
@@ -2130,6 +2835,8 @@ def rad_sm(x):
 
 
 def _as_complex(z: Any) -> complex:
+    if isinstance(z, ExactComplex):
+        return complex(float(z.real), float(z.imag))
     if isinstance(z, complex):
         return z
     if isinstance(z, (int, float)):
@@ -2200,9 +2907,31 @@ def _format_hex_imag_coeff(ai: float) -> str:
     return body
 
 
+def _format_hex_imag_coeff_int(ai: int) -> str:
+    if ai == 0:
+        return "0"
+    neg = ai < 0
+    a = abs(ai)
+    if a == 1:
+        return "-i" if neg else "i"
+    body = f"0x{format(a, 'X')}i"
+    return "-" + body if neg else body
+
+
 def hex_sm(x: Any, *, unsigned: bool = False) -> Any:
     if isinstance(x, tuple):
         return tuple(hex_sm(e, unsigned=unsigned) for e in x)
+    if isinstance(x, ExactComplex):
+        re_s = _format_hex_component(x.real, unsigned=unsigned)
+        im_s = _format_hex_imag_coeff_int(x.imag)
+        if im_s in ("0", "i", "-i"):
+            if im_s == "0":
+                return re_s
+            if not re_s or re_s == "0x0":
+                return im_s
+        if x.imag > 0:
+            return f"{re_s}+{im_s}"
+        return f"{re_s}{im_s}"
     if isinstance(x, complex):
         re_s = _format_hex_component(int(round(x.real)), unsigned=unsigned)
         im_s = _format_hex_imag_coeff(x.imag)
@@ -2339,15 +3068,21 @@ def ceil_sm_cx(z):
 
 
 def real_sm(z):
+    if isinstance(z, ExactComplex):
+        return z.real
     c = _as_complex(z)
     return c.real
 
 
 def imag_sm(z):
+    if isinstance(z, ExactComplex):
+        return z.imag
     return _as_complex(z).imag
 
 
 def conj_sm(z):
+    if isinstance(z, ExactComplex):
+        return z.conjugate()
     return _as_complex(z).conjugate()
 
 
@@ -2361,6 +3096,8 @@ def polar_sm(z):
 
 
 def cart_sm(z):
+    if isinstance(z, ExactComplex):
+        return z
     if isinstance(z, tuple) and len(z) == 2:
         return cmath.rect(float(z[0]), float(z[1]))
     return _as_complex(z)
@@ -2543,6 +3280,7 @@ def build_ns(ans: Any) -> dict:
         "round_sm": round_sm,
         "atan2": math.atan2,
         "hypot": math.hypot,
+        "ratio_sm": ratio_sm,
     }
 
 
@@ -2572,6 +3310,7 @@ def build_ns_complex(ans: Any) -> dict:
             "phase_sm": phase_sm,
             "polar_sm": polar_sm,
             "cart_sm": cart_sm,
+            "exact_int_complex": exact_int_complex,
             "sin": _map_unary_cx(cmath.sin),
             "cos": _map_unary_cx(cmath.cos),
             "tan": _map_unary_cx(cmath.tan),
@@ -2637,6 +3376,9 @@ def ref_eval(
     e = p
     if mode == "complex":
         e = _preprocess_complex_surface(e)
+        # Tight-``i`` suffixes leave ``0x…`` inside ``(0x…*1j)``; normalize again.
+        e = _replace_int_literals(e)
+        e = _lower_exact_int_complex_literals(e)
         e = _preprocess_complex_dsl(e)
     elif mode == "time":
         e = _preprocess_time_expression(e)
@@ -2671,6 +3413,8 @@ def ref_format(v: Any, *, mode: str = "real") -> str:
         return duration_format_ms(v.ms)
     if isinstance(v, str):
         return v
+    if isinstance(v, ExactComplex):
+        return _format_exact_complex_smoke(v)
     if isinstance(v, complex):
         return _format_complex_smoke(v)
     if isinstance(v, bool):
@@ -2749,19 +3493,19 @@ def should_skip_case(case: dict) -> Optional[str]:
         return "standalone ans (no prior statement in harness)"
 
     exp = case.get("expected", "").strip()
-    if re.fullmatch(r"-?\d+/\d+", exp) or (
-        exp.count("/") == 1 and not exp.startswith("(") and "ratio" in ex
-    ):
-        return "ratio fraction string"
 
     fmt_m = re.search(r"\b(uhex|uoct|ubin)\s*\(", ex, re.I)
     if fmt_m and not is_co:
         return "unsigned formatting builtin (display-only)"
-    if not is_co and ("sort(" in ex or "unique(" in ex or "sortby(" in ex):
+    if src not in ("complex_opt", "ratio_in_expression", "time_opt") and (
+        "sort(" in ex or "unique(" in ex or "sortby(" in ex
+    ):
         return "sort/unique/sortby"
-    if "unpack(" in ex or "reverse(" in ex:
+    if src not in ("complex_opt", "ratio_in_expression", "time_opt") and (
+        "unpack(" in ex or "reverse(" in ex
+    ):
         return "array DSL builtin (unpack/reverse)"
-    if "ratio(" in ex and src != "complex_opt":
+    if "ratio(" in ex and src not in ("complex_opt", "ratio_in_expression"):
         return "ratio() builtin"
 
     last = _last_statement(ex_raw)
@@ -3018,7 +3762,7 @@ def main() -> int:
         elif mode == "time":
             n_time += 1
         got = ref_format(val, mode=mode).strip()
-        if results_match(exp, got, mode=mode):
+        if results_match(exp, got, mode=mode, expr=case["expr"]):
             ok += 1
             if is_co:
                 n_complex_opt_compared_ok += 1

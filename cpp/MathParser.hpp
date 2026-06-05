@@ -843,6 +843,8 @@ private:
   std::unique_ptr<Expr> parsePower(EvalContext& ctx);
   std::unique_ptr<Expr> parseUnary(EvalContext& ctx);
   std::unique_ptr<Expr> parsePrimary(EvalContext& ctx);
+  static bool isTightImagUnitSuffixAt(const char* p);
+  std::unique_ptr<Expr> wrapExprWithTightImagSuffixIfPresent(EvalContext& ctx, std::unique_ptr<Expr> expr);
 
   EvalValue evalExpr(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
   EvalValue evalExprScalar(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
@@ -1044,7 +1046,6 @@ private:
   };
   static void exactCartesianComponentClear(ExactCartesianComponent& c);
   static void exactCartesianComponentAssignFromSignedInt64(ExactCartesianComponent& c, long long n);
-  static void exactCartesianComponentAssignFromInt64(ExactCartesianComponent& c, long long n);
   static void exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u);
   static bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
 #if SMARTMATH_COMPLEX_NUMBERS
