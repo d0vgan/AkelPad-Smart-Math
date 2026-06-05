@@ -168,6 +168,7 @@ Notes:
   - `((5))` also behaves like scalar `5` (still just grouping)
 - Use element-wise math:
   - `(1,2,3)*10` -> `(10, 20, 30)`
+  - `6/(10,20,30)` -> `(0.6, 0.3, 0.2)`
   - `(1,2,3)+(10,20,30)` -> `(11, 22, 33)`
   - `2**(3,5,6)` -> `(8, 32, 64)`
 - Index arrays with `[index]`:
@@ -209,7 +210,7 @@ Notes:
   - `uhex(-1)` -> `0xFFFFFFFFFFFFFFFF`
 - Trailing formatter sugar after `;` is supported:
   - `0xAA; hex` -> `0xAA` (same as `0xAA; hex(ans)`)
-  - `(8,9,10); oct()` -> `(0o10, 0o11, 0o12)` (same as `(8,9,10); oct(ans)`)
+  - `(8,9,10); oct` -> `(0o10, 0o11, 0o12)` (same as `(8,9,10); oct(ans)`)
 
 ### User-Defined Functions
 
