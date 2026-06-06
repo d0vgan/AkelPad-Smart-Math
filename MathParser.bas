@@ -4746,18 +4746,19 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
   return TRUE
 end function
 
-private sub ClampScalarInPlace(byref sv as ScalarValue, byval minS as Double, byval maxS as Double)
-  dim v as Double = sv.scalar
-  if v < minS then v = minS
-  if v > maxS then v = maxS
-  sv.scalar = v
-end sub
+private function ClampScalarValue(byref sv as ScalarValue, byref minSv as ScalarValue, byref maxSv as ScalarValue) as ScalarValue
+  dim v as Double = ScalarNumericReal(sv)
+  dim minS as Double = minSv.scalar
+  dim maxS as Double = maxSv.scalar
+  if v < minS then return minSv
+  if v > maxS then return maxSv
+  return sv
+end function
 
-private function MapClampOverValue(byref valueV as EvalValue, byval minS as Double, byval maxS as Double, byref outV as EvalValue) as Boolean
+private function MapClampOverValue(byref valueV as EvalValue, byref minSv as ScalarValue, byref maxSv as ScalarValue, byref outV as EvalValue) as Boolean
   if valueV.kind = VK_SCALAR then
-    dim sv as ScalarValue = valueV.scalarValue
-    ClampScalarInPlace(sv, minS, maxS)
-    ValueSetScalar(outV, sv.scalar)
+    dim resultSv as ScalarValue = ClampScalarValue(valueV.scalarValue, minSv, maxSv)
+    EvalScalarFromScalarValue(resultSv, outV)
     return TRUE
   end if
   if ubound(valueV.arr) < lbound(valueV.arr) then
@@ -4767,10 +4768,9 @@ private function MapClampOverValue(byref valueV as EvalValue, byval minS as Doub
   ValueInitArrayLike(outV, lbound(valueV.arr), ubound(valueV.arr))
   dim i as Integer
   for i = lbound(valueV.arr) to ubound(valueV.arr)
-    dim sv as ScalarValue = valueV.arr(i)
-    ClampScalarInPlace(sv, minS, maxS)
+    dim resultSv as ScalarValue = ClampScalarValue(valueV.arr(i), minSv, maxSv)
     dim r as EvalValue
-    ValueSetScalar(r, sv.scalar)
+    EvalScalarFromScalarValue(resultSv, r)
     ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE
@@ -4784,7 +4784,7 @@ private function ApplyClamp(byref valueV as EvalValue, byref minV as EvalValue, 
     end if
   end if
   if minV.kind <> VK_SCALAR orelse maxV.kind <> VK_SCALAR then return FALSE
-  return MapClampOverValue(valueV, minV.scalar, maxV.scalar, outV)
+  return MapClampOverValue(valueV, minV.scalarValue, maxV.scalarValue, outV)
 end function
 
 private function GcdULong(byval a as ULongInt, byval b as ULongInt) as ULongInt

@@ -3429,7 +3429,7 @@ std::vector<TestCase> buildRatioInExpressionCases() {
                  if (!expectEval(p, "max(ratio(1.3456), 2)", "2", why)) return false;
                  if (!expectEval(p, "abs(ratio(-0.5))", "0.5", why)) return false;
                  if (!expectEval(p, "sign(ratio(-0.5))", "-1", why)) return false;
-                 if (!expectEval(p, "clamp(ratio(1.3456),0,2)", "1.3456", why)) return false;
+                 if (!expectEval(p, "clamp(ratio(1.3456),0,2)", "841/625", why)) return false;
                  p.addUserFunction("f(x)=x-1");
                  if (!expectEval(p, "f(ratio(1.3456))", "0.3456", why)) return false;
                  p.addUserFunction("g(x)=x*2");
@@ -3490,6 +3490,20 @@ std::vector<TestCase> buildMinMaxPreserveWinnerCases() {
                [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "min(1,1,1)", "1", why);
+               }});
+  return t;
+}
+
+std::vector<TestCase> buildClampPreserveIntegerMetadataCases() {
+  std::vector<TestCase> t;
+  t.push_back({"clamp/integer: array and scalar bounds preserve exact integers",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "clamp((0,1,2,3),1,2)", "(1, 1, 2, 2)", why)) return false;
+                 if (!expectEval(p, "clamp(0,1,2)", "1", why)) return false;
+                 if (!expectEval(p, "clamp(3,1,2)", "2", why)) return false;
+                 if (!expectEval(p, "clamp(1,1,2)", "1", why)) return false;
+                 return expectEval(p, "clamp(1.5,1,2)", "1.5", why);
                }});
   return t;
 }
@@ -5917,6 +5931,7 @@ int main(int argc, char** argv) {
   const auto sortbyRatio = buildSortbyRatioCases();
   const auto ratioInExpression = buildRatioInExpressionCases();
   const auto minMaxPreserveWinner = buildMinMaxPreserveWinnerCases();
+  const auto clampPreserveIntegerMetadata = buildClampPreserveIntegerMetadataCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -5943,6 +5958,7 @@ int main(int argc, char** argv) {
   runSuite("Sortby/Ratio", sortbyRatio, s);
   runSuite("Ratio in expressions", ratioInExpression, s);
   runSuite("Min/max preserve winner", minMaxPreserveWinner, s);
+  runSuite("Clamp preserve integer metadata", clampPreserveIntegerMetadata, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

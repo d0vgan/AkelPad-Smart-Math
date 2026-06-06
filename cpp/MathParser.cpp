@@ -12397,10 +12397,19 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     setNumericErrorInFunction(ctx, getFunctionName(BuiltinFunctionId::Clamp));
     return makeScalar(0);
   }
-  const double minS = minV.scalarValue.scalar;
-  const double maxS = maxV.scalarValue.scalar;
-  return mapUnaryEvalValue(valueV, [minS, maxS](const EvalValue::ScalarValue& s) {
-    return makeScalar(clampDouble(s.scalar, minS, maxS));
+  const EvalValue::ScalarValue& minSv = minV.scalarValue;
+  const EvalValue::ScalarValue& maxSv = maxV.scalarValue;
+  return mapUnaryEvalValue(valueV, [&minSv, &maxSv](const EvalValue::ScalarValue& s) -> EvalValue {
+    const double v = scalarNumericReal(s);
+    const double minS = minSv.scalar;
+    const double maxS = maxSv.scalar;
+    if (v < minS) {
+      return scalarFromScalarValue(minSv);
+    }
+    if (v > maxS) {
+      return scalarFromScalarValue(maxSv);
+    }
+    return scalarFromScalarValue(s);
   });
 }
 

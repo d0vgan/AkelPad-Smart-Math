@@ -1988,7 +1988,7 @@ private sub RunRatioInExpressionTests()
   okExprs(12) = "ratio(1.3456)+ratio(0.5)": okNeed(12) = "1.8456"
   okExprs(13) = "abs(ratio(-0.5))": okNeed(13) = "0.5"
   okExprs(14) = "sign(ratio(-0.5))": okNeed(14) = "-1"
-  okExprs(15) = "clamp(ratio(1.3456),0,2)": okNeed(15) = "1.3456"
+  okExprs(15) = "clamp(ratio(1.3456),0,2)": okNeed(15) = "841/625"
   okExprs(16) = "ratio(0.5)+1": okNeed(16) = "1.5"
   okExprs(17) = "ratio(0.5)*3": okNeed(17) = "1.5"
   okExprs(18) = "ratio(1.3456)/2": okNeed(18) = "0.6728"
@@ -2066,6 +2066,39 @@ private sub RunMinMaxPreserveWinnerTests()
   g_passed += subPass
   g_failed += subFail
   print "minmax-preserve-winner sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
+private sub RunClampPreserveIntegerMetadataTests()
+  print "=== clamp preserve integer metadata ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 5) as String
+  dim okNeed(1 to 5) as String
+  okExprs(1) = "clamp((0,1,2,3),1,2)": okNeed(1) = "(1, 1, 2, 2)"
+  okExprs(2) = "clamp(0,1,2)": okNeed(2) = "1"
+  okExprs(3) = "clamp(3,1,2)": okNeed(3) = "2"
+  okExprs(4) = "clamp(1,1,2)": okNeed(4) = "1"
+  okExprs(5) = "clamp(1.5,1,2)": okNeed(5) = "1.5"
+  dim ci as Integer
+  for ci = 1 to 5
+    if Parser_TryEvaluateEx(okExprs(ci), r, rt, ia) = FALSE then
+      print "[clamp-int] FAIL: """ & okExprs(ci) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif rt <> okNeed(ci) then
+      print "[clamp-int] FAIL: """ & okExprs(ci) & """ got """ & rt & """ want """ & okNeed(ci) & """"
+      subFail += 1
+    else
+      subPass += 1
+    end if
+  next ci
+  g_passed += subPass
+  g_failed += subFail
+  print "clamp-preserve-integer sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
   print ""
 end sub
 
@@ -3947,6 +3980,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunGcdLcmNcrNprArrayBroadcastTests()
   RunRatioInExpressionTests()
   RunMinMaxPreserveWinnerTests()
+  RunClampPreserveIntegerMetadataTests()
 
   RunExactIntegerDivisionTests()
   RunExactIntegerMultiplicationTests()
