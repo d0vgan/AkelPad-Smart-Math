@@ -4590,33 +4590,31 @@ private function ClampScalarValue(byref sv as ScalarValue, byref minSv as Scalar
   dim v as Double = ScalarNumericReal(sv)
   dim minS as Double = minSv.scalar
   dim maxS as Double = maxSv.scalar
-  dim minFinite as Boolean = IsFiniteValue(minS)
-  dim maxFinite as Boolean = IsFiniteValue(maxS)
-  dim minNan as Boolean = IsNaNValue(minS)
-  dim maxNan as Boolean = IsNaNValue(maxS)
+  dim loKnown as Boolean = (IsNaNValue(minS) = FALSE)
+  dim hiKnown as Boolean = (IsNaNValue(maxS) = FALSE)
 
   if IsNaNValue(v) then
-    if minFinite then return minSv
+    if loKnown then return minSv
     return sv
   end if
 
-  if minFinite andalso v < minS then return minSv
+  if loKnown andalso v < minS then return minSv
 
-  if maxFinite andalso v > maxS then
-    if minNan then return sv
+  if hiKnown andalso v > maxS then
+    if (loKnown = FALSE) andalso (IsInfValue(v) = FALSE) then return sv
     return maxSv
   end if
 
-  if minNan andalso maxFinite then
-    if v >= maxS then return sv
-    return ClampUncertainNanScalarValue()
+  if (loKnown = FALSE) andalso hiKnown then
+    if v < maxS then return ClampUncertainNanScalarValue()
+    return sv
   end if
 
-  if maxNan andalso minFinite then
+  if loKnown andalso (hiKnown = FALSE) then
     if v >= minS then return ClampUncertainNanScalarValue()
   end if
 
-  if minNan andalso maxNan then return ClampUncertainNanScalarValue()
+  if (loKnown = FALSE) andalso (hiKnown = FALSE) then return ClampUncertainNanScalarValue()
 
   return sv
 end function

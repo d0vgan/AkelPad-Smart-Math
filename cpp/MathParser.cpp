@@ -12479,46 +12479,44 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     const double v = scalarNumericReal(s);
     const double minS = minSv.scalar;
     const double maxS = maxSv.scalar;
-    const bool minFinite = std::isfinite(minS);
-    const bool maxFinite = std::isfinite(maxS);
-    const bool minNan = std::isnan(minS);
-    const bool maxNan = std::isnan(maxS);
+    const bool loKnown = !std::isnan(minS);
+    const bool hiKnown = !std::isnan(maxS);
     const auto uncertainNan = []() -> EvalValue {
       return makeScalar(std::numeric_limits<double>::quiet_NaN());
     };
 
     if (std::isnan(v)) {
-      if (minFinite) {
+      if (loKnown) {
         return scalarFromScalarValue(minSv);
       }
       return scalarFromScalarValue(s);
     }
 
-    if (minFinite && v < minS) {
+    if (loKnown && v < minS) {
       return scalarFromScalarValue(minSv);
     }
 
-    if (maxFinite && v > maxS) {
-      if (minNan) {
+    if (hiKnown && v > maxS) {
+      if (!loKnown && !std::isinf(v)) {
         return scalarFromScalarValue(s);
       }
       return scalarFromScalarValue(maxSv);
     }
 
-    if (minNan && maxFinite) {
-      if (v >= maxS) {
-        return scalarFromScalarValue(s);
+    if (!loKnown && hiKnown) {
+      if (v < maxS) {
+        return uncertainNan();
       }
-      return uncertainNan();
+      return scalarFromScalarValue(s);
     }
 
-    if (maxNan && minFinite) {
+    if (loKnown && !hiKnown) {
       if (v >= minS) {
         return uncertainNan();
       }
     }
 
-    if (minNan && maxNan) {
+    if (!loKnown && !hiKnown) {
       return uncertainNan();
     }
 
