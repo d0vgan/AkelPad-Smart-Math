@@ -666,7 +666,14 @@ private:
       LambdaBodyStop bodyStop,
       const char* sortbyLambdaKeyStart,
       bool quiet) const;
+  bool tryParseWrappedParenLambdaSuffix(
+      EvalContext& ctx,
+      std::vector<std::string>& outParams,
+      std::string& outBody,
+      LambdaBodyStop bodyStop,
+      bool quiet) const;
   bool tryParseLambdaRhsAfterEquals(EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const;
+  std::unique_ptr<Expr> tryParseUnarySortbyLambdaOrFunctionRef(EvalContext& ctx);
   std::unique_ptr<Expr> makeUnarySortbyInlineLambdaExpr(
       EvalContext& ctx,
       std::vector<std::string>&& params,

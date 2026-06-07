@@ -3468,11 +3468,11 @@ void MathParser::setRecursiveUserFunctionCallError(EvalContext& ctx, const std::
 }
 
 bool MathParser::isIdentStart(char c) {
-  return std::isalpha(static_cast<unsigned char>(c)) || c == '_';
+  return localIsIdentStart(c);
 }
 
 bool MathParser::isIdentChar(char c) {
-  return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  return localIsIdentChar(c);
 }
 
 bool MathParser::isNumericLiteralStart(char c) {
@@ -7907,6 +7907,34 @@ bool MathParser::tryParseLambdaInnerUnwrappedSuffix(
   return lambdaBodyConsume(ctx, outBody, bodyStop, sortbyLambdaKeyStart);
 }
 
+bool MathParser::tryParseWrappedParenLambdaSuffix(
+    EvalContext& ctx,
+    std::vector<std::string>& outParams,
+    std::string& outBody,
+    LambdaBodyStop bodyStop,
+    bool quiet) const {
+  const char* const saveOuter = ctx.p;
+  if (*ctx.p != '(') {
+    return false;
+  }
+  if (!peekRhsMayBeLambdaSyntaxAt(ctx.p + 1)) {
+    return false;
+  }
+  ++ctx.p;
+  if (!tryParseLambdaInnerUnwrappedSuffix(ctx, outParams, outBody, bodyStop, nullptr, quiet)) {
+    ctx.p = saveOuter;
+    return false;
+  }
+  skipSpaces(ctx);
+  if (*ctx.p != ')') {
+    ctx.p = saveOuter;
+    return false;
+  }
+  ++ctx.p;
+  skipSpaces(ctx);
+  return true;
+}
+
 bool MathParser::tryParseLambdaRhsAfterEquals(
     EvalContext& ctx, std::vector<std::string>& outParams, std::string& outExpr) const {
   const char* const saveOuter = ctx.p;
@@ -7914,18 +7942,10 @@ bool MathParser::tryParseLambdaRhsAfterEquals(
     return false;
   }
   skipSpaces(ctx);
-  if (*ctx.p == '(') {
-    ++ctx.p;
-    if (tryParseLambdaInnerUnwrappedSuffix(
-            ctx, outParams, outExpr, LambdaBodyStop::WrappedParenClose, nullptr, true)) {
-      skipSpaces(ctx);
-      if (*ctx.p == ')') {
-        ++ctx.p;
-        skipSpaces(ctx);
-        if (*ctx.p == '\0' || *ctx.p == ';') {
-          return true;
-        }
-      }
+  if (tryParseWrappedParenLambdaSuffix(
+          ctx, outParams, outExpr, LambdaBodyStop::WrappedParenClose, true)) {
+    if (*ctx.p == '\0' || *ctx.p == ';') {
+      return true;
     }
     ctx.p = saveOuter;
     outParams.clear();
@@ -7958,19 +7978,16 @@ std::unique_ptr<MathParser::Expr> MathParser::makeUnarySortbyInlineLambdaExpr(
   return lit;
 }
 
-std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalContext& ctx) {
+std::unique_ptr<MathParser::Expr> MathParser::tryParseUnarySortbyLambdaOrFunctionRef(EvalContext& ctx) {
   ctx.parseError = false;
   ctx.errorText.clear();
   const char* const save = ctx.p;
   skipSpaces(ctx);
 
   if (*ctx.p == '(' && peekRhsMayBeLambdaSyntaxAt(ctx.p + 1)) {
-    ++ctx.p;
     std::vector<std::string> params;
     std::string body;
-    if (tryParseLambdaInnerUnwrappedSuffix(
-            ctx, params, body, LambdaBodyStop::WrappedParenClose, nullptr, true)) {
-      skipSpaces(ctx);
+    if (tryParseWrappedParenLambdaSuffix(ctx, params, body, LambdaBodyStop::WrappedParenClose, true)) {
       if (*ctx.p == ',' || *ctx.p == ')') {
         return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
       }
@@ -7996,6 +8013,10 @@ std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalCo
     return parseSortbyFunctionRef(ctx);
   }
   return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
+}
+
+std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalContext& ctx) {
+  return tryParseUnarySortbyLambdaOrFunctionRef(ctx);
 }
 
 MathParser::EvalValue MathParser::evalInlineLambdaCall(
@@ -8201,6 +8222,16 @@ bool peekCompactTimeSuffixAfterDigitRun(const char* digitEnd) {
 }
 #endif
 
+const char* advancePastOptionalFraction(const char* q) {
+  if (*q == '.') {
+    ++q;
+    while (*q >= '0' && *q <= '9') {
+      ++q;
+    }
+  }
+  return q;
+}
+
 NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
   if (*p < '0' || *p > '9') {
     return NumericLiteralRoute::Plain;
@@ -8212,12 +8243,7 @@ NumericLiteralRoute classifyNumericLiteralRoute(const char* p) {
   while (*q >= '0' && *q <= '9') {
     ++q;
   }
-  if (*q == '.') {
-    ++q;
-    while (*q >= '0' && *q <= '9') {
-      ++q;
-    }
-  }
+  q = advancePastOptionalFraction(q);
   if (*q == 'e' || *q == 'E') {
     ++q;
     if (*q == '+' || *q == '-') {
@@ -8262,10 +8288,10 @@ const char* scanDecimalNumericLiteralEnd(const char* p) {
     ++q;
   }
   if (*q == '.') {
-    ++q;
-    while (*q >= '0' && *q <= '9') {
+    const char* afterFrac = advancePastOptionalFraction(q);
+    if (afterFrac != q) {
       anyDigit = true;
-      ++q;
+      q = afterFrac;
     }
   }
   if (*q == 'e' || *q == 'E') {
