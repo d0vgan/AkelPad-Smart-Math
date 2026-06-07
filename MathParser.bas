@@ -4576,12 +4576,48 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
   return TRUE
 end function
 
+private function ClampUncertainNanScalarValue() as ScalarValue
+  dim outSv as ScalarValue
+  outSv.scalarStorageKind = SSK_FLOATINGPOINT
+  outSv.scalar = MakeNaN()
+  ScalarClearImag(outSv)
+  ScalarSetExactInt64Valid(outSv, FALSE)
+  ScalarSetExactUInt64Valid(outSv, FALSE)
+  return outSv
+end function
+
 private function ClampScalarValue(byref sv as ScalarValue, byref minSv as ScalarValue, byref maxSv as ScalarValue) as ScalarValue
   dim v as Double = ScalarNumericReal(sv)
   dim minS as Double = minSv.scalar
   dim maxS as Double = maxSv.scalar
-  if v < minS then return minSv
-  if v > maxS then return maxSv
+  dim minFinite as Boolean = IsFiniteValue(minS)
+  dim maxFinite as Boolean = IsFiniteValue(maxS)
+  dim minNan as Boolean = IsNaNValue(minS)
+  dim maxNan as Boolean = IsNaNValue(maxS)
+
+  if IsNaNValue(v) then
+    if minFinite then return minSv
+    return sv
+  end if
+
+  if minFinite andalso v < minS then return minSv
+
+  if maxFinite andalso v > maxS then
+    if minNan then return sv
+    return maxSv
+  end if
+
+  if minNan andalso maxFinite then
+    if v >= maxS then return sv
+    return ClampUncertainNanScalarValue()
+  end if
+
+  if maxNan andalso minFinite then
+    if v >= minS then return ClampUncertainNanScalarValue()
+  end if
+
+  if minNan andalso maxNan then return ClampUncertainNanScalarValue()
+
   return sv
 end function
 

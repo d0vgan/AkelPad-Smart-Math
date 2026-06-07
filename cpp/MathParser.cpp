@@ -12479,12 +12479,49 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     const double v = scalarNumericReal(s);
     const double minS = minSv.scalar;
     const double maxS = maxSv.scalar;
-    if (v < minS) {
+    const bool minFinite = std::isfinite(minS);
+    const bool maxFinite = std::isfinite(maxS);
+    const bool minNan = std::isnan(minS);
+    const bool maxNan = std::isnan(maxS);
+    const auto uncertainNan = []() -> EvalValue {
+      return makeScalar(std::numeric_limits<double>::quiet_NaN());
+    };
+
+    if (std::isnan(v)) {
+      if (minFinite) {
+        return scalarFromScalarValue(minSv);
+      }
+      return scalarFromScalarValue(s);
+    }
+
+    if (minFinite && v < minS) {
       return scalarFromScalarValue(minSv);
     }
-    if (v > maxS) {
+
+    if (maxFinite && v > maxS) {
+      if (minNan) {
+        return scalarFromScalarValue(s);
+      }
       return scalarFromScalarValue(maxSv);
     }
+
+    if (minNan && maxFinite) {
+      if (v >= maxS) {
+        return scalarFromScalarValue(s);
+      }
+      return uncertainNan();
+    }
+
+    if (maxNan && minFinite) {
+      if (v >= minS) {
+        return uncertainNan();
+      }
+    }
+
+    if (minNan && maxNan) {
+      return uncertainNan();
+    }
+
     return scalarFromScalarValue(s);
   });
 }

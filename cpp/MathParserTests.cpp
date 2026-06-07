@@ -3508,6 +3508,23 @@ std::vector<TestCase> buildClampPreserveIntegerMetadataCases() {
   return t;
 }
 
+std::vector<TestCase> buildClampNanBoundCases() {
+  std::vector<TestCase> t;
+  t.push_back({"clamp/NaN bounds: partial interval and value-at-max with unknown min",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "clamp(nan,1,2)", "1", why)) return false;
+                 if (!expectEval(p, "clamp(nan,nan,2)", "nan", why)) return false;
+                 if (!expectEval(p, "clamp(nan,1,nan)", "1", why)) return false;
+                 if (!expectEval(p, "clamp(0,1,nan)", "1", why)) return false;
+                 if (!expectEval(p, "clamp(2,1,nan)", "nan", why)) return false;
+                 if (!expectEval(p, "clamp(1,nan,2)", "nan", why)) return false;
+                 if (!expectEval(p, "clamp(3,nan,2)", "3", why)) return false;
+                 return expectEval(p, "clamp(2,nan,2)", "2", why);
+               }});
+  return t;
+}
+
 // Parity port from Basic smoke tests (SmokeTest_MathParser.bas) for expression-evaluation coverage.
 // This keeps C++ independent: only literal expr/expected/error-substring strings are copied in.
 struct ParityBasicCase {
@@ -5932,6 +5949,7 @@ int main(int argc, char** argv) {
   const auto ratioInExpression = buildRatioInExpressionCases();
   const auto minMaxPreserveWinner = buildMinMaxPreserveWinnerCases();
   const auto clampPreserveIntegerMetadata = buildClampPreserveIntegerMetadataCases();
+  const auto clampNanBound = buildClampNanBoundCases();
 
   runSuite("Unit", unit, s);
   runSuite("Edge/int-float", edgeIntFloat, s);
@@ -5959,6 +5977,7 @@ int main(int argc, char** argv) {
   runSuite("Ratio in expressions", ratioInExpression, s);
   runSuite("Min/max preserve winner", minMaxPreserveWinner, s);
   runSuite("Clamp preserve integer metadata", clampPreserveIntegerMetadata, s);
+  runSuite("Clamp NaN bounds", clampNanBound, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";
   return (s.failed == 0) ? 0 : 1;

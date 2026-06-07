@@ -2102,6 +2102,42 @@ private sub RunClampPreserveIntegerMetadataTests()
   print ""
 end sub
 
+private sub RunClampNanBoundTests()
+  print "=== clamp NaN bounds ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 8) as String
+  dim okNeed(1 to 8) as String
+  okExprs(1) = "clamp(nan,1,2)": okNeed(1) = "1"
+  okExprs(2) = "clamp(nan,nan,2)": okNeed(2) = "nan"
+  okExprs(3) = "clamp(nan,1,nan)": okNeed(3) = "1"
+  okExprs(4) = "clamp(0,1,nan)": okNeed(4) = "1"
+  okExprs(5) = "clamp(2,1,nan)": okNeed(5) = "nan"
+  okExprs(6) = "clamp(1,nan,2)": okNeed(6) = "nan"
+  okExprs(7) = "clamp(3,nan,2)": okNeed(7) = "3"
+  okExprs(8) = "clamp(2,nan,2)": okNeed(8) = "2"
+  dim ci as Integer
+  for ci = 1 to 8
+    if Parser_TryEvaluateEx(okExprs(ci), r, rt, ia) = FALSE then
+      print "[clamp-nan] FAIL: """ & okExprs(ci) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(ci)) = FALSE then
+      print "[clamp-nan] FAIL: """ & okExprs(ci) & """ got """ & rt & """ want """ & okNeed(ci) & """"
+      subFail += 1
+    else
+      subPass += 1
+    end if
+  next ci
+  g_passed += subPass
+  g_failed += subFail
+  print "clamp-nan-bound sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunExactIntegerDivisionTests()
   print "=== Exact integer division (a/b) ==="
   dim subPass as Integer = 0
@@ -3981,6 +4017,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunRatioInExpressionTests()
   RunMinMaxPreserveWinnerTests()
   RunClampPreserveIntegerMetadataTests()
+  RunClampNanBoundTests()
 
   RunExactIntegerDivisionTests()
   RunExactIntegerMultiplicationTests()
