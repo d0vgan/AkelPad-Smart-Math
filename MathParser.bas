@@ -1,6 +1,5 @@
 ﻿#include once "crt.bi"
 #include once "Inc\MathParser.bi"
-#include once "Inc\FactorintSmallPrimes.bi"
 #include once "MathParserRawResult.bas"
 
 extern "C"
@@ -1907,12 +1906,12 @@ private function ScalarNumericImag(byref sv as ScalarValue) as Double
 end function
 
 '' Exact int64 for arithmetic/metadata (not render-rational numerator storage).
-private function ScalarExactInt64Valid(byref sv as ScalarValue) as Boolean
+function ScalarExactInt64Valid(byref sv as ScalarValue) as Boolean
   if ScalarHasRenderRational(sv) then return FALSE
   return ScalarExactInt64MetadataValid(sv)
 end function
 
-private sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
   if v then
     sv.flags or= SVF_EXACT_INT64_VALID
   else
@@ -1920,12 +1919,12 @@ private sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean
   end if
 end sub
 
-private function ScalarExactUInt64Valid(byref sv as ScalarValue) as Boolean
+function ScalarExactUInt64Valid(byref sv as ScalarValue) as Boolean
   if ScalarHasRenderRational(sv) then return FALSE
   return ScalarExactUInt64MetadataValid(sv)
 end function
 
-private sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
   if v then
     sv.flags or= SVF_EXACT_UINT64_VALID
   else
@@ -1942,7 +1941,7 @@ private sub ScalarSetImagExactUInt64Valid(byref sv as ScalarValue, byval v as Bo
 end sub
 
 '' Keep SVF_* flags aligned with scalarStorageKind and exact* fields (stale flags break exact complex ops).
-private sub ScalarRepairExactMetadata(byref sv as ScalarValue)
+sub ScalarRepairExactMetadata(byref sv as ScalarValue)
   select case sv.scalarStorageKind
   case SSK_INT64
     ScalarSetExactInt64Valid(sv, TRUE)
@@ -2114,7 +2113,7 @@ private sub ValueSetUInt64(byref v as EvalValue, byval n as ULongInt)
   ScalarRepairExactMetadata(v.scalarValue)
 end sub
 
-private function TryGetExactInt64FromDouble(byval n as Double, byref outV as LongInt) as Boolean
+function TryGetExactInt64FromDouble(byval n as Double, byref outV as LongInt) as Boolean
   if IsNonFiniteValue(n) then return FALSE
   if n < -FB_MAX_EXACT_INT_FROM_DOUBLE orelse n > FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
   if n < FB_I64_MIN_D orelse n > FB_I64_MAX_D then return FALSE
@@ -2488,7 +2487,7 @@ private function TryPowInt64(byval baseV as LongInt, byval expV as LongInt, byre
   return TRUE
 end function
 
-private function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, byref outV as ULongInt) as Boolean
+function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, byref outV as ULongInt) as Boolean
   dim r as ULongInt = 1
   dim b as ULongInt = baseV
   dim e as ULongInt = expV
@@ -4713,460 +4712,6 @@ private sub RawCartesianAssignReducedRational(byval num as LongInt, byval den as
   end if
 end sub
 
-private function MulModU64AddDouble(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
-  if modN <= 1ull then return 0ull
-  dim res as ULongInt = 0
-  a = a mod modN
-  while b > 0ull
-    if (b and 1ull) <> 0ull then
-      res = (res + a) mod modN
-    end if
-    b = b shr 1
-    if b = 0ull then exit while
-    a = (a + a) mod modN
-  wend
-  return res
-end function
-
-private function MulModU64(byval a as ULongInt, byval b as ULongInt, byval modN as ULongInt) as ULongInt
-  if modN <= 1ull then return 0ull
-  a = a mod modN
-  b = b mod modN
-  if a = 0ull orelse b = 0ull then return 0ull
-  if a > 0ull andalso b <= &hFFFFFFFFFFFFFFFFull \ a then
-    return (a * b) mod modN
-  end if
-  return MulModU64AddDouble(a, b, modN)
-end function
-
-private function PowModU64(byval baseV as ULongInt, byval expV as ULongInt, byval modN as ULongInt) as ULongInt
-  dim res as ULongInt = 1
-  dim b as ULongInt = baseV mod modN
-  dim e as ULongInt = expV
-  while e > 0ull
-    if (e and 1ull) <> 0ull then res = MulModU64(res, b, modN)
-    b = MulModU64(b, b, modN)
-    e = e shr 1
-  wend
-  return res
-end function
-
-private const FACTORINT_ENTRIES_INIT_CAP as Integer = 8
-private const FACTORINT_POLLARD_MAX_OUTER as Integer = 48
-private const FACTORINT_RHO_MAX_ITERS as Integer = 400000
-private const FACTORINT_RHO_MAX_ITERS_SMALL as Integer = 80000
-private const FACTORINT_FERMAT_MAX_STEPS as Integer = 4096
-private const FACTORINT_FERMAT_MAX_N as ULongInt = 100000000ull
-private const FACTORINT_ODD_TRIAL_MAX_PRIME as ULongInt = 10000000ull
-
-type FactorintPrimeEntry
-  baseU as ULongInt
-  expV as UInteger
-end type
-
-private function IsqrtU64(byval n as ULongInt) as ULongInt
-  if n = 0ull then return 0ull
-  dim x as ULongInt = n
-  dim y as ULongInt = (x + 1ull) \ 2ull
-  while y < x
-    x = y
-    y = (x + n \ x) \ 2ull
-  wend
-  return x
-end function
-
-private function IsPrimeU64(byval n as ULongInt) as Boolean
-  if n < 2ull then return FALSE
-  if n = 2ull orelse n = 3ull then return TRUE
-  if (n and 1ull) = 0ull then return FALSE
-  static tinyPrimes(0 to 10) as ULongInt = {3ull, 5ull, 7ull, 11ull, 13ull, 17ull, 19ull, 23ull, 29ull, 31ull, 37ull}
-  static mrBases(0 to 6) as ULongInt = {2ull, 32544231ull, 2567547226ull, 4118087717ull, 6700417ull, 12917328ull, 1297059741ull}
-  dim ti as Integer
-  for ti = 0 to 10
-    dim p as ULongInt = tinyPrimes(ti)
-    if n = p then return TRUE
-    if (n mod p) = 0ull then return FALSE
-  next ti
-  dim d as ULongInt = n - 1ull
-  dim s as Integer = 0
-  while (d and 1ull) = 0ull
-    d = d shr 1
-    s += 1
-  wend
-  dim i as Integer
-  for i = 0 to 6
-    dim a as ULongInt = mrBases(i)
-    if n <= a then exit for
-    dim x as ULongInt = PowModU64(a, d, n)
-    if x = 1ull orelse x = n - 1ull then continue for
-    dim composite as Boolean = TRUE
-    dim r as Integer
-    for r = 1 to s - 1
-      x = MulModU64(x, x, n)
-      if x = n - 1ull then
-        composite = FALSE
-        exit for
-      end if
-    next r
-    if composite then return FALSE
-  next i
-  return TRUE
-end function
-
-private function FermatFactorU64(byval n as ULongInt) as ULongInt
-  if (n and 1ull) = 0ull then return 2ull
-  dim a as ULongInt = IsqrtU64(n)
-  if a * a < n then a += 1ull
-  dim b2 as ULongInt = a * a - n
-  dim fermatIter as Integer
-  for fermatIter = 0 to FACTORINT_FERMAT_MAX_STEPS - 1
-    dim b as ULongInt = IsqrtU64(b2)
-    if b * b = b2 then
-      dim p as ULongInt = a - b
-      dim q as ULongInt = a + b
-      if p > 1ull andalso p < n then return p
-      if q > 1ull andalso q < n then return q
-    end if
-    a += 1ull
-    b2 = a * a - n
-  next fermatIter
-  return n
-end function
-
-private function PollardRhoMaxIters(byval n as ULongInt) as Integer
-  if n < 4294967296ull then return FACTORINT_RHO_MAX_ITERS_SMALL
-  return FACTORINT_RHO_MAX_ITERS
-end function
-
-private function PollardRhoU64(byval n as ULongInt) as ULongInt
-  if (n and 1ull) = 0ull then return 2ull
-  if (n mod 3ull) = 0ull then return 3ull
-  dim maxIter as Integer = PollardRhoMaxIters(n)
-  dim attempt as Integer
-  for attempt = 0 to FACTORINT_POLLARD_MAX_OUTER - 1
-    dim c as ULongInt = 1ull + CULngInt(attempt)
-    dim y0 as ULongInt = 2ull + ((n mod 1000003ull) + CULngInt(attempt)) mod (n - 2ull)
-    dim x as ULongInt = y0
-    dim y as ULongInt = y0
-    dim d as ULongInt = 1ull
-    dim iter as Integer
-    for iter = 1 to maxIter
-      if d <> 1ull then exit for
-      x = (MulModU64(x, x, n) + c) mod n
-      y = (MulModU64(y, y, n) + c) mod n
-      y = (MulModU64(y, y, n) + c) mod n
-      dim diff as ULongInt
-      if x >= y then diff = x - y else diff = y - x
-      if diff = 0ull then continue for
-      d = GcdULong(diff, n)
-      if d = n then
-        y = x
-        d = 1ull
-      end if
-    next iter
-    if d > 1ull andalso d < n then return d
-  next attempt
-  return n
-end function
-
-private function FactorintOddTrialLimit(byval n as ULongInt) as ULongInt
-  dim sqrtN as ULongInt = IsqrtU64(n)
-  if sqrtN > FACTORINT_ODD_TRIAL_MAX_PRIME then return FACTORINT_ODD_TRIAL_MAX_PRIME
-  return sqrtN
-end function
-
-private function FactorintExhaustiveTrialDone(byval n as ULongInt) as Boolean
-  return IsqrtU64(n) <= FactorintOddTrialLimit(n)
-end function
-
-private function FactorintFindSplitFactor(byval n as ULongInt) as ULongInt
-  if IsPrimeU64(n) then return n
-  if n <= FACTORINT_FERMAT_MAX_N then
-    dim factor as ULongInt = FermatFactorU64(n)
-    if factor > 1ull andalso factor < n then return factor
-  end if
-  dim rhoFactor as ULongInt = PollardRhoU64(n)
-  if rhoFactor > 1ull andalso rhoFactor < n then return rhoFactor
-  return n
-end function
-
-private sub FactorintEntriesEnsure(entries() as FactorintPrimeEntry, byref cap as Integer, byval need as Integer)
-  if need <= cap then exit sub
-  if cap <= 0 then cap = FACTORINT_ENTRIES_INIT_CAP
-  while cap < need
-    cap *= 2
-  wend
-  redim preserve entries(0 to cap - 1)
-end sub
-
-private sub FactorintEntriesAdd(entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer, byval baseU as ULongInt, byval expV as UInteger)
-  if cnt > 0 andalso entries(cnt - 1).baseU = baseU then
-    entries(cnt - 1).expV += expV
-    exit sub
-  end if
-  FactorintEntriesEnsure(entries(), cap, cnt + 1)
-  entries(cnt).baseU = baseU
-  entries(cnt).expV = expV
-  cnt += 1
-end sub
-
-private sub FactorintTrialDividePrime(byval p as ULongInt, byref n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
-  if n < p then exit sub
-  if (n mod p) <> 0ull then exit sub
-  dim e as UInteger = 0
-  do
-    n = n \ p
-    e += 1
-  loop while (n mod p) = 0ull
-  FactorintEntriesAdd(entries(), cnt, cap, p, e)
-end sub
-
-private sub FactorintTrialDivideOdd(byref n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
-  dim d as ULongInt = FACTORINT_SMALL_MAX_PRIME + 2ull
-  if (d and 1ull) = 0ull then d += 1ull
-  dim limit as ULongInt = FactorintOddTrialLimit(n)
-  while d <= limit
-    FactorintTrialDividePrime(d, n, entries(), cnt, cap)
-    if n <= 1ull then exit sub
-    d += 2ull
-  wend
-end sub
-
-private sub FactorizeU64IntoEntries(byval n as ULongInt, entries() as FactorintPrimeEntry, byref cnt as Integer, byref cap as Integer)
-  if n <= 1ull then exit sub
-  dim twoExp as UInteger = 0
-  while (n and 1ull) = 0ull
-    twoExp += 1
-    n = n shr 1
-  wend
-  if twoExp > 0 then FactorintEntriesAdd(entries(), cnt, cap, 2ull, twoExp)
-  if n <= 1ull then exit sub
-  dim lo as Integer = 0
-  dim hi as Integer = FACTORINT_SMALL_PRIME_COUNT
-  while lo < hi
-    dim trialMid as Integer = lo + (hi - lo) \ 2
-    dim pMid as ULongInt = factorintSmallPrimes(trialMid)
-    if pMid <= n \ pMid then
-      lo = trialMid + 1
-    else
-      hi = trialMid
-    end if
-  wend
-  dim trialLimit as Integer = lo
-  dim si as Integer
-  for si = 0 to trialLimit - 1
-    FactorintTrialDividePrime(factorintSmallPrimes(si), n, entries(), cnt, cap)
-    if n <= 1ull then exit sub
-  next si
-  if n <= 1ull then exit sub
-  if IsqrtU64(n) > FACTORINT_ODD_TRIAL_MAX_PRIME andalso IsPrimeU64(n) then
-    FactorintEntriesAdd(entries(), cnt, cap, n, 1)
-    exit sub
-  end if
-  FactorintTrialDivideOdd(n, entries(), cnt, cap)
-  if n <= 1ull then exit sub
-  if FactorintExhaustiveTrialDone(n) orelse IsPrimeU64(n) then
-    FactorintEntriesAdd(entries(), cnt, cap, n, 1)
-    exit sub
-  end if
-  dim factor as ULongInt = FactorintFindSplitFactor(n)
-  if factor <= 1ull orelse factor >= n then
-    FactorintEntriesAdd(entries(), cnt, cap, n, 1)
-    exit sub
-  end if
-  FactorizeU64IntoEntries(factor, entries(), cnt, cap)
-  FactorizeU64IntoEntries(n \ factor, entries(), cnt, cap)
-end sub
-
-private sub SortFactorintEntries(entries() as FactorintPrimeEntry, byref cnt as Integer)
-  if cnt <= 1 then exit sub
-  dim i as Integer
-  dim j as Integer
-  for i = 0 to cnt - 2
-    for j = i + 1 to cnt - 1
-      if entries(j).baseU < entries(i).baseU then
-        dim t as FactorintPrimeEntry = entries(i)
-        entries(i) = entries(j)
-        entries(j) = t
-      end if
-    next j
-  next i
-  i = 1
-  while i < cnt
-    if entries(i).baseU = entries(i - 1).baseU then
-      entries(i - 1).expV += entries(i).expV
-      for j = i to cnt - 2
-        entries(j) = entries(j + 1)
-      next j
-      cnt -= 1
-    else
-      i += 1
-    end if
-  wend
-end sub
-
-private function TryGetFactorintInput(byref v as EvalValue, byref isNegative as Boolean, byref absU as ULongInt) as Boolean
-  if v.kind <> VK_SCALAR then return FALSE
-  dim sv as ScalarValue = v.scalarValue
-  ScalarRepairExactMetadata(sv)
-  if ScalarExactInt64Valid(sv) then
-    if sv.exactInt64 < 0 then
-      isNegative = TRUE
-      if sv.exactInt64 = FB_I64_MIN then
-        absU = 9223372036854775808ull
-      else
-        absU = CULngInt(-sv.exactInt64)
-      end if
-      return TRUE
-    end if
-    isNegative = FALSE
-    absU = CULngInt(sv.exactInt64)
-    return TRUE
-  end if
-  if ScalarExactUInt64Valid(sv) orelse sv.scalarStorageKind = SSK_UINT64 then
-    isNegative = FALSE
-    absU = sv.exactUInt64
-    return TRUE
-  end if
-  dim li as LongInt
-  if TryGetExactInt64FromDouble(sv.scalar, li) = FALSE then return FALSE
-  if li < 0 then
-    isNegative = TRUE
-    if li = FB_I64_MIN then
-      absU = 9223372036854775808ull
-    else
-      absU = CULngInt(-li)
-    end if
-    return TRUE
-  end if
-  isNegative = FALSE
-  absU = CULngInt(li)
-  return TRUE
-end function
-
-private sub ScalarClearIntPowerRender(byref sv as ScalarValue)
-  sv.flags and= not CUInt(SVF_RENDER_INT_POWER)
-  sv.imagExactInt64 = 0
-  sv.imagExactUInt64 = 0
-end sub
-
-private sub ScalarSetFactorintTermValue(byref sv as ScalarValue, byval valueI as LongInt, byval valueU as ULongInt, byval hasUIntValue as Boolean)
-  ScalarClearIntPowerRender(sv)
-  sv.scalar = CDbl(IIf(hasUIntValue, valueU, valueI))
-  if hasUIntValue then
-    ScalarSetExactUInt64Valid(sv, TRUE)
-    sv.exactUInt64 = valueU
-    if valueU <= FB_I64_MAX_U then
-      ScalarSetExactInt64Valid(sv, TRUE)
-      sv.exactInt64 = CLngInt(valueU)
-    else
-      ScalarSetExactInt64Valid(sv, FALSE)
-      sv.exactInt64 = 0
-    end if
-    sv.scalarStorageKind = SSK_UINT64
-  else
-    ScalarSetExactInt64Valid(sv, TRUE)
-    sv.exactInt64 = valueI
-    if valueI >= 0 then
-      ScalarSetExactUInt64Valid(sv, TRUE)
-      sv.exactUInt64 = CULngInt(valueI)
-    else
-      ScalarSetExactUInt64Valid(sv, FALSE)
-      sv.exactUInt64 = 0
-    end if
-    sv.scalarStorageKind = SSK_INT64
-  end if
-end sub
-
-private sub ScalarSetFactorintPowerTerm(byref sv as ScalarValue, byval baseU as ULongInt, byval expV as Integer, byval signedValueI as LongInt, byval valueU as ULongInt, byval hasUIntValue as Boolean)
-  ScalarSetFactorintTermValue(sv, signedValueI, valueU, hasUIntValue)
-  if expV <= 1 then exit sub
-  sv.flags or= SVF_RENDER_INT_POWER
-  dim displayBase as LongInt = CLngInt(baseU)
-  if signedValueI < 0 andalso baseU <= CULngInt(FB_I64_MAX) then displayBase = -CLngInt(baseU)
-  sv.imagExactInt64 = displayBase
-  sv.imagExactUInt64 = CULngInt(expV)
-end sub
-
-private function TryPowFactorTermValue(byval baseU as ULongInt, byval expV as Integer, byref valueU as ULongInt) as Boolean
-  if expV <= 0 then return FALSE
-  return TryPowULong(baseU, CULngInt(expV), valueU)
-end function
-
-private sub FactorintAppendScalarTerm( _
-  outArr() as ScalarValue, _
-  byref outCount as Integer, _
-  byval baseU as ULongInt, _
-  byval expV as Integer, _
-  byref applySign as Boolean _
-)
-  dim valueU as ULongInt = baseU
-  if expV > 1 then
-    if TryPowFactorTermValue(baseU, expV, valueU) = FALSE then exit sub
-  end if
-  dim signedI as LongInt = CLngInt(valueU)
-  dim hasUInt as Boolean = FALSE
-  if applySign then
-    applySign = FALSE
-    if valueU > CULngInt(FB_I64_MAX) then
-      hasUInt = TRUE
-      signedI = 0
-    else
-      signedI = -CLngInt(valueU)
-    end if
-  elseif valueU > FB_I64_MAX_U then
-    hasUInt = TRUE
-    signedI = 0
-  end if
-  outCount += 1
-  redim preserve outArr(0 to outCount - 1)
-  if expV > 1 then
-    ScalarSetFactorintPowerTerm(outArr(outCount - 1), baseU, expV, signedI, valueU, hasUInt)
-  else
-    ScalarSetFactorintTermValue(outArr(outCount - 1), signedI, valueU, hasUInt)
-  end if
-end sub
-
-private function TryApplyFactorint(byref v as EvalValue, byref outV as EvalValue) as Boolean
-  if v.kind = VK_ARRAY then return FALSE
-  dim isNegative as Boolean
-  dim absU as ULongInt
-  if TryGetFactorintInput(v, isNegative, absU) = FALSE then return FALSE
-
-  dim terms() as ScalarValue
-  dim termCount as Integer = 0
-
-  if absU = 0ull then
-    redim terms(0 to 0)
-    ScalarSetFactorintTermValue(terms(0), 0, 0ull, FALSE)
-    termCount = 1
-  elseif absU = 1ull then
-    redim terms(0 to 0)
-    if isNegative then
-      ScalarSetFactorintTermValue(terms(0), -1, 1ull, FALSE)
-    else
-      ScalarSetFactorintTermValue(terms(0), 1, 1ull, FALSE)
-    end if
-    termCount = 1
-  else
-    dim entries() as FactorintPrimeEntry
-    dim entryCount as Integer = 0
-    dim entryCap as Integer = 0
-    FactorizeU64IntoEntries(absU, entries(), entryCount, entryCap)
-    if entryCount = 0 then return FALSE
-    SortFactorintEntries(entries(), entryCount)
-    dim ei as Integer
-    for ei = 0 to entryCount - 1
-      dim applySign as Boolean = (isNegative andalso ei = 0)
-      dim expV as Integer = CInt(entries(ei).expV)
-      FactorintAppendScalarTerm(terms(), termCount, entries(ei).baseU, expV, applySign)
-    next ei
-  end if
-
-  if termCount <= 0 then return FALSE
-  ValueSetArrayFromScalarValues(outV, terms())
-  return TRUE
-end function
 
 private function TryLcmULong(byval a as ULongInt, byval b as ULongInt, byref outL as ULongInt) as Boolean
   if a = 0ull orelse b = 0ull then
@@ -9650,7 +9195,7 @@ private sub ReverseScalarValueArrayInPlace(a() as ScalarValue, byval count as In
   next i
 end sub
 
-private sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
+sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
   ValueSetScalar(outV, 0)
   outV.kind = VK_ARRAY
   redim outV.arr(lbound(vals) to ubound(vals))
@@ -9659,6 +9204,8 @@ private sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as Sca
     outV.arr(i) = vals(i)
   next i
 end sub
+
+#include once "MathParserFactorInt.bas"
 
 private function TryApplyFactorial(byref v as EvalValue, byref outV as EvalValue) as Boolean
   if v.kind = VK_ARRAY then return FALSE
