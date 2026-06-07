@@ -3508,6 +3508,18 @@ std::vector<TestCase> buildClampPreserveIntegerMetadataCases() {
   return t;
 }
 
+std::vector<TestCase> buildClampInvertedBoundsCases() {
+  std::vector<TestCase> t;
+  t.push_back({"clamp/inverted bounds: value at min when min > max",
+               [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "clamp(4,4,2)", "4", why)) return false;
+                 if (!expectEval(p, "clamp(5,4,2)", "2", why)) return false;
+                 return expectEval(p, "clamp(4.01,4,2)", "2", why);
+               }});
+  return t;
+}
+
 std::vector<TestCase> buildClampNanBoundCases() {
   std::vector<TestCase> t;
   t.push_back({"clamp/NaN bounds: partial interval and value-at-max with unknown min",
@@ -5959,6 +5971,7 @@ int main(int argc, char** argv) {
   const auto ratioInExpression = buildRatioInExpressionCases();
   const auto minMaxPreserveWinner = buildMinMaxPreserveWinnerCases();
   const auto clampPreserveIntegerMetadata = buildClampPreserveIntegerMetadataCases();
+  const auto clampInvertedBounds = buildClampInvertedBoundsCases();
   const auto clampNanBound = buildClampNanBoundCases();
 
   runSuite("Unit", unit, s);
@@ -5987,6 +6000,7 @@ int main(int argc, char** argv) {
   runSuite("Ratio in expressions", ratioInExpression, s);
   runSuite("Min/max preserve winner", minMaxPreserveWinner, s);
   runSuite("Clamp preserve integer metadata", clampPreserveIntegerMetadata, s);
+  runSuite("Clamp inverted bounds", clampInvertedBounds, s);
   runSuite("Clamp NaN bounds", clampNanBound, s);
 
   std::cout << "TOTAL: " << s.total << ", PASSED: " << s.passed << ", FAILED: " << s.failed << "\n";

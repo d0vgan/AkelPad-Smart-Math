@@ -566,7 +566,6 @@ private:
   std::vector<AstStatement> compiledProgram_;
   mutable std::vector<EvalValue> scratchExpandedArgs_;
   mutable std::vector<EvalValue> scratchBinaryOut_;
-  mutable std::vector<EvalValue> scratchClampOut_;
   std::size_t variablesVersion_ = 0;
   std::size_t boundVariablesVersion_ = static_cast<std::size_t>(-1);
   bool compiledHasAssignments_ = false;
@@ -1245,6 +1244,10 @@ private:
   static bool scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s);
   static void scalarClearImaginary(EvalValue::ScalarValue& s);
   static double scalarNumericReal(const EvalValue::ScalarValue& s);
+  static EvalValue::ScalarValue clampScalarValue(
+      const EvalValue::ScalarValue& s,
+      const EvalValue::ScalarValue& minSv,
+      const EvalValue::ScalarValue& maxSv);
   static double scalarNumericImag(const EvalValue::ScalarValue& s);
   static bool imagExactMetadataMatchesFloat(const EvalValue::ScalarValue& s);
   static void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s);

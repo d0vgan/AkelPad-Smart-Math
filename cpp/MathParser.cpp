@@ -957,10 +957,6 @@ bool udfBodyCallsDefinedFunction(const std::string& body, const std::string& fnN
   return false;
 }
 
-double clampDouble(double x, double lo, double hi) {
-  return std::max(lo, std::min(hi, x));
-}
-
 double randomUnitScalar() {
   return static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
 }
@@ -12446,6 +12442,57 @@ MathParser::EvalValue MathParser::builtinUnaryMath(
   return result;
 }
 
+MathParser::EvalValue::ScalarValue MathParser::clampScalarValue(
+    const EvalValue::ScalarValue& s,
+    const EvalValue::ScalarValue& minSv,
+    const EvalValue::ScalarValue& maxSv) {
+  const double v = scalarNumericReal(s);
+  const double minS = minSv.scalar;
+  const double maxS = maxSv.scalar;
+  const bool loKnown = !std::isnan(minS);
+  const bool hiKnown = !std::isnan(maxS);
+  const auto uncertainNan = []() -> EvalValue::ScalarValue {
+    return makeScalar(std::numeric_limits<double>::quiet_NaN()).scalarValue;
+  };
+
+  if (std::isnan(v)) {
+    if (loKnown) {
+      return minSv;
+    }
+    return s;
+  }
+
+  if (loKnown && v <= minS) {
+    return minSv;
+  }
+
+  if (hiKnown && v > maxS) {
+    if (!loKnown && !std::isinf(v)) {
+      return s;
+    }
+    return maxSv;
+  }
+
+  if (!loKnown && hiKnown) {
+    if (v < maxS) {
+      return uncertainNan();
+    }
+    return s;
+  }
+
+  if (loKnown && !hiKnown) {
+    if (v > minS) {
+      return uncertainNan();
+    }
+  }
+
+  if (!loKnown && !hiKnown) {
+    return uncertainNan();
+  }
+
+  return s;
+}
+
 MathParser::EvalValue MathParser::builtinApplyClamp(
     EvalContext& ctx,
     const EvalValue& valueV,
@@ -12476,51 +12523,7 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
   const EvalValue::ScalarValue& minSv = minV.scalarValue;
   const EvalValue::ScalarValue& maxSv = maxV.scalarValue;
   return mapUnaryEvalValue(valueV, [&minSv, &maxSv](const EvalValue::ScalarValue& s) -> EvalValue {
-    const double v = scalarNumericReal(s);
-    const double minS = minSv.scalar;
-    const double maxS = maxSv.scalar;
-    const bool loKnown = !std::isnan(minS);
-    const bool hiKnown = !std::isnan(maxS);
-    const auto uncertainNan = []() -> EvalValue {
-      return makeScalar(std::numeric_limits<double>::quiet_NaN());
-    };
-
-    if (std::isnan(v)) {
-      if (loKnown) {
-        return scalarFromScalarValue(minSv);
-      }
-      return scalarFromScalarValue(s);
-    }
-
-    if (loKnown && v < minS) {
-      return scalarFromScalarValue(minSv);
-    }
-
-    if (hiKnown && v > maxS) {
-      if (!loKnown && !std::isinf(v)) {
-        return scalarFromScalarValue(s);
-      }
-      return scalarFromScalarValue(maxSv);
-    }
-
-    if (!loKnown && hiKnown) {
-      if (v < maxS) {
-        return uncertainNan();
-      }
-      return scalarFromScalarValue(s);
-    }
-
-    if (loKnown && !hiKnown) {
-      if (v > minS) {
-        return uncertainNan();
-      }
-    }
-
-    if (!loKnown && !hiKnown) {
-      return uncertainNan();
-    }
-
-    return scalarFromScalarValue(s);
+    return scalarFromScalarValue(clampScalarValue(s, minSv, maxSv));
   });
 }
 

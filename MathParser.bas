@@ -4577,13 +4577,9 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
 end function
 
 private function ClampUncertainNanScalarValue() as ScalarValue
-  dim outSv as ScalarValue
-  outSv.scalarStorageKind = SSK_FLOATINGPOINT
-  outSv.scalar = MakeNaN()
-  ScalarClearImag(outSv)
-  ScalarSetExactInt64Valid(outSv, FALSE)
-  ScalarSetExactUInt64Valid(outSv, FALSE)
-  return outSv
+  dim tmp as EvalValue
+  ValueSetScalar(tmp, MakeNaN())
+  return tmp.scalarValue
 end function
 
 private function ClampScalarValue(byref sv as ScalarValue, byref minSv as ScalarValue, byref maxSv as ScalarValue) as ScalarValue
@@ -4598,7 +4594,7 @@ private function ClampScalarValue(byref sv as ScalarValue, byref minSv as Scalar
     return sv
   end if
 
-  if loKnown andalso v < minS then return minSv
+  if loKnown andalso v <= minS then return minSv
 
   if hiKnown andalso v > maxS then
     if (loKnown = FALSE) andalso (IsInfValue(v) = FALSE) then return sv
@@ -4619,11 +4615,15 @@ private function ClampScalarValue(byref sv as ScalarValue, byref minSv as Scalar
   return sv
 end function
 
+private function ApplyClampScalar(byref sv as ScalarValue, byref minSv as ScalarValue, byref maxSv as ScalarValue, byref outV as EvalValue) as Boolean
+  dim resultSv as ScalarValue = ClampScalarValue(sv, minSv, maxSv)
+  EvalScalarFromScalarValue(resultSv, outV)
+  return TRUE
+end function
+
 private function MapClampOverValue(byref valueV as EvalValue, byref minSv as ScalarValue, byref maxSv as ScalarValue, byref outV as EvalValue) as Boolean
   if valueV.kind = VK_SCALAR then
-    dim resultSv as ScalarValue = ClampScalarValue(valueV.scalarValue, minSv, maxSv)
-    EvalScalarFromScalarValue(resultSv, outV)
-    return TRUE
+    return ApplyClampScalar(valueV.scalarValue, minSv, maxSv, outV)
   end if
   if ubound(valueV.arr) < lbound(valueV.arr) then
     parseError = 1
@@ -4632,9 +4632,8 @@ private function MapClampOverValue(byref valueV as EvalValue, byref minSv as Sca
   ValueInitArrayLike(outV, lbound(valueV.arr), ubound(valueV.arr))
   dim i as Integer
   for i = lbound(valueV.arr) to ubound(valueV.arr)
-    dim resultSv as ScalarValue = ClampScalarValue(valueV.arr(i), minSv, maxSv)
     dim r as EvalValue
-    EvalScalarFromScalarValue(resultSv, r)
+    if ApplyClampScalar(valueV.arr(i), minSv, maxSv, r) = FALSE then return FALSE
     ValueSetArrayElemFromScalar(outV, i, r)
   next i
   return TRUE

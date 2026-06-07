@@ -2102,6 +2102,37 @@ private sub RunClampPreserveIntegerMetadataTests()
   print ""
 end sub
 
+private sub RunClampInvertedBoundsTests()
+  print "=== clamp inverted bounds (min > max) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 3) as String
+  dim okNeed(1 to 3) as String
+  okExprs(1) = "clamp(4,4,2)": okNeed(1) = "4"
+  okExprs(2) = "clamp(5,4,2)": okNeed(2) = "2"
+  okExprs(3) = "clamp(4.01,4,2)": okNeed(3) = "2"
+  dim ci as Integer
+  for ci = 1 to 3
+    if Parser_TryEvaluateEx(okExprs(ci), r, rt, ia) = FALSE then
+      print "[clamp-inv] FAIL: """ & okExprs(ci) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(ci)) = FALSE then
+      print "[clamp-inv] FAIL: """ & okExprs(ci) & """ got """ & rt & """ want """ & okNeed(ci) & """"
+      subFail += 1
+    else
+      subPass += 1
+    end if
+  next ci
+  g_passed += subPass
+  g_failed += subFail
+  print "clamp-inverted-bounds sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunClampNanBoundTests()
   print "=== clamp NaN bounds ==="
   dim subPass as Integer = 0
@@ -4027,6 +4058,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunRatioInExpressionTests()
   RunMinMaxPreserveWinnerTests()
   RunClampPreserveIntegerMetadataTests()
+  RunClampInvertedBoundsTests()
   RunClampNanBoundTests()
 
   RunExactIntegerDivisionTests()
