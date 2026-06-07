@@ -3527,7 +3527,10 @@ std::vector<TestCase> buildClampNanBoundCases() {
                  if (!expectEval(p, "clamp(nan,inf,inf)", "inf", why)) return false;
                  if (!expectEval(p, "clamp(nan,-inf,1)", "-inf", why)) return false;
                  if (!expectEval(p, "clamp(nan,-inf,inf)", "-inf", why)) return false;
-                 return expectEval(p, "clamp(inf,nan,2)", "2", why);
+                 if (!expectEval(p, "clamp(inf,nan,2)", "2", why)) return false;
+                 if (!expectEval(p, "clamp(-inf,-inf,nan)", "-inf", why)) return false;
+                 if (!expectEval(p, "clamp(inf,inf,nan)", "inf", why)) return false;
+                 return expectEval(p, "clamp(1,1,nan)", "1", why);
                }});
   return t;
 }

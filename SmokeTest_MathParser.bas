@@ -2110,8 +2110,8 @@ private sub RunClampNanBoundTests()
   dim rt as String
   dim ia as Boolean
 
-  dim okExprs(1 to 15) as String
-  dim okNeed(1 to 15) as String
+  dim okExprs(1 to 18) as String
+  dim okNeed(1 to 18) as String
   okExprs(1) = "clamp(nan,1,2)": okNeed(1) = "1"
   okExprs(2) = "clamp(nan,nan,2)": okNeed(2) = "nan"
   okExprs(3) = "clamp(nan,1,nan)": okNeed(3) = "1"
@@ -2127,8 +2127,11 @@ private sub RunClampNanBoundTests()
   okExprs(13) = "clamp(nan,-inf,1)": okNeed(13) = "-inf"
   okExprs(14) = "clamp(nan,-inf,inf)": okNeed(14) = "-inf"
   okExprs(15) = "clamp(inf,nan,2)": okNeed(15) = "2"
+  okExprs(16) = "clamp(-inf,-inf,nan)": okNeed(16) = "-inf"
+  okExprs(17) = "clamp(inf,inf,nan)": okNeed(17) = "inf"
+  okExprs(18) = "clamp(1,1,nan)": okNeed(18) = "1"
   dim ci as Integer
-  for ci = 1 to 15
+  for ci = 1 to 18
     if Parser_TryEvaluateEx(okExprs(ci), r, rt, ia) = FALSE then
       print "[clamp-nan] FAIL: """ & okExprs(ci) & """ -> " & Parser_GetLastError()
       subFail += 1

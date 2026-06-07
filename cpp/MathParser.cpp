@@ -12511,7 +12511,7 @@ MathParser::EvalValue MathParser::builtinApplyClamp(
     }
 
     if (loKnown && !hiKnown) {
-      if (v >= minS) {
+      if (v > minS) {
         return uncertainNan();
       }
     }

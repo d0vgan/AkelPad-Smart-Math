@@ -4611,7 +4611,7 @@ private function ClampScalarValue(byref sv as ScalarValue, byref minSv as Scalar
   end if
 
   if loKnown andalso (hiKnown = FALSE) then
-    if v >= minS then return ClampUncertainNanScalarValue()
+    if v > minS then return ClampUncertainNanScalarValue()
   end if
 
   if (loKnown = FALSE) andalso (hiKnown = FALSE) then return ClampUncertainNanScalarValue()
