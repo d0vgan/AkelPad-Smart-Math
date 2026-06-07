@@ -203,6 +203,159 @@ private:
     Count
   };
 
+  enum class AggregateFoldMode : std::uint8_t { Real, Complex, Time };
+
+  enum class BuiltinCategory : std::uint8_t {
+    Rand,
+    ScalarBinary,
+    BaseFormat,
+    Pow,
+    UnaryMath,
+    DegRad,
+    Aggregate,
+    ArrayTransform,
+    Sortby,
+    Ratio,
+    Factorial,
+    Factorint,
+    Mod,
+    TimeUnit,
+    PolarCart,
+    Log,
+    Unknown,
+  };
+
+  static constexpr BuiltinCategory kBuiltinCategory[static_cast<std::size_t>(BuiltinFunctionId::Count)] = {
+    BuiltinCategory::Rand,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::Pow,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::Log,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::DegRad,
+    BuiltinCategory::DegRad,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::ArrayTransform,
+    BuiltinCategory::Sortby,
+    BuiltinCategory::Ratio,
+    BuiltinCategory::ArrayTransform,
+    BuiltinCategory::ArrayTransform,
+    BuiltinCategory::ArrayTransform,
+    BuiltinCategory::Factorial,
+    BuiltinCategory::Factorint,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Mod,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::ScalarBinary,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::Aggregate,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::BaseFormat,
+    BuiltinCategory::TimeUnit,
+    BuiltinCategory::TimeUnit,
+    BuiltinCategory::TimeUnit,
+    BuiltinCategory::TimeUnit,
+    BuiltinCategory::TimeUnit,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::UnaryMath,
+    BuiltinCategory::PolarCart,
+    BuiltinCategory::PolarCart,
+    BuiltinCategory::UnaryMath,
+  };
+  static_assert(
+      sizeof(kBuiltinCategory) / sizeof(kBuiltinCategory[0]) ==
+          static_cast<std::size_t>(BuiltinFunctionId::Count),
+      "kBuiltinCategory size mismatch");
+
+  enum class ScalarExactKind : std::uint8_t {
+    Signed,
+    Unsigned,
+  };
+
+  enum class UnaryScalarKind : std::uint8_t {
+    None,
+    PrimaryTrig,
+    InverseTrig,
+    HyperbolicTrig,
+    InverseHyperbolicTrig,
+    Exp,
+    Ln,
+    Log10,
+    Sqrt,
+    Sqr,
+    Rounding,
+    Frac,
+    Abs,
+    Sign,
+    Deg,
+    Rad,
+  };
+
+  static constexpr UnaryScalarKind kUnaryScalarKind[static_cast<std::size_t>(BuiltinFunctionId::Count)] = {
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::PrimaryTrig,
+    UnaryScalarKind::PrimaryTrig, UnaryScalarKind::PrimaryTrig, UnaryScalarKind::InverseTrig,
+    UnaryScalarKind::InverseTrig, UnaryScalarKind::InverseTrig, UnaryScalarKind::HyperbolicTrig,
+    UnaryScalarKind::HyperbolicTrig, UnaryScalarKind::HyperbolicTrig, UnaryScalarKind::InverseHyperbolicTrig,
+    UnaryScalarKind::InverseHyperbolicTrig, UnaryScalarKind::InverseHyperbolicTrig, UnaryScalarKind::Exp,
+    UnaryScalarKind::None, UnaryScalarKind::Ln, UnaryScalarKind::Log10, UnaryScalarKind::Sqrt,
+    UnaryScalarKind::Sqr, UnaryScalarKind::Rounding, UnaryScalarKind::Frac, UnaryScalarKind::Abs,
+    UnaryScalarKind::Rounding, UnaryScalarKind::Rounding, UnaryScalarKind::Rounding,
+    UnaryScalarKind::Rounding, UnaryScalarKind::Sign, UnaryScalarKind::Deg, UnaryScalarKind::Rad,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None, UnaryScalarKind::None,
+    UnaryScalarKind::None, UnaryScalarKind::None,
+  };
+  static_assert(
+      sizeof(kUnaryScalarKind) / sizeof(kUnaryScalarKind[0]) ==
+          static_cast<std::size_t>(BuiltinFunctionId::Count),
+      "kUnaryScalarKind size mismatch");
+
   enum class OperatorNameId {
     Not = 0,
     And,
@@ -434,8 +587,45 @@ private:
   static std::string consumeLowerIdentToken(EvalContext& ctx);
   bool tryConsumeCommaArgSeparator(EvalContext& ctx, bool& hasComma) const;
   static void skipSpaces(EvalContext& ctx);
-  void setUnexpectedTokenError(EvalContext& ctx) const;
-  void setUnexpectedInputError(EvalContext& ctx) const;
+  enum class ParseErrorId : std::uint8_t {
+    UnexpectedComma,
+    IndexingRequiresArray,
+    MissingIndex,
+    ArrayIndexMustBeScalar,
+    ArrayIndexMustBeInteger,
+    ArrayIndexOutOfRange,
+    MissingClosingBracket,
+    MissingClosingParenthesis,
+    MismatchedClosingParenthesis,
+    MismatchedClosingBracket,
+    MismatchedClosingBrace,
+    BitwiseIntegerOperands,
+    ModuloIntegerOperands,
+    IncompatibleOperands,
+    InvalidHexLiteral,
+    InvalidBinaryLiteral,
+    InvalidOctalLiteral,
+    InternalUnaryOp,
+    InternalBinaryOp,
+    InternalEvalError,
+    NumericErrorInPowerOperation,
+    NumericErrorInExpression,
+    UserFunctionCallStackOverflow,
+    MaxEvaluationDepthReached,
+    InvalidNumericLiteral,
+    PercentageRequiresScalarValue,
+    FailedToBuildArrayLiteral,
+    InternalAggregateBuiltin,
+    InternalScalarBinaryBuiltin,
+    InternalUnaryMathBuiltin,
+    UnexpectedTokenAfterExpression,
+    ScalarOnlyExpressionEncounteredNon,
+    ParseFailed,
+    UnexpectedToken,
+    UnexpectedInput,
+    Count,
+  };
+  void setParseError(EvalContext& ctx, ParseErrorId id) const;
   void setMissingClosingParenLikeError(EvalContext& ctx) const;
   static bool consumeKeyword(EvalContext& ctx, const char* kw);
   bool tryConsumeLogicalBinaryOperator(EvalContext& ctx, OperatorNameId keywordId, char symbol) const;
@@ -511,13 +701,10 @@ private:
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
-  static bool tryApplyPowExactScalarsSignedInt(
-      long long valueInt,
-      const EvalValue::ScalarValue& leftS,
-      const EvalValue::ScalarValue& rightS,
-      EvalValue& outV);
-  static bool tryApplyPowExactScalarsUInt(
-      std::uint64_t inpU,
+  static bool tryApplyPowExactScalarsByKind(
+      ScalarExactKind kind,
+      long long valueSigned,
+      std::uint64_t valueUnsigned,
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
       EvalValue& outV);
@@ -593,6 +780,8 @@ private:
   static const BuiltinMetaRow kBuiltinMeta[];
   friend constexpr std::size_t builtinMetaRowCountForAssert();
   static BuiltinFlags getBuiltinFlags(BuiltinFunctionId id);
+  static BuiltinCategory getBuiltinCategory(BuiltinFunctionId id);
+  static void applyBuiltinFormatRenderMeta(BuiltinFunctionId id, EvalValue& out);
   static bool hasBuiltinFlag(BuiltinFunctionId id, BuiltinFlags flag);
   static constexpr uint8_t kBuiltinArityUnbounded = 255;
   static bool getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs);
@@ -639,15 +828,32 @@ private:
   bool trySetBareFunctionImmediateCloserError(EvalContext& ctx, const char* identStart) const;
   static bool passExactAbsFloatFactorGates(double f, bool strictAbsFAboveOne);
   static bool getExactRoundedIntFromFloatResult(double r, bool boundAbsResultTo2_53, long long& outI);
-  static bool verifyExactIntFloatOpResidueSigned(long long intI, double f, long long resultI, bool isMultiply);
-  static bool verifyExactIntFloatOpCrossMultiplySigned(long long intI, double f, long long resultI, long long ratA,
-                                                       long long ratB, bool isMultiply);
-  static bool tryPromoteExactIntFromFloatOpSigned(long long intI, double f, double r, bool isMultiply, EvalValue& outV);
-  static bool verifyExactIntFloatOpResidueUnsigned(std::uint64_t intU, double f, std::uint64_t resultU, bool isMultiply);
-  static bool verifyExactIntFloatOpCrossMultiplyUnsigned(std::uint64_t intU, std::uint64_t resultU, long long ratA,
-                                                         long long ratB, bool isMultiply);
-  static bool tryPromoteExactIntFromFloatOpUnsigned(std::uint64_t intU, double f, double r, bool isMultiply,
-                                                    EvalValue& outV);
+  static bool verifyExactIntFloatOpResidue(
+      ScalarExactKind kind,
+      long long intSigned,
+      std::uint64_t intUnsigned,
+      double f,
+      long long resultSigned,
+      std::uint64_t resultUnsigned,
+      bool isMultiply);
+  static bool verifyExactIntFloatOpCrossMultiply(
+      ScalarExactKind kind,
+      long long intSigned,
+      std::uint64_t intUnsigned,
+      double floatV,
+      long long resultSigned,
+      std::uint64_t resultUnsigned,
+      long long ratA,
+      long long ratB,
+      bool isMultiply);
+  static bool tryPromoteExactIntFromFloatOp(
+      ScalarExactKind kind,
+      long long intSigned,
+      std::uint64_t intUnsigned,
+      double f,
+      double r,
+      bool isMultiply,
+      EvalValue& outV);
   static bool tryPromoteExactDivisionByFloatDivisorSigned(
       long long intI, double f, double r, EvalValue& outV);
   static bool tryPromoteExactDivisionByFloatDivisorUnsigned(
@@ -656,6 +862,14 @@ private:
       long long intI, double f, double r, EvalValue& outV);
   static bool tryPromoteExactMultiplicationByFloatFactorUnsigned(
       std::uint64_t intU, double f, double r, EvalValue& outV);
+  static bool tryApplyExactIntFloatOpFromFloatSide(
+      ScalarExactKind kind,
+      bool isMultiply,
+      long long intSigned,
+      std::uint64_t intUnsigned,
+      double f,
+      double r,
+      EvalValue& outV);
   bool tryApplyExactIntegerDivisionFromQuotient(
       const EvalValue::ScalarValue& leftS,
       const EvalValue::ScalarValue& rightS,
@@ -769,9 +983,6 @@ private:
   void setIntegerValuesError(EvalContext& ctx, const std::string& fnName) const;
   void setScalarMinMaxError(EvalContext& ctx, const std::string& fnName) const;
   void setNonNegativeIntegerError(EvalContext& ctx, const std::string& fnName) const;
-  void setBitwiseIntegerOperandsError(EvalContext& ctx) const;
-  void setModuloIntegerOperandsError(EvalContext& ctx) const;
-  void setIncompatibleOperandsError(EvalContext& ctx) const;
   bool evalValuesHaveMismatchedArrayLengths(const EvalValue& left, const EvalValue& right) const;
   void setBinaryBuiltinBroadcastFailure(
       EvalContext& ctx,
@@ -779,37 +990,9 @@ private:
       const EvalValue& left,
       const EvalValue& right,
       int pairStatus) const;
-  void setUnexpectedCommaError(EvalContext& ctx) const;
-  void setIndexingRequiresArrayError(EvalContext& ctx) const;
-  void setMissingIndexError(EvalContext& ctx) const;
-  void setArrayIndexMustBeScalarError(EvalContext& ctx) const;
-  void setArrayIndexMustBeIntegerError(EvalContext& ctx) const;
-  void setArrayIndexOutOfRangeError(EvalContext& ctx) const;
-  void setMissingClosingBracketError(EvalContext& ctx) const;
-  void setMissingClosingParenthesisError(EvalContext& ctx) const;
   void setFunctionHintError(EvalContext& ctx, const std::string& hintText) const;
-  void setInvalidHexLiteralError(EvalContext& ctx) const;
-  void setInvalidBinaryLiteralError(EvalContext& ctx) const;
-  void setInvalidOctalLiteralError(EvalContext& ctx) const;
   void setInvalidPrefixedLiteralError(EvalContext& ctx, char prefixChar) const;
-  void setInternalUnaryOpError(EvalContext& ctx) const;
-  void setInternalBinaryOpError(EvalContext& ctx) const;
-  void setInternalEvalError(EvalContext& ctx) const;
-  void setNumericErrorInPowerOperation(EvalContext& ctx) const;
-  void setNumericErrorInExpression(EvalContext& ctx) const;
-  void setUserFunctionCallStackOverflowError(EvalContext& ctx) const;
   void setRecursiveUserFunctionCallError(EvalContext& ctx, const std::string& fnName) const;
-  void setMaxEvaluationDepthReachedError(EvalContext& ctx) const;
-  void setInvalidNumericLiteralError(EvalContext& ctx) const;
-  void setPercentageRequiresScalarValueError(EvalContext& ctx) const;
-  void setFailedToBuildArrayLiteralError(EvalContext& ctx) const;
-  void setInternalAggregateBuiltinError(EvalContext& ctx) const;
-  void setInternalScalarBinaryBuiltinError(EvalContext& ctx) const;
-  void setInternalUnaryMathBuiltinError(EvalContext& ctx) const;
-  void setUnexpectedTokenAfterExpressionError(EvalContext& ctx) const;
-  void setScalarOnlyExpressionEncounteredNonError(EvalContext& ctx) const;
-  void setParseFailedError(EvalContext& ctx) const;
-  void setStaticError(EvalContext& ctx, const char* errorText) const;
 
   void setError(EvalContext& ctx, const std::string& msg) const;
 
@@ -889,6 +1072,13 @@ private:
       const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
+  std::size_t countAggregateArgScalarItems(const std::vector<EvalValue>& args) const;
+  EvalValue aggregateFoldByMode(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args,
+      AggregateFoldMode mode) const;
   EvalValue builtinSortFamily(
       EvalContext& ctx,
       const std::string& fnName,
@@ -930,6 +1120,10 @@ private:
 #if SMARTMATH_COMPLEX_NUMBERS
   static bool tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::string& outText);
 #endif
+  EvalValue builtinTimeUnit(
+      EvalContext& ctx,
+      BuiltinFunctionId id,
+      const std::vector<EvalValue>& args) const;
   EvalValue builtinBaseFormat(
       EvalContext& ctx,
       const std::string& fnName,
@@ -982,6 +1176,24 @@ private:
       const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
+#if SMARTMATH_COMPLEX_NUMBERS
+  static EvalValue calcRoundingFnCartesian(
+      BuiltinFunctionId rid,
+      const EvalValue::ScalarValue& sv,
+      double ar,
+      double ai);
+  bool applyUnaryComplexMathOverlay(
+      BuiltinFunctionId id,
+      const EvalValue::ScalarValue& sv,
+      bool& trigOutOfRange,
+      bool& realUnaryOk,
+      EvalValue& outV) const;
+#endif
+  EvalValue applyUnaryBuiltin(
+      BuiltinFunctionId id,
+      const EvalValue::ScalarValue& sv,
+      bool& trigOutOfRange,
+      bool& realUnaryOk) const;
   EvalValue builtinUnaryMath(
       EvalContext& ctx,
       const std::string& fnName,
@@ -1034,6 +1246,9 @@ private:
                                             std::uint64_t den);
   static RawResult::CartesianScalar rawCartesianAssignReducedRational(long long num, std::uint64_t den);
   static void scalarLoadCartesian(const EvalValue::ScalarValue& s, double& re, double& im);
+  static void loadUnaryOperandCartesian(const EvalValue::ScalarValue& s, double& re, double& im) {
+    scalarLoadCartesian(s, re, im);
+  }
 #if SMARTMATH_COMPLEX_NUMBERS
   static EvalValue makeImaginaryUnit();
   static EvalValue makeScalarComplexFromDoubles(double re, double im);
@@ -1053,6 +1268,8 @@ private:
   static void complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
                                      double& outI);
   static bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static bool tryApplyExactCartesianBinaryOp(bool isAdd, const ExactCartesianComponent& a,
+                                             const ExactCartesianComponent& b, ExactCartesianComponent& out);
   static bool tryAddExactCartesianComponents(const ExactCartesianComponent& a,
                                              const ExactCartesianComponent& b, ExactCartesianComponent& out);
   static void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
@@ -1061,6 +1278,8 @@ private:
                                              const ExactCartesianComponent& b, ExactCartesianComponent& out);
 #endif
   static bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
+  static bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue& sv,
+                                                ExactCartesianComponent& c);
   static void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
   static bool tryQuotExactInt64(long long num, long long den, long long& quo);
   static void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
@@ -1167,6 +1386,11 @@ private:
       char op,
       EvalValue& outS) const;
 #endif
+  static bool tryApplyExactUInt64BinaryScalarOp(
+      char op,
+      std::uint64_t lu,
+      std::uint64_t ru,
+      EvalValue& outS);
   bool tryCombineBinaryScalars(
       EvalContext& ctx,
       char op,
