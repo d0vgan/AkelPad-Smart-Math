@@ -7072,10 +7072,9 @@ void MathParser::removeUserFunctionByName(const std::string& name) {
 }
 
 void MathParser::normalizeCallArgs(std::vector<EvalValue>& args) {
-  scratchExpandedArgs_.clear();
-  if (expandUnpackedArgs(args, scratchExpandedArgs_) > 0) {
-    args.swap(scratchExpandedArgs_);
-    scratchExpandedArgs_.clear();
+  std::vector<EvalValue> scratchExpandedArgs;
+  if (expandUnpackedArgs(args, scratchExpandedArgs) > 0) {
+    args.swap(scratchExpandedArgs);
   }
 }
 
@@ -7194,51 +7193,42 @@ MathParser::EvalValue MathParser::mapBinaryBroadcast(
       ok = false;
       return makeScalar(0);
     }
-    scratchBinaryOut_.clear();
-    scratchBinaryOut_.reserve(left.arr.size());
+    std::vector<EvalValue> out;
+    out.reserve(left.arr.size());
     for (std::size_t i = 0; i < left.arr.size(); ++i) {
       EvalValue outS;
       if (!scalarFn(left.arr[i], right.arr[i], outS)) {
         ok = false;
-        scratchBinaryOut_.clear();
         return makeScalar(0);
       }
-      scratchBinaryOut_.emplace_back(std::move(outS));
+      out.emplace_back(std::move(outS));
     }
-    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-    scratchBinaryOut_.clear();
-    return ret;
+    return makeArrayFromScalars(out);
   }
   if (left.kind == ValueKind::Array) {
-    scratchBinaryOut_.clear();
-    scratchBinaryOut_.reserve(left.arr.size());
+    std::vector<EvalValue> out;
+    out.reserve(left.arr.size());
     for (std::size_t i = 0; i < left.arr.size(); ++i) {
       EvalValue outS;
       if (!scalarFn(left.arr[i], right.scalarValue, outS)) {
         ok = false;
-        scratchBinaryOut_.clear();
         return makeScalar(0);
       }
-      scratchBinaryOut_.emplace_back(std::move(outS));
+      out.emplace_back(std::move(outS));
     }
-    EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-    scratchBinaryOut_.clear();
-    return ret;
+    return makeArrayFromScalars(out);
   }
-  scratchBinaryOut_.clear();
-  scratchBinaryOut_.reserve(right.arr.size());
+  std::vector<EvalValue> out;
+  out.reserve(right.arr.size());
   for (std::size_t i = 0; i < right.arr.size(); ++i) {
     EvalValue outS;
     if (!scalarFn(left.scalarValue, right.arr[i], outS)) {
       ok = false;
-      scratchBinaryOut_.clear();
       return makeScalar(0);
     }
-    scratchBinaryOut_.emplace_back(std::move(outS));
+    out.emplace_back(std::move(outS));
   }
-  EvalValue ret = makeArrayFromScalars(scratchBinaryOut_);
-  scratchBinaryOut_.clear();
-  return ret;
+  return makeArrayFromScalars(out);
 }
 
 #if SMARTMATH_TIME_VALUES
@@ -8061,6 +8051,7 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
 
   EvalContext sub;
   sub.evalDepth = ctx.evalDepth + 1;
+  sub.userFunctionCallStack = ctx.userFunctionCallStack;
   EvalValue v = runCompiledProgram(sub, compiledBody, &localVars, false);
   if (!sub.unknownVarsText.empty()) {
     setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
@@ -9013,39 +9004,42 @@ bool MathParser::programIsScalarOnly(const std::vector<AstStatement>& program) c
   return true;
 }
 
-void MathParser::bindExprVariableRefs(Expr& e) {
+void MathParser::bindExprVariableRefs(
+    Expr& e,
+    bool hasAssignments,
+    const std::unordered_map<std::string, EvalValue>& variables) {
   if (e.tag == Expr::Tag::Variable) {
-    if (compiledHasAssignments_) {
+    if (hasAssignments) {
       e.boundVariable = nullptr;
       return;
     }
-    auto it = variables_.find(e.name);
-    e.boundVariable = (it != variables_.end()) ? &it->second : nullptr;
+    auto it = variables.find(e.name);
+    e.boundVariable = (it != variables.end()) ? &it->second : nullptr;
     return;
   }
   if (e.child) {
-    bindExprVariableRefs(*e.child);
+    bindExprVariableRefs(*e.child, hasAssignments, variables);
   }
   if (e.left) {
-    bindExprVariableRefs(*e.left);
+    bindExprVariableRefs(*e.left, hasAssignments, variables);
   }
   if (e.right) {
-    bindExprVariableRefs(*e.right);
+    bindExprVariableRefs(*e.right, hasAssignments, variables);
   }
   for (auto& item : e.elements) {
     if (item) {
-      bindExprVariableRefs(*item);
+      bindExprVariableRefs(*item, hasAssignments, variables);
     }
   }
 }
 
-void MathParser::bindCompiledVariableRefs() {
-  for (auto& st : compiledProgram_) {
+void MathParser::bindCompiledVariableRefs(CompiledProgramState& state) {
+  for (auto& st : state.program) {
     if (st.expr) {
-      bindExprVariableRefs(*st.expr);
+      bindExprVariableRefs(*st.expr, state.hasAssignments, variables_);
     }
   }
-  boundVariablesVersion_ = variablesVersion_;
+  state.boundVariablesVersion = variablesVersion_;
 }
 
 MathParser::EvalValue MathParser::evalUnaryExpr(
@@ -12551,22 +12545,26 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     return makeScalar(0);
   }
 
-  for (const std::string& active : userFunctionCallStack_) {
+  std::vector<std::string> localUserFunctionCallStack;
+  std::vector<std::string>* const callStack =
+      ctx.userFunctionCallStack ? ctx.userFunctionCallStack : &localUserFunctionCallStack;
+
+  for (const std::string& active : *callStack) {
     if (active == fnName) {
       setRecursiveUserFunctionCallError(ctx, fnName);
       return makeScalar(0);
     }
   }
-  if (userFunctionCallStack_.size() >= static_cast<std::size_t>(kMaxEvalDepth)) {
+  if (callStack->size() >= static_cast<std::size_t>(kMaxEvalDepth)) {
     setParseError(ctx, ParseErrorId::UserFunctionCallStackOverflow);
     return makeScalar(0);
   }
-  userFunctionCallStack_.push_back(fnName);
+  callStack->push_back(fnName);
   struct UserFnCallPopGuard {
     std::vector<std::string>& stack;
     explicit UserFnCallPopGuard(std::vector<std::string>& s) : stack(s) {}
     ~UserFnCallPopGuard() { stack.pop_back(); }
-  } popGuard{userFunctionCallStack_};
+  } popGuard{*callStack};
 
   std::unordered_map<std::string, EvalValue> localVars;
   localVars.reserve(uf->params.size());
@@ -12595,6 +12593,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
 
   EvalContext sub;
   sub.evalDepth = ctx.evalDepth + 1;
+  sub.userFunctionCallStack = ctx.userFunctionCallStack;
   EvalValue v = runCompiledProgram(sub, uf->compiledProgram, &localVars, false);
   if (!sub.unknownVarsText.empty()) {
     setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
@@ -12676,24 +12675,27 @@ MathParser::EvalValue MathParser::evalFunctionCall(
   return makeScalar(0);
 }
 
-bool MathParser::prepareCompileParseSource(const std::string& mathExpression, EvalContext& ctx) {
-  compileParseStorage_.clear();
+bool MathParser::prepareCompileParseSource(
+    const std::string& mathExpression,
+    EvalContext& ctx,
+    std::string& ownedParseBuffer) {
+  ownedParseBuffer.clear();
   ctx.sourceExpr.clear();
   const char* text = mathExpression.data();
   const std::size_t len = mathExpression.size();
   const bool hadLineComment = parseSourceHasLineComment(text, len);
   if (hadLineComment || parseSourceNeedsTrailingSemicolonStrip(text, len)) {
     if (hadLineComment) {
-      compileParseStorage_ = stripLineComments(mathExpression);
+      ownedParseBuffer = stripLineComments(mathExpression);
     } else {
-      compileParseStorage_ = mathExpression;
+      ownedParseBuffer = mathExpression;
     }
-    stripTrailingSemicolonsForTopLevelInput(compileParseStorage_);
-    if (compileParseStorage_.empty()) {
+    stripTrailingSemicolonsForTopLevelInput(ownedParseBuffer);
+    if (ownedParseBuffer.empty()) {
       return false;
     }
-    ctx.sourceExpr = compileParseStorage_;
-    ctx.p = compileParseStorage_.c_str();
+    ctx.sourceExpr = ownedParseBuffer;
+    ctx.p = ownedParseBuffer.c_str();
   } else {
     if (len == 0) {
       return false;
@@ -12708,13 +12710,14 @@ bool MathParser::compile(const std::string& mathExpression) {
   resetCompileState();
 
   EvalContext ctx;
-  if (!prepareCompileParseSource(mathExpression, ctx)) {
+  std::string ownedParseBuffer;
+  if (!prepareCompileParseSource(mathExpression, ctx, ownedParseBuffer)) {
     if (parseSourceHasLineComment(mathExpression.data(), mathExpression.size())) {
-      compiledProgram_.clear();
-      compiledHasAssignments_ = false;
-      compiledScalarOnly_ = true;
-      hasCompiledProgram_ = true;
-      boundVariablesVersion_ = variablesVersion_;
+      compiled_.program.clear();
+      compiled_.hasAssignments = false;
+      compiled_.scalarOnly = true;
+      compiled_.ready = true;
+      compiled_.boundVariablesVersion = variablesVersion_;
       return true;
     }
     if (!mathExpression.empty()) {
@@ -12737,17 +12740,17 @@ bool MathParser::compile(const std::string& mathExpression) {
   }
   if (ctx.parseError) {
     lastError_ = ctx.errorText;
-    compiledProgram_.clear();
+    compiled_.program.clear();
     return false;
   }
-  compiledProgram_ = std::move(program);
-  compiledHasAssignments_ = std::any_of(
-      compiledProgram_.begin(),
-      compiledProgram_.end(),
+  compiled_.program = std::move(program);
+  compiled_.hasAssignments = std::any_of(
+      compiled_.program.begin(),
+      compiled_.program.end(),
       [](const AstStatement& st) { return st.kind == AstStatement::Kind::Assign; });
-  bindCompiledVariableRefs();
-  compiledScalarOnly_ = programIsScalarOnly(compiledProgram_);
-  hasCompiledProgram_ = true;
+  bindCompiledVariableRefs(compiled_);
+  compiled_.scalarOnly = programIsScalarOnly(compiled_.program);
+  compiled_.ready = true;
   return true;
 }
 
@@ -12755,42 +12758,43 @@ void MathParser::evaluate() {
   resetEvaluateState();
 
   EvalContext ctx;
+  std::vector<std::string> userFunctionCallStack;
+  ctx.userFunctionCallStack = &userFunctionCallStack;
   if (!prepareEvaluate(ctx)) {
     return;
   }
-  if (compiledProgram_.empty()) {
+  if (compiled_.program.empty()) {
     return;
   }
-  EvalValue out = runCompiledProgram(ctx, compiledProgram_, nullptr, compiledScalarOnly_);
+  EvalValue out = runCompiledProgram(ctx, compiled_.program, nullptr, compiled_.scalarOnly);
   finalizeEvaluate(ctx, std::move(out));
 }
 
 void MathParser::resetCompileState() {
   hasResult_ = false;
   lastError_.clear();
-  compiledProgram_.clear();
-  hasCompiledProgram_ = false;
-  compiledScalarOnly_ = false;
-  compiledHasAssignments_ = false;
-  boundVariablesVersion_ = static_cast<std::size_t>(-1);
+  compiled_.program.clear();
+  compiled_.ready = false;
+  compiled_.scalarOnly = false;
+  compiled_.hasAssignments = false;
+  compiled_.boundVariablesVersion = static_cast<std::size_t>(-1);
 }
 
 void MathParser::resetEvaluateState() {
   hasResult_ = false;
   lastError_.clear();
   lastResult_ = makeScalar(0);
-  userFunctionCallStack_.clear();
 }
 
 bool MathParser::prepareEvaluate(EvalContext& ctx) {
   ctx.start = nullptr;
   ctx.p = nullptr;
-  if (!hasCompiledProgram_) {
+  if (!compiled_.ready) {
     lastError_ = STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR;
     return false;
   }
-  if (boundVariablesVersion_ != variablesVersion_) {
-    bindCompiledVariableRefs();
+  if (compiled_.boundVariablesVersion != variablesVersion_) {
+    bindCompiledVariableRefs(compiled_);
   }
   return true;
 }

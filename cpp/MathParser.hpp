@@ -553,6 +553,16 @@ private:
     std::string unknownFuncsText;
     /** Params of UDFs seen earlier in the program currently being compiled (not yet in userFunctions_). */
     const std::unordered_map<std::string, std::vector<std::string>>* compilingUserFunctionParams = nullptr;
+    /** Shared stack for the current top-level evaluate(); null outside evaluate(). */
+    std::vector<std::string>* userFunctionCallStack = nullptr;
+  };
+
+  struct CompiledProgramState {
+    std::vector<AstStatement> program;
+    bool ready = false;
+    bool scalarOnly = false;
+    bool hasAssignments = false;
+    std::size_t boundVariablesVersion = static_cast<std::size_t>(-1);
   };
 
   EvalValue lastResult_;
@@ -561,24 +571,17 @@ private:
   std::unordered_map<std::string, EvalValue> variables_;
   std::vector<UserFunction> userFunctions_;
   std::unordered_map<std::string, std::size_t> userFunctionIndex_;
-  /** Active user-defined function names during one evaluate(); detects mutual recursion. */
-  std::vector<std::string> userFunctionCallStack_;
-  std::vector<AstStatement> compiledProgram_;
-  mutable std::vector<EvalValue> scratchExpandedArgs_;
-  mutable std::vector<EvalValue> scratchBinaryOut_;
+  CompiledProgramState compiled_;
   std::size_t variablesVersion_ = 0;
-  std::size_t boundVariablesVersion_ = static_cast<std::size_t>(-1);
-  bool compiledHasAssignments_ = false;
-  bool hasCompiledProgram_ = false;
-  bool compiledScalarOnly_ = false;
   bool supportComplexNumbers_ = false;
   bool supportTimeValues_ = true;
   bool supportLambdaFunctions_ = true;
   std::unique_ptr<Expr> (MathParser::*parseSortbyKeyArgImpl_)(EvalContext&);
-  /** Owned compile buffer when input needs comment/semicolon stripping; otherwise compile borrows input. */
-  std::string compileParseStorage_;
 
-  bool prepareCompileParseSource(const std::string& mathExpression, EvalContext& ctx);
+  bool prepareCompileParseSource(
+      const std::string& mathExpression,
+      EvalContext& ctx,
+      std::string& ownedParseBuffer);
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
   static bool isIdentChar(char c);
@@ -1231,8 +1234,8 @@ private:
   void removeVariableByName(const std::string& name);
   void removeUserFunctionByName(const std::string& name);
   void normalizeCallArgs(std::vector<EvalValue>& args);
-  void bindExprVariableRefs(Expr& e);
-  void bindCompiledVariableRefs();
+  static void bindExprVariableRefs(Expr& e, bool hasAssignments, const std::unordered_map<std::string, EvalValue>& variables);
+  void bindCompiledVariableRefs(CompiledProgramState& state);
 
   static EvalValue makeScalar(double v);
   static EvalValue makeScalarMaybeExact(double v);
