@@ -3438,14 +3438,14 @@ std::vector<TestCase> buildRatioInExpressionCases() {
   t.push_back({"ratio/expr: structure-preserving and sort paths",
                [](std::string& why) {
                  MathParser p;
-                 if (!expectEval(p, "reverse(ratio(2),ratio(1))", "(1, 2)", why)) return false;
-                 if (!expectEval(p, "unpack(ratio(1),ratio(2))", "(1, 2)", why)) return false;
+                 if (!expectEval(p, "reverse(ratio(1/2),ratio(1))", "(1, 1/2)", why)) return false;
+                 if (!expectEval(p, "unpack(ratio(1),ratio(1/2))", "(1, 1/2)", why)) return false;
                  if (!expectEval(p, "unique(ratio(1),ratio(0.5),ratio(1))", "(1, 1/2)", why)) return false;
-                 if (!expectEval(p, "sort((ratio(3),ratio(1),ratio(2)))", "(1, 2, 3)", why)) return false;
+                 if (!expectEval(p, "sort((ratio(3),ratio(1),ratio(1/2)))", "(1/2, 1, 3)", why)) return false;
 #if SMARTMATH_LAMBDA_FUNCTIONS
-                 if (!expectEval(p, "sortby((ratio(3),ratio(1)),x:x)", "(1, 3)", why)) return false;
+                 if (!expectEval(p, "sortby((ratio(3),ratio(1/2)),x:x)", "(1/2, 3)", why)) return false;
 #endif
-                 if (!expectEval(p, "sortby((ratio(3),ratio(1)),abs)", "(1, 3)", why)) return false;
+                 if (!expectEval(p, "sortby((ratio(3),ratio(1/2)),abs)", "(1/2, 3)", why)) return false;
                  if (!expectEval(p, "(ratio(0.5),ratio(0.25))", "(1/2, 1/4)", why)) return false;
 #if SMARTMATH_COMPLEX_NUMBERS
                  p.setSupportComplexNumbers(true);
