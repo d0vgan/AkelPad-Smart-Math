@@ -893,6 +893,8 @@ private:
   bool trimmedStmtIsBareFunctionOrUdfName(const std::string& stmt) const;
   bool trimmedStmtIsBareFunctionOrUdfName(const char* begin, const char* end) const;
   void stripTrailingSemicolonsForTopLevelInput(std::string& s) const;
+  static bool identMayBeBareBuiltinName(const char* begin, const char* end);
+  static bool identMayBeBareBuiltinName(const std::string& ident);
   bool trySetMissingFunctionCallError(
       EvalContext& ctx,
       const std::string& ident,

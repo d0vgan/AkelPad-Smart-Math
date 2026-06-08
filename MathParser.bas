@@ -3672,7 +3672,7 @@ private function IdentMayBeBareBuiltinName(byref nam as String) as Boolean
     end if
   next i
   if hasDigitOrUnderscore = FALSE then return TRUE
-  return (lcase(nam) = FB_STR_ATAN2)
+  return (TryFindBuiltinFunctionId(nam) >= 0)
 end function
 
 private function TrimmedStmtIsBareBuiltinOrUdfName(byref stmt as String) as Boolean

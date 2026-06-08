@@ -1641,19 +1641,6 @@ bool identHasDigitOrUnderscore(const char* begin, const char* end) {
   return false;
 }
 
-// Builtins are lowercase a-z except atan2. Skip hash lookup for other idents with digit/_ (e.g. myconst1).
-bool identMayBeBareBuiltinName(const char* begin, const char* end) {
-  if (!identHasDigitOrUnderscore(begin, end)) {
-    return true;
-  }
-  const std::size_t len = static_cast<std::size_t>(end - begin);
-  return len == 5 && begin[0] == 'a' && begin[1] == 't' && begin[2] == 'a' && begin[3] == 'n' && begin[4] == '2';
-}
-
-bool identMayBeBareBuiltinName(const std::string& ident) {
-  return identMayBeBareBuiltinName(ident.data(), ident.data() + ident.size());
-}
-
 void assignLowerIdentFromRange(std::string& out, const char* begin, const char* end) {
   out.clear();
   out.reserve(static_cast<std::size_t>(end - begin));
@@ -2466,6 +2453,21 @@ void MathParser::stripTrailingSemicolonsForTopLevelInput(std::string& s) const {
   }
 }
 
+// Builtins are lowercase a-z except names with digits (atan2, log10). Skip hash lookup for other idents with digit/_ (e.g. myconst1).
+bool MathParser::identMayBeBareBuiltinName(const char* begin, const char* end) {
+  if (!identHasDigitOrUnderscore(begin, end)) {
+    return true;
+  }
+  std::string low;
+  assignLowerIdentFromRange(low, begin, end);
+  BuiltinFunctionId bid = BuiltinFunctionId::Count;
+  return tryGetBuiltinFunctionId(low, bid);
+}
+
+bool MathParser::identMayBeBareBuiltinName(const std::string& ident) {
+  return identMayBeBareBuiltinName(ident.data(), ident.data() + ident.size());
+}
+
 bool MathParser::trySetMissingFunctionCallError(
     EvalContext& ctx,
     const std::string& ident,
@@ -2503,7 +2505,7 @@ bool MathParser::trySetIncompleteOpenedFunctionCallHint(
   if (*ctx.p != '\0') {
     return false;
   }
-  if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, fnIdentStart)) {
+  if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, fnIdentStart)) {
     return true;
   }
   if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
@@ -2569,7 +2571,7 @@ bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& id
     return true;
   }
   if (!ident.empty()) {
-    if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, nullptr)) {
+    if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, nullptr)) {
       return true;
     }
     if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
@@ -8193,7 +8195,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
   ctx.p = identEnd;
   skipSpaces(ctx);
   if (*ctx.p != '(') {
-    if (!identMayBeBareBuiltinName(identStart, identEnd) && userFunctionIndex_.empty()
+    if (!MathParser::identMayBeBareBuiltinName(identStart, identEnd) && userFunctionIndex_.empty()
         && ctx.compilingUserFunctionParams == nullptr) {
       auto v = std::make_unique<Expr>();
       v->tag = Expr::Tag::Variable;
@@ -8206,7 +8208,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
       setParseError(ctx, ParseErrorId::UnexpectedToken);
       return nullptr;
     }
-    if (identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, identStart)) {
+    if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, identStart)) {
       return nullptr;
     }
     if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)

@@ -2943,10 +2943,12 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "_=(1,2,3,4); ff(a)=(a[1],a[-1]); ff(_)", "(2,4)", why)) return false;
                 return expectEval(p, "t=(1,2,3,4,5,6); fff(a)=(a[0],a[-3]); fff(t)", "(1,4)", why);
               }});
-  t.push_back({"regression/ident with digit: atan2 bare hint and UDF f1", [](std::string& why) {
+  t.push_back({"regression/ident with digit: atan2 log10 bare hint and UDF f1", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "atan2", "function:", why)) return false;
                 if (!expectEvalErrorContains(p, "atan2+1", "unknown variable: atan2", why)) return false;
+                if (!expectEvalErrorContains(p, "log10", "function: log10(value)", why)) return false;
+                if (!expectEvalErrorContains(p, "log10+1", "unknown variable: log10", why)) return false;
                 if (!expectEval(p, "f1(x)=x+1", "0", why)) return false;
                 if (!expectEvalErrorContains(p, "f1", "user-defined function:", why)) return false;
                 if (!expectEvalErrorContains(p, "f1+2", "unknown variable: f1", why)) return false;
@@ -3043,6 +3045,8 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "abs (", "function: abs(value)", why)) return false;
                 if (!expectEvalErrorContains(p, "log(", "function: log(value, base)", why)) return false;
                 if (!expectEvalErrorContains(p, "log (", "function: log(value, base)", why)) return false;
+                if (!expectEvalErrorContains(p, "log10(", "function: log10(value)", why)) return false;
+                if (!expectEvalErrorContains(p, "log10 (", "function: log10(value)", why)) return false;
                 if (!expectEvalErrorContains(
                         p, "sortby((1,2,3), f(", "sortby expects exactly one function", why))
                   return false;

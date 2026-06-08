@@ -1834,16 +1834,18 @@ private sub RunIncompleteFunctionCallHintTests()
     subFail += 1
   end if
 
-  dim hintExprs(1 to 6) as String
-  dim hintNeed(1 to 6) as String
+  dim hintExprs(1 to 8) as String
+  dim hintNeed(1 to 8) as String
   hintExprs(1) = "f(": hintNeed(1) = "user-defined function: f(x)"
   hintExprs(2) = "f (": hintNeed(2) = "user-defined function: f(x)"
   hintExprs(3) = "abs(": hintNeed(3) = "function: abs(value)"
   hintExprs(4) = "abs (": hintNeed(4) = "function: abs(value)"
   hintExprs(5) = "log(": hintNeed(5) = "function: log(value, base)"
   hintExprs(6) = "log (": hintNeed(6) = "function: log(value, base)"
+  hintExprs(7) = "log10(": hintNeed(7) = "function: log10(value)"
+  hintExprs(8) = "log10 (": hintNeed(8) = "function: log10(value)"
   dim hi as Integer
-  for hi = 1 to 6
+  for hi = 1 to 8
     if Parser_TryEvaluateEx(hintExprs(hi), r, rt, ia) then
       print "[open-paren-hint] FAIL: """ & hintExprs(hi) & """ expected error containing """ & hintNeed(hi) & """ but got """ & rt & """"
       subFail += 1
@@ -2647,7 +2649,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1288) as SmokeCase
+  dim tests(1 to 1290) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3990,6 +3992,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1286).expr = "ratio(6/(10,20,30))": tests(1286).expected = "(3/5, 3/10, 1/5)" ' array ratio
   tests(1287).expr = "sort(ratio(6/(10,20,30)))": tests(1287).expected = "(1/5, 3/10, 3/5)" ' sorted array ratio
   tests(1288).expr = "unique(abs((2,-1,2,3,-3,1)))": tests(1288).expected = "(2, 1, 3)" ' unique elements
+  tests(1289).expr = "log10": tests(1289).expectedErrContains = "function: log10(value)" ' [hint] digit in builtin name
+  tests(1290).expr = "log10+1": tests(1290).expectedErrContains = "unknown variable: log10" ' [hint] not bare at expression tail
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
