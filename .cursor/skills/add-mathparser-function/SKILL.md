@@ -162,6 +162,26 @@ When a build or compile step fails (`Compile.bat`, `Compile32.bat`, `Compile64.b
   8. API changes (renamed helpers, moved declarations, parity drift between Basic and C++)
 - **Hard loop limit:** after **3** failed fix-compile iterations on the same primary error, stop. Summarize available facts (first error text, files changed, hypotheses tried, rollback status) and **ask for human review** instead of inventing workarounds or disabling checks.
 
+### Test and guard execution order (Required)
+
+When running build/test gates or guard batches, **always run sequentially — never in parallel**:
+
+- Do **not** launch multiple test builds or test executables at the same time (no parallel shell/tool calls for compile+run steps).
+- Finish one gate completely (compile success, then run success, exit code 0) before starting the next.
+
+**Basic before C++ (mandatory when both sides are required):**
+
+- C++ parser/test compilation and execution must **not** overlap with Basic parser/test compilation and execution.
+- When both Basic and C++ gates are needed, run **all required Basic gates first** — each to completion — and only then start C++:
+  1. `Compile.bat` (when required)
+  2. `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (when required; run these one after the other, not together)
+  3. `RunSmokeTests.bat` (when required)
+  4. After every required Basic gate above has compiled and passed, run `cpp/BuildTests_vc2022_x64.bat`, then `cpp/MathParserTests.exe`
+- If any Basic gate fails, fix it and rerun that gate before starting C++ build/test.
+- Do not begin `cpp/BuildTests_vc2022_x64.bat` while a Basic compile or Basic test executable is still running or has not yet passed.
+
+Within a single language, keep the same sequential discipline (for example: build smoke tests, wait for success, then run `RunSmokeTests.bat`; build C++ tests, wait for success, then run `cpp/MathParserTests.exe`).
+
 ### Integer Metadata Preservation Rule (Required)
 
 Apply this rule for parser/runtime logic in both Basic and C++:
@@ -259,6 +279,7 @@ Run **both** batches from the repo root whenever **Basic implementation source**
 
 **Shared rules:**
 
+- Run formatter and copy regression batches **one after the other**, not in parallel (see **Test and guard execution order (Required)**).
 - These gates are **independent** of the DLL smoke build: run them even if `Compile.bat` failed so regressions stay visible—after fixing `Compile.bat` blockers, rerun `Compile.bat` and **both** regression batches.
 - If a batch is unavailable or fails due to environment/toolchain issues (for example FreeBASIC path), report the exact blocker and include the last relevant output.
 - If none of the trigger files above changed (docs-only / skills-only / C++-only with no Basic edits), skip this entire step 3.1.
@@ -314,6 +335,8 @@ Tests must encode **correct mathematical and structural behavior**, not tolerate
 
 ### 5) Build And Run Smoke Tests
 
+Follow **Test and guard execution order (Required)** — Basic smoke tests must compile and pass before any C++ build/test gate starts.
+
 - Run Basic smoke-test build/run only when **Basic test source files** were changed.
   - Treat test source as files like `SmokeTest_MathParser.bas` (and any other Basic test files if present).
 - Also run Basic smoke-test build/run when `MathParser.bas` changed (primary parser-change trigger).
@@ -333,7 +356,8 @@ Apply this step only when **C++ parser or C++ test source files** are changed (f
 
 - If neither C++ parser source nor C++ test source changed, skip this entire C++ build/test gate (do not run `cpp/BuildTests_vc2022_x64.bat`, do not run `cpp/MathParserTests.exe`).
 
-- Run `cpp/BuildTests_vc2022_x64.bat`.
+- **Prerequisite:** when Basic gates are also required (steps 3, 3.1, and/or 5), every required Basic gate must have **already compiled and passed** before starting this step — see **Test and guard execution order (Required)**.
+- Run `cpp/BuildTests_vc2022_x64.bat` only after any required Basic gates are complete; do not run it in parallel with Basic compiles or test executables.
 - If build fails, treat as a blocker and follow **Compile and build error discipline (Required)** (same rules for MSVC/linker output).
 - Rerun `cpp/BuildTests_vc2022_x64.bat` after each minimal fix until build succeeds or the hard loop limit is reached.
 - Once build succeeds, run produced test binary: `cpp/MathParserTests.exe`.
@@ -358,11 +382,11 @@ For each affected item, produce one of two outcomes:
 - **No-op with justification**: the other side already has *provably equivalent behavior*, so porting is unnecessary. (Not acceptable when behavior would be missing/incorrect.)
 
 If claiming **No-op with justification**, add/adjust regression tests to prove behavior parity where practical.
-- After reflection, run only the checks relevant to changed source categories:
+- After reflection, run only the checks relevant to changed source categories, **in order and sequentially** per **Test and guard execution order (Required)**:
   - If Basic parser source changed: run `Compile.bat` until passing.
-  - If Basic implementation source changed (step 3 trigger set) or formatter/copy test sources changed: run `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` until passing (step 3.1).
+  - If Basic implementation source changed (step 3 trigger set) or formatter/copy test sources changed: run `RunFormatterTests.bat`, then `RunCopyRegressionTests.bat`, until both pass (step 3.1).
   - If Basic test source changed: run Basic smoke-test build/run (`RunSmokeTests.bat`) until passing.
-  - If C++ parser or C++ test source changed: run `cpp/BuildTests_vc2022_x64.bat`, then `cpp/MathParserTests.exe`, until passing.
+  - **Only after all required Basic gates above pass:** if C++ parser or C++ test source changed, run `cpp/BuildTests_vc2022_x64.bat`, then `cpp/MathParserTests.exe`, until passing.
 - Treat any parity mismatch, build failure, or test failure as blocker; analyze root cause, fix, rebuild, rerun, and repeat until all required sides pass.
 
 ### 5.3) Change Detection Examples (What Counts As Source Changes)
@@ -482,7 +506,7 @@ Same as for functions: `Compile.bat`, `RunFormatterTests.bat` and `RunCopyRegres
 Before finishing, verify:
 - Implementation, signature hints, tests, and `USAGE_AND_SYNTAX.md` are consistent with the final behavior.
 - If `Compile.bat` was edited, `Compile32.bat` and `Compile64.bat` list the same Basic modules in the same order (step 3 parity rule).
-- Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (Basic implementation or formatter/copy test sources — step 3.1), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests).
+- Required build/test gates ran based on what changed: `Compile.bat` (Basic parser), `RunFormatterTests.bat` and `RunCopyRegressionTests.bat` (Basic implementation or formatter/copy test sources — step 3.1), `RunSmokeTests.bat` (Basic tests or `MathParser.bas` and regression gates), and `cpp/BuildTests_vc2022_x64.bat` + `cpp/MathParserTests.exe` (C++ parser/tests). All gates ran **sequentially**; when both Basic and C++ gates were required, every Basic gate passed before C++ build/test started (**Test and guard execution order (Required)**).
 - Build failures were handled per **Compile and build error discipline (Required)** (first error, minimal fix, rollback on no improvement, no compiler-blame without checklist, human review after 3 failed iterations).
 - Cross-language porting/parity is complete for **all** relevant code/test change types: Basic <-> C++ implementations and tests are mirrored, with no mismatches (skip only allowed when `cpp/MathParser.cpp` is missing, and it must be explicitly noted).
 - Helper reuse and string-constant naming rules were followed in both languages; `FunctionNames` / `OperatorNames` remain the single canonical sources.

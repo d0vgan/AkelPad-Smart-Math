@@ -25,6 +25,7 @@ Use its parity/build/test rules as mandatory constraints for all refactor work, 
 
 - **Protect uncommitted work before editing (Required)** in that skill — mandatory backup of local changes before the first edit; never overwrite uncommitted files via `git checkout` / `git restore` without explicit user approval.
 - **Compile and build error discipline (Required)** in that skill.
+- **Test and guard execution order (Required)** in that skill — run all test builds and executables sequentially; when both Basic and C++ gates are required, complete every required Basic compile/run gate before starting C++ build/test.
 
 ## Protect uncommitted work before editing (Required)
 
@@ -88,7 +89,7 @@ Focus on these goals:
 
 4. **Apply changes in small slices**
    - Refactor one logical cluster at a time.
-   - Compile/test after each cluster when practical.
+   - Compile/test after each cluster when practical; run gates **sequentially** per **Test and guard execution order (Required)** (Basic compile/run gates before C++ when both are needed).
    - On compile failure, use **Compile and build error discipline (Required)** — do not stack multiple refactor hypotheses in one edit.
 
 5. **Dead code removal**
@@ -107,13 +108,17 @@ For each removal, record short justification in final report.
 
 ## Validation gates (mandatory)
 
-Run relevant gates from `add-mathparser-function` skill:
+Run relevant gates from `add-mathparser-function` skill, following **Test and guard execution order (Required)** there:
 
-- Basic parser changed: `Compile.bat` (if required by that skill).
-- Basic parser/tests changed: `RunSmokeTests.bat`.
-- C++ parser/tests changed:
-  - `cpp/BuildTests_vc2022_x64.bat`
-  - `cpp/MathParserTests.exe`
+- **Never** compile or run Basic and C++ test gates in parallel.
+- Run each gate sequentially: one compile+run cycle must finish successfully before the next starts.
+- When both sides are required, run Basic gates first (each to completion), then C++:
+  - Basic parser changed: `Compile.bat` (if required by that skill).
+  - Basic parser/tests changed: `RunSmokeTests.bat`.
+  - **After all required Basic gates pass:**
+  - C++ parser/tests changed:
+    - `cpp/BuildTests_vc2022_x64.bat`
+    - `cpp/MathParserTests.exe`
 
 All required gates must pass before completion.
 

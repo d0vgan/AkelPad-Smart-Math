@@ -52,7 +52,7 @@ The full expression language reference (functions, operators, precedence, arrays
 
 ### Development
 1. It is highly recommended to use an AI-assistant for any further development and bug fixing.
-2. Use the `add-mathparser-function` skill (under ".cursor\skills\add-mathparser-function") to add new functions or operators. The prompt to AI will be similar to "using the `add-mathparser-function` skill, implement functionality which ... (description of the functionality)". In such way, the new code will automatically follow the existing code structure and paths, reuse the existing helpers, will be covered with new tests and will be reflected in the documentation ("USAGE_AND_SYNTAX.md").
+2. Use the `add-mathparser-function` skill (under ".cursor\skills\add-mathparser-function") to add new functions or operators. The prompt to AI will be similar to "using the `add-mathparser-function` skill, implement functionality which ... (description of the functionality)". In such way, the new code will automatically follow the existing code structure and paths, reuse the existing helpers, will be covered with new tests and will be reflected in the documentation ("USAGE_AND_SYNTAX.md"). To have more clarity and control of what AI is going to do, add the following to the prompt: "If you have any questions or concerns, ask explicitly. Don't make assumptions".
 3. Use the `parser-reusability-cleanup` skill (under ".cursor\skills\parser-reusability-cleanup") for code efficiency, maintenance, refactoring and cleanup. The prompt to AI may be similar to "using the `parser-reusability-cleanup` skill, what would you refactor, simplify or optimize in the parser to either improve the performance or to reduce the code base?".
 
 ### 🙏 Special Thanks
