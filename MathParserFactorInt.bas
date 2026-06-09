@@ -1,4 +1,4 @@
-' Factorint implementation (#included from MathParser.bas; slice 8.1).
+' Factorint implementation (#included from MathParser.bas).
 #ifndef __MATHPARSER_FACTORINT_BODY__
 #define __MATHPARSER_FACTORINT_BODY__
 

@@ -3116,7 +3116,9 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "qqq(x)=polar+2", "unknown variable: polar", why)) return false;
                 if (!expectEvalErrorContains(p, "qqq(x)=sin+cos", "unknown variable: sin", why)) return false;
 #if SMARTMATH_TIME_VALUES
-                if (!expectEvalErrorContains(p, "sortby((1:30,1:00),x:polar)", "function:", why)) return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1:30,1:00),x:polar)", "unknown variable: polar", why))
+                  return false;
                 if (!expectEvalErrorContains(
                         p, "sortby((1:30,1:00),x:polar+2)", "unknown variable: polar", why))
                   return false;
@@ -3135,10 +3137,41 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 MathParser pg;
                 if (!expectEvalErrorContains(
-                        pg, "g(x)=x; sortby((3,1,2),x:g)", "user-defined function: g(x)", why))
+                        pg, "g(x)=x; sortby((3,1,2),x:g)", "unknown variable: g", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        pg, "g(x)=x; sortby((3,1,2),x:g+1)", "unknown variable: g", why))
                   return false;
                 return expectEvalErrorContains(
-                    pg, "g(x)=x; sortby((3,1,2),x:g+1)", "unknown variable: g", why);
+                    pg, "sortby((1,2,3),x:x+sin)", "unknown variable: sin", why);
+              }});
+#endif
+  t.push_back({"regression/bare function hint at expression end", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "1+sin", "function: sin(angle)", why)) return false;
+                if (!expectEvalErrorContains(p, "1+sum", "function: sum(...)", why)) return false;
+                if (!expectEvalErrorContains(p, "(1+2)/sum", "function: sum(...)", why)) return false;
+                if (!expectEvalErrorContains(p, "1+sin(", "function: sin(angle)", why)) return false;
+                if (!expectEvalErrorContains(p, "1+sin(rad(", "function: rad(...)", why)) return false;
+                if (!expectEvalErrorContains(
+                        p, "1+sin(rad(45)", "missing closing parenthesis", why))
+                  return false;
+                if (!expectEvalErrorContains(p, "sortby((1,2,3, abs", "function: abs(value)", why))
+                  return false;
+                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
+              }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  t.push_back({"regression/sortby inline lambda key at EOF missing closing paren", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1,2,3),x:x", "missing closing parenthesis", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1,2,3),x:x+sin", "missing closing parenthesis", why))
+                  return false;
+                return expectEvalErrorContains(
+                    p, "sortby((1,2,3),x:x+sin(", "missing closing parenthesis", why);
               }});
 #endif
   t.push_back({"regression/late binding unresolved referenced UDF reports unknown function", [](std::string& why) {
@@ -4297,8 +4330,8 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "seconds((0:30,1:00))", "(30, 60)"} ,
     {ParityBasicCase::Kind::Expected, "hours((1:00:00,0:30:00))", "(1, 0.5)"} ,
     {ParityBasicCase::Kind::Expected, "minutes((0:30,1:00))", "(0.5, 1)"} ,
-    {ParityBasicCase::Kind::ErrorContains, "milliseconds((0:30,5))", "time value"} ,
-    {ParityBasicCase::Kind::ErrorContains, "milliseconds(5)", "time value"} ,
+    {ParityBasicCase::Kind::ErrorContains, "milliseconds((5,6))", "milliseconds() expects a time value"} ,
+    {ParityBasicCase::Kind::ErrorContains, "milliseconds(5)", "milliseconds() expects a time value"} ,
     {ParityBasicCase::Kind::Expected, "sum(0:30,1:00)", "01:30"} ,
     {ParityBasicCase::Kind::ErrorContains, "1:00*1:00", "incompatible operands"} ,
     {ParityBasicCase::Kind::ErrorContains, "product(1:00,0:30)", "incompatible operands"} ,
@@ -4562,18 +4595,19 @@ std::vector<TestCase> buildTimeValuesSupportOptionCases() {
                    const char* expr;
                    const char* errSubstr;
                  } kErrRows[] = {
-                     {"sum(0:30, Inf, 1:00)", "time value"},
-                     {"avg(0:30, Inf, 1:30)", "time value"},
-                     {"mean(0:20, Inf, 1:00)", "time value"},
-                     {"min(0:45, Inf, 1:30)", "time value"},
-                     {"max(0:45, Inf, 1:30)", "time value"},
-                     {"median(0:30, Inf, 1:00)", "time value"},
+                     {"sum(0:30, Inf, 1:00)", "sum(): time values cannot be mixed with non-time values"},
+                     {"avg(0:30, Inf, 1:30)", "avg(): time values cannot be mixed with non-time values"},
+                     {"mean(0:20, Inf, 1:00)", "mean(): time values cannot be mixed with non-time values"},
+                     {"min(0:45, Inf, 1:30)", "min(): time values cannot be mixed with non-time values"},
+                     {"max(0:45, Inf, 1:30)", "max(): time values cannot be mixed with non-time values"},
+                     {"median(0:30, Inf, 1:00)", "median(): time values cannot be mixed with non-time values"},
                      {"prod(0:30, Inf, 1:00)", "incompatible operands"},
                      {"variance(0:30, Inf, 1:00)", "incompatible operands"},
                      {"stddev(0:30, Inf, 1:00)", "incompatible operands"},
-                     {"sort(0:30, Inf, 1:00)", "time value"},
-                     {"sort(0:30, -Inf, 1:00)", "time value"},
-                     {"sort(0:30, NaN, 1:00)", "time value"},
+                     {"sort(0:30, Inf, 1:00)", "sort(): time values cannot be mixed with non-time values"},
+                     {"sort(0:30, -Inf, 1:00)", "sort(): time values cannot be mixed with non-time values"},
+                     {"sort(0:30, NaN, 1:00)", "sort(): time values cannot be mixed with non-time values"},
+                     {"keyf(x)=x; sortby((1:30, 2), keyf)", "array literal: time values cannot be mixed with non-time values"}
                  };
                  for (const auto& row : kErrRows) {
                    p.parseAndEvaluate(row.expr);

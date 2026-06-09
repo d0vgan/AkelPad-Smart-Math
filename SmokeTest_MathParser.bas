@@ -1858,6 +1858,36 @@ private sub RunIncompleteFunctionCallHintTests()
     end if
   next hi
 
+  dim endHintExprs(1 to 4) as String
+  dim endHintNeed(1 to 4) as String
+  endHintExprs(1) = "1+sin": endHintNeed(1) = "function: sin(angle)"
+  endHintExprs(2) = "1+sin(": endHintNeed(2) = "function: sin(angle)"
+  endHintExprs(3) = "1+sin(rad(": endHintNeed(3) = "function: rad(...)"
+  endHintExprs(4) = "sortby((1,2,3, abs": endHintNeed(4) = "function: abs(value)"
+  dim ei as Integer
+  for ei = 1 to 4
+    if Parser_TryEvaluateEx(endHintExprs(ei), r, rt, ia) then
+      print "[expr-end-hint] FAIL: """ & endHintExprs(ei) & """ expected error containing """ & endHintNeed(ei) & """ but got """ & rt & """"
+      subFail += 1
+    elseif instr(Parser_GetLastError(), endHintNeed(ei)) = 0 then
+      print "[expr-end-hint] FAIL: """ & endHintExprs(ei) & """ got """ & Parser_GetLastError() & """"
+      subFail += 1
+    else
+      print "[expr-end-hint] PASS: """ & endHintExprs(ei) & """"
+      subPass += 1
+    end if
+  next ei
+  if Parser_TryEvaluateEx("1+sin(rad(45)", r, rt, ia) then
+    print "[expr-end-hint] FAIL: 1+sin(rad(45) expected error"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "missing closing parenthesis") = 0 then
+    print "[expr-end-hint] FAIL: 1+sin(rad(45) got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[expr-end-hint] PASS: 1+sin(rad(45)"
+    subPass += 1
+  end if
+
   dim sortbyExprs(1 to 3) as String
   dim sortbyNeed as String = "sortby expects exactly one function"
   sortbyExprs(1) = "sortby((1,2,3), f("
@@ -2523,7 +2553,7 @@ private sub RunTimeValuesSupportOptionTests()
     end if
   next tai
 
-  dim timeAggErr(1 to 12) as String
+  dim timeAggErr(1 to 13) as String
   timeAggErr(1) = "sum(0:30, Inf, 1:00)"
   timeAggErr(2) = "avg(0:30, Inf, 1:30)"
   timeAggErr(3) = "mean(0:20, Inf, 1:00)"
@@ -2536,14 +2566,15 @@ private sub RunTimeValuesSupportOptionTests()
   timeAggErr(10) = "sort(0:30, Inf, 1:00)"
   timeAggErr(11) = "sort(0:30, -Inf, 1:00)"
   timeAggErr(12) = "sort(0:30, NaN, 1:00)"
+  timeAggErr(13) = "keyf(x)=x; sortby((1:30, 2), keyf)"
   dim tei as Integer
-  for tei = 1 to 12
+  for tei = 1 to 13
     if Parser_TryEvaluateEx(timeAggErr(tei), r, rt, ia) then
       print "[time-opt] FAIL: expected error for """ & timeAggErr(tei) & """ but got """ & rt & """"
       subFail += 1
     else
       dim errTimeAgg as String = lcase(Parser_GetLastError())
-      if instr(errTimeAgg, "expects a time value") > 0 orelse instr(errTimeAgg, "incompatible operands") > 0 then
+      if instr(errTimeAgg, ": time values cannot be mixed with non-time values") > 0 orelse instr(errTimeAgg, "incompatible operands") > 0 then
         print "[time-opt] PASS: """ & timeAggErr(tei) & """ -> " & Parser_GetLastError()
         subPass += 1
       else
@@ -2649,7 +2680,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1290) as SmokeCase
+  dim tests(1 to 1309) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3704,7 +3735,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(996).expr = "hour=1": tests(996).expectedErrContains = "reserved constant name"
   tests(997).expr = "day=1": tests(997).expectedErrContains = "reserved constant name"
   tests(998).expr = "sin(minute)": tests(998).expectedErrContains = "incompatible operands" ' [time] reject
-  tests(999).expr = "milliseconds(5)": tests(999).expectedErrContains = "time value" ' [time] converter non-time
+  tests(999).expr = "milliseconds(5)": tests(999).expectedErrContains = "milliseconds() expects a time value" ' [time] converter non-time
   tests(1000).expr = "sum(0:30,1:00)": tests(1000).expected = "01:30" ' [time] aggregate
   tests(1001).expr = "1:00*1:00": tests(1001).expectedErrContains = "incompatible operands" ' [time] no duration*duration
   tests(1002).expr = "product(1:00,0:30)": tests(1002).expectedErrContains = "incompatible operands" ' [time] product needs unitless factors
@@ -3717,7 +3748,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1009).expr = "seconds((0:30,1:00))": tests(1009).expected = "(30, 60)" ' [time] converter element-wise float tuple
   tests(1010).expr = "hours((1:00:00,0:30:00))": tests(1010).expected = "(1, 0.5)" ' [time] hours array
   tests(1011).expr = "minutes((0:30,1:00))": tests(1011).expected = "(0.5, 1)" ' [time] minutes array
-  tests(1012).expr = "milliseconds((0:30,5))": tests(1012).expectedErrContains = "time value" ' [time] array element must be duration
+  tests(1012).expr = "milliseconds((5,6))": tests(1012).expectedErrContains = "milliseconds() expects a time value" ' [time] array element must be duration
   tests(1013).expr = "1d2h3m4s5ms": tests(1013).expected = "1:02:03:04.005" ' [time] compact suffix literal
   tests(1014).expr = "1d 2h 3m 4s 5ms": tests(1014).expected = "1:02:03:04.005" ' [time] compact with spaces between fields
   tests(1015).expr = "1d3m + 2h5ms + 4s == 1:02:03:04.005": tests(1015).expected = "1" ' [time] compact reorder with +
@@ -3772,13 +3803,13 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1064).expr = "ratio(1e-8)": tests(1064).expected = "1/100000000" ' [ok-func]
   tests(1065).expr = "ratio(sqrt(2))": tests(1065).expected = "13250218/9369319" ' [ok-func]
   tests(1066).expr = "ratio((sqrt(2), e, pi))": tests(1066).expected = "(13250218/9369319, 14665106/5394991, 5419351/1725033)" ' [ok-array]
-  tests(1067).expr = "f(x)=1/x; sortby((0:30, 1:00, 0:45), f)": tests(1067).expectedErrContains = "(|0:30" ' [error-snippet] key fn failure -> sortby keys arg
+  tests(1067).expr = "f(x)=1/x; sortby((0:30, 1:00, 0:45), f)": tests(1067).expectedErrContains = ", |f)" ' [error-snippet] key fn failure -> sortby key arg
   tests(1068).expr = "x=10; sortby((0:30, 1:00, 0:45), x)": tests(1068).expectedErrContains = "sortby expects a function that takes 1 parameter" ' [err] variable name, not function ref value
   tests(1069).expr = "f(x)=x*2; f=10; f(3)": tests(1069).expectedErrContains = "unknown function: f" ' [udf-var] assignment drops same-named user function
   tests(1070).expr = "f(x)=x*2; f=10; f": tests(1070).expected = "10" ' [udf-var]
   tests(1071).expr = "f=10; f(x)=x*2; f": tests(1071).expectedErrContains = "user-defined function: f(x)" ' [udf-var] bare name hints signature
   tests(1072).expr = "f(x)=x+1; f": tests(1072).expectedErrContains = "user-defined function: f(x)" ' [udf-hint]
-  tests(1073).expr = "g(a)=1/a; sortby((0:30, 1:00, 0:45), g)": tests(1073).expectedErrContains = "(|0:30" ' [error-snippet] same as myfunction case
+  tests(1073).expr = "g(a)=1/a; sortby((0:30, 1:00, 0:45), g)": tests(1073).expectedErrContains = ", |g)" ' [error-snippet] key fn failure -> sortby key arg
   tests(1074).expr = "a(x)=1/a; sortby((0:30, 1:00, 0:45), a)": tests(1074).expectedErrContains = "unknown variable: a" ' [sortby] body uses a but param is x; not UDF hint
   tests(1075).expr = "a(x)=1/x; sortby((0:30, 1:00, 0:45), a)": tests(1075).expectedErrContains = "incompatible operands" ' [sortby] duration key fn
   tests(1076).expr = "ratio(())": tests(1076).expectedErrContains = "expects at least 1 argument" ' [arity]
@@ -3817,12 +3848,12 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1109).expr = "qqq(x)=polar+x": tests(1109).expectedErrContains = "unknown variable: polar" ' [udf] bare builtin mid-body
   tests(1110).expr = "qqq(x)=sin+cos": tests(1110).expectedErrContains = "unknown variable: sin" ' [udf] bare builtin mid-body
   tests(1111).expr = "polar+123": tests(1111).expectedErrContains = "unknown variable: polar" ' [err] bare builtin mid-expr
-  tests(1112).expr = "sortby((1:30,1:00),x:polar)": tests(1112).expectedErrContains = "function:" ' [sortby] lambda body tail
+  tests(1112).expr = "sortby((1:30,1:00),x:polar)": tests(1112).expectedErrContains = "unknown variable: polar" ' [sortby] lambda body tail eval
   tests(1113).expr = "sortby((1:30,1:00),x:polar+2)": tests(1113).expectedErrContains = "unknown variable: polar" ' [sortby] lambda body mid
   tests(1114).expr = "1+2; polar+2": tests(1114).expectedErrContains = "unknown variable: polar" ' [err] statement mid-expr
   tests(1115).expr = "h(x)=x+1; h+2": tests(1115).expectedErrContains = "unknown variable: h" ' [udf] bare name mid-expr
   tests(1116).expr = "h(x)=h+1": tests(1116).expectedErrContains = "unknown variable: h" ' [udf] bare name mid-body
-  tests(1117).expr = "g(x)=x; sortby((3,1,2),x:g)": tests(1117).expectedErrContains = "user-defined function: g(x)" ' [sortby] lambda body tail
+  tests(1117).expr = "g(x)=x; sortby((3,1,2),x:g)": tests(1117).expectedErrContains = "unknown variable: g" ' [sortby] lambda body tail eval
   tests(1118).expr = "g(x)=x; sortby((3,1,2),x:g+1)": tests(1118).expectedErrContains = "unknown variable: g" ' [sortby] lambda body mid
   tests(1119).expr = "f=x,y:x+y; f(1,2)": tests(1119).expected = "3" ' [udf] lambda two unwrapped params
   tests(1120).expr = "f=x,y,z:x+y+z; f(1,2,3)": tests(1120).expected = "6" ' [udf] lambda three unwrapped params
@@ -3994,6 +4025,25 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1288).expr = "unique(abs((2,-1,2,3,-3,1)))": tests(1288).expected = "(2, 1, 3)" ' unique elements
   tests(1289).expr = "log10": tests(1289).expectedErrContains = "function: log10(value)" ' [hint] digit in builtin name
   tests(1290).expr = "log10+1": tests(1290).expectedErrContains = "unknown variable: log10" ' [hint] not bare at expression tail
+  tests(1291).expr = "1+sin": tests(1291).expectedErrContains = "function: sin(angle)" ' [hint] bare builtin at expression end
+  tests(1292).expr = "1+sum": tests(1292).expectedErrContains = "function: sum(...)" ' [hint] bare builtin at expression end
+  tests(1293).expr = "(1+2)/sum": tests(1293).expectedErrContains = "function: sum(...)" ' [hint] bare builtin at expression end
+  tests(1294).expr = "cos(pi/4)*sin(pi/4)-exp": tests(1294).expectedErrContains = "function: exp(value)" ' [hint] bare builtin at expression end
+  tests(1295).expr = "1+sin(": tests(1295).expectedErrContains = "function: sin(angle)" ' [hint] incomplete call at expression end
+  tests(1296).expr = "(1+2)/sum(": tests(1296).expectedErrContains = "function: sum(...)" ' [hint] incomplete call at expression end
+  tests(1297).expr = "cos(pi/4)*sin(pi/4)-exp(": tests(1297).expectedErrContains = "function: exp(value)" ' [hint] incomplete call at expression end
+  tests(1298).expr = "1+sin(rad(": tests(1298).expectedErrContains = "function: rad(...)" ' [hint] innermost incomplete call at end
+  tests(1299).expr = "1+sin(rad(45)": tests(1299).expectedErrContains = "missing closing parenthesis" ' [syntax] outer sin call unclosed
+  tests(1300).expr = "sortby((1,2,3, abs": tests(1300).expectedErrContains = "function: abs(value)" ' [hint] bare builtin in incomplete array at end
+  tests(1301).expr = "f(x)=x; 1+f": tests(1301).expectedErrContains = "user-defined function: f(x)" ' [hint] bare UDF at expression end
+  tests(1302).expr = "sortby((1,2,3), abs": tests(1302).expectedErrContains = "missing closing parenthesis" ' [syntax] sortby call unclosed after key ref
+  tests(1303).expr = "sortby((1,2,3),x:x": tests(1303).expectedErrContains = "missing closing parenthesis" ' [sortby] inline lambda key at EOF
+  tests(1304).expr = "sortby((1,2,3),x:x+sin": tests(1304).expectedErrContains = "missing closing parenthesis" ' [sortby] lambda body at EOF
+  tests(1305).expr = "sortby((1,2,3),x:x+sin(": tests(1305).expectedErrContains = "missing closing parenthesis" ' [sortby] lambda body with open paren at EOF
+  tests(1306).expr = "sortby((1,2,3),x:": tests(1306).expectedErrContains = "function body is empty" ' [sortby] empty lambda body at EOF
+  tests(1307).expr = "sortby((1,2,3),x:x+sin)": tests(1307).expectedErrContains = "unknown variable: sin" ' [sortby] lambda body tail eval
+  tests(1308).expr = "sortby((1,2,3),x:x:x)": tests(1308).expectedErrContains = "at col 19" ' [sortby] lambda body error column
+  tests(1309).expr = "sortby((1:30,1:00),x:polar+2)": tests(1309).expectedErrContains = "at col 22" ' [sortby] lambda body unknown ident column
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

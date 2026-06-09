@@ -846,7 +846,7 @@ These behaviors may differ from other tools/languages.
   - Example: `1::0` (empty segment)
   - Fix: use a valid colon pattern (`MM:SS`, `HH:MM:SS`, or `DD:HH:MM:SS`).
 
-- `array literal: time values cannot be mixed with non-time values`
+- `time values cannot be mixed with non-time values`
   - Fix: keep an array all-time or all non-time.
 
 - `... expects a time value` (for example on `milliseconds(...)`)

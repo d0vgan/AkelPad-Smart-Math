@@ -827,7 +827,7 @@ constexpr const char* STR_TIME_COMPACT_UNIT_ORDER = "compact time literal: unit 
 constexpr const char* STR_TIME_COMPACT_INVALID_SUFFIX = "compact time literal: invalid suffix";
 constexpr const char* STR_TIME_LITERAL_NEGATIVE_SEGMENT = "time literal: negative segment";
 constexpr const char* STR_TIME_NON_FINITE = "time value: non-finite operand";
-constexpr const char* STR_TIME_ARRAY_MIXED = "array literal: time values cannot be mixed with non-time values";
+constexpr const char* STR_TIME_ARRAY_MIXED = "time values cannot be mixed with non-time values";
 constexpr const char* STR_TIME_EXPECTS_TIME_ARG = "() expects a time value";
 constexpr const char* STR_INDEXING_REQUIRES_AN_ARRAY_VALUE = "indexing requires an array value";
 constexpr const char* STR_ARRAY_INDEX_MUST_BE_A_SCALAR = "array index must be a scalar integer";
@@ -2051,6 +2051,16 @@ std::string formatTimeCanonicalFromMs(long long totalMs) {
   }
   return body;
 }
+
+std::string constructTimeArrayMixedError(const std::string& name, bool isFn = true) {
+  std::string err(name);
+  if (isFn) {
+    err += STR_PAR;
+  }
+  err += ": ";
+  err += STR_TIME_ARRAY_MIXED;
+  return err;
+}
 #endif
 
 }  // namespace
@@ -2218,7 +2228,6 @@ MathParser::MathParser() {
 #endif
   setVariable(STR_ANS, makeScalarInt(0));
   setVariable(STR_FORMAL_VALIDATION_PROBE, makeScalarInt(1));
-  syncLambdaSupportDispatch();
 }
 
 std::string MathParser::toLower(std::string s) {
@@ -2364,11 +2373,8 @@ bool MathParser::isTrailingFormatterFunctionName(const std::string& nameText) {
   return hasBuiltinFlag(id, BuiltinFlags::TrailingFormatter);
 }
 
-bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const {
-  if (!ctx.p || !identStart || !ctx.start) {
-    return false;
-  }
-  if (identStart != ctx.start) {
+bool MathParser::isBareFunctionNameAtExpressionTail(EvalContext& ctx) const {
+  if (!ctx.p) {
     return false;
   }
   skipSpaces(ctx);
@@ -2471,7 +2477,7 @@ bool MathParser::identMayBeBareBuiltinName(const std::string& ident) {
 bool MathParser::trySetMissingFunctionCallError(
     EvalContext& ctx,
     const std::string& ident,
-    const char* identStart) const {
+    const char* identStartForCloser) const {
   BuiltinFunctionId bid = BuiltinFunctionId::Count;
   if (!tryGetBuiltinFunctionId(ident, bid)) {
     return false;
@@ -2481,10 +2487,15 @@ bool MathParser::trySetMissingFunctionCallError(
     setParseError(ctx, ParseErrorId::UnexpectedToken);
     return true;
   }
-  if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
-    if (trySetBareFunctionImmediateCloserError(ctx, identStart)) {
+  if (!isBareFunctionNameAtExpressionTail(ctx)) {
+    if (identStartForCloser != nullptr
+        && trySetBareFunctionImmediateCloserError(ctx, identStartForCloser)) {
       return true;
     }
+    setError(ctx, buildUnknownVariableErrorText(ident));
+    return true;
+  }
+  if (ctx.suppressBareFunctionTailHint) {
     setError(ctx, buildUnknownVariableErrorText(ident));
     return true;
   }
@@ -2496,20 +2507,18 @@ bool MathParser::trySetMissingFunctionCallError(
 
 bool MathParser::trySetIncompleteOpenedFunctionCallHint(
     EvalContext& ctx,
-    const std::string& ident,
-    const char* fnIdentStart) const {
-  if (!fnIdentStart || fnIdentStart != ctx.start) {
+    const std::string& ident) const {
+  if (ctx.suppressBareFunctionTailHint) {
     return false;
   }
-  skipSpaces(ctx);
-  if (*ctx.p != '\0') {
+  if (!isBareFunctionNameAtExpressionTail(ctx)) {
     return false;
   }
-  if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, fnIdentStart)) {
+  if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident)) {
     return true;
   }
   if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
-      && trySetBareUserFunctionNameError(ctx, ident, fnIdentStart)) {
+      && trySetBareUserFunctionNameError(ctx, ident, nullptr)) {
     return true;
   }
   return false;
@@ -2535,10 +2544,17 @@ bool MathParser::trySetBareUserFunctionNameError(
     setParseError(ctx, ParseErrorId::UnexpectedToken);
     return true;
   }
-  if (!isBareFunctionNameAtExpressionTail(ctx, identStart)) {
-    if (trySetBareFunctionImmediateCloserError(ctx, identStart)) {
+  if (!isBareFunctionNameAtExpressionTail(ctx)) {
+    if (identStart != nullptr && trySetBareFunctionImmediateCloserError(ctx, identStart)) {
       return true;
     }
+    setError(ctx, buildUnknownVariableErrorText(ident));
+    return true;
+  }
+  if (ctx.suppressBareFunctionTailHint
+      || (ctx.validatingUserFunctionName != nullptr && ident == ctx.validatingUserFunctionName)
+      || (ctx.userFunctionCallStack != nullptr && !ctx.userFunctionCallStack->empty()
+          && ctx.userFunctionCallStack->back() == ident)) {
     setError(ctx, buildUnknownVariableErrorText(ident));
     return true;
   }
@@ -2571,7 +2587,7 @@ bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& id
     return true;
   }
   if (!ident.empty()) {
-    if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, nullptr)) {
+    if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident)) {
       return true;
     }
     if ((!userFunctionIndex_.empty() || ctx.compilingUserFunctionParams != nullptr)
@@ -2696,6 +2712,7 @@ std::string MathParser::getUserFunctionDefinitionErrorText(
   std::unordered_map<std::string, std::vector<std::string>> validatingUserFunctionParams;
   validatingUserFunctionParams[fnName] = fnParams;
   bodyCtx.compilingUserFunctionParams = &validatingUserFunctionParams;
+  bodyCtx.validatingUserFunctionName = fnName.c_str();
   std::unique_ptr<Expr> ex = parseExpression(bodyCtx);
   if (bodyCtx.parseError || !ex) {
     if (!bodyCtx.errorText.empty()) {
@@ -4597,7 +4614,6 @@ bool MathParser::getSupportTimeValues() const {
 void MathParser::setSupportLambdaFunctions(bool enabled) {
 #if SMARTMATH_LAMBDA_FUNCTIONS
   supportLambdaFunctions_ = enabled;
-  syncLambdaSupportDispatch();
 #else
   (void)enabled;
 #endif
@@ -4609,14 +4625,6 @@ bool MathParser::getSupportLambdaFunctions() const {
 #else
   return false;
 #endif
-}
-
-void MathParser::syncLambdaSupportDispatch() {
-  parseSortbyKeyArgImpl_ =
-#if SMARTMATH_LAMBDA_FUNCTIONS
-  getSupportLambdaFunctions() ? &MathParser::parseSortbyKeyArgWithLambda :
-#endif
-    &MathParser::parseSortbyKeyArgFunctionRefOnly;
 }
 
 void MathParser::addConst(const std::string& constName, long long intValue) {
@@ -6355,6 +6363,7 @@ MathParser::EvalValue MathParser::evalValueFromTimeMs(BuiltinFunctionId id, long
 
 MathParser::EvalValue MathParser::mapTimeUnitOverArray(
     EvalContext& ctx,
+    const std::string& fnName,
     BuiltinFunctionId id,
     const EvalValue& inV) const {
   if (inV.kind != ValueKind::Array) {
@@ -6364,7 +6373,7 @@ MathParser::EvalValue MathParser::mapTimeUnitOverArray(
   outs.reserve(inV.arr.size());
   for (const auto& item : inV.arr) {
     if (!scalarValueIsTime(item)) {
-      setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+      setError(ctx, fnName + STR_TIME_EXPECTS_TIME_ARG);
       return makeScalar(0);
     }
     outs.push_back(evalValueFromTimeMs(id, timeTotalMsFromScalarValue(item)));
@@ -7415,8 +7424,6 @@ bool MathParser::lambdaBodyConsume(
             return true;
           }
           break;
-        case LambdaBodyStop::ToEof:
-          break;
       }
     }
     switch (c) {
@@ -7439,7 +7446,7 @@ bool MathParser::lambdaBodyConsume(
     outBody.push_back(c);
     ++ctx.p;
   }
-  return stop == LambdaBodyStop::TopLevelSemicolonOrEof || stop == LambdaBodyStop::ToEof;
+  return stop == LambdaBodyStop::TopLevelSemicolonOrEof || stop == LambdaBodyStop::SortbyArgDelim;
 }
 
 MathParser::EvalValue MathParser::makeInlineLambdaValue(std::vector<std::string> params, std::string body) {
@@ -7604,7 +7611,7 @@ std::unique_ptr<MathParser::Expr> MathParser::tryParseUnarySortbyLambdaOrFunctio
     std::vector<std::string> params;
     std::string body;
     if (tryParseWrappedParenLambdaSuffix(ctx, params, body, LambdaBodyStop::WrappedParenClose, true)) {
-      if (*ctx.p == ',' || *ctx.p == ')') {
+      if (*ctx.p == ',' || *ctx.p == ')' || *ctx.p == '\0') {
         return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
       }
     }
@@ -7624,23 +7631,18 @@ std::unique_ptr<MathParser::Expr> MathParser::tryParseUnarySortbyLambdaOrFunctio
     return parseSortbyFunctionRef(ctx);
   }
   skipSpaces(ctx);
-  if (*ctx.p != ',' && *ctx.p != ')') {
-    ctx.p = save;
-    return parseSortbyFunctionRef(ctx);
+  if (*ctx.p == ',' || *ctx.p == ')' || *ctx.p == '\0') {
+    return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
   }
-  return makeUnarySortbyInlineLambdaExpr(ctx, std::move(params), std::move(body));
-}
-
-std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgWithLambda(EvalContext& ctx) {
-  return tryParseUnarySortbyLambdaOrFunctionRef(ctx);
+  ctx.p = save;
+  return parseSortbyFunctionRef(ctx);
 }
 
 MathParser::EvalValue MathParser::evalInlineLambdaCall(
     EvalContext& ctx,
     const std::vector<std::string>& paramNames,
     const std::string& bodyExpr,
-    std::vector<EvalValue>&& args,
-    const std::unordered_map<std::string, EvalValue>* /*scopedVars*/) {
+    std::vector<EvalValue>&& args) {
   static const std::string kLambda = "lambda";
   if (args.size() != paramNames.size()) {
     setExactArgCountError(ctx, kLambda, paramNames.size());
@@ -7668,6 +7670,7 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   parseCtx.start = parseCtx.p;
   parseCtx.sourceExpr = trimmedBody;
   parseCtx.compilingUserFunctionParams = ctx.compilingUserFunctionParams;
+  parseCtx.suppressBareFunctionTailHint = true;
   std::vector<AstStatement> compiledBody;
   if (!parseProgram(parseCtx, compiledBody)) {
     setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
@@ -7682,6 +7685,7 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   EvalContext sub;
   sub.evalDepth = ctx.evalDepth + 1;
   sub.userFunctionCallStack = ctx.userFunctionCallStack;
+  sub.suppressBareFunctionTailHint = true;
   EvalValue v = runCompiledProgram(sub, compiledBody, &localVars, false);
   if (!sub.unknownVarsText.empty()) {
     setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
@@ -7698,7 +7702,12 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
 #endif
 
 std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArg(EvalContext& ctx) {
-  return (this->*parseSortbyKeyArgImpl_)(ctx);
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  if (getSupportLambdaFunctions()) {
+    return tryParseUnarySortbyLambdaOrFunctionRef(ctx);
+  }
+#endif
+  return parseSortbyKeyArgFunctionRefOnly(ctx);
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx) {
@@ -8224,7 +8233,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
   assignLowerIdentFromRange(ident, identStart, identEnd);
   ++ctx.p;
   skipSpaces(ctx);
-  if (trySetIncompleteOpenedFunctionCallHint(ctx, ident, identStart)) {
+  if (trySetIncompleteOpenedFunctionCallHint(ctx, ident)) {
     return nullptr;
   }
   std::vector<std::unique_ptr<Expr>> args;
@@ -9250,7 +9259,7 @@ MathParser::EvalValue MathParser::evalExpr(
         }
       }
       if (anyTimeArr && anyNonTimeArr) {
-        setValidationError(ctx, STR_TIME_ARRAY_MIXED);
+        setError(ctx, constructTimeArrayMixedError("array literal", false));
         return makeScalar(0);
       }
 #endif
@@ -9791,7 +9800,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         return;
       }
       if (!scalarValueIsTime(s)) {
-        setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+        setError(ctx, constructTimeArrayMixedError(fnName));
         okM = false;
         return;
       }
@@ -9816,7 +9825,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
       return;
     }
     if (!scalarValueIsTime(s)) {
-      setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+      setError(ctx, constructTimeArrayMixedError(fnName));
       okAgg = false;
       return;
     }
@@ -10667,42 +10676,23 @@ MathParser::EvalValue MathParser::sortbyInvokeKeyFunction(
     const std::string& funcName,
     const EvalValue::ScalarValue& elem,
     const std::unordered_map<std::string, EvalValue>* scopedVars) {
-  const std::string lowFn = toLower(funcName);
   std::vector<EvalValue> args;
   args.push_back(scalarFromScalarValue(elem));
   BuiltinFunctionId fnId = BuiltinFunctionId::Count;
-  if (!tryGetBuiltinFunctionId(lowFn, fnId)) {
+  if (!tryGetBuiltinFunctionId(toLower(funcName), fnId)) {
     return evalUserFunctionCall(ctx, funcName, args, scopedVars);
   }
-  if (!validateBuiltinArgs(ctx, funcName, fnId, args)) {
+  if (getBuiltinCategory(fnId) == BuiltinCategory::Sortby ||
+      getBuiltinCategory(fnId) == BuiltinCategory::Ratio) {
+    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
     return makeScalar(0);
   }
-  if (fnId == BuiltinFunctionId::Milliseconds || fnId == BuiltinFunctionId::Seconds ||
-      fnId == BuiltinFunctionId::Minutes || fnId == BuiltinFunctionId::Hours ||
-      fnId == BuiltinFunctionId::Days) {
-    return evalFunctionCall(ctx, funcName, std::move(args), fnId, scopedVars);
-  }
-  if (fnId == BuiltinFunctionId::Sum || fnId == BuiltinFunctionId::Product || fnId == BuiltinFunctionId::Avg ||
-      fnId == BuiltinFunctionId::Mean || fnId == BuiltinFunctionId::Min || fnId == BuiltinFunctionId::Max) {
-    return args[0];
-  }
-  if (getBuiltinCategory(fnId) == BuiltinCategory::BaseFormat) {
-    EvalValue out = args[0];
-    applyBuiltinFormatRenderMeta(fnId, out);
+  EvalValue out = evalFunctionCall(ctx, funcName, std::move(args), fnId, scopedVars);
+  if (ctx.parseError) {
     return out;
   }
-  if (fnId == BuiltinFunctionId::Deg || fnId == BuiltinFunctionId::Rad) {
-    return builtinDegRad(ctx, funcName, fnId, args);
-  }
-  if (fnId == BuiltinFunctionId::Polar || fnId == BuiltinFunctionId::Cart) {
-    return builtinPolarCart(ctx, funcName, fnId, args);
-  }
-  const EvalValue unaryOut = builtinUnaryMath(ctx, funcName, fnId, args);
-  if (ctx.parseError) {
-    return unaryOut;
-  }
-  if (unaryOut.kind == ValueKind::Scalar || unaryOut.kind == ValueKind::Array) {
-    return unaryOut;
+  if (out.kind == ValueKind::Scalar || out.kind == ValueKind::Array) {
+    return out;
   }
   setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
   return makeScalar(0);
@@ -10729,9 +10719,6 @@ MathParser::EvalValue MathParser::builtinSortby(
       setValidationError(ctx, errText.c_str());
       return makeScalar(0);
     }
-  } else if (args[1].lambdaParams.size() != 1U) {
-    setValidationError(ctx, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
-    return makeScalar(0);
   }
   std::vector<EvalValue> flat;
   if (!flattenArgsToScalars({args[0]}, flat)) {
@@ -10750,10 +10737,8 @@ MathParser::EvalValue MathParser::builtinSortby(
 #if SMARTMATH_LAMBDA_FUNCTIONS
     if (keyIsLambda) {
       std::vector<EvalValue> lamArgs;
-      if (args[1].lambdaParams.size() == 1U) {
-        lamArgs.push_back(scalarFromScalarValue(vals[i]));
-      }
-      keyV = evalInlineLambdaCall(ctx, args[1].lambdaParams, args[1].lambdaBody, std::move(lamArgs), scopedVars);
+      lamArgs.push_back(scalarFromScalarValue(vals[i]));
+      keyV = evalInlineLambdaCall(ctx, args[1].lambdaParams, args[1].lambdaBody, std::move(lamArgs));
     } else
 #endif
     {
@@ -10946,7 +10931,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
         return;
       }
       if (!scalarValueIsTime(s)) {
-        setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+        setError(ctx, constructTimeArrayMixedError(fnName));
         okTimeSort = false;
       }
     });
@@ -11020,6 +11005,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
 
 MathParser::EvalValue MathParser::builtinTimeUnit(
     EvalContext& ctx,
+    const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   if (!getSupportTimeValues()) {
@@ -11030,15 +11016,15 @@ MathParser::EvalValue MathParser::builtinTimeUnit(
   const EvalValue& a0 = args[0];
   if (a0.kind == ValueKind::Scalar) {
     if (!scalarValueIsTime(a0.scalarValue)) {
-      setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+      setError(ctx, fnName + STR_TIME_EXPECTS_TIME_ARG);
       return makeScalar(0);
     }
     return evalValueFromTimeMs(id, timeTotalMsFromScalarValue(a0.scalarValue));
   }
   if (a0.kind == ValueKind::Array) {
-    return mapTimeUnitOverArray(ctx, id, a0);
+    return mapTimeUnitOverArray(ctx, fnName, id, a0);
   }
-  setValidationError(ctx, STR_TIME_EXPECTS_TIME_ARG);
+  setError(ctx, fnName + STR_TIME_EXPECTS_TIME_ARG);
 #endif
   return makeScalar(0);
 }
@@ -12011,6 +11997,8 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     parseCtx.p = uf->expr.c_str();
     parseCtx.start = parseCtx.p;
     parseCtx.sourceExpr = uf->expr;
+    parseCtx.userFunctionCallStack = callStack;
+    parseCtx.validatingUserFunctionName = fnName.c_str();
     std::vector<AstStatement> compiledBody;
     if (!parseProgram(parseCtx, compiledBody)) {
       setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
@@ -12067,7 +12055,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
     case BuiltinCategory::Ratio:
       return builtinRatio(ctx, fnName, args);
     case BuiltinCategory::TimeUnit:
-      return builtinTimeUnit(ctx, id, args);
+      return builtinTimeUnit(ctx, fnName, id, args);
     case BuiltinCategory::ArrayTransform:
       if (id == BuiltinFunctionId::Unpack) {
         return builtinUnpack(ctx, args);

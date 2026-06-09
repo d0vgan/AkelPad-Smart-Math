@@ -1,4 +1,4 @@
-﻿#include once "crt.bi"
+#include once "crt.bi"
 #include once "Inc\MathParser.bi"
 #include once "MathParserRawResult.bas"
 
@@ -151,7 +151,7 @@ const FB_STR_TIME_COMPACT_UNIT_ORDER as string = "compact time literal: unit ord
 const FB_STR_TIME_COMPACT_INVALID_SUFFIX as string = "compact time literal: invalid suffix"
 const FB_STR_TIME_NEGATIVE_SEGMENT as string = "time literal: negative segment"
 const FB_STR_TIME_NON_FINITE as string = "time value: non-finite operand"
-const FB_STR_TIME_ARRAY_MIXED as string = "array literal: time values cannot be mixed with non-time values"
+const FB_STR_TIME_ARRAY_MIXED as string = "time values cannot be mixed with non-time values"
 const FB_STR_TIME_EXPECTS_TIME_ARG as string = "() expects a time value"
 const FB_STR_MILLISECOND as string = "millisecond"
 const FB_STR_SECOND as string = "second"
@@ -585,6 +585,8 @@ type EvalValue
   funcRefName as String
   lambdaParams(any) as String
   lambdaBody as String
+  sortbyKeyErrorCol as Integer
+  sortbyKeyBodyErrorCol as Integer
   declare property renderBase() as Integer ' 0=decimal, 16=hex, 8=octal, 2=binary
   declare property renderBase(byval v as Integer)
   ' uhex/uoct/ubin: two's complement as unsigned; hex/oct/bin: signed magnitude for negatives
@@ -628,6 +630,11 @@ declare function TryGetExactInt64FromDouble(byval n as Double, byref outV as Lon
 declare sub ScalarRepairExactMetadata(byref sv as ScalarValue)
 declare function ScalarNumericReal(byref sv as ScalarValue) as Double
 declare function ScalarNumericImag(byref sv as ScalarValue) as Double
+declare sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+declare sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
+declare function GcdULong(byval a as ULongInt, byval b as ULongInt) as ULongInt
+declare function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, byref outV as ULongInt) as Boolean
 
 property ScalarValue.exactInt64Valid() as Boolean
   return ScalarExactInt64Valid(this)
@@ -759,6 +766,8 @@ type FuncEntry
   expr as String
 end type
 
+#include once "MathParserFactorInt.bas"
+
 #define __FB_FUNC_VARS_OVERRIDE_GLOBALS__ 1
 '
 '  With a fixed formal probe of 0, `f(x)=1%x` fails validation (mod 0).
@@ -792,10 +801,14 @@ dim shared evalDepth as Integer
 const UDF_CALL_STACK_MAX as Integer = 128
 dim shared udfCallStack(0 to UDF_CALL_STACK_MAX - 1) as String
 dim shared udfCallStackSp as Integer
+dim shared validatingUserFunctionName as String
+dim shared suppressBareFunctionTailHint as Boolean
 dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
 dim shared rootInputExpr as String
-dim shared sortbyKeysArgStartCol as Integer = 0
+dim shared sortbyKeyParseErrorCol as Integer = 0
+dim shared sortbyKeyBodyParseErrorCol as Integer = 0
+dim shared sortbyLambdaEvalBodyErrorCol as Integer = 0
 dim shared Parser_ShowErrorLine as Boolean = FALSE
 dim shared Parser_SupportComplexNumbers as Boolean = FALSE
 dim shared Parser_SupportTimeValues as Boolean = TRUE
@@ -990,7 +1003,6 @@ declare sub LoadUnaryOperandCartesian(byref scalarV as ScalarValue, byref ar as 
 declare function TryApplyUnaryComplexMathOverlay(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
 declare function ApplyUnaryBuiltin(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
 declare function TryApplyUnaryRealByKind(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
-declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
 declare sub calcRoundingFn(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue)
 declare function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as EvalValue) as Boolean
 
@@ -1056,25 +1068,15 @@ private sub SetParseErrorAtColumn(byref msg as String, byval col as Integer)
   lastErrorText = msg & locationPart & BuildErrorSnippet(col, exprText)
 end sub
 
-private function ComputeSortbyKeysArgErrorColumn() as Integer
-  dim exprText as String = ExprTextForErrorSnippet()
-  if len(exprText) = 0 then return sortbyKeysArgStartCol
-  dim lowExpr as String = lcase(exprText)
-  dim scanPos as Integer = instr(lowExpr, FB_STR_SORTBY & "(")
-  if scanPos = 0 then return sortbyKeysArgStartCol
-  scanPos += len(FB_STR_SORTBY) + 1
-  while scanPos <= len(exprText)
-    dim ch as String = mid(exprText, scanPos, 1)
-    if ch = " " orelse ch = chr(9) then
-      scanPos += 1
-    elseif ch = "(" then
-      scanPos += 1
-    else
-      exit while
-    end if
-  wend
-  return scanPos
+private function CurrentParseErrorColumn() as Integer
+  if exprStart = 0 then return 0
+  return errorBaseCol + (pStream - exprStart)
 end function
+
+private sub CopySortbyKeyParseColumnsToEvalValue(byref outV as EvalValue)
+  outV.sortbyKeyErrorCol = sortbyKeyParseErrorCol
+  outV.sortbyKeyBodyErrorCol = sortbyKeyBodyParseErrorCol
+end sub
 
 private function SortbyKeyFunctionFailureMessage(byref innerMsg as String) as String
   if innerMsg = "" then return FB_STR_INCOMPATIBLE_OPERANDS
@@ -1083,10 +1085,23 @@ private function SortbyKeyFunctionFailureMessage(byref innerMsg as String) as St
   return innerMsg
 end function
 
-private sub RemapParseErrorToSortbyKeysArgColumn()
-  dim col as Integer = ComputeSortbyKeysArgErrorColumn()
-  if col <= 0 then exit sub
+private sub RemapParseErrorToSortbyKeyColumn(byref keyArg as EvalValue)
   dim msg as String = SortbyKeyFunctionFailureMessage(StripErrorLocationSuffix(lastErrorText))
+  dim col as Integer = 0
+  if sortbyLambdaEvalBodyErrorCol > 0 andalso keyArg.sortbyKeyBodyErrorCol > 0 then
+    col = keyArg.sortbyKeyBodyErrorCol + sortbyLambdaEvalBodyErrorCol - 1
+    if instr(msg, FB_STR_UNKNOWN_VARIABLE_COLON) > 0 then
+      dim uvName as String = trim(mid(msg, instr(msg, FB_STR_UNKNOWN_VARIABLE_COLON) + len(FB_STR_UNKNOWN_VARIABLE_COLON)))
+      if len(uvName) > 0 then
+        dim identCol as Integer = instr(keyArg.sortbyKeyBodyErrorCol, rootInputExpr, uvName)
+        if identCol > 0 then col = identCol
+      end if
+    end if
+  elseif keyArg.sortbyKeyErrorCol > 0 then
+    col = keyArg.sortbyKeyErrorCol
+  end if
+  sortbyLambdaEvalBodyErrorCol = 0
+  if col <= 0 then exit sub
   lastErrorText = ""
   parseError = 0
   SetParseErrorAtColumn(msg, col)
@@ -1097,7 +1112,7 @@ private sub SetParseError(byref msg as String)
   if lastErrorText = "" then
     dim isExpr as Boolean = (exprStart <> 0) andalso (pStream <> 0) andalso (pStream >= exprStart)
     if isExpr andalso ExprStartPointsIntoRootInput() then
-      dim col as Integer = errorBaseCol + (pStream - exprStart)
+      dim col as Integer = CurrentParseErrorColumn()
       dim exprText as String = ExprTextForErrorSnippet()
       if len(exprText) = 0 then
         lastErrorText = msg
@@ -2010,6 +2025,8 @@ end sub
 private sub ValueClearLambdaPayload(byref v as EvalValue)
   erase v.lambdaParams
   v.lambdaBody = ""
+  v.sortbyKeyErrorCol = 0
+  v.sortbyKeyBodyErrorCol = 0
 end sub
 
 private sub ValueSetScalar(byref v as EvalValue, byval n as Double)
@@ -3521,9 +3538,12 @@ private function TryValidateUserFunctionDefinition(byref fnName as String, fnPar
     errText = FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & fnName
     return FALSE
   end if
+  validatingUserFunctionName = lcase(fnName)
   if TryValidateUserFunctionBodyExpression(body, fnParams(), errText) = FALSE then
+    validatingUserFunctionName = ""
     return FALSE
   end if
+  validatingUserFunctionName = ""
   return TRUE
 end function
 
@@ -3717,8 +3737,7 @@ private sub NormalizeTrailingStatementSemicolons(byref s as string)
   wend
 end sub
 
-private function IsBareFunctionNameAtExpressionTail(byval identStart as ZString ptr) as Boolean
-  if identStart <> exprStart then return FALSE
+private function IsBareFunctionNameAtExpressionTail() as Boolean
   SkipSpaces()
   return (pStream[0] = CHAR_NUL)
 end function
@@ -3739,10 +3758,9 @@ private function TrySetBareFunctionImmediateCloserError(byval identStart as ZStr
   return FALSE
 end function
 
-private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String, byval fnIdentStart as ZString ptr) as Boolean
-  if fnIdentStart <> exprStart then return FALSE
-  SkipSpaces()
-  if pStream[0] <> CHAR_NUL then return FALSE
+private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String) as Boolean
+  if suppressBareFunctionTailHint then return FALSE
+  if IsBareFunctionNameAtExpressionTail() = FALSE then return FALSE
   dim fnHint as String
   if IdentMayBeBareBuiltinName(fnName) andalso TryGetBuiltinSignatureHint(fnName, fnHint) then
     SetParseError(FB_STR_HINT_PREFIX & fnHint)
@@ -3770,7 +3788,7 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
       SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
       return FALSE
     end if
-    if IsBareFunctionNameAtExpressionTail(identStart) then
+    if suppressBareFunctionTailHint = FALSE andalso IsBareFunctionNameAtExpressionTail() then
       SetParseError(FB_STR_HINT_PREFIX & fnHint)
     elseif TrySetBareFunctionImmediateCloserError(identStart) then
       ' mismatched closer already set
@@ -3787,7 +3805,12 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
       SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
       return FALSE
     end if
-    if IsBareFunctionNameAtExpressionTail(identStart) then
+    dim suppressUdfTailHint as Boolean = FALSE
+    if (udfCallStackSp > 0 andalso udfCallStack(udfCallStackSp - 1) = lowNam) _
+        orelse (len(validatingUserFunctionName) > 0 andalso lowNam = validatingUserFunctionName) then
+      suppressUdfTailHint = TRUE
+    end if
+    if suppressBareFunctionTailHint = FALSE andalso IsBareFunctionNameAtExpressionTail() andalso suppressUdfTailHint = FALSE then
       SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
     elseif TrySetBareFunctionImmediateCloserError(identStart) then
       ' mismatched closer already set
@@ -3904,8 +3927,8 @@ private sub SetTimeNonFiniteError()
   SetParseError(FB_STR_TIME_NON_FINITE)
 end sub
 
-private sub SetTimeArrayMixedError()
-  SetParseError(FB_STR_TIME_ARRAY_MIXED)
+private sub SetTimeArrayMixedError(byref fnName as String)
+  SetParseError(fnName & ": " & FB_STR_TIME_ARRAY_MIXED)
 end sub
 
 private function EvalValueInvolvesTime(byref v as EvalValue) as Boolean
@@ -4527,10 +4550,17 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
   exprStart = pStream
   errorBaseCol = 1
   parseError = 0
+  suppressBareFunctionTailHint = TRUE
   outV = ParseExpression()
+  suppressBareFunctionTailHint = FALSE
   SkipSpaces()
   if pStream[0] <> CHAR_NUL then SetParseErrorById(PARSE_ERR_UNEXPECTED_INPUT)
   dim evalError as Integer = parseError
+  if evalError <> 0 then
+    sortbyLambdaEvalBodyErrorCol = CurrentParseErrorColumn()
+  else
+    sortbyLambdaEvalBodyErrorCol = 0
+  end if
 
   pStream = savedStream
   exprStart = savedExprStart
@@ -5284,14 +5314,14 @@ private sub ValueFromTimeMs(byval ms as LongInt, byval fnId as Integer, byref ou
   end select
 end sub
 
-private function MapTimeUnitOverArray(byref arrV as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
+private function MapTimeUnitOverArray(byref fnName as String, byref arrV as EvalValue, byval fnId as Integer, byref outV as EvalValue) as Boolean
   dim lbA as Integer = lbound(arrV.arr)
   dim ubA as Integer = ubound(arrV.arr)
   ValueInitArrayLike(outV, lbA, ubA)
   dim iA as Integer
   for iA = lbA to ubA
     if ScalarIsTime(arrV.arr(iA)) = FALSE then
-      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      SetParseError(fnName & FB_STR_TIME_EXPECTS_TIME_ARG)
       return TRUE
     end if
     dim rConv as EvalValue
@@ -7548,7 +7578,7 @@ private function ApplyComparison(byref leftV as EvalValue, byref rightV as EvalV
       end if
     end if
   end if
-  '' IEEE: any scalar NaN makes comparisons unordered — only ``!=`` / ``<>`` is true.
+  '' IEEE: any scalar NaN makes comparisons unordered - only ``!=`` / ``<>`` is true.
   if leftV.kind = VK_SCALAR andalso rightV.kind = VK_SCALAR then
     if Parser_SupportComplexNumbers then
       dim lr as Double, li as Double, rr as Double, ri as Double
@@ -7836,6 +7866,7 @@ declare function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
 declare function TryBuiltinRatio(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TryParseSortbyCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
 declare function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
+declare function TryDispatchBuiltinCall(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
 declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnName as String, byval reverseSingleArray as Boolean, byref outV as EvalValue, vals() as ScalarValue, byref c as Integer) as Integer
 
 private function CountFlattenedArgs(args() as EvalValue) as Integer
@@ -8375,7 +8406,8 @@ private function LambdaBodyTake(byref body as string, byval stopMode as Integer,
     body &= chr(cu)
     pStream += 1
   wend
-  return (stopMode = LAMBDA_BODY_UNTIL_SEMICOLON_EOF)
+  return (stopMode = LAMBDA_BODY_UNTIL_SEMICOLON_EOF) _
+      orelse (stopMode = LAMBDA_BODY_UNTIL_SORTBY_DELIM)
 end function
 
 private function TryConsumeLambdaParamList(fnParams() as string, byval quiet as Boolean) as Boolean
@@ -8439,6 +8471,7 @@ private function TryParseLambdaInnerSuffix(fnParams() as string, byref body as s
   if pStream[0] <> CHAR_COLON then return FALSE
   pStream += 1
   SkipSpaces()
+  if sortbyKeyParseErrorCol > 0 then sortbyKeyBodyParseErrorCol = CurrentParseErrorColumn()
   return LambdaBodyTake(body, bodyMode, sortbyLambdaKeySeg)
 end function
 
@@ -8454,6 +8487,7 @@ private function TryFinalizeUnarySortbyInlineLambda(fnParams() as string, byref 
     return FALSE
   end if
   ValueSetInlineLambda(outV, fnParams(), body)
+  CopySortbyKeyParseColumnsToEvalValue(outV)
   return TRUE
 end function
 
@@ -8530,7 +8564,7 @@ private function TryParseUnarySortbyLambdaOrFunctionRef(byref outV as EvalValue)
       pStream += 1
       if TryParseLambdaInnerSuffix(fnParams(), body, LAMBDA_BODY_UNTIL_RPAREN, 0) then
         SkipSpaces()
-        if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN then
+        if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN orelse pStream[0] = CHAR_NUL then
           return TryFinalizeUnarySortbyInlineLambda(fnParams(), body, outV)
         end if
       end if
@@ -8550,20 +8584,18 @@ private function TryParseUnarySortbyLambdaOrFunctionRef(byref outV as EvalValue)
     return TryParseSortbyFunctionRef(outV)
   end if
   SkipSpaces()
-  if pStream[0] <> CHAR_COMMA and pStream[0] <> CHAR_RPAREN then
-    pStream = save
-    return TryParseSortbyFunctionRef(outV)
+  if pStream[0] = CHAR_COMMA orelse pStream[0] = CHAR_RPAREN orelse pStream[0] = CHAR_NUL then
+    return TryFinalizeUnarySortbyInlineLambda(fnParams(), body, outV)
   end if
-  return TryFinalizeUnarySortbyInlineLambda(fnParams(), body, outV)
-end function
-
-private function TryParseSortbyKeyArgWithLambda(byref outV as EvalValue) as Boolean
-  return TryParseUnarySortbyLambdaOrFunctionRef(outV)
+  pStream = save
+  erase fnParams
+  body = ""
+  return TryParseSortbyFunctionRef(outV)
 end function
 
 private function TryParseSortbyKeyArg(byref outV as EvalValue) as Boolean
   if Parser_SupportLambdaFunctions then
-    return TryParseSortbyKeyArgWithLambda(outV)
+    return TryParseUnarySortbyLambdaOrFunctionRef(outV)
   end if
   return TryParseSortbyKeyArgFunctionRefOnly(outV)
 end function
@@ -8604,6 +8636,7 @@ private function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
   end if
   pStream = p
   ValueSetFunctionRef(outV, nameText)
+  CopySortbyKeyParseColumnsToEvalValue(outV)
   return TRUE
 end function
 
@@ -8627,7 +8660,16 @@ private function TryParseSortbyCallArguments(args() as EvalValue, byref argsCoun
     return FALSE
   end if
   dim keyArg as EvalValue
-  if TryParseSortbyKeyArg(keyArg) = FALSE then return FALSE
+  sortbyKeyParseErrorCol = 0
+  sortbyKeyBodyParseErrorCol = 0
+  sortbyKeyParseErrorCol = CurrentParseErrorColumn()
+  if TryParseSortbyKeyArg(keyArg) = FALSE then
+    sortbyKeyParseErrorCol = 0
+    sortbyKeyBodyParseErrorCol = 0
+    return FALSE
+  end if
+  sortbyKeyParseErrorCol = 0
+  sortbyKeyBodyParseErrorCol = 0
   AppendEvalArg(args(), argsCount, argsCap, keyArg)
   SkipSpaces()
   if TryConsumeCommaArgSeparator(hasComma) = FALSE then return FALSE
@@ -8651,19 +8693,12 @@ private function SortbyInvokeKeyFunction(byref funcName as String, byref elem as
   end if
   dim fn as String = funcName
   if ValidateBuiltinCallArgs(fnId, fn, args()) = FALSE then return TRUE
-  if TryBuiltinDispatchWithTime(fnId, fn, args(), outV) then return TRUE
-  if TryEvaluateBuiltinAggregate(fnId, fn, args(), outV) then return TRUE
-  if TryBuiltinDispatchWithComplex(fnId, fn, args(), outV) then return TRUE
-  if ApplyUnaryBuiltin(fnId, elem, outV) then return TRUE
-  if GetBuiltinCategory(fnId) = BC_BASE_FORMAT then
-    outV = args(0)
-    ApplyBuiltinFormatRenderMeta(fnId, outV)
+  dim cat as Integer = GetBuiltinCategory(fnId)
+  if cat = BC_SORTBY orelse cat = BC_RATIO then
+    SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
     return TRUE
   end if
-  if (fnId = FUNC_DEG) orelse (fnId = FUNC_RAD) then
-    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fn)
-    return TRUE
-  end if
+  if TryDispatchBuiltinCall(fnId, fn, args(), outV) then return TRUE
   SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
   return TRUE
 end function
@@ -8999,16 +9034,6 @@ private function ScalarSortGreater(byref a as ScalarValue, byref b as ScalarValu
   return CmpScalarsForSort(a, b, FALSE)
 end function
 
-private function SortbyTryLexicoLess(byref ka as EvalValue, byref kb as EvalValue, byref outLess as Boolean) as Boolean
-  dim cmp as Integer
-  if CompareEvalValues(ka, kb, cmp) = FALSE then
-    SetParseErrorById(PARSE_ERR_INCOMPATIBLE_OPERANDS)
-    return FALSE
-  end if
-  outLess = (cmp < 0)
-  return TRUE
-end function
-
 private function SortbyStableSortIndicesFromEvalKeys(sortKeys() as EvalValue, orderIdx() as Integer, byval count as Integer) as Boolean
   dim i as Integer
   for i = 0 to count - 1
@@ -9020,7 +9045,12 @@ private function SortbyStableSortIndicesFromEvalKeys(sortKeys() as EvalValue, or
   for i = 1 to count - 1
     j = i
     do while j > 0
-      if SortbyTryLexicoLess(sortKeys(orderIdx(j)), sortKeys(orderIdx(j - 1)), cmpLess) = FALSE then return FALSE
+      dim cmp as Integer
+      if CompareEvalValues(sortKeys(orderIdx(j)), sortKeys(orderIdx(j - 1)), cmp) = FALSE then
+        SetParseErrorById(PARSE_ERR_INCOMPATIBLE_OPERANDS)
+        return FALSE
+      end if
+      cmpLess = (cmp < 0)
       if cmpLess then
         dim ts as Integer = orderIdx(j)
         orderIdx(j) = orderIdx(j - 1)
@@ -9035,7 +9065,6 @@ private function SortbyStableSortIndicesFromEvalKeys(sortKeys() as EvalValue, or
 end function
 
 private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
-  dim savedSortbyKeysArgCol as Integer = sortbyKeysArgStartCol
   if ValidateBuiltinCallArity(FUNC_SORTBY, fnName, args()) = FALSE then return TRUE
   dim keyIsLambda as Boolean = (args(1).kind = VK_INLINE_LAMBDA)
   dim keyIsRef as Boolean = (args(1).kind = VK_FUNCTION_REF)
@@ -9047,16 +9076,7 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     end if
     return TRUE
   end if
-  dim lamParamCount as Integer = 0
-  if keyIsLambda then
-    if ubound(args(1).lambdaParams) >= lbound(args(1).lambdaParams) then
-      lamParamCount = ubound(args(1).lambdaParams) - lbound(args(1).lambdaParams) + 1
-    end if
-    if lamParamCount <> 1 then
-      SetParseError(FB_STR_SORTBY_EXPECTS_UNARY_FUNCTION)
-      return TRUE
-    end if
-  else
+  if keyIsRef then
     dim errText as String
     if IsSortbyEligibleFunctionName(args(1).funcRefName, errText) = FALSE then
       SetParseError(errText)
@@ -9074,33 +9094,18 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
   for i = 0 to c - 1
     dim keyV as EvalValue
     if keyIsLambda then
-      dim la() as EvalValue
-      if lamParamCount = 1 then
-        redim la(0 to 0)
-        la(0).kind = VK_SCALAR
-        la(0).scalarValue = vals(i)
-        la(0).flags = 0
-      else
-        erase la
-      end if
-      dim inlineLamP() as string
-      dim inlineLamB as string = args(1).lambdaBody
-      if ubound(args(1).lambdaParams) >= lbound(args(1).lambdaParams) then
-        redim inlineLamP(lbound(args(1).lambdaParams) to ubound(args(1).lambdaParams))
-        dim lk as Integer
-        for lk = lbound(args(1).lambdaParams) to ubound(args(1).lambdaParams)
-          inlineLamP(lk) = args(1).lambdaParams(lk)
-        next
-      else
-        erase inlineLamP
-      end if
-      EvaluateInlineLambda(inlineLamP(), inlineLamB, la(), keyV)
+      dim la(0 to 0) as EvalValue
+      la(0).kind = VK_SCALAR
+      la(0).scalarValue = vals(i)
+      la(0).flags = 0
+      with args(1)
+        EvaluateInlineLambda(.lambdaParams(), .lambdaBody, la(), keyV)
+      end with
     else
       SortbyInvokeKeyFunction(args(1).funcRefName, vals(i), keyV)
     end if
     if parseError then
-      RemapParseErrorToSortbyKeysArgColumn()
-      sortbyKeysArgStartCol = savedSortbyKeysArgCol
+      RemapParseErrorToSortbyKeyColumn(args(1))
       return TRUE
     end if
     if keyV.kind = VK_FUNCTION_REF orelse keyV.kind = VK_INLINE_LAMBDA orelse (keyV.kind <> VK_SCALAR andalso keyV.kind <> VK_ARRAY) then
@@ -9111,8 +9116,7 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
   next i
   dim order(0 to c - 1) as Integer
   if SortbyStableSortIndicesFromEvalKeys(keys(), order(), c) = FALSE then
-    RemapParseErrorToSortbyKeysArgColumn()
-    sortbyKeysArgStartCol = savedSortbyKeysArgCol
+    RemapParseErrorToSortbyKeyColumn(args(1))
     return TRUE
   end if
   dim sorted(0 to c - 1) as ScalarValue
@@ -9120,7 +9124,6 @@ private function TryBuiltinSortby(byref fnName as String, args() as EvalValue, b
     sorted(i) = vals(order(i))
   next i
   ValueSetArrayFromScalarValues(outV, sorted())
-  sortbyKeysArgStartCol = savedSortbyKeysArgCol
   return TRUE
 end function
 
@@ -9205,8 +9208,6 @@ sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue
   next i
 end sub
 
-#include once "MathParserFactorInt.bas"
-
 private function TryApplyFactorial(byref v as EvalValue, byref outV as EvalValue) as Boolean
   if v.kind = VK_ARRAY then return FALSE
   dim n as LongInt
@@ -9263,7 +9264,7 @@ private function CollectRequiredArgsAsFlatTimeMs(args() as EvalValue, flat() as 
   dim sv as ScalarValue
   while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
     if ScalarIsTime(sv) = FALSE then
-      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      SetTimeArrayMixedError(fnName & FB_STR_PAR)
       return -1
     end if
     if count = 0 then
@@ -9424,7 +9425,7 @@ private function TryAggregateFoldByMode(byval mode as AggregateFoldMode, byval f
   dim itemCount as Integer = 0
   while ArgScalarValueWalkNext(args(), argIdx, elemIdx, sv)
     if ScalarIsTime(sv) = FALSE then
-      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      SetTimeArrayMixedError(fnName & FB_STR_PAR)
       return TRUE
     end if
     dim curMs as LongInt = TimeTotalMsFromScalarValue(sv)
@@ -9617,15 +9618,15 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
   if (fnId = FUNC_MILLISECONDS) orelse (fnId = FUNC_SECONDS) orelse (fnId = FUNC_MINUTES) orelse (fnId = FUNC_HOURS) orelse (fnId = FUNC_DAYS) then
     if args(0).kind = VK_SCALAR then
       if ScalarIsTime(args(0).scalarValue) = FALSE then
-        SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+        SetParseError(fnName & FB_STR_TIME_EXPECTS_TIME_ARG)
         return TRUE
       end if
       ValueFromTimeMs(TimeTotalMsFromScalarValue(args(0).scalarValue), fnId, outV)
       return TRUE
     elseif args(0).kind = VK_ARRAY then
-      return MapTimeUnitOverArray(args(0), fnId, outV)
+      return MapTimeUnitOverArray(fnName, args(0), fnId, outV)
     else
-      SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+      SetParseError(fnName & FB_STR_TIME_EXPECTS_TIME_ARG)
       return TRUE
     end if
   end if
@@ -9646,7 +9647,7 @@ private function TryBuiltinDispatchWithTime(byval fnId as Integer, byref fnName 
       dim svSort as ScalarValue
       while ArgScalarValueWalkNext(args(), argIdxSort, elemIdxSort, svSort)
         if ScalarIsTime(svSort) = FALSE then
-          SetParseError(FB_STR_TIME_EXPECTS_TIME_ARG)
+          SetTimeArrayMixedError(fnName & FB_STR_PAR)
           return TRUE
         end if
       wend
@@ -9880,12 +9881,33 @@ private function TryHandleBuiltinDegRad(byval fnId as Integer, byref fn as Strin
   return TRUE
 end function
 
-private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as ZString ptr) as EvalValue
+private function TryDispatchBuiltinCall(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+  dim fn as String = lcase(fnName)
+  if TryBuiltinDispatchWithTime(fnId, fnName, args(), outV) then return TRUE
+  if TryEvaluateBuiltinAggregate(fnId, fnName, args(), outV) then return TRUE
+  if TryBuiltinDispatchWithComplex(fnId, fnName, args(), outV) then return TRUE
+  if TryHandleBuiltinArrayTransform(fnId, fnName, args(), outV) then return TRUE
+  if TryHandleBuiltinScalarBinary(fnId, fnName, args(), outV) then return TRUE
+  if TryHandleBuiltinSpecialScalars(fnId, fn, fnName, args(), outV) then return TRUE
+  if TryHandleBuiltinBaseFormat(fnId, fnName, args(), outV) then return TRUE
+  if (fnId = FUNC_POLAR) orelse (fnId = FUNC_CART) then
+    TryBuiltinPolarCart(fnId, fnName, args(), outV)
+    return TRUE
+  end if
+  if TryHandleBuiltinDegRad(fnId, fn, fnName, args(), outV) then return TRUE
+  if IsUnaryBuiltin(fnName) then
+    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fnName)
+    return TRUE
+  end if
+  return FALSE
+end function
+
+private function ParseFunctionCall(byref fnName as String) as EvalValue
   dim outV as EvalValue
   if pStream[0] <> CHAR_LPAREN then SetMissingOpeningBracketError(): return outV
   pStream += 1
   SkipSpaces()
-  if TrySetIncompleteOpenedFunctionCallHint(fnName, fnIdentStart) then return outV
+  if TrySetIncompleteOpenedFunctionCallHint(fnName) then return outV
 
   dim args() as EvalValue
   dim argsCount as Integer = 0
@@ -9919,24 +9941,7 @@ private function ParseFunctionCall(byref fnName as String, byval fnIdentStart as
   NormalizeCallArgs(args())
   if ValidateBuiltinCallArgs(fnId, fnName, args()) = FALSE then return outV
   if ValidateBuiltinCallArity(fnId, fnName, args()) = FALSE then return outV
-  if TryBuiltinDispatchWithTime(fnId, fnName, args(), outV) then return outV
-  if TryEvaluateBuiltinAggregate(fnId, fnName, args(), outV) then return outV
-  if TryBuiltinDispatchWithComplex(fnId, fnName, args(), outV) then return outV
-
-  if TryHandleBuiltinArrayTransform(fnId, fnName, args(), outV) then return outV
-  if TryHandleBuiltinScalarBinary(fnId, fnName, args(), outV) then return outV
-  if TryHandleBuiltinSpecialScalars(fnId, fn, fnName, args(), outV) then return outV
-  if TryHandleBuiltinBaseFormat(fnId, fnName, args(), outV) then return outV
-  if (fnId = FUNC_POLAR) orelse (fnId = FUNC_CART) then
-    TryBuiltinPolarCart(fnId, fnName, args(), outV)
-    return outV
-  end if
-  if TryHandleBuiltinDegRad(fnId, fn, fnName, args(), outV) then return outV
-
-  if IsUnaryBuiltin(fnName) then
-    if ApplyUnaryFunction(fn, args(0), outV) = FALSE then SetNumericErrorInFunction(fnName)
-    return outV
-  end if
+  if TryDispatchBuiltinCall(fnId, fnName, args(), outV) then return outV
 
   if EvaluateUserFunction(fnName, args(), outV) then return outV
 
@@ -10221,7 +10226,7 @@ private function ParseFactor() as EvalValue
     dim nam as String = ConsumeIdentTokenFromStream()
     SkipSpaces()
     if pStream[0] = CHAR_LPAREN then
-      n = ParseFunctionCall(nam, identStart)
+      n = ParseFunctionCall(nam)
       if parseError then return n
       dim indexed as EvalValue
       if TryParseArrayIndex(n, indexed) = FALSE then return n
@@ -10268,7 +10273,7 @@ private function ParseFactor() as EvalValue
         if parseError then return n
         if nextVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
         if ScalarIsTime(nextVal.scalarValue) <> firstIsT then
-          SetTimeArrayMixedError()
+          SetTimeArrayMixedError("array literal")
           return n
         end if
         redim preserve vals(0 to ubound(vals) + 1)
@@ -11346,7 +11351,7 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       if parseParamsOk andalso pStream[0] = CHAR_RPAREN then
         pStream += 1
         SkipSpaces()
-        '' UDF: name(params)=body — single '=' only; do not treat first '=' of '==' as UDF starter.
+        '' UDF: name(params)=body - single '=' only; do not treat first '=' of '==' as UDF starter.
         if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
           pStream += 1
           SkipSpaces()

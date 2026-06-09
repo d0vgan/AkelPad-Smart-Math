@@ -555,6 +555,10 @@ private:
     const std::unordered_map<std::string, std::vector<std::string>>* compilingUserFunctionParams = nullptr;
     /** Shared stack for the current top-level evaluate(); null outside evaluate(). */
     std::vector<std::string>* userFunctionCallStack = nullptr;
+    /** Set only while parsing a UDF body for definition validation. */
+    const char* validatingUserFunctionName = nullptr;
+    /** Set while evaluating an inline lambda body (e.g. sortby key). */
+    bool suppressBareFunctionTailHint = false;
   };
 
   struct CompiledProgramState {
@@ -576,7 +580,6 @@ private:
   bool supportComplexNumbers_ = false;
   bool supportTimeValues_ = true;
   bool supportLambdaFunctions_ = true;
-  std::unique_ptr<Expr> (MathParser::*parseSortbyKeyArgImpl_)(EvalContext&);
 
   bool prepareCompileParseSource(
       const std::string& mathExpression,
@@ -651,8 +654,7 @@ private:
   enum class LambdaBodyStop {
     WrappedParenClose,
     SortbyArgDelim,
-    TopLevelSemicolonOrEof,
-    ToEof
+    TopLevelSemicolonOrEof
   };
 #if SMARTMATH_LAMBDA_FUNCTIONS
   bool tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const;
@@ -680,18 +682,15 @@ private:
       EvalContext& ctx,
       std::vector<std::string>&& params,
       std::string&& body);
-  std::unique_ptr<Expr> parseSortbyKeyArgWithLambda(EvalContext& ctx);
   static EvalValue makeInlineLambdaValue(std::vector<std::string> params, std::string body);
   EvalValue evalInlineLambdaCall(
       EvalContext& ctx,
       const std::vector<std::string>& paramNames,
       const std::string& bodyExpr,
-      std::vector<EvalValue>&& args,
-      const std::unordered_map<std::string, EvalValue>* scopedVars);
+      std::vector<EvalValue>&& args);
 #endif
   std::unique_ptr<Expr> parseSortbyKeyArg(EvalContext& ctx);
   std::unique_ptr<Expr> parseSortbyKeyArgFunctionRefOnly(EvalContext& ctx);
-  void syncLambdaSupportDispatch();
   static bool isTruthy(const EvalValue& v);
   static std::string trim(const std::string& s);
   static bool udfBodyIsEmptyTupleLiteral(const std::string& bodyExpr);
@@ -833,7 +832,7 @@ private:
   static bool isReservedFunctionName(const std::string& nameText);
   const char* getReservedIdentifierError(const std::string& ident) const;
   static bool isTrailingFormatterFunctionName(const std::string& nameText);
-  bool isBareFunctionNameAtExpressionTail(EvalContext& ctx, const char* identStart) const;
+  bool isBareFunctionNameAtExpressionTail(EvalContext& ctx) const;
   bool trySetBareFunctionImmediateCloserError(EvalContext& ctx, const char* identStart) const;
   static bool passExactAbsFloatFactorGates(double f, bool strictAbsFAboveOne);
   static bool getExactRoundedIntFromFloatResult(double r, bool boundAbsResultTo2_53, long long& outI);
@@ -898,11 +897,8 @@ private:
   bool trySetMissingFunctionCallError(
       EvalContext& ctx,
       const std::string& ident,
-      const char* identStart) const;
-  bool trySetIncompleteOpenedFunctionCallHint(
-      EvalContext& ctx,
-      const std::string& ident,
-      const char* fnIdentStart) const;
+      const char* identStartForCloser = nullptr) const;
+  bool trySetIncompleteOpenedFunctionCallHint(EvalContext& ctx, const std::string& ident) const;
   bool trySetBareUserFunctionNameError(
       EvalContext& ctx,
       const std::string& ident,
@@ -1133,6 +1129,7 @@ private:
 #endif
   EvalValue builtinTimeUnit(
       EvalContext& ctx,
+      const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
   EvalValue builtinBaseFormat(
@@ -1351,7 +1348,11 @@ private:
       EvalValue& out) const;
 #if SMARTMATH_TIME_VALUES
   bool scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const;
-  EvalValue mapTimeUnitOverArray(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
+  EvalValue mapTimeUnitOverArray(
+      EvalContext& ctx,
+      const std::string& fnName,
+      BuiltinFunctionId id,
+      const EvalValue& inV) const;
   EvalValue evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const;
 #endif
   EvalValue mapUnaryComplexBuiltin(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
