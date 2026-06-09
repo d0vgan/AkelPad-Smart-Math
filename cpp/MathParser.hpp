@@ -558,6 +558,7 @@ private:
     /** Set only while parsing a UDF body for definition validation. */
     const char* validatingUserFunctionName = nullptr;
     /** Set while evaluating an inline lambda body (e.g. sortby key). */
+    // Path C: set when trailing ';' was stripped. Path B: *p == ';' in trySetMissingFunctionCallError.
     bool suppressBareFunctionTailHint = false;
   };
 

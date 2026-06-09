@@ -802,6 +802,10 @@ const UDF_CALL_STACK_MAX as Integer = 128
 dim shared udfCallStack(0 to UDF_CALL_STACK_MAX - 1) as String
 dim shared udfCallStackSp as Integer
 dim shared validatingUserFunctionName as String
+' suppressBareFunctionTailHint: skip bare-function tail hints when ';' context was lost.
+' Path A: whole bare name + ';' (e.g. cos;) -> unexpected token in TryEvaluateTopLevelStatements.
+' Path B: ';' still in pStream -> TryHandleBareBuiltinOrUdfIdent checks pStream[0].
+' Path C: trailing ';' stripped or stmt split without ';' -> set flag from normalize return or caller.
 dim shared suppressBareFunctionTailHint as Boolean
 dim shared exprStart as ZString ptr
 dim shared errorBaseCol as Integer
@@ -3713,7 +3717,8 @@ private function TrimmedStmtIsBareBuiltinOrUdfName(byref stmt as String) as Bool
   return FALSE
 end function
 
-private sub NormalizeTrailingStatementSemicolons(byref s as string)
+private sub NormalizeTrailingStatementSemicolons(byref s as string, byref outStrippedSuppressTailHint as Boolean)
+  outStrippedSuppressTailHint = FALSE
   dim progressing as Boolean = TRUE
   while progressing <> FALSE
     progressing = FALSE
@@ -3731,7 +3736,12 @@ private sub NormalizeTrailingStatementSemicolons(byref s as string)
       if TrimmedStmtIsBareBuiltinOrUdfName(beforeSemi) then
         exit sub
       end if
-      suppressBareFunctionTailHint = TRUE
+      ' Keep trailing ';' on multi-statement input so the last segment stays semicolon-terminated.
+      if instr(beforeSemi, ";") > 0 then
+        exit sub
+      end if
+      ' Path C: stripped trailing ';' hides semicolon from the parse buffer.
+      outStrippedSuppressTailHint = TRUE
       s = Left(s, Len(s) - 1)
       progressing = TRUE
     end if
@@ -3759,19 +3769,40 @@ private function TrySetBareFunctionImmediateCloserError(byval identStart as ZStr
   return FALSE
 end function
 
-private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String) as Boolean
+private function TryEmitBareBuiltinOrUdfTailHint(byref fnHint as String, byval isBuiltin as Boolean, byval udfIdx as Integer, byval suppressUdfTailHint as Boolean) as Boolean
   if suppressBareFunctionTailHint then return FALSE
   if IsBareFunctionNameAtExpressionTail() = FALSE then return FALSE
+  if isBuiltin = FALSE andalso suppressUdfTailHint then return FALSE
+  if isBuiltin then
+    SetParseError(FB_STR_HINT_PREFIX & fnHint)
+  else
+    SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
+  end if
+  return TRUE
+end function
+
+private function TryHandleBareBuiltinOrUdfIdent(byref nam as String, byref fnHint as String, byval isBuiltin as Boolean, byval udfIdx as Integer, byval identStart as ZString ptr, byval suppressUdfTailHint as Boolean) as Boolean
+  SkipSpaces()
+  ' Path B: ';' still visible in the active parse buffer.
+  if pStream[0] = CHAR_SEMICOLON then
+    SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
+    return TRUE
+  end if
+  if TryEmitBareBuiltinOrUdfTailHint(fnHint, isBuiltin, udfIdx, suppressUdfTailHint) then return TRUE
+  if TrySetBareFunctionImmediateCloserError(identStart) then return TRUE
+  SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
+  return TRUE
+end function
+
+private function TrySetIncompleteOpenedFunctionCallHint(byref fnName as String) as Boolean
   dim fnHint as String
   if IdentMayBeBareBuiltinName(fnName) andalso TryGetBuiltinSignatureHint(fnName, fnHint) then
-    SetParseError(FB_STR_HINT_PREFIX & fnHint)
-    return TRUE
+    return TryEmitBareBuiltinOrUdfTailHint(fnHint, TRUE, -1, FALSE)
   end if
   dim udfIdx as Integer = -1
   if lbound(userFunctions) <= ubound(userFunctions) then udfIdx = FindFunctionIndex(fnName)
   if udfIdx >= 0 then
-    SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
-    return TRUE
+    return TryEmitBareBuiltinOrUdfTailHint(fnHint, FALSE, udfIdx, FALSE)
   end if
   return FALSE
 end function
@@ -3784,40 +3815,18 @@ private function TryHandleUnknownIdentifier(byref nam as String, byref outV as E
   end if
   dim fnHint as String
   if IdentMayBeBareBuiltinName(nam) andalso TryGetBuiltinSignatureHint(nam, fnHint) then
-    SkipSpaces()
-    if pStream[0] = CHAR_SEMICOLON then
-      SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
-      return FALSE
-    end if
-    if suppressBareFunctionTailHint = FALSE andalso IsBareFunctionNameAtExpressionTail() then
-      SetParseError(FB_STR_HINT_PREFIX & fnHint)
-    elseif TrySetBareFunctionImmediateCloserError(identStart) then
-      ' mismatched closer already set
-    else
-      SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
-    end if
+    if TryHandleBareBuiltinOrUdfIdent(nam, fnHint, TRUE, -1, identStart, FALSE) then return FALSE
     return FALSE
   end if
   dim udfIdx as Integer = -1
   if lbound(userFunctions) <= ubound(userFunctions) then udfIdx = FindFunctionIndex(nam)
   if udfIdx >= 0 then
-    SkipSpaces()
-    if pStream[0] = CHAR_SEMICOLON then
-      SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
-      return FALSE
-    end if
     dim suppressUdfTailHint as Boolean = FALSE
     if (udfCallStackSp > 0 andalso udfCallStack(udfCallStackSp - 1) = lowNam) _
         orelse (len(validatingUserFunctionName) > 0 andalso lowNam = validatingUserFunctionName) then
       suppressUdfTailHint = TRUE
     end if
-    if suppressBareFunctionTailHint = FALSE andalso IsBareFunctionNameAtExpressionTail() andalso suppressUdfTailHint = FALSE then
-      SetParseError(FB_STR_USER_DEFINED_FUNCTION_COLON & FormatUserFunctionSignature(udfIdx))
-    elseif TrySetBareFunctionImmediateCloserError(identStart) then
-      ' mismatched closer already set
-    else
-      SetParseError(FB_STR_UNKNOWN_VARIABLE_COLON & nam)
-    end if
+    if TryHandleBareBuiltinOrUdfIdent(nam, fnHint, FALSE, udfIdx, identStart, suppressUdfTailHint) then return FALSE
     return FALSE
   end if
   AppendUniqueName(unknownVarsText, nam)
@@ -7868,6 +7877,8 @@ declare function TryBuiltinRatio(byref fnName as String, args() as EvalValue, by
 declare function TryParseSortbyCallArguments(args() as EvalValue, byref argsCount as Integer, byref argsCap as Integer) as Boolean
 declare function TryParseSortbyFunctionRef(byref outV as EvalValue) as Boolean
 declare function TryDispatchBuiltinCall(byval fnId as Integer, byref fnName as String, args() as EvalValue, byref outV as EvalValue) as Boolean
+declare function TryEvaluateStatementCore(byref exprInput as String, byref result as Double, byref resultText as String, byref isArray as Boolean, byval suppressTailHint as Boolean) as Boolean
+declare function IsStmtUdfDefinitionAt(byref stmt as String) as Boolean
 declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnName as String, byval reverseSingleArray as Boolean, byref outV as EvalValue, vals() as ScalarValue, byref c as Integer) as Integer
 
 private function CountFlattenedArgs(args() as EvalValue) as Integer
@@ -11103,6 +11114,41 @@ private sub UpdateNestingDepths(byval ch as UByte, byref depthParen as Integer, 
   end if
 end sub
 
+private function IsStmtUdfDefinitionAt(byref stmt as String) as Boolean
+  if Len(stmt) = 0 then return FALSE
+  dim save as ZString ptr = pStream
+  pStream = StrPtr(stmt)
+  SkipSpaces()
+  if IsIdentStartChar(asc(pStream[0])) = FALSE then
+    pStream = save
+    return FALSE
+  end if
+  ConsumeIdentTokenFromStream()
+  SkipSpaces()
+  if pStream[0] <> CHAR_LPAREN then
+    pStream = save
+    return FALSE
+  end if
+  pStream += 1
+  dim depth as Integer = 1
+  while pStream[0] <> CHAR_NUL andalso depth > 0
+    if pStream[0] = CHAR_LPAREN then
+      depth += 1
+    elseif pStream[0] = CHAR_RPAREN then
+      depth -= 1
+    end if
+    pStream += 1
+  wend
+  if depth <> 0 then
+    pStream = save
+    return FALSE
+  end if
+  SkipSpaces()
+  dim isUdfDef as Boolean = (pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS)
+  pStream = save
+  return isUdfDef
+end function
+
 private function TryEvaluateTopLevelStatements(byref exprInput as String, byref result as Double, byref resultText as String, byref isArray as Boolean, byref handled as Boolean) as Boolean
   handled = FALSE
   if instr(exprInput, ";") <= 0 then return TRUE
@@ -11157,6 +11203,10 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
       end if
       dim stmt as String = trim(rawStmt)
       if stmt = "" then
+        ' Trailing ';' already flushed the last statement; artificial EOF has nothing left.
+        if iStmt > len(exprInput) andalso stmtStart > len(exprInput) then
+          exit for
+        end if
         SetEmptyStatementError()
         return FALSE
       end if
@@ -11173,25 +11223,36 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
       errorBaseCol = stmtStart + leadWs
       dim isSemicolon as Boolean = iStmt <= len(exprInput) andalso chByte = CHAR_SEMICOLON
       if isSemicolon andalso TrimmedStmtIsBareBuiltinOrUdfName(stmt) then
-        parseError = 0
-        SetParseErrorAtColumn(FB_STR_UNEXPECTED_TOKEN, iStmt)
-        return FALSE
+        dim allowFormatterSugar as Boolean = FALSE
+        if hasPrevStmtResult then
+          dim fmtRewritten as String
+          if TryRewriteTrailingFormatterStmt(stmt, fmtRewritten) then allowFormatterSugar = TRUE
+        end if
+        if allowFormatterSugar = FALSE then
+          parseError = 0
+          SetParseErrorAtColumn(FB_STR_UNEXPECTED_TOKEN, iStmt)
+          return FALSE
+        end if
       end if
       dim stmtToEval as String = stmt
       if hasPrevStmtResult then
         dim rewrittenStmt as String
         if TryRewriteTrailingFormatterStmt(stmt, rewrittenStmt) then stmtToEval = rewrittenStmt
       end if
-      dim savedSuppressTailHint as Boolean = suppressBareFunctionTailHint
+      dim stmtParse as String = stmtToEval
+      dim stmtSuppress as Boolean = FALSE
       if isSemicolon andalso iStmt <= len(exprInput) then
-        suppressBareFunctionTailHint = TRUE
+        if IsStmtUdfDefinitionAt(stmtToEval) = FALSE then
+          stmtParse &= ";"
+        end if
+        if TrimmedStmtIsBareBuiltinOrUdfName(stmt) = FALSE then
+          stmtSuppress = TRUE
+        end if
       end if
-      if Parser_TryEvaluateEx(stmtToEval, result, resultText, isArray) = FALSE then
-        suppressBareFunctionTailHint = savedSuppressTailHint
+      if TryEvaluateStatementCore(stmtParse, result, resultText, isArray, stmtSuppress) = FALSE then
         errorBaseCol = savedBaseCol
         return FALSE
       end if
-      suppressBareFunctionTailHint = savedSuppressTailHint
       hasPrevStmtResult = TRUE
       errorBaseCol = savedBaseCol
       stmtStart = iStmt + 1
@@ -11205,39 +11266,13 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
 end function
 
 private function FinishParserEvaluateEx(byval ok as Boolean) as Boolean
-  if evalDepth = 1 then suppressBareFunctionTailHint = FALSE
   evalDepth -= 1
   return ok
 end function
 
-function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
-  dim exprAfterLineComment as String = StripLineComment(sExpr)
-  dim exprInput as String = exprAfterLineComment
-  const PARSER_MAX_EXPR_LEN as Integer = 32760
-  evalDepth += 1
-  if evalDepth = 1 then
-    ResetTopLevelEvaluationState(exprAfterLineComment)
-  end if
-  NormalizeTrailingStatementSemicolons(exprInput)
-  if Len(exprInput) = 0 then
-    if Len(exprAfterLineComment) > 0 then
-      SetEmptyStatementError()
-    end if
-    return FinishParserEvaluateEx(FALSE)
-  end if
-  if Len(exprInput) > PARSER_MAX_EXPR_LEN then
-    SetExpressionTooLongError()
-    return FinishParserEvaluateEx(FALSE)
-  end if
-
-  dim handledTopLevel as Boolean = FALSE
-  if TryEvaluateTopLevelStatements(exprInput, result, resultText, isArray, handledTopLevel) = FALSE then
-    return FinishParserEvaluateEx(FALSE)
-  end if
-  if handledTopLevel then
-    return FinishParserEvaluateEx(TRUE)
-  end if
-
+private function TryEvaluateStatementCore(byref exprInput as String, byref result as Double, byref resultText as String, byref isArray as Boolean, byval suppressTailHint as Boolean) as Boolean
+  dim savedSuppressTailHint as Boolean = suppressBareFunctionTailHint
+  suppressBareFunctionTailHint = suppressTailHint
   dim i as Integer, hasNonSpace as Integer = 0
   for i = 1 to Len(exprInput)
     dim c as Integer = Asc(Mid(exprInput, i, 1))
@@ -11247,7 +11282,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     end if
   next i
   if hasNonSpace = 0 then
-    return FinishParserEvaluateEx(FALSE)
+    suppressBareFunctionTailHint = savedSuppressTailHint
+    return FALSE
   end if
 
   pStream = StrPtr(exprInput)
@@ -11273,7 +11309,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           dim lamUdfErr as string = ""
           if TryValidateUserFunctionDefinition(varName, lamP(), lamB, lamUdfErr) = FALSE then
             SetValidationError(lamUdfErr)
-            return FinishParserEvaluateEx(FALSE)
+            suppressBareFunctionTailHint = savedSuppressTailHint
+            return FALSE
           end if
           SetUserFunction(varName, lamP(), lamB)
           dim sigL as String = varName & "("
@@ -11289,37 +11326,47 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           isArray = FALSE
           result = 0
           InvalidateLastRawResult()
-          return FinishParserEvaluateEx(TRUE)
+          suppressBareFunctionTailHint = savedSuppressTailHint
+          return TRUE
           end if
         elseif PeekRhsMayBeLambdaSyntaxAt(afterEq) then
           SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
-          return FinishParserEvaluateEx(FALSE)
+          suppressBareFunctionTailHint = savedSuppressTailHint
+          return FALSE
         end if
         pStream = afterEq
         dim exprV as EvalValue
         exprV = ParseExpression()
         if parseError then
-          return FinishParserEvaluateEx(FALSE)
+          suppressBareFunctionTailHint = savedSuppressTailHint
+          return FALSE
         end if
         SkipSpaces()
         ApplyUnknownNameErrors()
-        if pStream[0] = CHAR_NUL andalso parseError = 0 then
-          dim assignNameErr as String
-          if TryValidateAssignmentTargetName(varName, assignNameErr) = FALSE then
-            SetValidationError(assignNameErr)
-            return FinishParserEvaluateEx(FALSE)
+        if pStream[0] = CHAR_NUL orelse pStream[0] = CHAR_SEMICOLON then
+          if pStream[0] = CHAR_SEMICOLON then pStream += 1
+          SkipSpaces()
+          if pStream[0] = CHAR_NUL andalso parseError = 0 then
+            dim assignNameErr as String
+            if TryValidateAssignmentTargetName(varName, assignNameErr) = FALSE then
+              SetValidationError(assignNameErr)
+              suppressBareFunctionTailHint = savedSuppressTailHint
+              return FALSE
+            end if
+            RemoveUserFunctionByName(varName)
+            SetVariable(varName, exprV)
+            SetAnsValue(exprV)
+            resultText = ValueToString(exprV)
+            isArray = (exprV.kind = VK_ARRAY)
+            if exprV.kind = VK_SCALAR then result = exprV.scalar
+            CommitLastRawResult(exprV)
+            suppressBareFunctionTailHint = savedSuppressTailHint
+            return TRUE
           end if
-          RemoveUserFunctionByName(varName)
-          SetVariable(varName, exprV)
-          SetAnsValue(exprV)
-          resultText = ValueToString(exprV)
-          isArray = (exprV.kind = VK_ARRAY)
-          if exprV.kind = VK_SCALAR then result = exprV.scalar
-          CommitLastRawResult(exprV)
-          return FinishParserEvaluateEx(TRUE)
         end if
         if parseError = 0 then SetParseErrorById(PARSE_ERR_UNEXPECTED_TOKEN)
-        return FinishParserEvaluateEx(FALSE)
+        suppressBareFunctionTailHint = savedSuppressTailHint
+        return FALSE
       end if
       pStream = stmtStart
     end if
@@ -11359,7 +11406,6 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
       if parseParamsOk andalso pStream[0] = CHAR_RPAREN then
         pStream += 1
         SkipSpaces()
-        '' UDF: name(params)=body - single '=' only; do not treat first '=' of '==' as UDF starter.
         if pStream[0] = CHAR_EQUALS andalso pStream[1] <> CHAR_EQUALS then
           pStream += 1
           SkipSpaces()
@@ -11367,7 +11413,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           dim body as String = *pStream
           if TryValidateUserFunctionDefinition(varName, fnParams(), body, udfValidationErr) = FALSE then
             SetValidationError(udfValidationErr)
-            return FinishParserEvaluateEx(FALSE)
+            suppressBareFunctionTailHint = savedSuppressTailHint
+            return FALSE
           end if
           SetUserFunction(varName, fnParams(), body)
           dim sig as String = varName & "("
@@ -11383,7 +11430,8 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
           isArray = FALSE
           result = 0
           InvalidateLastRawResult()
-          return FinishParserEvaluateEx(TRUE)
+          suppressBareFunctionTailHint = savedSuppressTailHint
+          return TRUE
         end if
       end if
       pStream = savedPos
@@ -11397,9 +11445,14 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
   dim outV as EvalValue
   outV = ParseExpression()
   if parseError then
-    return FinishParserEvaluateEx(FALSE)
+    suppressBareFunctionTailHint = savedSuppressTailHint
+    return FALSE
   end if
   SkipSpaces()
+  if pStream[0] = CHAR_SEMICOLON then
+    pStream += 1
+    SkipSpaces()
+  end if
 
   ApplyUnknownNameErrors()
 
@@ -11413,13 +11466,50 @@ function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byr
     end if
   end if
   if parseError = 1 then
-    return FinishParserEvaluateEx(FALSE)
+    suppressBareFunctionTailHint = savedSuppressTailHint
+    return FALSE
   end if
   resultText = ValueToString(outV)
   isArray = (outV.kind = VK_ARRAY)
   if outV.kind = VK_SCALAR then result = outV.scalar
   SetAnsValue(outV)
   CommitLastRawResult(outV)
+  suppressBareFunctionTailHint = savedSuppressTailHint
+  return TRUE
+end function
+
+function Parser_TryEvaluateEx(byref sExpr as String, byref result as Double, byref resultText as String, byref isArray as Boolean) as Boolean
+  dim exprAfterLineComment as String = StripLineComment(sExpr)
+  dim exprInput as String = exprAfterLineComment
+  const PARSER_MAX_EXPR_LEN as Integer = 32760
+  evalDepth += 1
+  if evalDepth = 1 then
+    ResetTopLevelEvaluationState(exprAfterLineComment)
+  end if
+  dim stripSuppressTailHint as Boolean = FALSE
+  NormalizeTrailingStatementSemicolons(exprInput, stripSuppressTailHint)
+  if Len(exprInput) = 0 then
+    if Len(exprAfterLineComment) > 0 then
+      SetEmptyStatementError()
+    end if
+    return FinishParserEvaluateEx(FALSE)
+  end if
+  if Len(exprInput) > PARSER_MAX_EXPR_LEN then
+    SetExpressionTooLongError()
+    return FinishParserEvaluateEx(FALSE)
+  end if
+
+  dim handledTopLevel as Boolean = FALSE
+  if TryEvaluateTopLevelStatements(exprInput, result, resultText, isArray, handledTopLevel) = FALSE then
+    return FinishParserEvaluateEx(FALSE)
+  end if
+  if handledTopLevel then
+    return FinishParserEvaluateEx(TRUE)
+  end if
+
+  if TryEvaluateStatementCore(exprInput, result, resultText, isArray, stripSuppressTailHint) = FALSE then
+    return FinishParserEvaluateEx(FALSE)
+  end if
   return FinishParserEvaluateEx(TRUE)
 end function
 

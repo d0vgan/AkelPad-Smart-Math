@@ -2450,11 +2450,16 @@ bool MathParser::stripTrailingSemicolonsForTopLevelInput(std::string& s) const {
       s.pop_back();
     }
     if (!s.empty() && s.back() == ';') {
-      if (trimmedStmtIsBareFunctionOrUdfName(s.data(), s.data() + s.size() - 1)) {
+      const std::string beforeSemi = trim(std::string(s.data(), s.size() - 1));
+      if (trimmedStmtIsBareFunctionOrUdfName(beforeSemi)) {
+        return strippedAny;
+      }
+      // Keep trailing ';' on multi-statement input so the last segment stays semicolon-terminated.
+      if (beforeSemi.find(';') != std::string::npos) {
         return strippedAny;
       }
       s.pop_back();
-      strippedAny = true;
+      strippedAny = true;  // Path C: stripped trailing ';' hides semicolon from the parse buffer.
       continue;
     }
     break;
@@ -8216,10 +8221,6 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryIdentifierOrCall(EvalC
     }
     std::string ident;
     assignLowerIdentFromRange(ident, identStart, identEnd);
-    if (*ctx.p == ';' && identIsBareFunctionOrUdfName(ident, ctx)) {
-      setParseError(ctx, ParseErrorId::UnexpectedToken);
-      return nullptr;
-    }
     if (MathParser::identMayBeBareBuiltinName(ident) && trySetMissingFunctionCallError(ctx, ident, identStart)) {
       return nullptr;
     }
@@ -12153,6 +12154,7 @@ bool MathParser::compile(const std::string& mathExpression) {
     }
     return false;
   }
+  // Path C only: parseProgram leaves ';' in ctx.p (Path B); suppress applies after strip above.
   ctx.suppressBareFunctionTailHint = strippedTrailingSemicolon;
 
   std::vector<AstStatement> program;

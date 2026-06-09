@@ -3189,6 +3189,23 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "f(x)=x; f(", "user-defined function: f(x)", why)) return false;
                 return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
               }});
+  t.push_back({"regression/multi-statement trailing semicolon", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "a=1; b=2; c=3; a+b+c;", "6", why)) return false;
+                if (!expectEval(p, "r=10; r;", "10", why)) return false;
+                if (!expectEval(p, "r()=5; r();", "5", why)) return false;
+                if (!expectEval(p, "1+2; 3+4", "7", why)) return false;
+                if (!expectEval(p, "1+2; 3+4;", "7", why)) return false;
+                if (!expectEval(p, "f(x)=x+1; f(3)", "4", why)) return false;
+                if (!expectEval(p, "f(x)=x+1; f(3);", "4", why)) return false;
+                if (!expectEval(p, "0xAA; hex", "0xAA", why)) return false;
+                if (!expectEval(p, "0xAA; hex;", "0xAA", why)) return false;
+                if (!expectEval(p, "(10,20,30); hex()", "(0xA,0x14,0x1E)", why)) return false;
+                if (!expectEval(p, "(10,20,30); hex;", "(0xA,0x14,0x1E)", why)) return false;
+                if (!expectEvalErrorContains(p, "(10,20,30); cos;", "unexpected token", why))
+                  return false;
+                return expectEvalErrorContains(p, "1;;2", "empty statement", why);
+              }});
 #if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/sortby inline lambda key at EOF missing closing paren", [](std::string& why) {
                 MathParser p;
@@ -4312,6 +4329,17 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, ";", "empty statement"} ,
     {ParityBasicCase::Kind::ErrorContains, " ; ", "empty statement"} ,
     {ParityBasicCase::Kind::ErrorContains, "1;;2", "empty statement"} ,
+    {ParityBasicCase::Kind::Expected, "a=1; b=2; c=3; a+b+c;", "6"} ,
+    {ParityBasicCase::Kind::Expected, "r=10; r;", "10"} ,
+    {ParityBasicCase::Kind::Expected, "r()=5; r();", "5"} ,
+    {ParityBasicCase::Kind::Expected, "1+2; 3+4", "7"} ,
+    {ParityBasicCase::Kind::Expected, "1+2; 3+4;", "7"} ,
+    {ParityBasicCase::Kind::Expected, "f(x)=x+1; f(3)", "4"} ,
+    {ParityBasicCase::Kind::Expected, "f(x)=x+1; f(3);", "4"} ,
+    {ParityBasicCase::Kind::Expected, "0xAA; hex", "0xAA"} ,
+    {ParityBasicCase::Kind::Expected, "0xAA; hex;", "0xAA"} ,
+    {ParityBasicCase::Kind::Expected, "(10,20,30); hex()", "(0xA,0x14,0x1E)"} ,
+    {ParityBasicCase::Kind::Expected, "(10,20,30); hex;", "(0xA,0x14,0x1E)"} ,
     {ParityBasicCase::Kind::Expected, "sortby((2,1), polar)", "(1,2)"} ,
     {ParityBasicCase::Kind::Expected, "f(x)=x*(10,20); sortby((3,1,2), f)", "(1,2,3)"},
     {ParityBasicCase::Kind::Expected, "sum(1,Inf,2)", "inf"},

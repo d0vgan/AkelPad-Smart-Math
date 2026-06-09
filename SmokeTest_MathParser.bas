@@ -1987,6 +1987,69 @@ private sub RunIncompleteFunctionCallHintTests()
   print ""
 end sub
 
+private sub RunMultiStmtSemicolonTests()
+  print "=== multi-statement semicolon stability ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as Double
+  dim rt as String
+  dim ia as Boolean
+
+  dim okExprs(1 to 8) as String
+  dim okNeed(1 to 8) as String
+  okExprs(1) = "1+2; 3+4": okNeed(1) = "7"
+  okExprs(2) = "1+2; 3+4;": okNeed(2) = "7"
+  okExprs(3) = "f(x)=x+1; f(3)": okNeed(3) = "4"
+  okExprs(4) = "f(x)=x+1; f(3);": okNeed(4) = "4"
+  okExprs(5) = "0xAA; hex": okNeed(5) = "0xAA"
+  okExprs(6) = "0xAA; hex;": okNeed(6) = "0xAA"
+  okExprs(7) = "(10,20,30); hex()": okNeed(7) = "(0xA,0x14,0x1E)"
+  okExprs(8) = "(10,20,30); hex;": okNeed(8) = "(0xA,0x14,0x1E)"
+  dim mi as Integer
+  for mi = 1 to 8
+    if Parser_TryEvaluateEx(okExprs(mi), r, rt, ia) = FALSE then
+      print "[multi-stmt-semi] FAIL: """ & okExprs(mi) & """ -> " & Parser_GetLastError()
+      subFail += 1
+    elseif ResultCloseEnough(rt, okNeed(mi)) = FALSE then
+      print "[multi-stmt-semi] FAIL: """ & okExprs(mi) & """ expected """ & okNeed(mi) & """ got """ & rt & """"
+      subFail += 1
+    else
+      print "[multi-stmt-semi] PASS: """ & okExprs(mi) & """"
+      subPass += 1
+    end if
+  next mi
+
+  if Parser_TryEvaluateEx("(10,20,30); cos;", r, rt, ia) then
+    print "[multi-stmt-semi] FAIL: (10,20,30); cos; expected error"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "unexpected token") = 0 then
+    print "[multi-stmt-semi] FAIL: (10,20,30); cos; got """ & Parser_GetLastError() & """"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "function: cos") > 0 then
+    print "[multi-stmt-semi] FAIL: (10,20,30); cos; must not hint"
+    subFail += 1
+  else
+    print "[multi-stmt-semi] PASS: (10,20,30); cos;"
+    subPass += 1
+  end if
+
+  if Parser_TryEvaluateEx("1;;2", r, rt, ia) then
+    print "[multi-stmt-semi] FAIL: 1;;2 expected error"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "empty statement") = 0 then
+    print "[multi-stmt-semi] FAIL: 1;;2 got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[multi-stmt-semi] PASS: 1;;2"
+    subPass += 1
+  end if
+
+  g_passed += subPass
+  g_failed += subFail
+  print "Multi-stmt-semicolon sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 private sub RunGcdLcmNcrNprArrayBroadcastTests()
   print "=== gcd/lcm/ncr/npr array broadcast ==="
   dim subPass as Integer = 0
@@ -2729,7 +2792,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1309) as SmokeCase
+  dim tests(1 to 1320) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4093,6 +4156,17 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1307).expr = "sortby((1,2,3),x:x+sin)": tests(1307).expectedErrContains = "unknown variable: sin" ' [sortby] lambda body tail eval
   tests(1308).expr = "sortby((1,2,3),x:x:x)": tests(1308).expectedErrContains = "at col 19" ' [sortby] lambda body error column
   tests(1309).expr = "sortby((1:30,1:00),x:polar+2)": tests(1309).expectedErrContains = "at col 22" ' [sortby] lambda body unknown ident column
+  tests(1310).expr = "a=1; b=2; c=3; a+b+c;": tests(1310).expected = "6" ' [syntax] multi-stmt trailing semicolon
+  tests(1311).expr = "r=10; r;": tests(1311).expected = "10" ' [syntax] multi-stmt trailing semicolon
+  tests(1312).expr = "r()=5; r();": tests(1312).expected = "5" ' [syntax] multi-stmt trailing semicolon
+  tests(1313).expr = "1+2; 3+4": tests(1313).expected = "7" ' [syntax] multi-stmt no trailing semicolon
+  tests(1314).expr = "1+2; 3+4;": tests(1314).expected = "7" ' [syntax] multi-stmt trailing semicolon
+  tests(1315).expr = "f(x)=x+1; f(3)": tests(1315).expected = "4" ' [syntax] multi-stmt UDF then call
+  tests(1316).expr = "f(x)=x+1; f(3);": tests(1316).expected = "4" ' [syntax] multi-stmt UDF call trailing semicolon
+  tests(1317).expr = "0xAA; hex": tests(1317).expected = "0xAA" ' [syntax] trailing formatter sugar
+  tests(1318).expr = "0xAA; hex;": tests(1318).expected = "0xAA" ' [syntax] trailing formatter sugar + semicolon
+  tests(1319).expr = "(10,20,30); hex()": tests(1319).expected = "(0xA,0x14,0x1E)" ' [syntax] formatter sugar on array ans
+  tests(1320).expr = "(10,20,30); hex;": tests(1320).expected = "(0xA,0x14,0x1E)" ' [syntax] formatter sugar bare name + semicolon
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
@@ -4156,6 +4230,8 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   RunBuiltinArityTableTests()
 
   RunIncompleteFunctionCallHintTests()
+
+  RunMultiStmtSemicolonTests()
 
   RunGcdLcmNcrNprArrayBroadcastTests()
   RunRatioInExpressionTests()
