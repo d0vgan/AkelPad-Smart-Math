@@ -1,4 +1,11 @@
 #include "MathParser.hpp"
+#include "MathParserInternal.hpp"
+
+using smartmath_internal::gcdUInt64;
+using smartmath_internal::isWithinExactIntFromDoubleRange;
+using smartmath_internal::tryExtractExactInt64FromDoubleStrict;
+using smartmath_internal::tryMulUInt64Checked;
+using smartmath_internal::tryPowUInt64Checked;
 
 #include <algorithm>
 #include <cassert>
@@ -20,82 +27,84 @@ constexpr MathParser::BuiltinFlags operator|(
 
 #define BF MathParser::BuiltinFlags
 #define BHK MathParser::BuiltinHintKind
+#define BC MathParser::BuiltinCategory
 
 const MathParser::BuiltinMetaRow MathParser::kBuiltinMeta[] = {
-  { BF::NonCalculating, 0, 0, BHK::EmptyPar },  // Rand
-  { BF::FiniteRequired, 2, 2, BHK::MinMax },  // Random
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Bin
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Hex
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Oct
-  { BF::None, 2, 2, BHK::ValuePower },  // Pow
-  { BF::None, 2, 2, BHK::YX },  // Atan2
-  { BF::Unary, 1, 1, BHK::Angle },  // Sin
-  { BF::Unary, 1, 1, BHK::Angle },  // Cos
-  { BF::Unary, 1, 1, BHK::Angle },  // Tan
-  { BF::Unary, 1, 1, BHK::Value },  // Asin
-  { BF::Unary, 1, 1, BHK::Value },  // Acos
-  { BF::Unary, 1, 1, BHK::Value },  // Atan
-  { BF::Unary, 1, 1, BHK::Value },  // Sinh
-  { BF::Unary, 1, 1, BHK::Value },  // Cosh
-  { BF::Unary, 1, 1, BHK::Value },  // Tanh
-  { BF::Unary, 1, 1, BHK::Value },  // Acosh
-  { BF::Unary, 1, 1, BHK::Value },  // Asinh
-  { BF::Unary, 1, 1, BHK::Value },  // Atanh
-  { BF::Unary, 1, 1, BHK::Value },  // Exp
-  { BF::None, 2, 2, BHK::ValueBase },  // Log
-  { BF::Unary, 1, 1, BHK::Value },  // Ln
-  { BF::Unary, 1, 1, BHK::Value },  // Log10
-  { BF::Unary, 1, 1, BHK::Value },  // Sqrt
-  { BF::Unary, 1, 1, BHK::Value },  // Sqr
-  { BF::Unary, 1, 1, BHK::Value },  // Int
-  { BF::Unary, 1, 1, BHK::Value },  // Frac
-  { BF::Unary, 1, 1, BHK::Value },  // Abs
-  { BF::Unary, 1, 1, BHK::Value },  // Floor
-  { BF::Unary, 1, 1, BHK::Value },  // Ceil
-  { BF::Unary, 1, 1, BHK::Value },  // Trunc
-  { BF::Unary, 1, 1, BHK::Value },  // Round
-  { BF::Unary, 1, 1, BHK::Value },  // Sign
-  { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Deg
-  { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Rad
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Sum
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Median
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Variance
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Stddev
-  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Sort
-  { BF::NonCalculating, 2, 2, BHK::ArrayFunc },  // Sortby
-  { BF::Unary, 1, 1, BHK::Value },  // Ratio
-  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Reverse
-  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unique
-  { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Unpack
-  { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N },  // Fact
-  { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N },  // Factorint
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Avg
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Mean
-  { BF::IntegerOnly, 2, 2, BHK::ValueDivisor },  // Mod
-  { BF::None, 3, 3, BHK::ValueMinMax },  // Clamp
-  { BF::None, 2, 2, BHK::XY },  // Hypot
-  { BF::IntegerOnly, 2, 2, BHK::AB },  // Gcd
-  { BF::IntegerOnly, 2, 2, BHK::AB },  // Lcm
-  { BF::IntegerOnly, 2, 2, BHK::AB },  // Ncr
-  { BF::IntegerOnly, 2, 2, BHK::AB },  // Npr
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Product
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Min
-  { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Max
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Uhex
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Uoct
-  { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot },  // Ubin
-  { BF::None, 1, 1, BHK::Value },  // Milliseconds
-  { BF::None, 1, 1, BHK::Value },  // Seconds
-  { BF::None, 1, 1, BHK::Value },  // Minutes
-  { BF::None, 1, 1, BHK::Value },  // Hours
-  { BF::None, 1, 1, BHK::Value },  // Days
-  { BF::Unary, 1, 1, BHK::Value },  // Real
-  { BF::Unary, 1, 1, BHK::Value },  // Imag
-  { BF::Unary, 1, 1, BHK::Value },  // Phase
-  { BF::Unary, 1, 1, BHK::Value },  // Polar
-  { BF::None, 1, 2, BHK::Value },  // Cart
-  { BF::Unary, 1, 1, BHK::Value },  // Conj
+    { BF::NonCalculating, 0, 0, BHK::EmptyPar, BC::Rand },  // Rand
+    { BF::FiniteRequired, 2, 2, BHK::MinMax, BC::ScalarBinary },  // Random
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Bin
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Hex
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Oct
+    { BF::None, 2, 2, BHK::ValuePower, BC::Pow },  // Pow
+    { BF::None, 2, 2, BHK::YX, BC::ScalarBinary },  // Atan2
+    { BF::Unary, 1, 1, BHK::Angle, BC::UnaryMath },  // Sin
+    { BF::Unary, 1, 1, BHK::Angle, BC::UnaryMath },  // Cos
+    { BF::Unary, 1, 1, BHK::Angle, BC::UnaryMath },  // Tan
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Asin
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Acos
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Atan
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Sinh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Cosh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Tanh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Acosh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Asinh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Atanh
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Exp
+    { BF::None, 2, 2, BHK::ValueBase, BC::Log },  // Log
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Ln
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Log10
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Sqrt
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Sqr
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Int
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Frac
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Abs
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Floor
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Ceil
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Trunc
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Round
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Sign
+    { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::DegRad },  // Deg
+    { BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::DegRad },  // Rad
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Sum
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Median
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Variance
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Stddev
+    { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::ArrayTransform },  // Sort
+    { BF::NonCalculating, 2, 2, BHK::ArrayFunc, BC::Sortby },  // Sortby
+    { BF::Unary, 1, 1, BHK::Value, BC::Ratio },  // Ratio
+    { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::ArrayTransform },  // Reverse
+    { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::ArrayTransform },  // Unique
+    { BF::NonCalculating, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::ArrayTransform },  // Unpack
+    { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N, BC::Factorial },  // Fact
+    { BF::Unary | BF::IntegerOnly, 1, 1, BHK::N, BC::Factorint },  // Factorint
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Avg
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Mean
+    { BF::IntegerOnly, 2, 2, BHK::ValueDivisor, BC::Mod },  // Mod
+    { BF::None, 3, 3, BHK::ValueMinMax, BC::ScalarBinary },  // Clamp
+    { BF::None, 2, 2, BHK::XY, BC::ScalarBinary },  // Hypot
+    { BF::IntegerOnly, 2, 2, BHK::AB, BC::ScalarBinary },  // Gcd
+    { BF::IntegerOnly, 2, 2, BHK::AB, BC::ScalarBinary },  // Lcm
+    { BF::IntegerOnly, 2, 2, BHK::AB, BC::ScalarBinary },  // Ncr
+    { BF::IntegerOnly, 2, 2, BHK::AB, BC::ScalarBinary },  // Npr
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Product
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Min
+    { BF::None, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::Aggregate },  // Max
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Uhex
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Uoct
+    { BF::Format | BF::NonCalculating | BF::TrailingFormatter, 1, MathParser::kBuiltinArityUnbounded, BHK::DotDotDot, BC::BaseFormat },  // Ubin
+    { BF::None, 1, 1, BHK::Value, BC::TimeUnit },  // Milliseconds
+    { BF::None, 1, 1, BHK::Value, BC::TimeUnit },  // Seconds
+    { BF::None, 1, 1, BHK::Value, BC::TimeUnit },  // Minutes
+    { BF::None, 1, 1, BHK::Value, BC::TimeUnit },  // Hours
+    { BF::None, 1, 1, BHK::Value, BC::TimeUnit },  // Days
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Real
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Imag
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Phase
+    { BF::Unary, 1, 1, BHK::Value, BC::PolarCart },  // Polar
+    { BF::None, 1, 2, BHK::Value, BC::PolarCart },  // Cart
+    { BF::Unary, 1, 1, BHK::Value, BC::UnaryMath },  // Conj
 };
+#undef BC
 #undef BHK
 #undef BF
 
@@ -783,7 +792,7 @@ constexpr const char* STR_UNEXPECTED_TOKEN = "unexpected token";
 constexpr const char* STR_INCOMPATIBLE_OPERANDS = "incompatible operands";
 constexpr const char* STR_POS_POW63_DEC_TEXT = "9.223372036854778e+018";
 constexpr const char* STR_NEG_POW63_DEC_TEXT = "-9.223372036854778e+018";
-constexpr double K_MAX_EXACT_INT_FROM_DOUBLE = 9007199254740992.0;  // 2^53
+constexpr double K_MAX_EXACT_INT_FROM_DOUBLE = smartmath_internal::kMaxExactIntFromDouble;
 constexpr const char* STR_PREFIX_HEX = "0x";
 constexpr const char* STR_PREFIX_OCT = "0o";
 constexpr const char* STR_PREFIX_BIN = "0b";
@@ -1152,15 +1161,6 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, std:
   return true;
 }
 
-std::uint64_t gcdUInt64(std::uint64_t a, std::uint64_t b) {
-  while (b != 0u) {
-    const std::uint64_t t = a % b;
-    a = b;
-    b = t;
-  }
-  return a;
-}
-
 long long gcdInt64(long long a, long long b) {
   return static_cast<long long>(gcdUInt64(
       static_cast<std::uint64_t>(std::llabs(a)), static_cast<std::uint64_t>(std::llabs(b))));
@@ -1186,31 +1186,6 @@ bool tryAddUInt64Checked(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
     return false;
   }
   out = s;
-  return true;
-}
-
-bool tryMulUInt64Checked(std::uint64_t a, std::uint64_t b, std::uint64_t& out) {
-  if (b != 0u && a > ((std::numeric_limits<std::uint64_t>::max)() / b)) {
-    return false;
-  }
-  out = a * b;
-  return true;
-}
-
-bool tryPowUInt64Checked(std::uint64_t base, std::uint64_t exp, std::uint64_t& out) {
-  std::uint64_t r = 1;
-  std::uint64_t b = base;
-  std::uint64_t e = exp;
-  while (e > 0u) {
-    if ((e & 1u) != 0u && !tryMulUInt64Checked(r, b, r)) {
-      return false;
-    }
-    e >>= 1;
-    if (e > 0u && !tryMulUInt64Checked(b, b, b)) {
-      return false;
-    }
-  }
-  out = r;
   return true;
 }
 
@@ -2482,14 +2457,10 @@ bool MathParser::identMayBeBareBuiltinName(const std::string& ident) {
   return identMayBeBareBuiltinName(ident.data(), ident.data() + ident.size());
 }
 
-bool MathParser::trySetMissingFunctionCallError(
+bool MathParser::tryHandleBareFunctionNameCommonTail(
     EvalContext& ctx,
     const std::string& ident,
     const char* identStartForCloser) const {
-  BuiltinFunctionId bid = BuiltinFunctionId::Count;
-  if (!tryGetBuiltinFunctionId(ident, bid)) {
-    return false;
-  }
   skipSpaces(ctx);
   if (*ctx.p == ';') {
     setParseError(ctx, ParseErrorId::UnexpectedToken);
@@ -2501,6 +2472,20 @@ bool MathParser::trySetMissingFunctionCallError(
       return true;
     }
     setError(ctx, buildUnknownVariableErrorText(ident));
+    return true;
+  }
+  return false;
+}
+
+bool MathParser::trySetMissingFunctionCallError(
+    EvalContext& ctx,
+    const std::string& ident,
+    const char* identStartForCloser) const {
+  BuiltinFunctionId bid = BuiltinFunctionId::Count;
+  if (!tryGetBuiltinFunctionId(ident, bid)) {
+    return false;
+  }
+  if (tryHandleBareFunctionNameCommonTail(ctx, ident, identStartForCloser)) {
     return true;
   }
   if (ctx.suppressBareFunctionTailHint) {
@@ -2547,16 +2532,7 @@ bool MathParser::trySetBareUserFunctionNameError(
   if (!uf && !compilingParams) {
     return false;
   }
-  skipSpaces(ctx);
-  if (*ctx.p == ';') {
-    setParseError(ctx, ParseErrorId::UnexpectedToken);
-    return true;
-  }
-  if (!isBareFunctionNameAtExpressionTail(ctx)) {
-    if (identStart != nullptr && trySetBareFunctionImmediateCloserError(ctx, identStart)) {
-      return true;
-    }
-    setError(ctx, buildUnknownVariableErrorText(ident));
+  if (tryHandleBareFunctionNameCommonTail(ctx, ident, identStart)) {
     return true;
   }
   if (ctx.suppressBareFunctionTailHint
@@ -2587,6 +2563,49 @@ std::string MathParser::formatUserFunctionSignature(const UserFunction& uf) {
   }
   sig += ")";
   return sig;
+}
+
+bool MathParser::finishSubEvalFromCompiledProgram(EvalContext& parent, EvalContext& sub) const {
+  if (!sub.unknownVarsText.empty()) {
+    setError(parent, buildUnknownVariableErrorText(sub.unknownVarsText));
+    return false;
+  }
+  if (sub.parseError) {
+    setError(parent, sub.errorText);
+    return false;
+  }
+  mergeUnknownNameList(parent.unknownVarsText, sub.unknownVarsText);
+  mergeUnknownNameList(parent.unknownFuncsText, sub.unknownFuncsText);
+  return true;
+}
+
+bool MathParser::tryCompileExprToProgram(
+    const std::string& expr,
+    EvalContext& parentCtx,
+    std::vector<std::string>* callStack,
+    const char* validatingUserFunctionName,
+    bool suppressBareFunctionTailHint,
+    std::vector<AstStatement>& outProgram) {
+  EvalContext parseCtx;
+  parseCtx.p = expr.c_str();
+  parseCtx.start = parseCtx.p;
+  parseCtx.sourceExpr = expr;
+  parseCtx.userFunctionCallStack = callStack;
+  parseCtx.validatingUserFunctionName = validatingUserFunctionName;
+  parseCtx.compilingUserFunctionParams = parentCtx.compilingUserFunctionParams;
+  parseCtx.suppressBareFunctionTailHint = suppressBareFunctionTailHint;
+  if (!parseProgram(parseCtx, outProgram)) {
+    setError(
+        parentCtx,
+        parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
+    return false;
+  }
+  skipSpaces(parseCtx);
+  if (!parseCtx.parseError && *parseCtx.p != '\0') {
+    setParseError(parentCtx, ParseErrorId::UnexpectedInput);
+    return false;
+  }
+  return true;
 }
 
 bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const {
@@ -3470,25 +3489,46 @@ bool MathParser::nearlyInt(double v, long long& out) {
   return true;
 }
 
-bool isWithinExactIntFromDoubleRange(double v) {
-  return std::isfinite(v) && std::fabs(v) <= K_MAX_EXACT_INT_FROM_DOUBLE;
-}
-
-bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
-  if (!isWithinExactIntFromDoubleRange(v)) {
+bool MathParser::tryGetExactSignedInt64FromScalarPolicy(
+    const EvalValue::ScalarValue& sIn,
+    long long& outI,
+    ExactSignedInt64Policy policy) {
+  if (sIn.scalarKind == ScalarKind::Time || scalarHasNonzeroImaginaryPart(sIn)) {
     return false;
   }
-  const double kI64MinD = static_cast<double>((std::numeric_limits<long long>::min)());
-  const double kI64MaxD = static_cast<double>((std::numeric_limits<long long>::max)());
-  if (v < kI64MinD || v > kI64MaxD) {
+  EvalValue::ScalarValue s = sIn;
+  if (policy == ExactSignedInt64Policy::NoUIntWrapWithRepairAndStorageKind) {
+    scalarRepairExactMetadata(s);
+  }
+  if (s.hasExactInt64()) {
+    outI = s.exactInt64;
+    return true;
+  }
+  if (s.hasExactUInt64()) {
+    if (policy == ExactSignedInt64Policy::AllowUIntBitReinterpret) {
+      static_assert(sizeof(long long) == sizeof(std::uint64_t), "int64/uint64 size mismatch");
+      std::uint64_t bits = s.exactUInt64;
+      std::memcpy(&outI, &bits, sizeof(bits));
+      return true;
+    }
+    if (s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      outI = static_cast<long long>(s.exactUInt64);
+      return true;
+    }
     return false;
   }
-  const long long asInt = static_cast<long long>(v);
-  if (v != static_cast<double>(asInt)) {
-    return false;
+  if (policy == ExactSignedInt64Policy::NoUIntWrapWithRepairAndStorageKind) {
+    if (s.scalarKind == ScalarKind::Int64) {
+      outI = s.exactInt64;
+      return true;
+    }
+    if (s.scalarKind == ScalarKind::UInt64 &&
+        s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
+      outI = static_cast<long long>(s.exactUInt64);
+      return true;
+    }
   }
-  out = asInt;
-  return true;
+  return false;
 }
 
 bool MathParser::tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& out) {
@@ -3588,30 +3628,8 @@ bool MathParser::tryMulExactInt64Square(long long i, long long& outSq) {
 }
 
 bool MathParser::tryGetExactSignedInt64NoUIntWrapScalarStrict(const EvalValue::ScalarValue& s, long long& outI) {
-  if (s.scalarKind == ScalarKind::Time || scalarHasNonzeroImaginaryPart(s)) {
-    return false;
-  }
-  EvalValue::ScalarValue sv = s;
-  scalarRepairExactMetadata(sv);
-  if (sv.hasExactInt64()) {
-    outI = sv.exactInt64;
-    return true;
-  }
-  if (sv.hasExactUInt64() &&
-      sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-    outI = static_cast<long long>(sv.exactUInt64);
-    return true;
-  }
-  if (sv.scalarKind == ScalarKind::Int64) {
-    outI = sv.exactInt64;
-    return true;
-  }
-  if (sv.scalarKind == ScalarKind::UInt64 &&
-      sv.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-    outI = static_cast<long long>(sv.exactUInt64);
-    return true;
-  }
-  return false;
+  return tryGetExactSignedInt64FromScalarPolicy(
+      s, outI, ExactSignedInt64Policy::NoUIntWrapWithRepairAndStorageKind);
 }
 
 void MathParser::applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV) {
@@ -4191,42 +4209,12 @@ MathParser::EvalValue MathParser::applyUnarySqrtEval(const EvalValue::ScalarValu
 }
 
 bool MathParser::tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI) {
-  if (s.scalarKind == ScalarKind::Time) {
-    return false;
-  }
-  if (scalarHasNonzeroImaginaryPart(s)) {
-    return false;
-  }
-  if (s.hasExactInt64()) {
-    outI = s.exactInt64;
-    return true;
-  }
-  if (s.hasExactUInt64()) {
-    static_assert(sizeof(long long) == sizeof(std::uint64_t), "int64/uint64 size mismatch");
-    std::uint64_t bits = s.exactUInt64;
-    std::memcpy(&outI, &bits, sizeof(bits));
-    return true;
-  }
-  return false;
+  return tryGetExactSignedInt64FromScalarPolicy(
+      s, outI, ExactSignedInt64Policy::AllowUIntBitReinterpret);
 }
 
 bool MathParser::tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI) {
-  if (s.scalarKind == ScalarKind::Time) {
-    return false;
-  }
-  if (scalarHasNonzeroImaginaryPart(s)) {
-    return false;
-  }
-  if (s.hasExactInt64()) {
-    outI = s.exactInt64;
-    return true;
-  }
-  if (s.hasExactUInt64() &&
-      s.exactUInt64 <= static_cast<std::uint64_t>((std::numeric_limits<long long>::max)())) {
-    outI = static_cast<long long>(s.exactUInt64);
-    return true;
-  }
-  return false;
+  return tryGetExactSignedInt64FromScalarPolicy(s, outI, ExactSignedInt64Policy::NoUIntWrap);
 }
 
 bool MathParser::tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU) {
@@ -4527,32 +4515,27 @@ std::string MathParser::getResult() const {
   return valueToString(lastResult_);
 }
 
-std::string MathParser::getResultAsHex() const {
+std::string MathParser::getResultWithBase(RenderBase base) const {
   if (!lastError_.empty() || !hasResult_) {
     return "";
   }
-  return valueToString(lastResult_, RenderBase::Hex);
+  return valueToString(lastResult_, base);
+}
+
+std::string MathParser::getResultAsHex() const {
+  return getResultWithBase(RenderBase::Hex);
 }
 
 std::string MathParser::getResultAsDec() const {
-  if (!lastError_.empty() || !hasResult_) {
-    return "";
-  }
-  return valueToString(lastResult_, RenderBase::Dec);
+  return getResultWithBase(RenderBase::Dec);
 }
 
 std::string MathParser::getResultAsOct() const {
-  if (!lastError_.empty() || !hasResult_) {
-    return "";
-  }
-  return valueToString(lastResult_, RenderBase::Oct);
+  return getResultWithBase(RenderBase::Oct);
 }
 
 std::string MathParser::getResultAsBin() const {
-  if (!lastError_.empty() || !hasResult_) {
-    return "";
-  }
-  return valueToString(lastResult_, RenderBase::Bin);
+  return getResultWithBase(RenderBase::Bin);
 }
 
 MathParser::RawResult MathParser::getRawResult() const {
@@ -6482,19 +6465,6 @@ bool MathParser::tryApplyModScalars(
   return true;
 }
 
-MathParser::EvalValue MathParser::makeArray(const std::vector<double>& v) {
-  EvalValue out;
-  out.kind = ValueKind::Array;
-  out.scalarValue.scalarKind = ScalarKind::FloatingPoint;
-  out.arr.resize(v.size());
-  for (std::size_t i = 0; i < v.size(); ++i) {
-    out.arr[i].scalarKind = ScalarKind::FloatingPoint;
-    out.arr[i].scalar = v[i];
-    scalarClearImaginary(out.arr[i]);
-  }
-  return out;
-}
-
 MathParser::EvalValue MathParser::makeArrayFromScalars(const std::vector<EvalValue>& v) {
   EvalValue out;
   out.kind = ValueKind::Array;
@@ -6753,12 +6723,6 @@ MathParser::EvalValue MathParser::mapUnaryEvalValue(const EvalValue& in, ScalarF
     outVals.emplace_back(applyScalar(e));
   }
   return makeArrayFromScalars(outVals);
-}
-
-MathParser::EvalValue MathParser::mapUnaryFn(const EvalValue& in, double (*fn)(double)) {
-  return mapUnaryEvalValue(in, [fn](const EvalValue::ScalarValue& s) {
-    return makeScalarMaybeExact(fn(s.scalar));
-  });
 }
 
 MathParser::EvalValue MathParser::negateEvalValue(const EvalValue& v) {
@@ -7673,20 +7637,8 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
     return makeScalar(0);
   }
 
-  EvalContext parseCtx;
-  parseCtx.p = trimmedBody.c_str();
-  parseCtx.start = parseCtx.p;
-  parseCtx.sourceExpr = trimmedBody;
-  parseCtx.compilingUserFunctionParams = ctx.compilingUserFunctionParams;
-  parseCtx.suppressBareFunctionTailHint = true;
   std::vector<AstStatement> compiledBody;
-  if (!parseProgram(parseCtx, compiledBody)) {
-    setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
-    return makeScalar(0);
-  }
-  skipSpaces(parseCtx);
-  if (!parseCtx.parseError && *parseCtx.p != '\0') {
-    setParseError(ctx, ParseErrorId::UnexpectedInput);
+  if (!tryCompileExprToProgram(trimmedBody, ctx, nullptr, nullptr, true, compiledBody)) {
     return makeScalar(0);
   }
 
@@ -7695,16 +7647,9 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   sub.userFunctionCallStack = ctx.userFunctionCallStack;
   sub.suppressBareFunctionTailHint = true;
   EvalValue v = runCompiledProgram(sub, compiledBody, &localVars, false);
-  if (!sub.unknownVarsText.empty()) {
-    setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
+  if (!finishSubEvalFromCompiledProgram(ctx, sub)) {
     return makeScalar(0);
   }
-  if (sub.parseError) {
-    setError(ctx, sub.errorText);
-    return makeScalar(0);
-  }
-  mergeUnknownNameList(ctx.unknownVarsText, sub.unknownVarsText);
-  mergeUnknownNameList(ctx.unknownFuncsText, sub.unknownFuncsText);
   return v;
 }
 #endif
@@ -9524,7 +9469,7 @@ MathParser::BuiltinCategory MathParser::getBuiltinCategory(BuiltinFunctionId id)
   if (id >= BuiltinFunctionId::Count) {
     return BuiltinCategory::Unknown;
   }
-  return MathParser::kBuiltinCategory[static_cast<std::size_t>(id)];
+  return kBuiltinMeta[static_cast<std::size_t>(id)].category;
 }
 
 void MathParser::applyBuiltinFormatRenderMeta(BuiltinFunctionId id, EvalValue& out) {
@@ -11533,20 +11478,6 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
   }
 }
 
-MathParser::EvalValue MathParser::mapUnaryComplexBuiltin(
-    EvalContext& ctx,
-    BuiltinFunctionId id,
-    const EvalValue& inV) const {
-  (void)ctx;
-  return mapUnaryEvalValue(inV, [this, id](const EvalValue::ScalarValue& sv) -> EvalValue {
-    EvalValue outS = makeScalar(0);
-    if (tryUnaryComplexBuiltinSupport(id, sv, outS)) {
-      return outS;
-    }
-    return makeScalar(0);
-  });
-}
-
 MathParser::EvalValue MathParser::builtinPolarCart(
     EvalContext& ctx,
     const std::string& fnName,
@@ -11997,20 +11928,8 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
   }
 
   if (!uf->compiledProgramReady) {
-    EvalContext parseCtx;
-    parseCtx.p = uf->expr.c_str();
-    parseCtx.start = parseCtx.p;
-    parseCtx.sourceExpr = uf->expr;
-    parseCtx.userFunctionCallStack = callStack;
-    parseCtx.validatingUserFunctionName = fnName.c_str();
     std::vector<AstStatement> compiledBody;
-    if (!parseProgram(parseCtx, compiledBody)) {
-      setError(ctx, parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
-      return makeScalar(0);
-    }
-    skipSpaces(parseCtx);
-    if (!parseCtx.parseError && *parseCtx.p != '\0') {
-      setParseError(ctx, ParseErrorId::UnexpectedInput);
+    if (!tryCompileExprToProgram(uf->expr, ctx, callStack, fnName.c_str(), false, compiledBody)) {
       return makeScalar(0);
     }
     uf->compiledProgram = std::move(compiledBody);
@@ -12021,16 +11940,9 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
   sub.evalDepth = ctx.evalDepth + 1;
   sub.userFunctionCallStack = ctx.userFunctionCallStack;
   EvalValue v = runCompiledProgram(sub, uf->compiledProgram, &localVars, false);
-  if (!sub.unknownVarsText.empty()) {
-    setError(ctx, buildUnknownVariableErrorText(sub.unknownVarsText));
+  if (!finishSubEvalFromCompiledProgram(ctx, sub)) {
     return makeScalar(0);
   }
-  if (sub.parseError) {
-    setError(ctx, sub.errorText);
-    return makeScalar(0);
-  }
-  mergeUnknownNameList(ctx.unknownVarsText, sub.unknownVarsText);
-  mergeUnknownNameList(ctx.unknownFuncsText, sub.unknownFuncsText);
   return v;
 }
 

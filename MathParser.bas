@@ -632,6 +632,9 @@ declare function ScalarNumericReal(byref sv as ScalarValue) as Double
 declare function ScalarNumericImag(byref sv as ScalarValue) as Double
 declare sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
 declare sub ScalarSetExactInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+declare sub ScalarSyncExactInt64WithUIntMirror(byref sv as ScalarValue, byval n as LongInt)
+declare sub ScalarSyncExactUInt64WithIntMirror(byref sv as ScalarValue, byval n as ULongInt)
+declare sub ScalarSyncImagExactInt64WithUIntMirror(byref sv as ScalarValue, byval n as LongInt)
 declare sub ValueSetArrayFromScalarValues(byref outV as EvalValue, vals() as ScalarValue)
 declare function GcdULong(byval a as ULongInt, byval b as ULongInt) as ULongInt
 declare function TryPowULong(byval baseV as ULongInt, byval expV as ULongInt, byref outV as ULongInt) as Boolean
@@ -1205,82 +1208,83 @@ type BuiltinMetaRow
   maxArgs as UByte
   hintKind as UByte
   unaryScalarKind as UnaryScalarKind
+  category as BuiltinCategory
 end type
 
 dim shared as BuiltinMetaRow K_BUILTIN_META_ROWS(0 to FUNC__COUNT - 1) = { _
-  (BUILTIN_FLAG_NON_CALCULATING, 0, 0, BHK_EMPTY_PAR, USK_NONE), _ ' Rand
-  (BUILTIN_FLAG_FINITE_REQUIRED, 2, 2, BHK_MIN_MAX, USK_NONE), _ ' Random
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Bin
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Hex
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Oct
-  (0u, 2, 2, BHK_VALUE_POWER, USK_NONE), _ ' Pow
-  (0u, 2, 2, BHK_Y_X, USK_NONE), _ ' Atan2
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG), _ ' Sin
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG), _ ' Cos
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG), _ ' Tan
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG), _ ' Asin
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG), _ ' Acos
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG), _ ' Atan
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG), _ ' Sinh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG), _ ' Cosh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG), _ ' Tanh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG), _ ' Acosh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG), _ ' Asinh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG), _ ' Atanh
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_EXP), _ ' Exp
-  (0u, 2, 2, BHK_VALUE_BASE, USK_NONE), _ ' Log
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_LN), _ ' Ln
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_LOG10), _ ' Log10
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SQRT), _ ' Sqrt
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SQR), _ ' Sqr
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING), _ ' Int
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_FRAC), _ ' Frac
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ABS), _ ' Abs
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING), _ ' Floor
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING), _ ' Ceil
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING), _ ' Trunc
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING), _ ' Round
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SIGN), _ ' Sign
-  (BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_DEG), _ ' Deg
-  (BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_RAD), _ ' Rad
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Sum
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Median
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Variance
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Stddev
-  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Sort
-  (BUILTIN_FLAG_NON_CALCULATING, 2, 2, BHK_ARRAY_FUNC, USK_NONE), _ ' Sortby
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE), _ ' Ratio
-  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Reverse
-  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Unique
-  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Unpack
-  (BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY, 1, 1, BHK_N, USK_NONE), _ ' Fact
-  (BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY, 1, 1, BHK_N, USK_NONE), _ ' Factorint
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Avg
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Mean
-  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_VALUE_DIVISOR, USK_NONE), _ ' Mod
-  (0u, 3, 3, BHK_VALUE_MIN_MAX, USK_NONE), _ ' Clamp
-  (0u, 2, 2, BHK_X_Y, USK_NONE), _ ' Hypot
-  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_A_B, USK_NONE), _ ' Gcd
-  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_A_B, USK_NONE), _ ' Lcm
-  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_N_R, USK_NONE), _ ' Ncr
-  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_N_R, USK_NONE), _ ' Npr
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Product
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Min
-  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Max
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Uhex
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Uoct
-  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE), _ ' Ubin
-  (0u, 1, 1, BHK_VALUE, USK_NONE), _ ' Milliseconds
-  (0u, 1, 1, BHK_VALUE, USK_NONE), _ ' Seconds
-  (0u, 1, 1, BHK_VALUE, USK_NONE), _ ' Minutes
-  (0u, 1, 1, BHK_VALUE, USK_NONE), _ ' Hours
-  (0u, 1, 1, BHK_VALUE, USK_NONE), _ ' Days
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE), _ ' Real
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE), _ ' Imag
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE), _ ' Phase
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE), _ ' Polar
-  (0u, 1, 2, BHK_VALUE, USK_NONE), _ ' Cart
-  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE) _ ' Conj
+  (BUILTIN_FLAG_NON_CALCULATING, 0, 0, BHK_EMPTY_PAR, USK_NONE, BC_RAND), _ ' Rand
+  (BUILTIN_FLAG_FINITE_REQUIRED, 2, 2, BHK_MIN_MAX, USK_NONE, BC_SCALAR_BINARY), _ ' Random
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Bin
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Hex
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Oct
+  (0u, 2, 2, BHK_VALUE_POWER, USK_NONE, BC_POW), _ ' Pow
+  (0u, 2, 2, BHK_Y_X, USK_NONE, BC_SCALAR_BINARY), _ ' Atan2
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG, BC_UNARY_MATH), _ ' Sin
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG, BC_UNARY_MATH), _ ' Cos
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_ANGLE, USK_PRIMARY_TRIG, BC_UNARY_MATH), _ ' Tan
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG, BC_UNARY_MATH), _ ' Asin
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG, BC_UNARY_MATH), _ ' Acos
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_TRIG, BC_UNARY_MATH), _ ' Atan
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Sinh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Cosh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Tanh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Acosh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Asinh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_INVERSE_HYPERBOLIC_TRIG, BC_UNARY_MATH), _ ' Atanh
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_EXP, BC_UNARY_MATH), _ ' Exp
+  (0u, 2, 2, BHK_VALUE_BASE, USK_NONE, BC_LOG), _ ' Log
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_LN, BC_UNARY_MATH), _ ' Ln
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_LOG10, BC_UNARY_MATH), _ ' Log10
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SQRT, BC_UNARY_MATH), _ ' Sqrt
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SQR, BC_UNARY_MATH), _ ' Sqr
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING, BC_UNARY_MATH), _ ' Int
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_FRAC, BC_UNARY_MATH), _ ' Frac
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ABS, BC_UNARY_MATH), _ ' Abs
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING, BC_UNARY_MATH), _ ' Floor
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING, BC_UNARY_MATH), _ ' Ceil
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING, BC_UNARY_MATH), _ ' Trunc
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_ROUNDING, BC_UNARY_MATH), _ ' Round
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_SIGN, BC_UNARY_MATH), _ ' Sign
+  (BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_DEG, BC_DEG_RAD), _ ' Deg
+  (BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_RAD, BC_DEG_RAD), _ ' Rad
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Sum
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Median
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Variance
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Stddev
+  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_ARRAY_TRANSFORM), _ ' Sort
+  (BUILTIN_FLAG_NON_CALCULATING, 2, 2, BHK_ARRAY_FUNC, USK_NONE, BC_SORTBY), _ ' Sortby
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_RATIO), _ ' Ratio
+  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_ARRAY_TRANSFORM), _ ' Reverse
+  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_ARRAY_TRANSFORM), _ ' Unique
+  (BUILTIN_FLAG_NON_CALCULATING, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_ARRAY_TRANSFORM), _ ' Unpack
+  (BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY, 1, 1, BHK_N, USK_NONE, BC_FACTORIAL), _ ' Fact
+  (BUILTIN_FLAG_UNARY or BUILTIN_FLAG_INTEGER_ONLY, 1, 1, BHK_N, USK_NONE, BC_FACTORINT), _ ' Factorint
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Avg
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Mean
+  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_VALUE_DIVISOR, USK_NONE, BC_MOD), _ ' Mod
+  (0u, 3, 3, BHK_VALUE_MIN_MAX, USK_NONE, BC_SCALAR_BINARY), _ ' Clamp
+  (0u, 2, 2, BHK_X_Y, USK_NONE, BC_SCALAR_BINARY), _ ' Hypot
+  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_A_B, USK_NONE, BC_SCALAR_BINARY), _ ' Gcd
+  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_A_B, USK_NONE, BC_SCALAR_BINARY), _ ' Lcm
+  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_N_R, USK_NONE, BC_SCALAR_BINARY), _ ' Ncr
+  (BUILTIN_FLAG_INTEGER_ONLY, 2, 2, BHK_N_R, USK_NONE, BC_SCALAR_BINARY), _ ' Npr
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Product
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Min
+  (0u, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_AGGREGATE), _ ' Max
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Uhex
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Uoct
+  (BUILTIN_FLAG_FORMAT or BUILTIN_FLAG_NON_CALCULATING or BUILTIN_FLAG_TRAILING_FORMATTER, 1, BUILTIN_META_ARITY_UNBOUNDED, BHK_DOTDOTDOT, USK_NONE, BC_BASE_FORMAT), _ ' Ubin
+  (0u, 1, 1, BHK_VALUE, USK_NONE, BC_TIME_UNIT), _ ' Milliseconds
+  (0u, 1, 1, BHK_VALUE, USK_NONE, BC_TIME_UNIT), _ ' Seconds
+  (0u, 1, 1, BHK_VALUE, USK_NONE, BC_TIME_UNIT), _ ' Minutes
+  (0u, 1, 1, BHK_VALUE, USK_NONE, BC_TIME_UNIT), _ ' Hours
+  (0u, 1, 1, BHK_VALUE, USK_NONE, BC_TIME_UNIT), _ ' Days
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_UNARY_MATH), _ ' Real
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_UNARY_MATH), _ ' Imag
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_UNARY_MATH), _ ' Phase
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_POLAR_CART), _ ' Polar
+  (0u, 1, 2, BHK_VALUE, USK_NONE, BC_POLAR_CART), _ ' Cart
+  (BUILTIN_FLAG_UNARY, 1, 1, BHK_VALUE, USK_NONE, BC_UNARY_MATH) _ ' Conj
 }
 
 enum OperatorNameId
@@ -1560,42 +1564,9 @@ end function
 
 private const BUILTIN_ARITY_UNBOUNDED as Integer = BUILTIN_META_ARITY_UNBOUNDED
 
-private function GetBuiltinFlags(byval id as Integer) as UInteger
-  if id < 0 orelse id >= FUNC__COUNT then return 0u
-  return K_BUILTIN_META_ROWS(id).flags
-end function
-
 private function GetBuiltinCategory(byval fnId as Integer) as BuiltinCategory
-  select case fnId
-    case FUNC_RAND: return BC_RAND
-    case FUNC_RANDOM, FUNC_ATAN2, FUNC_CLAMP, FUNC_HYPOT, FUNC_GCD, FUNC_LCM, FUNC_NCR, FUNC_NPR
-      return BC_SCALAR_BINARY
-    case FUNC_BIN, FUNC_HEX, FUNC_OCT, FUNC_UHEX, FUNC_UOCT, FUNC_UBIN
-      return BC_BASE_FORMAT
-    case FUNC_POW: return BC_POW
-    case FUNC_SIN, FUNC_COS, FUNC_TAN, FUNC_ASIN, FUNC_ACOS, FUNC_ATAN
-    case FUNC_SINH, FUNC_COSH, FUNC_TANH, FUNC_ACOSH, FUNC_ASINH, FUNC_ATANH
-    case FUNC_EXP, FUNC_LN, FUNC_LOG10, FUNC_SQRT, FUNC_SQR, FUNC_INT, FUNC_FRAC
-    case FUNC_ABS, FUNC_FLOOR, FUNC_CEIL, FUNC_TRUNC, FUNC_ROUND, FUNC_SIGN
-    case FUNC_REAL, FUNC_IMAG, FUNC_PHASE, FUNC_CONJ
-      return BC_UNARY_MATH
-    case FUNC_DEG, FUNC_RAD: return BC_DEG_RAD
-    case FUNC_SUM, FUNC_MEDIAN, FUNC_VARIANCE, FUNC_STDDEV, FUNC_AVG, FUNC_MEAN
-    case FUNC_PRODUCT, FUNC_MIN, FUNC_MAX
-      return BC_AGGREGATE
-    case FUNC_SORT, FUNC_REVERSE, FUNC_UNIQUE, FUNC_UNPACK
-      return BC_ARRAY_TRANSFORM
-    case FUNC_SORTBY: return BC_SORTBY
-    case FUNC_RATIO: return BC_RATIO
-    case FUNC_FACT: return BC_FACTORIAL
-    case FUNC_FACTORINT: return BC_FACTORINT
-    case FUNC_MOD: return BC_MOD
-    case FUNC_MILLISECONDS, FUNC_SECONDS, FUNC_MINUTES, FUNC_HOURS, FUNC_DAYS
-      return BC_TIME_UNIT
-    case FUNC_POLAR, FUNC_CART: return BC_POLAR_CART
-    case FUNC_LOG: return BC_LOG
-    case else: return BC_UNKNOWN
-  end select
+  if fnId < 0 orelse fnId >= FUNC__COUNT then return BC_UNKNOWN
+  return K_BUILTIN_META_ROWS(fnId).category
 end function
 
 private sub ApplyBuiltinFormatRenderMeta(byval fnId as Integer, byref outV as EvalValue)
@@ -1610,7 +1581,8 @@ private sub ApplyBuiltinFormatRenderMeta(byval fnId as Integer, byref outV as Ev
 end sub
 
 private function HasBuiltinFlag(byval id as Integer, byval flagMask as UInteger) as Boolean
-  return (GetBuiltinFlags(id) and flagMask) <> 0u
+  if id < 0 orelse id >= FUNC__COUNT then return FALSE
+  return (K_BUILTIN_META_ROWS(id).flags and flagMask) <> 0u
 end function
 
 private function IsUnaryBuiltin(byref fn as String) as Boolean
@@ -1841,10 +1813,6 @@ private function TryMult10OnceChecked(byval x as ULongInt, byref outV as ULongIn
   return TRUE
 end function
 
-private function TryMult10_N_TimesChecked(byval x as ULongInt, byval N as Integer, byref outV as ULongInt) as Boolean
-  return TryMult10_N_TimesImpl(x, N, outV)
-end function
-
 '' sin/cos/tan use MinGW libc for |theta| < 2^53; at 2^53 and above, results are rejected.
 private function IsTrigRadiansInRange(byval radians as Double) as Boolean
   if IsNaNValue(radians) orelse IsInfValue(radians) then return FALSE
@@ -1864,12 +1832,6 @@ private function IsUnaryTrigFnId(byval fnId as Integer) as Boolean
          (fnId = FUNC_SINH) orelse (fnId = FUNC_COSH) orelse (fnId = FUNC_TANH)
 end function
 
-private function IsFiniteValue(byval d as Double) as Boolean
-  if IsNaNValue(d) then return FALSE
-  if IsInfValue(d) then return FALSE
-  return TRUE
-end function
-
 private sub ScalarClearImag(byref sv as ScalarValue)
   sv.imag = 0.0
   sv.imagExactInt64 = 0
@@ -1882,6 +1844,14 @@ private sub ScalarSetImagExactInt64Valid(byref sv as ScalarValue, byval v as Boo
     sv.flags or= SVF_IMAG_EXACT_INT64_VALID
   else
     sv.flags and= not CUInt(SVF_IMAG_EXACT_INT64_VALID)
+  end if
+end sub
+
+private sub ScalarSetImagExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
+  if v then
+    sv.flags or= SVF_IMAG_EXACT_UINT64_VALID
+  else
+    sv.flags and= not CUInt(SVF_IMAG_EXACT_UINT64_VALID)
   end if
 end sub
 
@@ -1951,11 +1921,39 @@ sub ScalarSetExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
   end if
 end sub
 
-private sub ScalarSetImagExactUInt64Valid(byref sv as ScalarValue, byval v as Boolean)
-  if v then
-    sv.flags or= SVF_IMAG_EXACT_UINT64_VALID
+private sub ScalarSyncExactInt64WithUIntMirror(byref sv as ScalarValue, byval n as LongInt)
+  ScalarSetExactInt64Valid(sv, TRUE)
+  sv.exactInt64 = n
+  if n >= 0 then
+    ScalarSetExactUInt64Valid(sv, TRUE)
+    sv.exactUInt64 = CULngInt(n)
   else
-    sv.flags and= not CUInt(SVF_IMAG_EXACT_UINT64_VALID)
+    ScalarSetExactUInt64Valid(sv, FALSE)
+    sv.exactUInt64 = 0
+  end if
+end sub
+
+private sub ScalarSyncExactUInt64WithIntMirror(byref sv as ScalarValue, byval n as ULongInt)
+  ScalarSetExactUInt64Valid(sv, TRUE)
+  sv.exactUInt64 = n
+  if n <= FB_I64_MAX_U then
+    ScalarSetExactInt64Valid(sv, TRUE)
+    sv.exactInt64 = CLngInt(n)
+  else
+    ScalarSetExactInt64Valid(sv, FALSE)
+    sv.exactInt64 = 0
+  end if
+end sub
+
+private sub ScalarSyncImagExactInt64WithUIntMirror(byref sv as ScalarValue, byval n as LongInt)
+  ScalarSetImagExactInt64Valid(sv, TRUE)
+  sv.imagExactInt64 = n
+  if n >= 0 then
+    ScalarSetImagExactUInt64Valid(sv, TRUE)
+    sv.imagExactUInt64 = CULngInt(n)
+  else
+    ScalarSetImagExactUInt64Valid(sv, FALSE)
+    sv.imagExactUInt64 = 0
   end if
 end sub
 
@@ -2107,30 +2105,14 @@ private sub ValueSetInt64(byref v as EvalValue, byval n as LongInt)
     ValueSetScalar(v, CDbl(n))
   end if
   v.scalarValue.scalarStorageKind = SSK_INT64
-  ScalarSetExactInt64Valid(v.scalarValue, TRUE)
-  v.scalarValue.exactInt64 = n
-  if n >= 0 then
-    ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
-    v.scalarValue.exactUInt64 = CULngInt(n)
-  else
-    ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
-    v.scalarValue.exactUInt64 = 0
-  end if
+  ScalarSyncExactInt64WithUIntMirror(v.scalarValue, n)
   ScalarRepairExactMetadata(v.scalarValue)
 end sub
 
 private sub ValueSetUInt64(byref v as EvalValue, byval n as ULongInt)
   ValueSetScalar(v, CDbl(n))
   v.scalarValue.scalarStorageKind = SSK_UINT64
-  ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
-  v.scalarValue.exactUInt64 = n
-  if n <= FB_I64_MAX_U then
-    ScalarSetExactInt64Valid(v.scalarValue, TRUE)
-    v.scalarValue.exactInt64 = CLngInt(n)
-  else
-    ScalarSetExactInt64Valid(v.scalarValue, FALSE)
-    v.scalarValue.exactInt64 = 0
-  end if
+  ScalarSyncExactUInt64WithIntMirror(v.scalarValue, n)
   ScalarRepairExactMetadata(v.scalarValue)
 end sub
 
@@ -2178,26 +2160,10 @@ private sub ValueSetScalarComplexFromDoubles(byref v as EvalValue, byval re as D
   dim tri as LongInt, tii as LongInt
   if TryGetExactInt64FromDouble(re, tri) then
     v.scalarValue.scalarStorageKind = SSK_INT64
-    ScalarSetExactInt64Valid(v.scalarValue, TRUE)
-    v.scalarValue.exactInt64 = tri
-    if tri >= 0 then
-      ScalarSetExactUInt64Valid(v.scalarValue, TRUE)
-      v.scalarValue.exactUInt64 = CULngInt(tri)
-    else
-      ScalarSetExactUInt64Valid(v.scalarValue, FALSE)
-      v.scalarValue.exactUInt64 = 0
-    end if
+    ScalarSyncExactInt64WithUIntMirror(v.scalarValue, tri)
   end if
   if TryGetExactInt64FromDouble(im, tii) then
-    ScalarSetImagExactInt64Valid(v.scalarValue, TRUE)
-    v.scalarValue.imagExactInt64 = tii
-    if tii >= 0 then
-      ScalarSetImagExactUInt64Valid(v.scalarValue, TRUE)
-      v.scalarValue.imagExactUInt64 = CULngInt(tii)
-    else
-      ScalarSetImagExactUInt64Valid(v.scalarValue, FALSE)
-      v.scalarValue.imagExactUInt64 = 0
-    end if
+    ScalarSyncImagExactInt64WithUIntMirror(v.scalarValue, tii)
   end if
   ScalarNormalizeIfPureReal(v.scalarValue)
 end sub
@@ -3070,27 +3036,49 @@ private function FormatComplexScalarValue(byref sv as ScalarValue) as String
   return AssembleComplexDecimalText(rePart, tail, negUnit, reZero)
 end function
 
+private function FormatScalarValueForText( _
+  byref sv as ScalarValue, _
+  byval renderBase as Integer, _
+  byval renderUnsigned as Boolean, _
+  byval exitOnComplexFallback as Boolean, _
+  byval treatAsTime as Boolean _
+) as String
+  if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
+    dim fmtCx as String
+    if TryFormatComplexScalarForRender(sv, renderBase, renderUnsigned, fmtCx) then return fmtCx
+    if exitOnComplexFallback then return FormatComplexScalarValue(sv)
+  end if
+  if exitOnComplexFallback = FALSE then
+    if (renderBase = 0 orelse renderBase = 10) then
+      dim ratEarly as String
+      if TryFormatRationalScalar(sv, ratEarly) then return ratEarly
+      dim powEarly as String
+      if TryFormatIntPowerScalar(sv, powEarly) then return powEarly
+    end if
+  end if
+  dim nfScalar as String
+  if TryFormatScalarNonFiniteText(sv.scalar, nfScalar) then return nfScalar
+  if treatAsTime then
+    return FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(sv))
+  end if
+  if exitOnComplexFallback then
+    dim ratText as String
+    if TryFormatRationalScalar(sv, ratText) then return ratText
+    dim powText as String
+    if TryFormatIntPowerScalar(sv, powText) then return powText
+  end if
+  dim fmtText as String
+  if TryFormatScalarByRenderBase(sv, renderBase, renderUnsigned, fmtText) then return fmtText
+  if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
+    return FormatComplexScalarValue(sv)
+  end if
+  return FormatScalarExactOrFloatText(sv)
+end function
+
 private function ValueToString(byref v as EvalValue) as String
   if v.kind = VK_SCALAR then
-    if Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(v.scalarValue) then
-      dim fmtCx as String
-      if TryFormatComplexScalarForRender(v.scalarValue, v.renderBase, v.renderUnsigned, fmtCx) then return fmtCx
-      return FormatComplexScalarValue(v.scalarValue)
-    end if
-    dim nfScalar as String
-    if TryFormatScalarNonFiniteText(v.scalar, nfScalar) then return nfScalar
-    if v.scalarStorageKind = SSK_TIME then
-      return FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(v.scalarValue))
-    end if
-    dim ratText as String
-    if TryFormatRationalScalar(v.scalarValue, ratText) then return ratText
-    dim powText as String
-    if TryFormatIntPowerScalar(v.scalarValue, powText) then return powText
-    dim fmtText as String
-    if TryFormatScalarByRenderBase(v.scalarValue, v.renderBase, v.renderUnsigned, fmtText) then
-      return fmtText
-    end if
-    return FormatScalarExactOrFloatText(v.scalarValue)
+    return FormatScalarValueForText( _
+      v.scalarValue, v.renderBase, v.renderUnsigned, TRUE, (v.scalarStorageKind = SSK_TIME))
   end if
   if v.kind = VK_INLINE_LAMBDA orelse v.kind = VK_FUNCTION_REF then
     return ""
@@ -3100,36 +3088,8 @@ private function ValueToString(byref v as EvalValue) as String
   dim i as Integer
   for i = lbound(v.arr) to ubound(v.arr)
     if i > lbound(v.arr) then s &= ", "
-    dim sv as ScalarValue = v.arr(i)
-    dim fmtText as String
-    if TryFormatComplexScalarForRender(sv, v.renderBase, v.renderUnsigned, fmtText) then
-      s &= fmtText
-      continue for
-    end if
-    if (v.renderBase = 0 orelse v.renderBase = 10) then
-      if TryFormatRationalScalar(sv, fmtText) then
-        s &= fmtText
-        continue for
-      end if
-      if TryFormatIntPowerScalar(sv, fmtText) then
-        s &= fmtText
-        continue for
-      end if
-    end if
-    if TryFormatScalarByRenderBase(sv, v.renderBase, v.renderUnsigned, fmtText) then
-      s &= fmtText
-    elseif Parser_SupportComplexNumbers andalso ScalarHasNonzeroImaginaryPart(sv) then
-      s &= FormatComplexScalarValue(sv)
-    else
-      dim plain as String
-      if TryFormatScalarNonFiniteText(sv.scalar, plain) then
-        s &= plain
-      elseif ScalarIsTime(sv) then
-        s &= FormatTimeCanonicalFromMs(TimeTotalMsFromScalarValue(sv))
-      else
-        s &= FormatScalarExactOrFloatText(sv)
-      end if
-    end if
+    s &= FormatScalarValueForText( _
+      v.arr(i), v.renderBase, v.renderUnsigned, FALSE, ScalarIsTime(v.arr(i)))
   next i
   s &= ")"
   return s
@@ -4929,7 +4889,7 @@ end function
 private function IsMultipleOf(byval x as Double, byval x_mult as Double) as Boolean
   if x_mult = 0.0 then return FALSE
   dim q as Double = x / x_mult
-  if not IsFiniteValue(q) then return FALSE
+  if IsNonFiniteValue(q) then return FALSE
   dim n as Double = round(q)
   if abs(q - n) > 1e-9 then return FALSE
   return TRUE
@@ -4939,7 +4899,7 @@ end function
 private function TryTrigHalfPiQuotient(byval x as Double, byref outK as LongInt) as Boolean
   if IsMultipleOf(x, FB_PI_VAL/2) = FALSE then return FALSE
   dim q as Double = round(x / (FB_PI_VAL/2))
-  if IsFiniteValue(q) = FALSE then return FALSE
+  if IsNonFiniteValue(q) then return FALSE
   if abs(q) >= FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
   outK = CLngInt(q)
   return TRUE
@@ -4949,7 +4909,7 @@ end function
 private function TryTrigQuarterPiQuotient(byval x as Double, byref outK as LongInt) as Boolean
   if IsMultipleOf(x, FB_PI_VAL/4) = FALSE then return FALSE
   dim q as Double = round(x / (FB_PI_VAL/4))
-  if IsFiniteValue(q) = FALSE then return FALSE
+  if IsNonFiniteValue(q) then return FALSE
   if abs(q) >= FB_MAX_EXACT_INT_FROM_DOUBLE then return FALSE
   outK = CLngInt(q)
   return TRUE
@@ -4957,7 +4917,7 @@ end function
 
 private function CalcSin(byval x as Double) as Double
   if x = 0.0 then return 0.0
-  if IsFiniteValue(x) = FALSE then return LibSin(x)
+  if IsNonFiniteValue(x) then return LibSin(x)
   if IsMultipleOf(x, FB_PI_VAL) then return 0.0
   dim k as LongInt
   if TryTrigHalfPiQuotient(x, k) then
@@ -4971,7 +4931,7 @@ private function CalcSin(byval x as Double) as Double
 end function
 
 private function CalcCos(byval x as Double) as Double
-  if IsFiniteValue(x) = FALSE then return LibCos(x)
+  if IsNonFiniteValue(x) then return LibCos(x)
   if IsMultipleOf(x, FB_PI_VAL) = FALSE then
     dim k as LongInt
     if TryTrigHalfPiQuotient(x, k) andalso (k mod 2) <> 0 then return 0.0
@@ -4981,7 +4941,7 @@ end function
 
 private function CalcTan(byval x as Double) as Double
   if x = 0.0 then return 0.0
-  if IsFiniteValue(x) = FALSE then return LibTan(x)
+  if IsNonFiniteValue(x) then return LibTan(x)
   if IsMultipleOf(x, FB_PI_VAL) then return 0.0
   dim k as LongInt
   if TryTrigHalfPiQuotient(x, k) andalso (k mod 2) <> 0 then
@@ -10120,12 +10080,12 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
         else
           ' Combine: intPart * 10^fracDigits + fracPart (checked: silent ULongInt wrap must not attach exact uint metadata)
           dim exactInt as ULongInt = decIntAcc
-          if TryMult10_N_TimesChecked(exactInt, numFracDigits, exactInt) = FALSE then
+          if TryMult10_N_TimesImpl(exactInt, numFracDigits, exactInt) = FALSE then
             decIntOverflow = TRUE
           elseif TryAddULongChecked(exactInt, decFracAcc, exactInt) = FALSE then
             decIntOverflow = TRUE
           elseif adjust > 0 then
-            if TryMult10_N_TimesChecked(exactInt, adjust, exactInt) = FALSE then decIntOverflow = TRUE
+            if TryMult10_N_TimesImpl(exactInt, adjust, exactInt) = FALSE then decIntOverflow = TRUE
           end if
 
           if decIntOverflow = FALSE then
@@ -10142,7 +10102,7 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
         dim divisor as Integer = -adjust
         if divisor <= numFracDigits then
           dim pow10Divisor as ULongInt
-          if TryMult10_N_TimesChecked(1ull, divisor, pow10Divisor) then
+          if TryMult10_N_TimesImpl(1ull, divisor, pow10Divisor) then
             ' Check if the last 'divisor' fractional digits are all zero
             dim fracRemainder as ULongInt = decFracAcc mod pow10Divisor
             if fracRemainder = 0ull then
@@ -10154,7 +10114,7 @@ private function ParseScalarNumericValue(byref n as EvalValue) as Boolean
               elseif resultDigits <= 20 then
                 ' Combine and reduce by divisor
                 dim exactInt as ULongInt = decIntAcc
-                if TryMult10_N_TimesChecked(exactInt, numFracDigits - divisor, exactInt) = FALSE then
+                if TryMult10_N_TimesImpl(exactInt, numFracDigits - divisor, exactInt) = FALSE then
                   exactIntLiteral = FALSE
                 elseif TryAddULongChecked(exactInt, decFracAcc \ pow10Divisor, exactInt) = FALSE then
                   exactIntLiteral = FALSE

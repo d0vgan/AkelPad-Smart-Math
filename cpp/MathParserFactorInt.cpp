@@ -1,4 +1,5 @@
 #include "MathParser.hpp"
+#include "MathParserInternal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,67 +8,16 @@
 
 #if SMARTMATH_FACTORINT
 
+using smartmath_internal::gcdUInt64;
+using smartmath_internal::tryExtractExactInt64FromDoubleStrict;
+using smartmath_internal::tryPowUInt64Checked;
+
 struct FactorintPrimeEntry {
   std::uint64_t baseU = 0;
   unsigned int expV = 0;
 };
 
 namespace {
-
-constexpr double kMaxExactIntFromDouble = 9007199254740992.0;  // 2^53
-
-bool isWithinExactIntFromDoubleRange(double v) {
-  return std::isfinite(v) && std::fabs(v) <= kMaxExactIntFromDouble;
-}
-
-bool tryExtractExactInt64FromDoubleStrict(double v, long long& out) {
-  if (!isWithinExactIntFromDoubleRange(v)) {
-    return false;
-  }
-  const double kI64MinD = static_cast<double>((std::numeric_limits<long long>::min)());
-  const double kI64MaxD = static_cast<double>((std::numeric_limits<long long>::max)());
-  if (v < kI64MinD || v > kI64MaxD) {
-    return false;
-  }
-  const long long asInt = static_cast<long long>(v);
-  if (v != static_cast<double>(asInt)) {
-    return false;
-  }
-  out = asInt;
-  return true;
-}
-
-std::uint64_t gcdUInt64(std::uint64_t a, std::uint64_t b) {
-  while (b != 0u) {
-    const std::uint64_t t = a % b;
-    a = b;
-    b = t;
-  }
-  return a;
-}
-
-bool tryPowUInt64Checked(std::uint64_t base, std::uint64_t exp, std::uint64_t& out) {
-  std::uint64_t r = 1;
-  std::uint64_t b = base;
-  std::uint64_t e = exp;
-  while (e > 0u) {
-    if ((e & 1u) != 0u) {
-      if (b != 0u && r > ((std::numeric_limits<std::uint64_t>::max)() / b)) {
-        return false;
-      }
-      r *= b;
-    }
-    e >>= 1;
-    if (e > 0u) {
-      if (b != 0u && b > ((std::numeric_limits<std::uint64_t>::max)() / b)) {
-        return false;
-      }
-      b *= b;
-    }
-  }
-  out = r;
-  return true;
-}
 
 constexpr int kFactorintPollardMaxOuter = 48;
 constexpr int kFactorintRhoMaxIters = 400000;

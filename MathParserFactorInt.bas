@@ -451,26 +451,10 @@ private sub ScalarSetFactorintTermValue(byref sv as ScalarValue, byval valueI as
   ScalarClearIntPowerRender(sv)
   sv.scalar = CDbl(IIf(hasUIntValue, valueU, valueI))
   if hasUIntValue then
-    ScalarSetExactUInt64Valid(sv, TRUE)
-    sv.exactUInt64 = valueU
-    if valueU <= FB_I64_MAX_U then
-      ScalarSetExactInt64Valid(sv, TRUE)
-      sv.exactInt64 = CLngInt(valueU)
-    else
-      ScalarSetExactInt64Valid(sv, FALSE)
-      sv.exactInt64 = 0
-    end if
+    ScalarSyncExactUInt64WithIntMirror(sv, valueU)
     sv.scalarStorageKind = SSK_UINT64
   else
-    ScalarSetExactInt64Valid(sv, TRUE)
-    sv.exactInt64 = valueI
-    if valueI >= 0 then
-      ScalarSetExactUInt64Valid(sv, TRUE)
-      sv.exactUInt64 = CULngInt(valueI)
-    else
-      ScalarSetExactUInt64Valid(sv, FALSE)
-      sv.exactUInt64 = 0
-    end if
+    ScalarSyncExactInt64WithUIntMirror(sv, valueI)
     sv.scalarStorageKind = SSK_INT64
   end if
 end sub
@@ -485,11 +469,6 @@ private sub ScalarSetFactorintPowerTerm(byref sv as ScalarValue, byval baseU as 
   sv.imagExactUInt64 = CULngInt(expV)
 end sub
 
-private function TryPowFactorTermValue(byval baseU as ULongInt, byval expV as Integer, byref valueU as ULongInt) as Boolean
-  if expV <= 0 then return FALSE
-  return TryPowULong(baseU, CULngInt(expV), valueU)
-end function
-
 private sub FactorintAppendScalarTerm( _
   outArr() as ScalarValue, _
   byref outCount as Integer, _
@@ -499,7 +478,7 @@ private sub FactorintAppendScalarTerm( _
 )
   dim valueU as ULongInt = baseU
   if expV > 1 then
-    if TryPowFactorTermValue(baseU, expV, valueU) = FALSE then exit sub
+    if TryPowULong(baseU, CULngInt(expV), valueU) = FALSE then exit sub
   end if
   dim signedI as LongInt = CLngInt(valueU)
   dim hasUInt as Boolean = FALSE

@@ -225,86 +225,6 @@ private:
     Unknown,
   };
 
-  static constexpr BuiltinCategory kBuiltinCategory[static_cast<std::size_t>(BuiltinFunctionId::Count)] = {
-    BuiltinCategory::Rand,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::Pow,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::Log,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::DegRad,
-    BuiltinCategory::DegRad,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::ArrayTransform,
-    BuiltinCategory::Sortby,
-    BuiltinCategory::Ratio,
-    BuiltinCategory::ArrayTransform,
-    BuiltinCategory::ArrayTransform,
-    BuiltinCategory::ArrayTransform,
-    BuiltinCategory::Factorial,
-    BuiltinCategory::Factorint,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Mod,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::ScalarBinary,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::Aggregate,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::BaseFormat,
-    BuiltinCategory::TimeUnit,
-    BuiltinCategory::TimeUnit,
-    BuiltinCategory::TimeUnit,
-    BuiltinCategory::TimeUnit,
-    BuiltinCategory::TimeUnit,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::UnaryMath,
-    BuiltinCategory::PolarCart,
-    BuiltinCategory::PolarCart,
-    BuiltinCategory::UnaryMath,
-  };
-  static_assert(
-      sizeof(kBuiltinCategory) / sizeof(kBuiltinCategory[0]) ==
-          static_cast<std::size_t>(BuiltinFunctionId::Count),
-      "kBuiltinCategory size mismatch");
-
   enum class ScalarExactKind : std::uint8_t {
     Signed,
     Unsigned,
@@ -698,6 +618,15 @@ private:
   static bool udfBodyIsEmptyTupleLiteral(const std::string& bodyExpr);
   static bool nearlyInt(double v, long long& out);
   static bool parseUInt64FromDouble(double v, std::uint64_t& out);
+  enum class ExactSignedInt64Policy {
+    AllowUIntBitReinterpret,
+    NoUIntWrap,
+    NoUIntWrapWithRepairAndStorageKind,
+  };
+  static bool tryGetExactSignedInt64FromScalarPolicy(
+      const EvalValue::ScalarValue& s,
+      long long& outI,
+      ExactSignedInt64Policy policy);
   static bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& outI);
   static bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
@@ -785,6 +714,7 @@ private:
     std::uint8_t minArgs;
     std::uint8_t maxArgs;
     BuiltinHintKind hintKind;
+    BuiltinCategory category;
   };
   static constexpr std::uint8_t kBuiltinMetaArityUnset = 254;
   static const BuiltinMetaRow kBuiltinMeta[];
@@ -821,6 +751,7 @@ private:
   std::string formatScalar(const EvalValue& v, RenderBase base) const;
   std::string valueToString(const EvalValue& v, RenderBase forcedBase) const;
   std::string valueToString(const EvalValue& v) const;
+  std::string getResultWithBase(RenderBase base) const;
   static const std::vector<std::string>& functionNames();
   static const std::unordered_map<std::string, BuiltinFunctionId>& functionNameToId();
   static const std::vector<std::string>& operatorNames();
@@ -905,6 +836,18 @@ private:
       EvalContext& ctx,
       const std::string& ident,
       const char* identStart) const;
+  bool tryHandleBareFunctionNameCommonTail(
+      EvalContext& ctx,
+      const std::string& ident,
+      const char* identStartForCloser) const;
+  bool finishSubEvalFromCompiledProgram(EvalContext& parent, EvalContext& sub) const;
+  bool tryCompileExprToProgram(
+      const std::string& expr,
+      EvalContext& parentCtx,
+      std::vector<std::string>* callStack,
+      const char* validatingUserFunctionName,
+      bool suppressBareFunctionTailHint,
+      std::vector<AstStatement>& outProgram);
   static std::string formatUserFunctionSignature(const UserFunction& uf);
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
   bool tryResolveVariableValue(
@@ -1357,9 +1300,7 @@ private:
       const EvalValue& inV) const;
   EvalValue evalValueFromTimeMs(BuiltinFunctionId id, long long ms) const;
 #endif
-  EvalValue mapUnaryComplexBuiltin(EvalContext& ctx, BuiltinFunctionId id, const EvalValue& inV) const;
   bool tryUnaryComplexBuiltinSupport(BuiltinFunctionId id, const EvalValue::ScalarValue& sv, EvalValue& out) const;
-  static EvalValue makeArray(const std::vector<double>& v);
   static EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v);
   static RawResult::CartesianScalar toRawCartesianScalar(const EvalValue::ScalarValue& v, bool imagPart);
   static RawResult::Scalar toRawScalar(const EvalValue::ScalarValue& v);
@@ -1383,8 +1324,7 @@ private:
   }
   static EvalValue scalarFromArrayAt(const EvalValue& arrV, std::size_t idx);
   static bool applyBinary(double a, double b, char op, double& out);
-  static EvalValue mapUnaryFn(const EvalValue& in, double (*fn)(double));
-  /** Apply scalar unary logic to one element; broadcast over arrays (same pattern as mapUnaryFn). */
+  /** Apply scalar unary logic to one element; broadcast over arrays. */
   template <typename ScalarFn>
   static EvalValue mapUnaryEvalValue(const EvalValue& in, ScalarFn&& applyScalar);
   template <typename ScalarFn>
