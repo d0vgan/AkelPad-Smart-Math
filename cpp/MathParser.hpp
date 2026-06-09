@@ -584,7 +584,8 @@ private:
   bool prepareCompileParseSource(
       const std::string& mathExpression,
       EvalContext& ctx,
-      std::string& ownedParseBuffer);
+      std::string& ownedParseBuffer,
+      bool& strippedTrailingSemicolon);
   static std::string toLower(std::string s);
   static bool isIdentStart(char c);
   static bool isIdentChar(char c);
@@ -891,7 +892,7 @@ private:
   bool identIsBareFunctionOrUdfName(const std::string& ident, const EvalContext& ctx) const;
   bool trimmedStmtIsBareFunctionOrUdfName(const std::string& stmt) const;
   bool trimmedStmtIsBareFunctionOrUdfName(const char* begin, const char* end) const;
-  void stripTrailingSemicolonsForTopLevelInput(std::string& s) const;
+  bool stripTrailingSemicolonsForTopLevelInput(std::string& s) const;
   static bool identMayBeBareBuiltinName(const char* begin, const char* end);
   static bool identMayBeBareBuiltinName(const std::string& ident);
   bool trySetMissingFunctionCallError(

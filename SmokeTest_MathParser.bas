@@ -1907,6 +1907,55 @@ private sub RunIncompleteFunctionCallHintTests()
     end if
   next si
 
+  dim semiHintExprs(1 to 10) as String
+  dim semiHintMustNot(1 to 10) as String
+  semiHintExprs(1) = "sin(1)/cos;": semiHintMustNot(1) = "function: cos"
+  semiHintExprs(2) = "sin(1)/cos; 2": semiHintMustNot(2) = "function: cos"
+  semiHintExprs(3) = "1+sin;": semiHintMustNot(3) = "function: sin"
+  semiHintExprs(4) = "1+sin(;": semiHintMustNot(4) = "function: sin"
+  semiHintExprs(5) = "sin(;": semiHintMustNot(5) = "function: sin"
+  semiHintExprs(6) = "cos;": semiHintMustNot(6) = "function: cos"
+  semiHintExprs(7) = "f(x)=x; f(;": semiHintMustNot(7) = "user-defined function:"
+  semiHintExprs(8) = "f(x)=x; cos;": semiHintMustNot(8) = "function: cos"
+  semiHintExprs(9) = "f(x)=x; 1+sum;": semiHintMustNot(9) = "function: sum"
+  semiHintExprs(10) = "sum(;": semiHintMustNot(10) = "function: sum"
+  dim shi as Integer
+  for shi = 1 to 10
+    if Parser_TryEvaluateEx(semiHintExprs(shi), r, rt, ia) then
+      print "[semi-fn-hint] FAIL: """ & semiHintExprs(shi) & """ expected error, got """ & rt & """"
+      subFail += 1
+    elseif instr(Parser_GetLastError(), semiHintMustNot(shi)) > 0 then
+      print "[semi-fn-hint] FAIL: """ & semiHintExprs(shi) & """ must not hint: """ & Parser_GetLastError() & """"
+      subFail += 1
+    else
+      print "[semi-fn-hint] PASS: """ & semiHintExprs(shi) & """"
+      subPass += 1
+    end if
+  next shi
+  if Parser_TryEvaluateEx("f(x)=x", r, rt, ia) = FALSE then
+    print "[semi-fn-hint] FAIL: setup f(x)=x -> " & Parser_GetLastError()
+    subFail += 1
+  elseif Parser_TryEvaluateEx("f(x)=x; f(", r, rt, ia) then
+    print "[semi-fn-hint] FAIL: f(x)=x; f( expected error"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "user-defined function: f(x)") = 0 then
+    print "[semi-fn-hint] FAIL: f(x)=x; f( got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[semi-fn-hint] PASS: f(x)=x; f("
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("f(x)=x; 1+f", r, rt, ia) then
+    print "[semi-fn-hint] FAIL: f(x)=x; 1+f expected error"
+    subFail += 1
+  elseif instr(Parser_GetLastError(), "user-defined function: f(x)") = 0 then
+    print "[semi-fn-hint] FAIL: f(x)=x; 1+f got """ & Parser_GetLastError() & """"
+    subFail += 1
+  else
+    print "[semi-fn-hint] PASS: f(x)=x; 1+f"
+    subPass += 1
+  end if
+
   dim badCloserExprs(1 to 5) as String
   dim badCloserNeed(1 to 5) as String
   dim badCloserMustNot(1 to 5) as String

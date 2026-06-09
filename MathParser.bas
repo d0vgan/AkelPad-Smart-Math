@@ -3731,6 +3731,7 @@ private sub NormalizeTrailingStatementSemicolons(byref s as string)
       if TrimmedStmtIsBareBuiltinOrUdfName(beforeSemi) then
         exit sub
       end if
+      suppressBareFunctionTailHint = TRUE
       s = Left(s, Len(s) - 1)
       progressing = TRUE
     end if
@@ -11181,10 +11182,16 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
         dim rewrittenStmt as String
         if TryRewriteTrailingFormatterStmt(stmt, rewrittenStmt) then stmtToEval = rewrittenStmt
       end if
+      dim savedSuppressTailHint as Boolean = suppressBareFunctionTailHint
+      if isSemicolon andalso iStmt <= len(exprInput) then
+        suppressBareFunctionTailHint = TRUE
+      end if
       if Parser_TryEvaluateEx(stmtToEval, result, resultText, isArray) = FALSE then
+        suppressBareFunctionTailHint = savedSuppressTailHint
         errorBaseCol = savedBaseCol
         return FALSE
       end if
+      suppressBareFunctionTailHint = savedSuppressTailHint
       hasPrevStmtResult = TRUE
       errorBaseCol = savedBaseCol
       stmtStart = iStmt + 1
@@ -11198,6 +11205,7 @@ private function TryEvaluateTopLevelStatements(byref exprInput as String, byref 
 end function
 
 private function FinishParserEvaluateEx(byval ok as Boolean) as Boolean
+  if evalDepth = 1 then suppressBareFunctionTailHint = FALSE
   evalDepth -= 1
   return ok
 end function

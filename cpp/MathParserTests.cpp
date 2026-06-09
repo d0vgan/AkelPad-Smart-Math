@@ -3161,6 +3161,34 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "f(x)=x", "0", why)) return false;
                 return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
               }});
+  t.push_back({"regression/semicolon suppresses function hints", [](std::string& why) {
+                MathParser p;
+                const auto mustNotHint = [&](const char* expr, const char* hintPart) -> bool {
+                  p.parseAndEvaluate(expr);
+                  const std::string err = p.getError();
+                  if (err.empty()) {
+                    why = std::string("expected error for \"") + expr + "\"";
+                    return false;
+                  }
+                  if (err.find(hintPart) != std::string::npos) {
+                    why = std::string("\"") + expr + "\" must not contain \"" + hintPart + "\", got \"" + err +
+                          "\"";
+                    return false;
+                  }
+                  return true;
+                };
+                if (!mustNotHint("sin(1)/cos;", "function: cos")) return false;
+                if (!mustNotHint("sin(1)/cos; 2", "function: cos")) return false;
+                if (!mustNotHint("1+sin;", "function: sin")) return false;
+                if (!mustNotHint("1+sin(;", "function: sin")) return false;
+                if (!mustNotHint("sin(;", "function: sin")) return false;
+                if (!mustNotHint("cos;", "function: cos")) return false;
+                if (!mustNotHint("sum(;", "function: sum")) return false;
+                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!mustNotHint("f(x)=x; f(;", "user-defined function:")) return false;
+                if (!expectEvalErrorContains(p, "f(x)=x; f(", "user-defined function: f(x)", why)) return false;
+                return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
+              }});
 #if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/sortby inline lambda key at EOF missing closing paren", [](std::string& why) {
                 MathParser p;

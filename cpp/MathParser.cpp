@@ -2443,20 +2443,23 @@ bool MathParser::trimmedStmtIsBareFunctionOrUdfName(const char* begin, const cha
   return identIsBareFunctionOrUdfName(ident, ctx);
 }
 
-void MathParser::stripTrailingSemicolonsForTopLevelInput(std::string& s) const {
+bool MathParser::stripTrailingSemicolonsForTopLevelInput(std::string& s) const {
+  bool strippedAny = false;
   for (;;) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) {
       s.pop_back();
     }
     if (!s.empty() && s.back() == ';') {
       if (trimmedStmtIsBareFunctionOrUdfName(s.data(), s.data() + s.size() - 1)) {
-        return;
+        return strippedAny;
       }
       s.pop_back();
+      strippedAny = true;
       continue;
     }
     break;
   }
+  return strippedAny;
 }
 
 // Builtins are lowercase a-z except names with digits (atan2, log10). Skip hash lookup for other idents with digit/_ (e.g. myconst1).
@@ -12100,9 +12103,11 @@ MathParser::EvalValue MathParser::evalFunctionCall(
 bool MathParser::prepareCompileParseSource(
     const std::string& mathExpression,
     EvalContext& ctx,
-    std::string& ownedParseBuffer) {
+    std::string& ownedParseBuffer,
+    bool& strippedTrailingSemicolon) {
   ownedParseBuffer.clear();
   ctx.sourceExpr.clear();
+  strippedTrailingSemicolon = false;
   const char* text = mathExpression.data();
   const std::size_t len = mathExpression.size();
   const bool hadLineComment = parseSourceHasLineComment(text, len);
@@ -12112,7 +12117,7 @@ bool MathParser::prepareCompileParseSource(
     } else {
       ownedParseBuffer = mathExpression;
     }
-    stripTrailingSemicolonsForTopLevelInput(ownedParseBuffer);
+    strippedTrailingSemicolon = stripTrailingSemicolonsForTopLevelInput(ownedParseBuffer);
     if (ownedParseBuffer.empty()) {
       return false;
     }
@@ -12133,7 +12138,8 @@ bool MathParser::compile(const std::string& mathExpression) {
 
   EvalContext ctx;
   std::string ownedParseBuffer;
-  if (!prepareCompileParseSource(mathExpression, ctx, ownedParseBuffer)) {
+  bool strippedTrailingSemicolon = false;
+  if (!prepareCompileParseSource(mathExpression, ctx, ownedParseBuffer, strippedTrailingSemicolon)) {
     if (parseSourceHasLineComment(mathExpression.data(), mathExpression.size())) {
       compiled_.program.clear();
       compiled_.hasAssignments = false;
@@ -12147,6 +12153,7 @@ bool MathParser::compile(const std::string& mathExpression) {
     }
     return false;
   }
+  ctx.suppressBareFunctionTailHint = strippedTrailingSemicolon;
 
   std::vector<AstStatement> program;
   if (!tryCompileSingleExpressionProgram(ctx, program) && !parseProgram(ctx, program)) {
