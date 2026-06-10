@@ -11786,45 +11786,24 @@ MathParser::EvalValue::ScalarValue MathParser::clampScalarValue(
   const double v = scalarNumericReal(s);
   const double minS = minSv.scalar;
   const double maxS = maxSv.scalar;
-  const bool loKnown = !std::isnan(minS);
-  const bool hiKnown = !std::isnan(maxS);
-  const auto uncertainNan = []() -> EvalValue::ScalarValue {
-    return makeScalar(std::numeric_limits<double>::quiet_NaN()).scalarValue;
-  };
 
   if (std::isnan(v)) {
-    if (loKnown) {
+    if (!std::isnan(minS)) {
       return minSv;
     }
     return s;
   }
 
-  if (loKnown && v <= minS) {
+  if (!std::isnan(minS) && v <= minS) {
     return minSv;
   }
 
-  if (hiKnown && v > maxS) {
-    if (!loKnown && !std::isinf(v)) {
-      return s;
-    }
+  if (!std::isnan(maxS) && v > maxS) {
     return maxSv;
   }
 
-  if (!loKnown && hiKnown) {
-    if (v < maxS) {
-      return uncertainNan();
-    }
-    return s;
-  }
-
-  if (loKnown && !hiKnown) {
-    if (v > minS) {
-      return uncertainNan();
-    }
-  }
-
-  if (!loKnown && !hiKnown) {
-    return uncertainNan();
+  if (std::isnan(maxS) && !std::isnan(minS) && v > minS) {
+    return makeScalar(std::numeric_limits<double>::quiet_NaN()).scalarValue;
   }
 
   return s;

@@ -3604,7 +3604,7 @@ std::vector<TestCase> buildClampInvertedBoundsCases() {
 
 std::vector<TestCase> buildClampNanBoundCases() {
   std::vector<TestCase> t;
-  t.push_back({"clamp/NaN bounds: partial interval and value-at-max with unknown min",
+  t.push_back({"clamp/NaN bounds: absent lower bound, unknown upper bound",
                [](std::string& why) {
                  MathParser p;
                  if (!expectEval(p, "clamp(nan,1,2)", "1", why)) return false;
@@ -3612,10 +3612,10 @@ std::vector<TestCase> buildClampNanBoundCases() {
                  if (!expectEval(p, "clamp(nan,1,nan)", "1", why)) return false;
                  if (!expectEval(p, "clamp(0,1,nan)", "1", why)) return false;
                  if (!expectEval(p, "clamp(2,1,nan)", "nan", why)) return false;
-                 if (!expectEval(p, "clamp(1,nan,2)", "nan", why)) return false;
-                 if (!expectEval(p, "clamp(3,nan,2)", "3", why)) return false;
+                 if (!expectEval(p, "clamp(1,nan,2)", "1", why)) return false;
+                 if (!expectEval(p, "clamp(3,nan,2)", "2", why)) return false;
                  if (!expectEval(p, "clamp(2,nan,2)", "2", why)) return false;
-                 if (!expectEval(p, "clamp(-inf,nan,2)", "nan", why)) return false;
+                 if (!expectEval(p, "clamp(-inf,nan,2)", "-inf", why)) return false;
                  if (!expectEval(p, "clamp(-inf,2,nan)", "2", why)) return false;
                  if (!expectEval(p, "clamp(inf,2,nan)", "nan", why)) return false;
                  if (!expectEval(p, "clamp(nan,inf,inf)", "inf", why)) return false;

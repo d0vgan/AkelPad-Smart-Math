@@ -4543,42 +4543,23 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
   return TRUE
 end function
 
-private function ClampUncertainNanScalarValue() as ScalarValue
-  dim tmp as EvalValue
-  ValueSetScalar(tmp, MakeNaN())
-  return tmp.scalarValue
-end function
-
 private function ClampScalarValue(byref sv as ScalarValue, byref minSv as ScalarValue, byref maxSv as ScalarValue) as ScalarValue
   dim v as Double = ScalarNumericReal(sv)
   dim minS as Double = minSv.scalar
   dim maxS as Double = maxSv.scalar
-  dim loKnown as Boolean = (IsNaNValue(minS) = FALSE)
-  dim hiKnown as Boolean = (IsNaNValue(maxS) = FALSE)
 
   if IsNaNValue(v) then
-    if loKnown then return minSv
+    if IsNaNValue(minS) = FALSE then return minSv
     return sv
   end if
 
-  if loKnown andalso v <= minS then return minSv
-
-  if hiKnown andalso v > maxS then
-    if (loKnown = FALSE) andalso (IsInfValue(v) = FALSE) then return sv
-    return maxSv
+  if (IsNaNValue(minS) = FALSE) andalso v <= minS then return minSv
+  if (IsNaNValue(maxS) = FALSE) andalso v > maxS then return maxSv
+  if IsNaNValue(maxS) andalso (IsNaNValue(minS) = FALSE) andalso v > minS then
+    dim nanOut as EvalValue
+    ValueSetScalar(nanOut, MakeNaN())
+    return nanOut.scalarValue
   end if
-
-  if (loKnown = FALSE) andalso hiKnown then
-    if v < maxS then return ClampUncertainNanScalarValue()
-    return sv
-  end if
-
-  if loKnown andalso (hiKnown = FALSE) then
-    if v > minS then return ClampUncertainNanScalarValue()
-  end if
-
-  if (loKnown = FALSE) andalso (hiKnown = FALSE) then return ClampUncertainNanScalarValue()
-
   return sv
 end function
 
