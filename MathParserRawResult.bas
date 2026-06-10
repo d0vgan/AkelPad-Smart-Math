@@ -29,11 +29,6 @@ function RawScalarIsComplex(byref s as RawScalar) as Boolean
   return s.kind = RSK_COMPLEX
 end function
 
-function RawScalarIsRational(byref s as RawScalar) as Boolean
-  if RawScalarIsComplex(s) then return FALSE
-  return s.real.kind = RSK_RATIONAL
-end function
-
 function RawCartesianIsRational(byref c as RawCartesianScalar) as Boolean
   return c.kind = RSK_RATIONAL
 end function

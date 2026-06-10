@@ -50,7 +50,6 @@ declare sub RawCartesianScalarClear(byref c as RawCartesianScalar)
 declare sub RawResultClear(byref r as RawResult)
 declare function RawResultHasValue(byref r as RawResult) as Boolean
 declare function RawScalarIsComplex(byref s as RawScalar) as Boolean
-declare function RawScalarIsRational(byref s as RawScalar) as Boolean
 declare function RawCartesianIsRational(byref c as RawCartesianScalar) as Boolean
 declare function RawCartesianIsZero(byref c as RawCartesianScalar) as Boolean
 

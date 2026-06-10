@@ -116,6 +116,7 @@ static_assert(builtinMetaRowCountForAssert() == 73, "kBuiltinMeta size mismatch"
 
 namespace {
 constexpr double kPi = 3.1415926535897932384626433832795;
+constexpr double kInvLn10 = 0.43429448190325182046017448968723710;  // 1 / ln(10)
 constexpr double kTrigMaxAbsRadians = 9007199254740992.0;  // 2^53
 constexpr int kMaxEvalDepth = 128;
 
@@ -947,14 +948,6 @@ bool udfBodyCallsDefinedFunction(const std::string& body, const std::string& fnN
 
 double randomUnitScalar() {
   return static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
-}
-
-double squareScalar(double x) {
-  return x * x;
-}
-
-double fracScalar(double x) {
-  return x - std::trunc(x);
 }
 
 int parseDigitForRadix(char c, unsigned int radix) {
@@ -9733,7 +9726,6 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
     ai /= static_cast<double>(itemCount);
   }
   return makeScalarComplexFromDoubles(ar, ai);
-    break;
   }
 #endif
 #if SMARTMATH_TIME_VALUES
@@ -9812,7 +9804,6 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
     return makeScalarTimeMs(roundHalfUpDoubleToLongLong(avgD));
   }
   return makeScalarTimeMs(accMs);
-    break;
   }
 #endif
   case AggregateFoldMode::Real:
@@ -11614,8 +11605,7 @@ bool MathParser::applyUnaryComplexMathOverlay(
       if (id == BuiltinFunctionId::Ln) {
         outV = makeScalarComplexFromDoubles(loR, loI);
       } else {
-        const double invLn10 = 1.0 / std::log(10.0);
-        outV = makeScalarComplexFromDoubles(loR * invLn10, loI * invLn10);
+        outV = makeScalarComplexFromDoubles(loR * kInvLn10, loI * kInvLn10);
       }
       return true;
     }
@@ -11643,9 +11633,8 @@ bool MathParser::applyUnaryComplexMathOverlay(
         snapComplexNearZeroAxis(loR, loI);
         outV = makeScalarComplexFromDoubles(loR, loI);
       } else {
-        const double invLn10 = 1.0 / std::log(10.0);
         double loR = std::log10(-x);
-        double loI = kPi * invLn10;
+        double loI = kPi * kInvLn10;
         snapComplexNearZeroAxis(loR, loI);
         outV = makeScalarComplexFromDoubles(loR, loI);
       }
@@ -11658,8 +11647,7 @@ bool MathParser::applyUnaryComplexMathOverlay(
       if (id == BuiltinFunctionId::Ln) {
         outV = makeScalarComplexFromDoubles(loR, loI);
       } else {
-        const double invLn10 = 1.0 / std::log(10.0);
-        outV = makeScalarComplexFromDoubles(loR * invLn10, loI * invLn10);
+        outV = makeScalarComplexFromDoubles(loR * kInvLn10, loI * kInvLn10);
       }
       return true;
     }

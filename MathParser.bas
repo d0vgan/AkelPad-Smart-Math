@@ -644,11 +644,7 @@ property ScalarValue.exactInt64Valid() as Boolean
 end property
 
 property ScalarValue.exactInt64Valid(byval v as Boolean)
-  if v then
-    this.flags or= SVF_EXACT_INT64_VALID
-  else
-    this.flags and= not CUInt(SVF_EXACT_INT64_VALID)
-  end if
+  ScalarSetExactInt64Valid(this, v)
 end property
 
 property ScalarValue.exactUInt64Valid() as Boolean
@@ -1006,7 +1002,6 @@ declare function ApplyTimeBinaryScalars(byref leftS as ScalarValue, byref rightS
 declare function FormatComplexScalarValue(byref sv as ScalarValue) as String
 declare function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
 declare function ApplyUnaryComplexTrigById(byval fnId as Integer, byval ar as Double, byval ai as Double, byref outR as Double, byref outI as Double) as Boolean
-declare sub LoadUnaryOperandCartesian(byref scalarV as ScalarValue, byref ar as Double, byref ai as Double)
 declare function TryApplyUnaryComplexMathOverlay(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
 declare function ApplyUnaryBuiltin(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
 declare function TryApplyUnaryRealByKind(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
@@ -1823,12 +1818,8 @@ private function IsTrigCartesianInRange(byval ar as Double, byval ai as Double) 
   return IsTrigRadiansInRange(ar) andalso IsTrigRadiansInRange(ai)
 end function
 
-private function IsPrimaryTrigFnId(byval fnId as Integer) as Boolean
-  return (fnId = FUNC_SIN) orelse (fnId = FUNC_COS) orelse (fnId = FUNC_TAN)
-end function
-
 private function IsUnaryTrigFnId(byval fnId as Integer) as Boolean
-  return IsPrimaryTrigFnId(fnId) orelse _
+  return (fnId = FUNC_SIN) orelse (fnId = FUNC_COS) orelse (fnId = FUNC_TAN) orelse _
          (fnId = FUNC_SINH) orelse (fnId = FUNC_COSH) orelse (fnId = FUNC_TANH)
 end function
 
@@ -5082,7 +5073,7 @@ private function TryApplyUnaryComplexMathOverlay(byval fnId as Integer, byref sc
   if Parser_SupportComplexNumbers = FALSE then return FALSE
   dim arU as Double = 0.0
   dim aiU as Double = 0.0
-  LoadUnaryOperandCartesian(scalarV, arU, aiU)
+  ScalarLoadCartesian(scalarV, arU, aiU)
   dim x as Double = arU
   if ScalarHasNonzeroImaginaryPart(scalarV) then
       if fnId = FUNC_SQRT orelse fnId = FUNC_SQR then
@@ -6598,10 +6589,6 @@ private function TryApplyFactorialScalarInt(byval n as LongInt, byref outV as Ev
   return TRUE
 end function
 
-private sub LoadUnaryOperandCartesian(byref scalarV as ScalarValue, byref ar as Double, byref ai as Double)
-  ScalarLoadCartesian(scalarV, ar, ai)
-end sub
-
 private function ApplyUnaryBuiltin(byval fnId as Integer, byref scalarV as ScalarValue, byref outV as EvalValue) as Boolean
   if ApplyUnaryComplexSupportScalars(fnId, scalarV, outV) then return TRUE
   if TryApplyUnaryComplexMathOverlay(fnId, scalarV, outV) then return TRUE
@@ -6616,7 +6603,7 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
 
   dim ar as Double
   dim ai as Double
-  LoadUnaryOperandCartesian(scalarV, ar, ai)
+  ScalarLoadCartesian(scalarV, ar, ai)
   if Parser_SupportComplexNumbers = FALSE andalso ScalarHasNonzeroImaginaryPart(scalarV) then return FALSE
 
   select case fnId
@@ -6629,14 +6616,9 @@ private function ApplyUnaryComplexSupportScalars(byval fnId as Integer, byref sc
         ScalarClearImag(outV.scalarValue)
       end if
     case FUNC_IMAG
-      if Parser_SupportComplexNumbers then
-        dim cIm as ExactCartesianComponent
-        if TryExtractExactImagComponent(scalarV, cIm) then
-          ValueSetScalarFromExactCartesianComponent(outV, cIm)
-        else
-          ValueSetScalar(outV, ai)
-          ScalarClearImag(outV.scalarValue)
-        end if
+      dim cIm as ExactCartesianComponent
+      if Parser_SupportComplexNumbers andalso TryExtractExactImagComponent(scalarV, cIm) then
+        ValueSetScalarFromExactCartesianComponent(outV, cIm)
       else
         ValueSetScalar(outV, ai)
         ScalarClearImag(outV.scalarValue)
