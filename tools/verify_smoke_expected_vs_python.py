@@ -51,7 +51,7 @@ Sources parsed (in addition to ``tests(N)`` rows):
 
 Use ``--audit-coverage`` to print discovered vs parsed row counts per source and per
 ``Run*Tests`` sub (before the Python reference pass). Use ``--audit-only`` to exit
-after the audit (fast). C++ ``MathParserTests.cpp`` is not parsed (Basic smoke corpus).
+after the audit (fast). C++ ``Tests_MathParser.cpp`` is not parsed (Basic smoke corpus).
 """
 
 from __future__ import annotations

@@ -118,7 +118,7 @@ Run relevant gates from `add-mathparser-function` skill, following **Test and gu
   - **After all required Basic gates pass:**
   - C++ parser/tests changed:
     - `cpp/BuildTests_vc2022_x64.bat`
-    - `cpp/MathParserTests.exe`
+    - `cpp/Tests_MathParser.exe`
 
 All required gates must pass before completion.
 

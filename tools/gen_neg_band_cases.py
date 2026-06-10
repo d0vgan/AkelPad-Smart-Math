@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate positive/negative argument magnitude band cases using MathParserTests --eval."""
+"""Generate positive/negative argument magnitude band cases using Tests_MathParser --eval."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ try:
 except ImportError:
     ref_format = None  # type: ignore
     try_reference = None  # type: ignore
-EXE_CPP = ROOT / "cpp" / "MathParserTests.exe"
+EXE_CPP = ROOT / "cpp" / "Tests_MathParser.exe"
 EXE_BAS = ROOT / "tools" / "NegBandProbe.exe"
 
 

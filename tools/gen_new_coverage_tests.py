@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from verify_smoke_expected_vs_python import ref_eval, ref_format, try_reference  # noqa: E402
 
-EXE_CPP = ROOT / "cpp" / "MathParserTests.exe"
+EXE_CPP = ROOT / "cpp" / "Tests_MathParser.exe"
 EXE_BAS = ROOT / "tools" / "NegBandProbe.exe"
 
 

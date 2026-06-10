@@ -10079,11 +10079,11 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
   }
   setParseError(ctx, ParseErrorId::InternalAggregateBuiltin);
   return makeScalar(0);
-    break;
   }
   }
-  setParseError(ctx, ParseErrorId::InternalAggregateBuiltin);
-  return makeScalar(0);
+  //unreachable code:
+  //setParseError(ctx, ParseErrorId::InternalAggregateBuiltin);
+  //return makeScalar(0);
 }
 
 

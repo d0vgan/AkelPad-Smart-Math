@@ -5,7 +5,7 @@ cd /d "%~dp0"
 call "%~dp0BuildTests_vc2022_win32.bat"
 if errorlevel 1 exit /b 1
 
-"%~dp0MathParserTests.exe"
+"%~dp0Tests_MathParser.exe"
 if errorlevel 1 exit /b 1
 
 echo C++ x86 checks PASSED.
