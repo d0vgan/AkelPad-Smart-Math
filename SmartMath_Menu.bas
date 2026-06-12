@@ -1,8 +1,5 @@
 #include once "SmartMath_Globals.bi"
 
-' -----------------------------------------------------------------------------
-'  Update checkmarks on submenus to reflect loaded settings
-' -----------------------------------------------------------------------------
 sub UpdateMenuChecks()
   if hSubMenuDecimals <> 0 then
     dim stAuto as UINT
@@ -40,12 +37,19 @@ sub UpdateMenuChecks()
     dim stThou as UINT
     if g_bUseThousandsSeparator then stThou = MF_CHECKED else stThou = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_THOUSANDS_SEPARATOR, MF_BYCOMMAND or stThou)
+
+    dim hWndActive as HWND = GetActiveEditWindow()
+    dim stTab as UINT
+    if hWndActive <> 0 then
+      dim bDisabled as BOOL = cast(BOOL, GetPropW(hWndActive, wstr("SmartMath_TabDisabled")))
+      if bDisabled then stTab = MF_UNCHECKED else stTab = MF_CHECKED
+    else
+      stTab = MF_CHECKED
+    end if
+    CheckMenuItem(hSmartMathMenu, IDM_TAB_ACTIVE, MF_BYCOMMAND or stTab)
   end if
 end sub
 
-' -----------------------------------------------------------------------------
-'  Menu setup
-' -----------------------------------------------------------------------------
 sub InitSmartMathMenu()
   if hSmartMathMenu <> 0 then exit sub
 
@@ -85,6 +89,9 @@ sub InitSmartMathMenu()
     exit sub
   end if
 
+  AppendMenuW(hSmartMathMenu, MF_STRING, IDM_TAB_ACTIVE, wstr("Active on Current Tab"))
+  AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
+
   if hSubMenuDecimals <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuDecimals), wstr("Decimal Places"))
   end if
@@ -102,18 +109,13 @@ sub InitSmartMathMenu()
   DrawMenuBar(g_hMainWnd)
   UpdateMenuChecks()
 
-  ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
   g_pfnOldMainProc = cast(WNDPROC, SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, @SmartMathMainProc)))
 end sub
 
-' -----------------------------------------------------------------------------
-'  Menu teardown
-' -----------------------------------------------------------------------------
 sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
   if hSmartMathMenu = 0 then exit sub
 
   if g_pfnOldMainProc then
-    ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
     SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, g_pfnOldMainProc))
     g_pfnOldMainProc = 0
   end if

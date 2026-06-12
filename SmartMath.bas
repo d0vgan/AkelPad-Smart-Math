@@ -1,6 +1,5 @@
 #include once "SmartMath_Globals.bi"
 
-' --- Shared global variables definitions ---
 dim shared lpEditProcData as WNDPROCDATA ptr = 0
 dim shared bSmartMathActive as BOOL = FALSE
 dim shared g_bOldRichEdit as BOOL = FALSE
@@ -22,21 +21,22 @@ dim shared g_hMainMenu as HMENU = 0
 dim shared g_hWndEdit as HWND = 0
 dim shared g_bShuttingDown as BOOL = FALSE
 
-' FIX: Use a plain Win32 WNDPROC pointer instead of AKD_SETMAINPROC / WNDPROCDATA.
 dim shared g_pfnOldMainProc as WNDPROC = 0
 dim shared g_wszIniPath as WString * 260
 
-' -----------------------------------------------------------------------------
-'  Debug logging
-' -----------------------------------------------------------------------------
+function GetActiveEditWindow() as HWND
+  dim lpFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFIND, 3, 0))
+  if lpFrame then
+    return lpFrame->ei.hWndEdit
+  end if
+  return g_hWndEdit
+end function
+
 sub LogInfo(byref sMsg as String)
   dim sOut as String = "[SmartMath] " & sMsg
   OutputDebugString(strptr(sOut))
 end sub
 
-' -----------------------------------------------------------------------------
-'  Text safety (universal ANSI/Unicode support for AkelPad)
-' -----------------------------------------------------------------------------
 function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen as Integer) as String
   if lineLen <= 0 then return ""
   dim as String sRet = ""
@@ -58,9 +58,6 @@ function GetLineText(byval hWnd as HWND, byval lineIdx as Integer, byval lineLen
   return sRet
 end function
 
-' -----------------------------------------------------------------------------
-'  Drawing Logic & Positioning
-' -----------------------------------------------------------------------------
 sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
   if g_bShuttingDown then
     bVisible = FALSE
@@ -224,9 +221,6 @@ sub DrawDynamicMathResults(byval hWnd as HWND)
   ReleaseDC(hWnd, hDC)
 end sub
 
-' -----------------------------------------------------------------------------
-'  Main-window subclass procedure
-' -----------------------------------------------------------------------------
 function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
   if uMsg = WM_COMMAND then
     dim nCmd as Integer = LOWORD(wParam)
@@ -284,6 +278,23 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
       end if
       return 0
 
+    elseif nCmd = IDM_TAB_ACTIVE then
+      dim hWndActive as HWND = GetActiveEditWindow()
+      if hWndActive then
+        dim bDisabled as BOOL = cast(BOOL, GetPropW(hWndActive, wstr("SmartMath_TabDisabled")))
+        if bDisabled then
+          RemovePropW(hWndActive, wstr("SmartMath_TabDisabled"))
+          dim bVis as BOOL
+          UpdateMarginAndState(hWndActive, bVis)
+        else
+          SetPropW(hWndActive, wstr("SmartMath_TabDisabled"), cast(HANDLE, 1))
+          SendMessage(hWndActive, EM_SETMARGINS, EC_RIGHTMARGIN, 0)
+        end if
+        InvalidateRect(hWndActive, 0, TRUE)
+        UpdateMenuChecks()
+      end if
+      return 0
+
     elseif nCmd = IDM_ABOUT then
       ShowAboutDialog(hWnd)
       return 0
@@ -304,6 +315,14 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
       return CallWindowProc(pfnOld, hWnd, uMsg, wParam, lParam)
     end if
     return 0
+
+  elseif uMsg = AKDN_FRAME_ACTIVATE then
+    UpdateMenuChecks()
+
+  elseif uMsg = WM_INITMENUPOPUP then
+    if cast(HMENU, wParam) = hSmartMathMenu then
+      UpdateMenuChecks()
+    end if
   end if
 
   if g_pfnOldMainProc then
@@ -312,9 +331,6 @@ function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval
   return 0
 end function
 
-' -----------------------------------------------------------------------------
-'  Global Edit Window Subclass
-' -----------------------------------------------------------------------------
 function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
   if g_bShuttingDown then
     if lpEditProcData andalso lpEditProcData->NextProc then
@@ -325,6 +341,19 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
   end if
 
   g_hWndEdit = hWnd
+
+  if uMsg = WM_SETFOCUS then
+    UpdateMenuChecks()
+  end if
+
+  dim bDisabled as BOOL = cast(BOOL, GetPropW(hWnd, wstr("SmartMath_TabDisabled")))
+  if bDisabled then
+    if lpEditProcData andalso lpEditProcData->NextProc then
+      return lpEditProcData->NextProc(hWnd, uMsg, wParam, lParam)
+    else
+      return 0
+    end if
+  end if
 
   dim lRes as LRESULT
   dim rcUpdate as RECT
@@ -410,9 +439,6 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
   return lRes
 end function
 
-' -----------------------------------------------------------------------------
-'  Exported Functions
-' -----------------------------------------------------------------------------
 extern "C"
 
 sub DllAkelPadID alias "DllAkelPadID" (byval pv as PLUGINVERSION ptr) export
