@@ -11,8 +11,19 @@
   const EM_GETFIRSTVISIBLELINE = &h00CE
 #endif
 
+' -----------------------------------------------------------------------------
+'  Menu IDs for SmartMath decimal-place selector.
+'  Range 12000-12015 avoids AkelPad built-ins (<=10019) and common plugins.
+'    IDM_DECIMAL_BASE + 0  = "Auto (full precision)"
+'    IDM_DECIMAL_BASE + 1  = "0 decimal places"
+'    ...
+'    IDM_DECIMAL_BASE + 15 = "14 decimal places"
+' -----------------------------------------------------------------------------
 const IDM_DECIMAL_BASE = 12000
 
+' -----------------------------------------------------------------------------
+'  Menu IDs for SmartMath color selector.
+' -----------------------------------------------------------------------------
 const IDM_COLOR_BASE   = 12100
 const IDM_COLOR_GREEN  = IDM_COLOR_BASE + 0
 const IDM_COLOR_BLUE   = IDM_COLOR_BASE + 1
@@ -22,10 +33,15 @@ const IDM_COLOR_WHITE  = IDM_COLOR_BASE + 4
 const IDM_COLOR_BLACK  = IDM_COLOR_BASE + 5
 const MAX_COLORS       = 6
 
+' -----------------------------------------------------------------------------
+'  Menu ID for Options & About
+' -----------------------------------------------------------------------------
 const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
-const IDM_TAB_ACTIVE          = 12202
 
+' -----------------------------------------------------------------------------
+'  Global Variables (Extern)
+' -----------------------------------------------------------------------------
 extern lpEditProcData as WNDPROCDATA ptr
 extern bSmartMathActive as BOOL
 extern g_bOldRichEdit as BOOL
@@ -49,6 +65,9 @@ extern g_bShuttingDown as BOOL
 extern g_pfnOldMainProc as WNDPROC
 extern g_wszIniPath as WString * 260
 
+' -----------------------------------------------------------------------------
+'  Global Function Prototypes
+' -----------------------------------------------------------------------------
 declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
@@ -59,4 +78,3 @@ declare sub ShowAboutDialog(byval hWnd as HWND)
 declare sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
 declare sub LogInfo(byref sMsg as String)
 declare function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT
-declare function GetActiveEditWindow() as HWND
