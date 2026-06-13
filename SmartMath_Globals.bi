@@ -6,10 +6,17 @@
 #include once "Inc\AkelEdit.bi"
 #include once "Inc\AkelDLL.bi"
 #include once "Inc\MathParser.bi"
+#include once "Inc\MathParserRawResult.bi"
 
 #ifndef EM_GETFIRSTVISIBLELINE
   const EM_GETFIRSTVISIBLELINE = &h00CE
 #endif
+#ifndef EM_REPLACESEL
+  const EM_REPLACESEL = &hC2
+#endif
+
+' Max fixed decimal places in UI and in stored Decimals= option (values above clamp).
+const SMARTMATH_DECIMALS_MAX = 14
 
 ' -----------------------------------------------------------------------------
 '  Menu IDs for SmartMath decimal-place selector.
@@ -38,12 +45,22 @@ const MAX_COLORS       = 6
 ' -----------------------------------------------------------------------------
 const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
+const IDM_COMPLEX_NUMBERS     = 12202
+
+' -----------------------------------------------------------------------------
+'  Shared formatting/render defaults
+' -----------------------------------------------------------------------------
+const SMARTMATH_DECIMAL_SEPARATOR_DEFAULT      = "."
+const SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT    = "'"
+const SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT = ","
+const SMARTMATH_RESULT_PREFIX       = " = "
+const SMARTMATH_ERROR_PREFIX        = " ! "
 
 ' -----------------------------------------------------------------------------
 '  Global Variables (Extern)
 ' -----------------------------------------------------------------------------
 extern lpEditProcData as WNDPROCDATA ptr
-extern bSmartMathActive as BOOL
+extern g_bSmartMathActive as BOOL
 extern g_bOldRichEdit as BOOL
 
 extern rcOldMargin as RECT
@@ -55,6 +72,11 @@ extern dwOldAkelOptions as DWORD
 extern g_nDecimals as Integer
 extern g_crResultColor as COLORREF
 extern g_bUseThousandsSeparator as BOOL
+extern g_bSupportComplexNumbers as BOOL
+extern g_bLogParsedLines as BOOL
+extern g_sDecimalSeparator as String
+extern g_sThousandsSeparator as String
+extern g_sArrayOutputSeparator as String
 extern hSmartMathMenu as HMENU
 extern hSubMenuDecimals as HMENU
 extern hSubMenuColor as HMENU
@@ -62,8 +84,6 @@ extern g_hMainWnd as HWND
 extern g_hMainMenu as HMENU
 extern g_hWndEdit as HWND
 extern g_bShuttingDown as BOOL
-extern g_pfnOldMainProc as WNDPROC
-extern g_wszIniPath as WString * 260
 
 ' -----------------------------------------------------------------------------
 '  Global Function Prototypes
@@ -71,10 +91,15 @@ extern g_wszIniPath as WString * 260
 declare sub LoadSettings()
 declare sub SaveSettings()
 declare function FormatResult(byval d as Double) as String
+declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
+declare function FormatRawResultForDisplay(byref r as RawResult) as String
+declare function FormatRawEvaluationResult(byref raw as RawResult) as String
+declare function AddThousandsSeparator(byref sRes as String) as String
+declare function NormalizeCopiedResult(byref sRes as String) as String
+declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()
 declare sub UpdateMenuChecks()
 declare sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
 declare sub ShowAboutDialog(byval hWnd as HWND)
-declare sub UpdateMarginAndState(byval hWnd as HWND, byref bVisible as BOOL)
+declare sub UpdateInternalState(byval hWnd as HWND, byref bVisible as BOOL)
 declare sub LogInfo(byref sMsg as String)
-declare function SmartMathMainProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM) as LRESULT

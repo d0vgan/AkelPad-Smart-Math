@@ -10,7 +10,7 @@ sub UpdateMenuChecks()
     CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE, MF_BYCOMMAND or stAuto)
 
     dim i as Integer
-    for i = 0 to 14
+    for i = 0 to SMARTMATH_DECIMALS_MAX
       dim st as UINT
       if g_nDecimals = i then st = MF_CHECKED else st = MF_UNCHECKED
       CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE + 1 + i, MF_BYCOMMAND or st)
@@ -35,11 +35,16 @@ sub UpdateMenuChecks()
       CheckMenuItem(hSubMenuColor, IDM_COLOR_BASE + j, MF_BYCOMMAND or st)
     next j
   end if
-  
+
   if hSmartMathMenu <> 0 then
     dim stThou as UINT
     if g_bUseThousandsSeparator then stThou = MF_CHECKED else stThou = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_THOUSANDS_SEPARATOR, MF_BYCOMMAND or stThou)
+
+    dim stComplex as UINT
+    if g_bSupportComplexNumbers then stComplex = MF_CHECKED else stComplex = MF_UNCHECKED
+    Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
+    CheckMenuItem(hSmartMathMenu, IDM_COMPLEX_NUMBERS, MF_BYCOMMAND or stComplex)
   end if
 end sub
 
@@ -56,7 +61,7 @@ sub InitSmartMathMenu()
 
     dim i as Integer
     dim sLabel as WString * 64
-    for i = 0 to 14
+    for i = 0 to SMARTMATH_DECIMALS_MAX
       if i = 1 then
         sLabel = wstr("1 decimal place")
       else
@@ -88,22 +93,20 @@ sub InitSmartMathMenu()
   if hSubMenuDecimals <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuDecimals), wstr("Decimal Places"))
   end if
-  
+
   if hSubMenuColor <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuColor), wstr("Text Color"))
   end if
-  
+
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_THOUSANDS_SEPARATOR, wstr("Use Thousands Separator"))
+  AppendMenuW(hSmartMathMenu, MF_STRING, IDM_COMPLEX_NUMBERS, wstr("Complex Numbers"))
   AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
   AppendMenuW(hSmartMathMenu, MF_STRING, IDM_ABOUT, wstr("About..."))
-  
+
   InsertMenuW(g_hMainMenu, MENU_ABOUT_POSITION + 1, MF_BYPOSITION or MF_POPUP, cast(UINT_PTR, hSmartMathMenu), wstr("SmartMath"))
   DrawMenuBar(g_hMainWnd)
   UpdateMenuChecks()
-
-  ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
-  g_pfnOldMainProc = cast(WNDPROC, SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, @SmartMathMainProc)))
 end sub
 
 ' -----------------------------------------------------------------------------
@@ -112,13 +115,7 @@ end sub
 sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
   if hSmartMathMenu = 0 then exit sub
 
-  if g_pfnOldMainProc then
-    ' [x64 FIX]: Uses SetWindowLongPtr and GWLP_WNDPROC for cross-architecture safety
-    SetWindowLongPtr(g_hMainWnd, GWLP_WNDPROC, cast(LONG_PTR, g_pfnOldMainProc))
-    g_pfnOldMainProc = 0
-  end if
-
-  if g_hMainMenu then
+  if (g_hMainMenu <> 0) andalso IsMenu(g_hMainMenu) then
     dim nIndex as Integer = -1
     dim j as Integer
     for j = 0 to GetMenuItemCount(g_hMainMenu) - 1
@@ -130,12 +127,16 @@ sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
     if nIndex <> -1 then
       RemoveMenu(g_hMainMenu, nIndex, MF_BYPOSITION)
       if not bAppClosing then
-        DrawMenuBar(g_hMainWnd)
+        if (g_hMainWnd <> 0) andalso IsWindow(g_hMainWnd) then
+          DrawMenuBar(g_hMainWnd)
+        end if
       end if
     end if
   end if
 
-  DestroyMenu(hSmartMathMenu)
+  if IsMenu(hSmartMathMenu) then
+    DestroyMenu(hSmartMathMenu)
+  end if
   hSmartMathMenu = 0
   hSubMenuDecimals = 0
   hSubMenuColor = 0

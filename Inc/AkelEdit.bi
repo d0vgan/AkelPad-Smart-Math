@@ -3,17 +3,19 @@
 #include once "windows.bi"
 
 ' AkelEdit Messages
-const AEM_GETCHARSIZE = (WM_USER + 2164)
-const AEM_GETOPTIONS  = (WM_USER + 2203)
-const AEM_SETOPTIONS  = (WM_USER + 2204)
-const AEM_GETCOLORS   = (WM_USER + 2207)
-const AEM_SETCOLORS   = (WM_USER + 2208)
+const AEN_TEXTINSERTEND = (WM_USER + 1057)
+const AEN_TEXTCHANGED   = (WM_USER + 1060)
+const AEM_GETCHARSIZE   = (WM_USER + 2164)
+const AEM_GETOPTIONS    = (WM_USER + 2203)
+const AEM_SETOPTIONS    = (WM_USER + 2204)
+const AEM_GETCOLORS     = (WM_USER + 2207)
+const AEM_SETCOLORS     = (WM_USER + 2208)
 
 ' AEM_SETOPTIONS Flags
 const AECOOP_SET = 1
 const AECOOP_OR  = 2
+const AECOOP_AND = 3
 const AECOOP_XOR = 4
-const AECOOP_AND = 8
 
 ' AECO Options
 const AECO_ACTIVELINE       = &h00000800
@@ -43,6 +45,52 @@ type AECOLORS
   crAltLineText as COLORREF
   crAltLineBk as COLORREF
   crAltLineBorder as COLORREF
+end type
+
+type AENMHDR
+  hwndFrom as HWND
+  idFrom as UINT_PTR
+  code as UINT
+  docFrom as any ptr
+end type
+
+type AECHARINDEX
+  nLine as Long ' corresponds to 32-bit `int` in C!
+  lpLine as any ptr
+  nCharInLine as Long ' corresponds to 32-bit `int` in C!
+end type
+
+type AECHARRANGE
+  ciMin as AECHARINDEX
+  ciMax as AECHARINDEX
+end type
+
+type CHARRANGE64
+  cpMin as INT_PTR
+  cpMax as INT_PTR
+end type
+
+type AENTEXTCHANGE
+  hdr as AENMHDR
+  crSel as AECHARRANGE
+  ciCaret as AECHARINDEX
+  dwType as DWORD
+  bColumnSel as BOOL
+  crRichSel as CHARRANGE64
+end type
+
+type AENTEXTINSERT
+  hdr as AENMHDR
+  crSel as AECHARRANGE
+  ciCaret as AECHARINDEX
+  dwType as DWORD
+  wpText as WString ptr
+  dwTextLen as UINT_PTR
+  nNewLine as Long ' corresponds to 32-bit `int` in C!
+  bColumnSel as BOOL
+  dwInsertFlags as DWORD
+  crAkelRange as AECHARRANGE
+  crRichRange as CHARRANGE64
 end type
 
 #endif

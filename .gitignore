@@ -1,0 +1,6 @@
+*.a
+*.o
+*.obj
+*.exe
+tools/backup/*
+tools/__pycache__/*

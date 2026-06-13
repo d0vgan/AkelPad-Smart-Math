@@ -1,0 +1,30 @@
+﻿#include "winver.h"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     1,0,0,0
+PRODUCTVERSION  1,0,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_DLL
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName",      "AkelPad Smart Math contributors\0"
+      VALUE "FileDescription",  "SmartMath plugin for AkelPad (real-time math)\0"
+      VALUE "FileVersion",      "1.0.0.0\0"
+      VALUE "InternalName",     "SmartMath\0"
+      VALUE "LegalCopyright",   "Copyright (C) Carlos Sánchez, Vitalii Dovgan (2026)\0"
+      VALUE "OriginalFilename", "SmartMath.dll\0"
+      VALUE "ProductName",      "SmartMath\0"
+      VALUE "ProductVersion",   "1.0.0.0\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

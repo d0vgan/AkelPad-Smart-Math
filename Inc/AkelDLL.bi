@@ -15,6 +15,10 @@ const AKELDLL = MAKE_IDENTIFIER(2, 2, 0, 4)
 #define UD_UNLOAD &h00000000
 #define UD_NONUNLOAD_ACTIVE &h00000001
 
+#define WMD_SDI   0  ' Single document interface (SDI)
+#define WMD_MDI   1  ' Multiple document interface (MDI)
+#define WMD_PMDI  2  ' Pseudo-Multiple document interface (PMDI)
+
 #ifndef WM_USER
   const WM_USER = &h0400
 #endif
@@ -38,23 +42,40 @@ const EM_LINELENGTH       = &h00C1
   const EC_RIGHTMARGIN    = 2
 #endif
 
-' AkelPad Constants
-const AKD_FRAMEFIND             = (WM_USER + 50)
-' AKD_SETMAINPROC: corrected to match AkelPad 4.9.x+ SDK (was WM_USER + 52)
-const AKD_SETMAINPROC           = (WM_USER + 1217)
-const AKD_SETEDITPROC           = (WM_USER + 106)
-const AKD_FRAMEFINDW            = (WM_USER + 55)
-const AKDN_FRAME_ACTIVATE       = (WM_USER + 256)
-const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 263)
+' AkelPad Control IDs
+const ID_EDIT             = 10001
 
-' Main-window notification sent when AkelPad is closing (added)
+' AkelPad Notifications
+const AKDN_MAIN_ONSTART_FINISH  = (WM_USER + 4)
 const AKDN_MAIN_ONFINISH        = (WM_USER + 6)
+const AKDN_FRAME_ACTIVATE       = (WM_USER + 22)
+const AKDN_OPENDOCUMENT_FINISH  = (WM_USER + 54)
 
-' Plugin Manager Constants
-const AKD_DLLFINDW = (WM_USER + 14)
-const AKD_DLLSAVE  = (WM_USER + 25)
-const DLLSF_NOW    = 1
-const DLLSF_ONEXIT = 2
+' AkelPad Messages
+const AKD_SETMAINPROC           = (WM_USER + 102)
+const AKD_SETEDITPROC           = (WM_USER + 106)
+const AKD_SETFRAMEPROC          = (WM_USER + 110)
+const AKD_GETFRAMEINFO          = (WM_USER + 199)
+const AKD_GETEDITINFO           = (WM_USER + 200)
+const AKD_FRAMEFIND             = (WM_USER + 264)
+const AKD_FRAMEFINDW            = (WM_USER + 266)
+const AKD_DLLCALLW              = (WM_USER + 303)
+const AKD_DLLFINDW              = (WM_USER + 307)
+const AKD_DLLSAVE               = (WM_USER + 312)
+const AKD_BEGINOPTIONSA         = (WM_USER + 332)
+const AKD_BEGINOPTIONSW         = (WM_USER + 333)
+const AKD_OPTIONA               = (WM_USER + 335)
+const AKD_OPTIONW               = (WM_USER + 336)
+const AKD_ENDOPTIONS            = (WM_USER + 341)
+
+const DLLSF_NOW    = &h01
+const DLLSF_ONEXIT = &h02
+const POB_READ     = &h01
+const POB_SAVE     = &h02
+const PO_DWORD     = 1
+const PO_STRING    = 3
+const FWF_CURRENT  = 1
+const FI_WNDEDIT   = 2
 
 #ifndef MAX_PATH
   const MAX_PATH = 260
@@ -68,11 +89,6 @@ const DLLSF_ONEXIT = 2
 #define MENU_MDI_POSITION     4
 #define MENU_ABOUT_POSITION   5
 
-type CHARRANGE64
-  cpMin as Integer
-  cpMax as Integer
-end type
-
 type PLUGINVERSION
   cb as DWORD
   hMainWnd as HWND
@@ -80,6 +96,20 @@ type PLUGINVERSION
   dwExeMinVersion3x as DWORD
   dwExeMinVersion4x as DWORD
   pPluginName as ZString ptr
+end type
+
+type PLUGINOPTIONW
+  pOptionName as WString ptr
+  dwType as DWORD
+  lpData as UByte ptr
+  dwData as DWORD
+end type
+
+type PLUGINCALLSENDW
+  pFunction as WString ptr
+  lParam as LPARAM
+  dwSupport as DWORD
+  nResult as LPARAM
 end type
 
 ' Callback type used for all WNDPROCDATA proc fields
@@ -104,7 +134,7 @@ type PLUGINDATA
   lParam as LPARAM
   hInstanceDLL as HINSTANCE
   lpPluginFunction as any ptr
-  nUnload as Integer
+  nUnload as Long ' corresponds to 32-bit `int` in C!
   bInMemory as WINBOOL
   bOnStart as WINBOOL
   pAkelDir as UBYTE ptr
@@ -112,7 +142,7 @@ type PLUGINDATA
   wszAkelDir as WString ptr
   hInstanceEXE as HINSTANCE
   hPluginsStack as any ptr
-  nSaveSettings as Integer
+  nSaveSettings as Long ' corresponds to 32-bit `int` in C!
   hMainWnd as HWND
   lpFrameData as any ptr
   hWndEdit as HWND
@@ -131,27 +161,47 @@ type PLUGINDATA
   bOldRichEdit as WINBOOL
   dwVerComctl32 as DWORD
   bAkelEdit as WINBOOL
-  nMDI as Integer
+  nMDI as Long ' corresponds to 32-bit `int` in C!
   pLangModule as UBYTE ptr
   szLangModule as ZString ptr
   wszLangModule as WString ptr
   hLangModule as HMODULE
   wLangSystem as LANGID
   wLangModule as LANGID
+  nSaveHistory as Long ' corresponds to 32-bit `int` in C!
 end type
 
 type EDITINFO
   hWndEdit as HWND
-  hDocEdit as HWND
+  hDocEdit as any ptr
+  pFile as UBYTE ptr
+  szFile as ZString ptr
+  wszFile as WString ptr
+  nCodePage as Long ' corresponds to 32-bit `int` in C!
+  bBOM as WINBOOL
+  nNewLine as Long ' corresponds to 32-bit `int` in C!
+  bModified as WINBOOL
+  bReadOnly as WINBOOL
+  bWordWrap as WINBOOL
+  bOvertypeMode as WINBOOL
+  hWndMaster as HWND
+  hDocMaster as any ptr
+  hWndClone1 as HWND
+  hDocClone1 as any ptr
+  hWndClone2 as HWND
+  hDocClone2 as any ptr
+  hWndClone3 as HWND
+  hDocClone3 as any ptr
 end type
 
 type FRAMEDATA
   pNextFrame as FRAMEDATA ptr
   pPrevFrame as FRAMEDATA ptr
   cb as DWORD
-  nFrameID as UInteger
+  nFrameID as INT_PTR
   hWndEditParent as HWND
   ei as EDITINFO
+  ' note: this structure is incomplete, be sure to complete it if needed
 end type
 
 ' Plugin Stack Structure
@@ -161,13 +211,13 @@ type PLUGINFUNCTION
   pFunction as UBYTE ptr
   szFunction as ZString * MAX_PATH
   wszFunction as WString * MAX_PATH
-  nFunctionLen as Integer
+  nFunctionLen as Long ' corresponds to 32-bit `int` in C!
   wHotkey as WORD
   bAutoLoad as WINBOOL
   bRunning as WINBOOL
   PluginProc as any ptr
   lpParameter as any ptr
-  nRefCount as Integer
+  nRefCount as Long ' corresponds to 32-bit `int` in C!
 end type
 
 #endif
