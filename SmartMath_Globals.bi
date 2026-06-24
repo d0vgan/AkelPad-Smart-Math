@@ -46,6 +46,7 @@ const MAX_COLORS       = 6
 const IDM_ABOUT               = 12200
 const IDM_THOUSANDS_SEPARATOR = 12201
 const IDM_COMPLEX_NUMBERS     = 12202
+const IDM_ACTIVE_ON_CURR_TAB  = 12203
 
 ' -----------------------------------------------------------------------------
 '  Shared formatting/render defaults
@@ -99,6 +100,7 @@ declare function NormalizeCopiedResult(byref sRes as String) as String
 declare sub ResetSmartMathFormatLocaleCache()
 declare sub InitSmartMathMenu()
 declare sub UpdateMenuChecks()
+declare sub UpdateMenuActiveOnCurrTab(byval bActive as BOOL)
 declare sub UninitSmartMathMenu(byval bAppClosing as BOOL = FALSE)
 declare sub ShowAboutDialog(byval hWnd as HWND)
 declare sub UpdateInternalState(byval hWnd as HWND, byref bVisible as BOOL)

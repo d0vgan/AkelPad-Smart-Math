@@ -1,4 +1,5 @@
 #include once "SmartMath_Globals.bi"
+#include once "Inc\PtrArray.bi"
 
 ' --- Shared global variables definitions ---
 dim shared lpEditProcData as WNDPROCDATA ptr = 0
@@ -30,10 +31,63 @@ dim shared g_hMainWnd as HWND = 0
 dim shared g_hMainMenu as HMENU = 0
 dim shared g_hWndEdit as HWND = 0
 dim shared g_bShuttingDown as BOOL = FALSE
+dim shared g_bActiveFramesSaved as BOOL = FALSE
 dim shared g_cacheLineCount as Integer = -1
 dim shared g_cacheReady as BOOL = FALSE
 redim shared g_cachedLineText(0 to 0) as String
 redim shared g_cachedRenderText(0 to 0) as String
+
+const ACTIVE_FRAME_FILE_SEPARATOR as UShort = 10 '' LF
+type WStringPtr as WString ptr
+dim shared SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL as WString * 32 = WStr("SmartMath")
+dim shared SMARTMATH_ACTIVE_FRAMES_OPTION_NAME as WString * 64 = WStr("ActiveSmartMathFrames")
+
+type FrameItem
+  declare constructor(byval pFrameInit as FRAMEDATA ptr)
+  declare destructor()
+
+  pFrame as FRAMEDATA ptr
+  wszFile as WString ptr
+  isWorking as BOOL
+end type
+
+constructor FrameItem(byval pFrameInit as FRAMEDATA ptr)
+  pFrame = pFrameInit
+  wszFile = 0
+  isWorking = FALSE
+
+  if pFrameInit <> 0 andalso pFrameInit->ei.wszFile <> 0 then
+    dim pSrc as WString ptr = pFrameInit->ei.wszFile
+    dim nFileChars as Integer = Len(*pSrc)
+    wszFile = cast(WString ptr, Allocate((nFileChars + 1) * SizeOf(WString)))
+    if wszFile <> 0 then
+      *wszFile = *pSrc
+    end if
+  end if
+end constructor
+
+destructor FrameItem()
+  if wszFile <> 0 then
+    Deallocate(wszFile)
+    wszFile = 0
+  end if
+  pFrame = 0
+end destructor
+
+private sub FrameItemDeleter(byval p as Any Ptr)
+  dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, p)
+  if pFrameItem <> 0 then
+    Delete pFrameItem
+  end if
+end sub
+
+private function FrameItemMatchesFrame(byval p as Any Ptr, byval key as Any Ptr) as Boolean
+  dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, p)
+  if pFrameItem = 0 then return FALSE
+  return pFrameItem->pFrame = cast(FRAMEDATA ptr, key)
+end function
+
+dim shared g_framesWithSmartMathEnabled as PtrArray = PtrArray(@FrameItemDeleter, @FrameItemMatchesFrame)
 
 ' -----------------------------------------------------------------------------
 '  Debug logging
@@ -193,50 +247,6 @@ private function IsSpaceOrTabAfterHash(byval ch as String) as BOOL
   end select
 end function
 
-'' First line: '#' then only spaces/tabs, then exactly SmartMath | smartmath | SMARTMATH (case-sensitive);
-'' after that only spaces, tabs, CR, LF, or end of line/string.
-private function FirstLineHasSmartMathMarker(byref sLine0 as String) as BOOL
-  if Len(sLine0) = 0 then return FALSE
-  if Left(sLine0, 1) <> "#" then return FALSE
-
-  dim i as Integer = 2
-  while i <= Len(sLine0)
-    if IsSpaceOrTabAfterHash(Mid(sLine0, i, 1)) = FALSE then exit while
-    i += 1
-  wend
-
-  dim rest as String = Mid(sLine0, i)
-  const MARKER_LEN as Integer = 9  '' Len("SmartMath") etc.
-  if Len(rest) < MARKER_LEN then return FALSE
-  dim head as String = Left(rest, MARKER_LEN)
-  if (head <> "SmartMath") andalso (head <> "smartmath") andalso (head <> "SMARTMATH") then return FALSE
-
-  dim tail as String = Mid(rest, MARKER_LEN + 1)
-  dim j as Integer
-  for j = 1 to Len(tail)
-    select case Asc(Mid(tail, j, 1))
-      case 9, 10, 13, 32  '' TAB, LF, CR, space
-      case else
-        return FALSE
-    end select
-  next j
-  return TRUE
-end function
-
-private function IsSmartMathDocument(byval hWndEdit as HWND) as BOOL
-  ' First line: "#" ... optional spaces/tabs ... SmartMath | smartmath | SMARTMATH; tail only space/tab/CR/LF.
-  if hWndEdit = 0 then return FALSE
-  if IsWindow(hWndEdit) = FALSE then return FALSE
-  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
-  if nLineCount <= 0 then return FALSE
-  dim nLineIndex as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
-  if nLineIndex < 0 then return FALSE
-  dim nLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, nLineIndex, 0)
-  if nLineLen <= 0 then return FALSE
-  dim sLine0 as String = LTrim(GetLineText(hWndEdit, 0, nLineLen))
-  return FirstLineHasSmartMathMarker(sLine0)
-end function
-
 private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
   ' LogInfo("RefreshSmartMathDocMode: entering")
 
@@ -261,26 +271,210 @@ private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
     exit sub
   end if
 
-  dim bNewActive as BOOL = IsSmartMathDocument(hWndEditCurrent)
-  ' LogInfo("RefreshSmartMathDocMode: bNewActive=" & bNewActive)
-  SetSmartMathDocActiveState(hWndEditCurrent, bNewActive, TRUE)
+  dim idx as Integer = g_framesWithSmartMathEnabled.Find(pFrameCurrent)
+  if idx >= 0 then
+    dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[idx])
+    if pFrameItem <> 0 then
+      pFrameItem->isWorking = TRUE
+    end if
+  end if
+  SetSmartMathDocActiveState(hWndEditCurrent, idx >= 0, TRUE)
+  UpdateMenuActiveOnCurrTab(idx >= 0)
 end sub
 
-private sub TryRefreshSmartMathDocMarker(byval pHdr as AENMHDR ptr)
-  dim hEditFromNotify as HWND = pHdr->hwndFrom
-  if (hEditFromNotify = 0) orelse (IsWindow(hEditFromNotify) = FALSE) then exit sub
+private sub SaveActiveSmartMathFrames()
+  dim nTotalChars as Integer = 0
+  dim nFiles as Integer = 0
 
-  dim bNowSmartMath as BOOL = IsSmartMathDocument(hEditFromNotify)
-  ' LogInfo("TryRefreshSmartMathDocMarker: bNowSmartMath=" & bNowSmartMath & ", g_bSmartMathDocActive=" & g_bSmartMathDocActive)
+  for i as Integer = 0 to g_framesWithSmartMathEnabled.count - 1
+    dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[i])
+    if pFrameItem <> 0 andalso pFrameItem->wszFile <> 0 then
+      dim nFileChars as Integer = Len(*(pFrameItem->wszFile))
+      if nFileChars > 0 then
+        if nFiles > 0 then nTotalChars += 1
+        nTotalChars += nFileChars
+        nFiles += 1
+      end if
+    end if
+  next i
 
-  if (g_bSmartMathDocActive = FALSE) andalso bNowSmartMath then
-    SetSmartMathDocActiveState(hEditFromNotify, TRUE, TRUE)
-  elseif g_bSmartMathDocActive andalso bNowSmartMath then
-    g_hWndEdit = hEditFromNotify
-    ' TryApplySmartMathCoderTheme()
-  elseif g_bSmartMathDocActive andalso (bNowSmartMath = FALSE) then
-    SetSmartMathDocActiveState(hEditFromNotify, FALSE, FALSE)
+  ' LogInfo("SaveActiveSmartMathFrames: nTotalChars=" & nTotalChars & ", nFiles=" & nFiles)
+
+  redim wszActiveFrameFiles(0 to nTotalChars) as UShort
+  dim nPos as Integer = 0
+  dim nWrittenFiles as Integer = 0
+
+  for i as Integer = 0 to g_framesWithSmartMathEnabled.count - 1
+    dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[i])
+    if pFrameItem <> 0 andalso pFrameItem->wszFile <> 0 then
+      dim nFileChars as Integer = Len(*(pFrameItem->wszFile))
+      if nFileChars > 0 then
+        if nWrittenFiles > 0 then
+          wszActiveFrameFiles(nPos) = ACTIVE_FRAME_FILE_SEPARATOR
+          nPos += 1
+        end if
+
+        dim pSrc as UShort ptr = cast(UShort ptr, pFrameItem->wszFile)
+        for j as Integer = 0 to nFileChars - 1
+          wszActiveFrameFiles(nPos) = pSrc[j]
+          nPos += 1
+        next j
+
+        nWrittenFiles += 1
+      end if
+    end if
+  next i
+  wszActiveFrameFiles(nPos) = 0
+
+  if g_hMainWnd = 0 then exit sub
+
+  dim hOptions as HANDLE = cast(HANDLE, SendMessage(g_hMainWnd, AKD_BEGINOPTIONSW, POB_SAVE, cast(LPARAM, strptr(SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL))))
+  if hOptions = 0 then exit sub
+
+  dim poW as PLUGINOPTIONW
+  poW.pOptionName = strptr(SMARTMATH_ACTIVE_FRAMES_OPTION_NAME)
+  poW.dwType = PO_BINARY
+  poW.lpData = cast(UByte ptr, @wszActiveFrameFiles(0))
+  poW.dwData = (nPos) * 2
+  SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))
+
+  SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
+end sub
+
+private sub FreeActiveSmartMathFrameFiles(frameFiles() as WStringPtr, byval nFiles as Integer)
+  for i as Integer = 0 to nFiles - 1
+    if frameFiles(i) <> 0 then
+      Deallocate(frameFiles(i))
+      frameFiles(i) = 0
+    end if
+  next i
+
+  erase frameFiles
+end sub
+
+private function LoadActiveSmartMathFrameFiles(frameFiles() as WStringPtr) as Integer
+  erase frameFiles
+
+  if g_hMainWnd = 0 then return 0
+
+  dim hOptions as HANDLE = cast(HANDLE, SendMessage(g_hMainWnd, AKD_BEGINOPTIONSW, POB_READ, cast(LPARAM, strptr(SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL))))
+  if hOptions = 0 then return 0
+
+  dim poW as PLUGINOPTIONW
+  poW.pOptionName = strptr(SMARTMATH_ACTIVE_FRAMES_OPTION_NAME)
+  poW.dwType = PO_BINARY
+  poW.lpData = 0
+  poW.dwData = 0
+
+  dim nBytesRequired as Integer = CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW)))
+  if nBytesRequired <= 0 then
+    SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
+    return 0
   end if
+
+  dim nCharsCapacity as Integer = (nBytesRequired + 1) \ 2
+  redim wszActiveFrameFiles(0 to nCharsCapacity) as UShort
+
+  poW.lpData = cast(UByte ptr, @wszActiveFrameFiles(0))
+  poW.dwData = nBytesRequired
+
+  dim nBytesRead as Integer = CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW)))
+  SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
+
+  if nBytesRead <= 0 then return 0
+
+  dim nCharsRead as Integer = nBytesRead \ 2
+  if nCharsRead > nCharsCapacity then nCharsRead = nCharsCapacity
+  wszActiveFrameFiles(nCharsRead) = 0
+
+  dim nFiles as Integer = 0
+  dim nSegmentChars as Integer = 0
+
+  for i as Integer = 0 to nCharsRead - 1
+    if wszActiveFrameFiles(i) = ACTIVE_FRAME_FILE_SEPARATOR then
+      if nSegmentChars > 0 then nFiles += 1
+      nSegmentChars = 0
+    else
+      nSegmentChars += 1
+    end if
+  next i
+  if nSegmentChars > 0 then nFiles += 1
+
+  if nFiles = 0 then return 0
+
+  redim frameFiles(0 to nFiles - 1)
+
+  dim nOut as Integer = 0
+  dim nSegmentStart as Integer = 0
+  nSegmentChars = 0
+
+  for i as Integer = 0 to nCharsRead
+    if (i = nCharsRead) orelse (wszActiveFrameFiles(i) = ACTIVE_FRAME_FILE_SEPARATOR) then
+      if nSegmentChars > 0 then
+        dim pFile as WString ptr = cast(WString ptr, Allocate((nSegmentChars + 1) * SizeOf(WString)))
+        if pFile <> 0 then
+          dim pDst as UShort ptr = cast(UShort ptr, pFile)
+          for j as Integer = 0 to nSegmentChars - 1
+            pDst[j] = wszActiveFrameFiles(nSegmentStart + j)
+          next j
+          pDst[nSegmentChars] = 0
+        end if
+
+        frameFiles(nOut) = pFile
+        nOut += 1
+      end if
+
+      nSegmentStart = i + 1
+      nSegmentChars = 0
+    else
+      nSegmentChars += 1
+    end if
+  next i
+
+  return nOut
+end function
+
+private sub ActivateSmartMathFiles()
+  dim frameFiles() as WStringPtr
+  dim nFiles as Integer = LoadActiveSmartMathFrameFiles(frameFiles())
+  if nFiles > 0 then
+    ' for i as Integer = 0 to nFiles - 1
+    '   if frameFiles(i) <> 0 then
+    '     dim pFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_BYFILENAME, cast(LPARAM, frameFiles(i))))
+    '     if pFrame <> 0 andalso g_framesWithSmartMathEnabled.Find(pFrame) < 0 then
+    '       dim pFrameItem as FrameItem ptr = New FrameItem(pFrame)
+    '       if pFrameItem <> 0 then
+    '         g_framesWithSmartMathEnabled.Append(pFrameItem)
+    '       end if
+    '     end if
+    '   end if
+    ' next i
+    dim pStartFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_CURRENT, 0))
+    dim pFrame as FRAMEDATA ptr = pStartFrame
+    while pFrame <> 0
+      for i as Integer = 0 to nFiles - 1
+        if frameFiles(i) <> 0 andalso pFrame->ei.wszFile <> 0 then
+          if *(frameFiles(i)) = *(pFrame->ei.wszFile) andalso g_framesWithSmartMathEnabled.Find(pFrame) < 0 then
+            dim pFrameItem as FrameItem ptr = New FrameItem(pFrame)
+            if pFrameItem <> 0 then
+              g_framesWithSmartMathEnabled.Append(pFrameItem)
+            end if
+          end if
+        end if
+      next i
+
+      pFrame = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_PREV, cast(LPARAM, pFrame)))
+      if pFrame = pStartFrame then exit while
+    wend
+
+    dim hWndEditCurrent as HWND = GetWndEdit(g_hMainWnd)
+    if hWndEditCurrent <> 0 then
+      g_lastDocModeFrame = 0
+      RefreshSmartMathDocMode(hWndEditCurrent)
+    end if
+  end if
+
+  FreeActiveSmartMathFrameFiles(frameFiles(), nFiles)
 end sub
 
 private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM)
@@ -295,98 +489,20 @@ private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval
       nOldCaretLine = nChangedLine
     end if
     ' LogInfo("AEN_TEXTCHANGED: ciCaret.nLine=" & nChangedLine)
-    if nChangedLine = 0 then
-      TryRefreshSmartMathDocMarker(pHdr)
-    end if
     exit sub
   end if
 
-  if pHdr->code = AEN_TEXTINSERTEND then
-    dim pIns as AENTEXTINSERT ptr = cast(AENTEXTINSERT ptr, lParam)
-    ' LogInfo("AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
-    if pIns->crAkelRange.ciMin.nLine = 0 then
-      TryRefreshSmartMathDocMarker(pHdr)
-    end if
-    exit sub
-  end if
+  'if pHdr->code = AEN_TEXTINSERTEND then
+  '  dim pIns as AENTEXTINSERT ptr = cast(AENTEXTINSERT ptr, lParam)
+  '  ' LogInfo("AEN_TEXTINSERTEND: ciMin.nLine=" & pIns->crAkelRange.ciMin.nLine)
+  '  exit sub
+  'end if
 end sub
 
-' Same rule as inside EnsureSmartMathFirstLineOnActivate: one line (or none) and first line has no chars.
-private function EditorIsEmptyForSmartMathMarker(byval hWndEdit as HWND) as BOOL
-  ' LogInfo("EditorIsEmptyForSmartMathMarker: entering, hWndEdit=" & hWndEdit)
-  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then return FALSE
-  dim nLineCount as Integer = SendMessage(hWndEdit, EM_GETLINECOUNT, 0, 0)
-  dim idxFirst as Integer = SendMessage(hWndEdit, EM_LINEINDEX, 0, 0)
-  dim lenFirstLine as Integer = 0
-  if idxFirst >= 0 then
-    lenFirstLine = SendMessage(hWndEdit, EM_LINELENGTH, idxFirst, 0)
-  end if
-  return ((nLineCount <= 1) andalso (lenFirstLine = 0))
-end function
-
-' On plugin activation: ensure the active document starts with "# SmartMath" marker line.
-private sub EnsureSmartMathFirstLineOnActivate(byval hWndEdit as HWND)
-  if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
-  if IsSmartMathDocument(hWndEdit) then exit sub
-
-  dim selStart as Integer = 0
-  dim selEnd as Integer = 0
-  SendMessage(hWndEdit, EM_GETSEL, cast(WPARAM, @selStart), cast(LPARAM, @selEnd))
-
-  dim nCaretLine as Integer = SendMessage(hWndEdit, EM_EXLINEFROMCHAR, 0, -1)
-  if nCaretLine < 0 then nCaretLine = 0
-
-  dim nLineStart as Integer = SendMessage(hWndEdit, EM_LINEINDEX, nCaretLine, 0)
-  if nLineStart < 0 then nLineStart = 0
-
-  dim colOffset as Integer = selStart - nLineStart
-  if colOffset < 0 then colOffset = 0
-
-  dim bEmpty as BOOL = EditorIsEmptyForSmartMathMarker(hWndEdit)
-
-  const MARKER_BODY as String = "# SmartMath"
-
-  SendMessage(hWndEdit, EM_SETSEL, 0, 0)
-
-  if IsWindowUnicode(hWndEdit) then
-    dim ins as WString * 64 = WStr(MARKER_BODY) & wchr(13, 10)
-    SendMessageW(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(ins)))
-  else
-    dim insA as String = MARKER_BODY & Chr(13) & Chr(10)
-    SendMessageA(hWndEdit, EM_REPLACESEL, cast(WPARAM, TRUE), cast(LPARAM, strptr(insA)))
-  end if
-
-  dim docChars as Integer = cast(Integer, SendMessage(hWndEdit, WM_GETTEXTLENGTH, 0, 0))
-
-  if bEmpty then
-    SendMessage(hWndEdit, EM_SETSEL, docChars, docChars)
-  else
-    dim newLine as Integer = nCaretLine + 1
-    dim newLineStart as Integer = SendMessage(hWndEdit, EM_LINEINDEX, newLine, 0)
-    if newLineStart < 0 then newLineStart = SendMessage(hWndEdit, EM_LINEINDEX, 1, 0)
-    if newLineStart < 0 then newLineStart = docChars
-    dim newLineLen as Integer = SendMessage(hWndEdit, EM_LINELENGTH, newLineStart, 0)
-    dim colUse as Integer = colOffset
-    if colUse > newLineLen then colUse = newLineLen
-    dim newPos as Integer = newLineStart + colUse
-    SendMessage(hWndEdit, EM_SETSEL, newPos, newPos)
-  end if
-
-  SendMessage(hWndEdit, EM_SCROLLCARET, 0, 0)
-end sub
-
-' After hooks are live: optionally insert marker, sync doc mode, margins, AkelEdit options.
-' applyToEmptyFileOnly: if TRUE, auto-insert "# SmartMath" only when the document is empty (startup / toggle).
-private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND, byval applyToEmptyFileOnly as BOOL = FALSE)
+' After hooks are live: sync doc mode, margins, AkelEdit options.
+private sub SyncSmartMathActiveEditorState(byval hWndEdit as HWND)
   ' LogInfo("SyncSmartMathActiveEditorState: entering, hWndEdit=" & hWndEdit)
   if (hWndEdit = 0) orelse (IsWindow(hWndEdit) = FALSE) then exit sub
-  if applyToEmptyFileOnly then
-    if EditorIsEmptyForSmartMathMarker(hWndEdit) then
-      EnsureSmartMathFirstLineOnActivate(hWndEdit)
-    end if
-  else
-    EnsureSmartMathFirstLineOnActivate(hWndEdit)
-  end if
   g_hWndEdit = hWndEdit
   RefreshSmartMathDocMode(hWndEdit)
   if not g_bOldRichEdit then
@@ -770,7 +886,25 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
   if uMsg = WM_COMMAND then
     dim nCmd as Integer = LOWORD(wParam)
 
-    if nCmd = IDM_DECIMAL_BASE then
+    if nCmd = IDM_ACTIVE_ON_CURR_TAB then
+      dim pFrameCurrent as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFIND, FWF_CURRENT, 0))
+      dim idx as Integer = g_framesWithSmartMathEnabled.Find(pFrameCurrent)
+      if idx >= 0 then
+        g_framesWithSmartMathEnabled.RemoveAt(idx)
+        SetSmartMathDocActiveState(pFrameCurrent->ei.hWndEdit, FALSE, FALSE)
+        UpdateMenuActiveOnCurrTab(FALSE)
+      else
+        dim pFrameItem as FrameItem ptr = New FrameItem(pFrameCurrent)
+        if pFrameItem <> 0 then
+          pFrameItem->isWorking = TRUE
+          g_framesWithSmartMathEnabled.Append(pFrameItem)
+          SetSmartMathDocActiveState(pFrameCurrent->ei.hWndEdit, TRUE, TRUE)
+          UpdateMenuActiveOnCurrTab(TRUE)
+        end if
+      end if
+      return 0
+
+    elseif nCmd = IDM_DECIMAL_BASE then
       g_nDecimals = -1
       InvalidateRenderCache()
       SaveSettings()
@@ -851,10 +985,15 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
     dim hWndEditCurrent as HWND = GetWndEdit(g_hMainWnd)
     if hWndEditCurrent <> 0 then
       if uMsg = AKDN_OPENDOCUMENT_FINISH then
-        ' clearing g_lastDocModeFrame to be sure IsSmartMathDocument() will be called
         g_lastDocModeFrame = 0
       end if
       RefreshSmartMathDocMode(hWndEditCurrent)
+    end if
+
+  elseif uMsg = AKDN_FRAME_DESTROY then
+    dim pFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, lParam)
+    if pFrame <> 0 then
+      g_framesWithSmartMathEnabled.RemoveAt(g_framesWithSmartMathEnabled.Find(pFrame))
     end if
 
   elseif uMsg = AKDN_MAIN_ONSTART_FINISH then
@@ -868,19 +1007,34 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       g_bAkelPadReady = TRUE
       dim hEditStart as HWND = GetWndEdit(g_hMainWnd)
       if hEditStart <> 0 then
-        SyncSmartMathActiveEditorState(hEditStart, TRUE)
+        SyncSmartMathActiveEditorState(hEditStart)
       end if
 
       return result
+    end if
+
+  elseif uMsg = AKDN_MAIN_ONSTART_SHOW then
+    ' On AKDN_MAIN_ONSTART_SHOW, the Sessions plugin loads all the files
+    dim result as LRESULT = 0
+    if lpMainProcData andalso lpMainProcData->NextProc then
+      result = lpMainProcData->NextProc(hWnd, uMsg, wParam, lParam)
+    end if
+    ' The Sessions plugin has loaded all the files at this point
+
+    ActivateSmartMathFiles()
+    return result
+
+  elseif uMsg = WM_CLOSE orelse uMsg = WM_QUERYENDSESSION orelse (uMsg = WM_SYSCOMMAND andalso wParam = SC_CLOSE) then
+    if g_bActiveFramesSaved = FALSE then
+      SaveActiveSmartMathFrames()
+      g_bActiveFramesSaved = TRUE
     end if
 
   elseif uMsg = AKDN_MAIN_ONFINISH then
     g_bShuttingDown = TRUE
     dim bWasSmartMathActive as BOOL = g_bSmartMathActive
 
-    if g_bSmartMathActive then
-      g_bSmartMathActive = FALSE
-    end if
+    g_bSmartMathActive = FALSE
 
     dim result as LRESULT = 0
     if lpMainProcData andalso lpMainProcData->NextProc then
@@ -1125,6 +1279,9 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     SetOriginalProcData()
     UninitSmartMathMenu(FALSE)
 
+    SaveActiveSmartMathFrames()
+    g_framesWithSmartMathEnabled.Clear()
+    g_bActiveFramesSaved = FALSE
     g_bSmartMathActive = FALSE
     InvalidateRenderCache()
 
@@ -1149,6 +1306,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     pd->nUnload = UD_NONUNLOAD_ACTIVE
 
     LoadSettings()
+    ActivateSmartMathFiles()
 
     g_bShuttingDown = FALSE
     InvalidateRenderCache()
@@ -1171,10 +1329,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
 
     ' LogInfo("ToggleSmartMath: hEditAct=" & hEditAct)
     if hEditAct <> 0 then
-      ' TODO: use something similar to `g_bAkelPadReady <> TRUE`,
-      ' but be sure it reflects the actual state of the editor.
-      ' (currently g_bAkelPadReady is set _only_ when the plugin is active on startup).
-      SyncSmartMathActiveEditorState(hEditAct, FALSE)
+      SyncSmartMathActiveEditorState(hEditAct)
     end if
 
     ' The code below leads to undesired effects;

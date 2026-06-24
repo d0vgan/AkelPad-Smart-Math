@@ -48,6 +48,14 @@ sub UpdateMenuChecks()
   end if
 end sub
 
+sub UpdateMenuActiveOnCurrTab(byval bActive as BOOL)
+  if hSmartMathMenu = 0 then exit sub
+
+  dim stActive as UINT
+  if bActive then stActive = MF_CHECKED else stActive = MF_UNCHECKED
+  CheckMenuItem(hSmartMathMenu, IDM_ACTIVE_ON_CURR_TAB, MF_BYCOMMAND or stActive)
+end sub
+
 ' -----------------------------------------------------------------------------
 '  Menu setup
 ' -----------------------------------------------------------------------------
@@ -89,6 +97,9 @@ sub InitSmartMathMenu()
     hSubMenuColor = 0
     exit sub
   end if
+
+  AppendMenuW(hSmartMathMenu, MF_STRING, IDM_ACTIVE_ON_CURR_TAB, wstr("Active on Current Tab"))
+  AppendMenuW(hSmartMathMenu, MF_SEPARATOR, 0, NULL)
 
   if hSubMenuDecimals <> 0 then
     AppendMenuW(hSmartMathMenu, MF_POPUP, cast(UINT_PTR, hSubMenuDecimals), wstr("Decimal Places"))
