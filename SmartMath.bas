@@ -39,8 +39,6 @@ redim shared g_cachedRenderText(0 to 0) as String
 
 const ACTIVE_FRAME_FILE_SEPARATOR as UShort = 10 '' LF
 type WStringPtr as WString ptr
-dim shared SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL as WString * 32 = WStr("SmartMath")
-dim shared SMARTMATH_ACTIVE_FRAMES_OPTION_NAME as WString * 64 = WStr("ActiveSmartMathFrames")
 
 type FrameItem
   declare constructor(byval pFrameInit as FRAMEDATA ptr)
@@ -286,7 +284,7 @@ private sub SaveActiveSmartMathFrames()
   dim nTotalChars as Integer = 0
   dim nFiles as Integer = 0
 
-  for i as Integer = 0 to g_framesWithSmartMathEnabled.count - 1
+  for i as Integer = 0 to g_framesWithSmartMathEnabled.Count() - 1
     dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[i])
     if pFrameItem <> 0 andalso pFrameItem->wszFile <> 0 then
       dim nFileChars as Integer = Len(*(pFrameItem->wszFile))
@@ -304,7 +302,7 @@ private sub SaveActiveSmartMathFrames()
   dim nPos as Integer = 0
   dim nWrittenFiles as Integer = 0
 
-  for i as Integer = 0 to g_framesWithSmartMathEnabled.count - 1
+  for i as Integer = 0 to g_framesWithSmartMathEnabled.Count() - 1
     dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[i])
     if pFrameItem <> 0 andalso pFrameItem->wszFile <> 0 then
       dim nFileChars as Integer = Len(*(pFrameItem->wszFile))
@@ -326,19 +324,7 @@ private sub SaveActiveSmartMathFrames()
   next i
   wszActiveFrameFiles(nPos) = 0
 
-  if g_hMainWnd = 0 then exit sub
-
-  dim hOptions as HANDLE = cast(HANDLE, SendMessage(g_hMainWnd, AKD_BEGINOPTIONSW, POB_SAVE, cast(LPARAM, strptr(SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL))))
-  if hOptions = 0 then exit sub
-
-  dim poW as PLUGINOPTIONW
-  poW.pOptionName = strptr(SMARTMATH_ACTIVE_FRAMES_OPTION_NAME)
-  poW.dwType = PO_BINARY
-  poW.lpData = cast(UByte ptr, @wszActiveFrameFiles(0))
-  poW.dwData = (nPos) * 2
-  SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))
-
-  SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
+  SaveSettings_ActiveFrames(wszActiveFrameFiles(), nPos)
 end sub
 
 private sub FreeActiveSmartMathFrameFiles(frameFiles() as WStringPtr, byval nFiles as Integer)
@@ -355,37 +341,9 @@ end sub
 private function LoadActiveSmartMathFrameFiles(frameFiles() as WStringPtr) as Integer
   erase frameFiles
 
-  if g_hMainWnd = 0 then return 0
-
-  dim hOptions as HANDLE = cast(HANDLE, SendMessage(g_hMainWnd, AKD_BEGINOPTIONSW, POB_READ, cast(LPARAM, strptr(SMARTMATH_OPTIONS_PLUGIN_NAME_LOCAL))))
-  if hOptions = 0 then return 0
-
-  dim poW as PLUGINOPTIONW
-  poW.pOptionName = strptr(SMARTMATH_ACTIVE_FRAMES_OPTION_NAME)
-  poW.dwType = PO_BINARY
-  poW.lpData = 0
-  poW.dwData = 0
-
-  dim nBytesRequired as Integer = CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW)))
-  if nBytesRequired <= 0 then
-    SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
-    return 0
-  end if
-
-  dim nCharsCapacity as Integer = (nBytesRequired + 1) \ 2
-  redim wszActiveFrameFiles(0 to nCharsCapacity) as UShort
-
-  poW.lpData = cast(UByte ptr, @wszActiveFrameFiles(0))
-  poW.dwData = nBytesRequired
-
-  dim nBytesRead as Integer = CInt(SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW)))
-  SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0)
-
-  if nBytesRead <= 0 then return 0
-
-  dim nCharsRead as Integer = nBytesRead \ 2
-  if nCharsRead > nCharsCapacity then nCharsRead = nCharsCapacity
-  wszActiveFrameFiles(nCharsRead) = 0
+  dim wszActiveFrameFiles() as UShort
+  dim nCharsRead as Integer = LoadSettings_ActiveFrames(wszActiveFrameFiles())
+  if nCharsRead <= 0 then return 0
 
   dim nFiles as Integer = 0
   dim nSegmentChars as Integer = 0
@@ -438,17 +396,6 @@ private sub ActivateSmartMathFiles()
   dim frameFiles() as WStringPtr
   dim nFiles as Integer = LoadActiveSmartMathFrameFiles(frameFiles())
   if nFiles > 0 then
-    ' for i as Integer = 0 to nFiles - 1
-    '   if frameFiles(i) <> 0 then
-    '     dim pFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_BYFILENAME, cast(LPARAM, frameFiles(i))))
-    '     if pFrame <> 0 andalso g_framesWithSmartMathEnabled.Find(pFrame) < 0 then
-    '       dim pFrameItem as FrameItem ptr = New FrameItem(pFrame)
-    '       if pFrameItem <> 0 then
-    '         g_framesWithSmartMathEnabled.Append(pFrameItem)
-    '       end if
-    '     end if
-    '   end if
-    ' next i
     dim pStartFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_CURRENT, 0))
     dim pFrame as FRAMEDATA ptr = pStartFrame
     while pFrame <> 0
