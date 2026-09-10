@@ -20,6 +20,7 @@ dim shared g_nDecimals as Integer = -1
 dim shared g_crResultColor as COLORREF = &H008000
 dim shared g_bUseThousandsSeparator as BOOL = FALSE
 dim shared g_bSupportComplexNumbers as BOOL = FALSE
+dim shared g_bShowErrors as BOOL = TRUE
 dim shared g_bLogParsedLines as BOOL = FALSE
 dim shared g_sDecimalSeparator as String
 dim shared g_sThousandsSeparator as String
@@ -37,6 +38,7 @@ dim shared g_cacheReady as BOOL = FALSE
 dim shared g_cacheDocGeneration as UInteger = 0
 dim shared g_cacheSyncedGeneration as UInteger = 0
 dim shared g_cacheDirtyFromLine as Integer = -1
+dim shared g_documentationFilePath as WString * MAX_PATH
 ' While a content key is held, EnsureRenderCache only re-evals through the
 ' edited line and leaves g_cacheDirtyFromLine set so dependents stay dirty
 ' until key-up (results below are untrustworthy even when their text matches).
@@ -685,8 +687,10 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
   else
     dim sErr as String = Parser_GetLastError()
     if len(sErr) > 0 then
-      sRes = SMARTMATH_ERROR_PREFIX & sErr
-      bIsError = TRUE
+      if g_bShowErrors = TRUE orelse Parser_IsFunctionHintError(sErr) then
+        sRes = SMARTMATH_ERROR_PREFIX & sErr
+        bIsError = TRUE
+      end if
     end if
   end if
 
@@ -1354,6 +1358,35 @@ private sub SetOriginalProcData()
   end if
 end sub
 
+private sub OpenFileInAkelPad(byval hMainWnd as HWND, byval pszFileName as WString Ptr)
+  dim pFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(hMainWnd, AKD_FRAMEFINDW, FWF_BYFILENAME, cast(LPARAM, pszFileName)))
+  if pFrame <> 0 then
+    ' MessageBoxW(hMainWnd, WStr("File is already opened!"), WStr("SmartMath"), MB_OK)
+    SendMessage(hMainWnd, AKD_FRAMEACTIVATE, 0, cast(LPARAM, pFrame))
+    exit sub
+  end if
+
+  dim od as OPENDOCUMENTW
+  od.pFile = pszFileName
+  od.pWorkDir = 0
+  od.dwFlags = OD_ADT_BINARYERROR or OD_ADT_DETECTCODEPAGE or OD_ADT_DETECTBOM
+  od.nCodePage = 0
+  od.bBOM = 0
+  od.hDoc = 0
+  SendMessage(hMainWnd, AKD_OPENDOCUMENTW, 0, cast(LPARAM, @od))
+end sub
+
+private sub ShowDocumentation(byval hMainWnd as HWND)
+  dim sMsg as WString * (MAX_PATH + 64)
+  if GetFileAttributesW(@g_documentationFilePath) = INVALID_FILE_ATTRIBUTES then
+    sMsg = wstr("The file does not exist:") & wchr(13) & wchr(10) & g_documentationFilePath
+    MessageBoxW(hMainWnd, @sMsg, WStr("SmartMath"), MB_OK or MB_ICONWARNING)
+    exit sub
+  end if
+
+  OpenFileInAkelPad(hMainWnd, g_documentationFilePath)
+end sub
+
 ' -----------------------------------------------------------------------------
 '  Main-window subclass procedure
 ' -----------------------------------------------------------------------------
@@ -1421,12 +1454,27 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       end if
       return 0
 
-    elseif nCmd = IDM_THOUSANDS_SEPARATOR then
-      if g_bUseThousandsSeparator then
-        g_bUseThousandsSeparator = FALSE
-      else
-        g_bUseThousandsSeparator = TRUE
+    elseif nCmd = IDM_THOUSANDS_SEPARATOR orelse nCmd = IDM_COMPLEX_NUMBERS orelse nCmd = IDM_SHOW_ERRORS then
+      if nCmd = IDM_THOUSANDS_SEPARATOR then
+        if g_bUseThousandsSeparator then
+          g_bUseThousandsSeparator = FALSE
+        else
+          g_bUseThousandsSeparator = TRUE
+        end if
+      elseif nCmd = IDM_COMPLEX_NUMBERS then
+        if g_bSupportComplexNumbers then
+          g_bSupportComplexNumbers = FALSE
+        else
+          g_bSupportComplexNumbers = TRUE
+        end if
+      elseif nCmd = IDM_SHOW_ERRORS then
+        if g_bShowErrors then
+          g_bShowErrors = FALSE
+        else
+          g_bShowErrors = TRUE
+        end if  
       end if
+
       InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
@@ -1437,20 +1485,8 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       end if
       return 0
 
-    elseif nCmd = IDM_COMPLEX_NUMBERS then
-      if g_bSupportComplexNumbers then
-        g_bSupportComplexNumbers = FALSE
-      else
-        g_bSupportComplexNumbers = TRUE
-      end if
-      InvalidateRenderCache()
-      SaveSettings()
-      UpdateMenuChecks()
-      if g_hWndEdit then
-        dim bVis as BOOL
-        UpdateInternalState(g_hWndEdit, bVis)
-        InvalidateRect(g_hWndEdit, 0, TRUE)
-      end if
+    elseif nCmd = IDM_DOCUMENTATION then
+      ShowDocumentation(hWnd)
       return 0
 
     elseif nCmd = IDM_ABOUT then
@@ -1868,6 +1904,9 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
   else
     LogInfo("Activating Global Edit Hook...")
     pd->nUnload = UD_NONUNLOAD_ACTIVE
+
+    g_documentationFilePath = *(pd->wszAkelDir)
+    g_documentationFilePath &= WStr("\AkelFiles\Docs\SmartMath-Eng.md")
 
     LoadSettings()
 
