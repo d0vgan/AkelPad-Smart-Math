@@ -48,6 +48,7 @@ redim shared g_cachedRenderText(0 to 0) as String
 
 const ACTIVE_FRAME_FILE_SEPARATOR as UShort = 10 '' LF
 type WStringPtr as WString ptr
+redim shared g_frameFiles() as WStringPtr
 
 type FrameItem
   declare constructor(byval pFrameInit as FRAMEDATA ptr)
@@ -383,7 +384,9 @@ private function IsSpaceOrTabAfterHash(byval ch as String) as BOOL
   end select
 end function
 
-private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
+declare function FindInActiveSmartMathFrameFiles(frameFiles() as WStringPtr, byval wszFile as WString ptr) as Integer
+
+private sub RefreshSmartMathDocMode(byval hWndEdit as HWND, byval bJustOpened as Boolean = FALSE)
   ' LogInfo("RefreshSmartMathDocMode: entering")
 
   dim pFrameCurrent as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFIND, FWF_CURRENT, 0))
@@ -410,6 +413,15 @@ private sub RefreshSmartMathDocMode(byval hWndEdit as HWND)
   end if
 
   dim idx as Integer = g_framesWithSmartMathEnabled.Find(pFrameCurrent)
+  if (idx < 0) andalso bJustOpened andalso (pFrameCurrent <> 0) then
+    if FindInActiveSmartMathFrameFiles(g_frameFiles(), pFrameCurrent->ei.wszFile) >= 0 then
+      dim pFrameItem as FrameItem ptr = New FrameItem(pFrameCurrent)
+      if pFrameItem <> 0 then
+        g_framesWithSmartMathEnabled.Append(pFrameItem)
+        idx = g_framesWithSmartMathEnabled.Find(pFrameCurrent)
+      end if
+    end if
+  end if
   if idx >= 0 then
     dim pFrameItem as FrameItem ptr = cast(FrameItem ptr, g_framesWithSmartMathEnabled[idx])
     if pFrameItem <> 0 then
@@ -467,42 +479,76 @@ private sub SaveActiveSmartMathFrames()
   SaveSettings_ActiveFrames(wszActiveFrameFiles(), nPos)
 end sub
 
-private sub FreeActiveSmartMathFrameFiles(frameFiles() as WStringPtr, byval nFiles as Integer)
-  for i as Integer = 0 to nFiles - 1
+private function ActiveSmartMathFrameFilesCount(frameFiles() as WStringPtr) as Integer
+  dim nLo as Integer = LBound(frameFiles)
+  dim nHi as Integer = UBound(frameFiles)
+  if nHi < nLo then return 0
+  return nHi - nLo + 1
+end function
+
+private function FindInActiveSmartMathFrameFiles(frameFiles() as WStringPtr, byval wszFile as WString ptr) as Integer
+  if wszFile = 0 then return -1
+
+  dim nLo as Integer = LBound(frameFiles)
+  dim nHi as Integer = UBound(frameFiles)
+  if nHi < nLo then return -1
+
+  for i as Integer = nLo to nHi
     if frameFiles(i) <> 0 then
-      Deallocate(frameFiles(i))
-      frameFiles(i) = 0
+      if *(frameFiles(i)) = *wszFile then return i
     end if
   next i
+
+  return -1
+end function
+
+private sub FreeActiveSmartMathFrameFiles(frameFiles() as WStringPtr)
+  dim nLo as Integer = LBound(frameFiles)
+  dim nHi as Integer = UBound(frameFiles)
+  if nHi >= nLo then
+    for i as Integer = nLo to nHi
+      if frameFiles(i) <> 0 then
+        Deallocate(frameFiles(i))
+        frameFiles(i) = 0
+      end if
+    next i
+  end if
 
   erase frameFiles
 end sub
 
+private sub ResetActiveSmartMathFrameFiles()
+  FreeActiveSmartMathFrameFiles(g_frameFiles())
+end sub
+
 private function LoadActiveSmartMathFrameFiles(frameFiles() as WStringPtr) as Integer
-  erase frameFiles
+  FreeActiveSmartMathFrameFiles(frameFiles())
 
   dim wszActiveFrameFiles() as UShort
   dim nCharsRead as Integer = LoadSettings_ActiveFrames(wszActiveFrameFiles())
   if nCharsRead <= 0 then return 0
 
-  dim nFiles as Integer = 0
+  dim nSegments as Integer = 0
   dim nSegmentChars as Integer = 0
 
   for i as Integer = 0 to nCharsRead - 1
     if wszActiveFrameFiles(i) = ACTIVE_FRAME_FILE_SEPARATOR then
-      if nSegmentChars > 0 then nFiles += 1
+      if nSegmentChars > 0 then nSegments += 1
       nSegmentChars = 0
     else
       nSegmentChars += 1
     end if
   next i
-  if nSegmentChars > 0 then nFiles += 1
+  if nSegmentChars > 0 then nSegments += 1
 
-  if nFiles = 0 then return 0
+  if nSegments = 0 then return 0
 
-  redim frameFiles(0 to nFiles - 1)
+  redim frameFiles(0 to nSegments - 1)
+  for i as Integer = 0 to nSegments - 1
+    frameFiles(i) = 0
+  next i
 
-  dim nOut as Integer = 0
+  dim nItems as Integer = 0
   dim nSegmentStart as Integer = 0
   nSegmentChars = 0
 
@@ -518,8 +564,12 @@ private function LoadActiveSmartMathFrameFiles(frameFiles() as WStringPtr) as In
           pDst[nSegmentChars] = 0
         end if
 
-        frameFiles(nOut) = pFile
-        nOut += 1
+        if nItems <= UBound(frameFiles) then
+          frameFiles(nItems) = pFile
+          nItems += 1
+        elseif pFile <> 0 then
+          Deallocate(pFile)
+        end if
       end if
 
       nSegmentStart = i + 1
@@ -529,26 +579,22 @@ private function LoadActiveSmartMathFrameFiles(frameFiles() as WStringPtr) as In
     end if
   next i
 
-  return nOut
+  return ActiveSmartMathFrameFilesCount(frameFiles())
 end function
 
 private sub ActivateSmartMathFiles()
-  dim frameFiles() as WStringPtr
-  dim nFiles as Integer = LoadActiveSmartMathFrameFiles(frameFiles())
-  if nFiles > 0 then
+  dim nFrameFiles as Integer = LoadActiveSmartMathFrameFiles(g_frameFiles())
+  if nFrameFiles > 0 then
     dim pStartFrame as FRAMEDATA ptr = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_CURRENT, 0))
     dim pFrame as FRAMEDATA ptr = pStartFrame
     while pFrame <> 0
-      for i as Integer = 0 to nFiles - 1
-        if frameFiles(i) <> 0 andalso pFrame->ei.wszFile <> 0 then
-          if *(frameFiles(i)) = *(pFrame->ei.wszFile) andalso g_framesWithSmartMathEnabled.Find(pFrame) < 0 then
-            dim pFrameItem as FrameItem ptr = New FrameItem(pFrame)
-            if pFrameItem <> 0 then
-              g_framesWithSmartMathEnabled.Append(pFrameItem)
-            end if
-          end if
+      if FindInActiveSmartMathFrameFiles(g_frameFiles(), pFrame->ei.wszFile) >= 0 andalso _
+         g_framesWithSmartMathEnabled.Find(pFrame) < 0 then
+        dim pFrameItem as FrameItem ptr = New FrameItem(pFrame)
+        if pFrameItem <> 0 then
+          g_framesWithSmartMathEnabled.Append(pFrameItem)
         end if
-      next i
+      end if
 
       pFrame = cast(FRAMEDATA ptr, SendMessage(g_hMainWnd, AKD_FRAMEFINDW, FWF_PREV, cast(LPARAM, pFrame)))
       if pFrame = pStartFrame then exit while
@@ -560,8 +606,6 @@ private sub ActivateSmartMathFiles()
       RefreshSmartMathDocMode(hWndEditCurrent)
     end if
   end if
-
-  FreeActiveSmartMathFrameFiles(frameFiles(), nFiles)
 end sub
 
 private sub CheckEditNotifications(byval hWnd as HWND, byval uMsg as UINT, byval wParam as WPARAM, byval lParam as LPARAM)
@@ -1472,7 +1516,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
           g_bShowErrors = FALSE
         else
           g_bShowErrors = TRUE
-        end if  
+        end if
       end if
 
       InvalidateRenderCache()
@@ -1497,10 +1541,11 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
   elseif (uMsg = AKDN_FRAME_ACTIVATE) orelse (uMsg = AKDN_OPENDOCUMENT_FINISH) then
     dim hWndEditCurrent as HWND = GetWndEdit(g_hMainWnd)
     if hWndEditCurrent <> 0 then
-      if uMsg = AKDN_OPENDOCUMENT_FINISH then
+      dim bJustOpened as Boolean = (uMsg = AKDN_OPENDOCUMENT_FINISH)
+      if bJustOpened then
         g_lastDocModeFrame = 0
       end if
-      RefreshSmartMathDocMode(hWndEditCurrent)
+      RefreshSmartMathDocMode(hWndEditCurrent, bJustOpened)
     end if
 
   elseif uMsg = AKDN_FRAME_DESTROY then
@@ -1567,6 +1612,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       SetOriginalProcData()
     end if
 
+    ResetActiveSmartMathFrameFiles()
     UninitSmartMathMenu(TRUE)
 
     return result
@@ -1891,6 +1937,8 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     if pd->hWndEdit then
       InvalidateRect(pd->hWndEdit, 0, TRUE)
     end if
+
+    ResetActiveSmartMathFrameFiles()
 
     ' The code below leads to undesired effects;
     ' instead, use AkelPad's native way of auto-load
