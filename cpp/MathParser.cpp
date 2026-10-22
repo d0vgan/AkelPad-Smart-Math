@@ -6785,8 +6785,14 @@ bool MathParser::applyBinary(double a, double b, char op, double& out) {
     case '-': out = a - b; return true;
     case '*': out = a * b; return true;
     case '/':
-      if (std::fabs(b) < 1e-15) {
-        return false;
+      if (b == 0.0) {
+        if (std::isnan(a) || a == 0.0) {
+          out = std::numeric_limits<double>::quiet_NaN();
+        } else {
+          const bool neg = std::signbit(a) != std::signbit(b);
+          out = neg ? -std::numeric_limits<double>::infinity() : std::numeric_limits<double>::infinity();
+        }
+        return true;
       }
       out = a / b;
       return true;

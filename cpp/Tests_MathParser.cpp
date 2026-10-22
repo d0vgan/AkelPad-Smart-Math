@@ -1681,6 +1681,29 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
 
 std::vector<TestCase> buildNanInfCases() {
   std::vector<TestCase> t;
+  t.push_back({"naninf/real division by zero is infinity", [](std::string& why) {
+                 MathParser p;
+                 if (!expectEval(p, "1/0", "inf", why)) return false;
+                 if (!expectEval(p, "-1/0", "-inf", why)) return false;
+                 if (!expectEval(p, "0/0", "nan", why)) return false;
+                 if (!expectEval(p, "x=100; x/0", "inf", why)) return false;
+                 if (!expectEval(p, "(1,-2,0)/0", "(inf,-inf,nan)", why)) return false;
+                 if (!expectEval(p, "4/2", "2", why)) return false;
+#if SMARTMATH_COMPLEX_NUMBERS
+                 p.setSupportComplexNumbers(true);
+                 p.parseAndEvaluate("2/0");
+                 if (!p.getError().empty() || p.getResult() != "inf") {
+                   why = "complex-enabled 2/0: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                   return false;
+                 }
+                 p.parseAndEvaluate("(1+2i)/0");
+                 if (!p.getError().empty() || p.getResult() != "nan") {
+                   why = "complex (1+2i)/0: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                   return false;
+                 }
+#endif
+                 return true;
+               }});
   const double kQNaN = std::numeric_limits<double>::quiet_NaN();
   const double kPosInf = std::numeric_limits<double>::infinity();
   const double kNegInf = -std::numeric_limits<double>::infinity();
