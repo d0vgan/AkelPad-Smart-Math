@@ -317,7 +317,7 @@ private:
     ArrayFunc
   };
 
-  enum class ValueKind { Scalar, Array, FunctionRef, InlineLambda, UdfFormalValidationDummy };
+  enum class ValueKind { Scalar, Array, FunctionRef, InlineLambda, UdfFormalValidationDummy, DefinedFunction };
   enum class ScalarKind { FloatingPoint, Int64, UInt64, Time };
 
   enum class RenderBase { Dec = 10, Hex = 16, Oct = 8, Bin = 2 };
@@ -391,6 +391,7 @@ private:
     unsigned int flags = 0;
     ScalarValue scalarValue{};
     std::vector<ScalarValue> arr;
+    /// FunctionRef stores the referenced name. DefinedFunction stores the user-facing text, such as "defined f(x)".
     std::string funcRefName;
     /** Only when ``kind`` is InlineLambda (anonymous lambdas inside ``sortby``). */
     std::vector<std::string> lambdaParams;

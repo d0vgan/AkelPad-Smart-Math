@@ -884,6 +884,7 @@ constexpr const char* STR_UNEXPECTED_INPUT = "unexpected characters";
 constexpr const char* STR_PARSE_FAILED = "parse failed";
 constexpr const char* STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR = "nothing compiled; call compile() first";
 constexpr const char* STR_UNKNOWN_VARIABLE_COLON = "unknown variable: ";
+constexpr const char* STR_DEFINED = "defined ";
 constexpr const char* STR_USER_DEFINED_FUNCTION_COLON = "user-defined function: ";
 constexpr const char* STR_SEMICOLON_UNKNOWN_FUNCTION_COLON = "; unknown function: ";
 constexpr const char* STR_UNKNOWN_FUNCTION_COLON = "unknown function: ";
@@ -2549,7 +2550,7 @@ std::string MathParser::formatUserFunctionSignature(const UserFunction& uf) {
   std::string sig = uf.name + "(";
   for (std::size_t i = 0; i < uf.params.size(); ++i) {
     if (i > 0) {
-      sig += ",";
+      sig += STR_COMMA;
     }
     sig += uf.params[i];
   }
@@ -4560,6 +4561,9 @@ std::string MathParser::formatScalar(const EvalValue& v, RenderBase base) const 
 }
 
 std::string MathParser::valueToString(const EvalValue& v, RenderBase forcedBase) const {
+  if (v.kind == ValueKind::DefinedFunction) {
+    return v.funcRefName;
+  }
   if (v.kind == ValueKind::Scalar) {
     return formatScalar(v, forcedBase);
   }
@@ -6638,6 +6642,9 @@ MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarVal
 
 MathParser::RawResult MathParser::toRawResult(const EvalValue& v) {
   RawResult out;
+  if (v.kind == ValueKind::DefinedFunction) {
+    return out;
+  }
   if (v.kind == ValueKind::Scalar) {
     out.kind = RawResult::Kind::Scalar;
     out.scalar = toRawScalar(v.scalarValue);
@@ -9724,8 +9731,10 @@ MathParser::EvalValue MathParser::runCompiledProgram(
         return out;
       }
       upsertUserFunction(UserFunction{st.fun.name, st.fun.params, st.fun.expr});
-      out = makeScalarInt(0);
-      setVariable(STR_ANS, out);
+      EvalValue defined;
+      defined.kind = ValueKind::DefinedFunction;
+      defined.funcRefName = std::string(STR_DEFINED) + formatUserFunctionSignature(st.fun);
+      out = std::move(defined);
     } else if (st.kind == AstStatement::Kind::Assign) {
       evalIntoOut(*st.expr);
       if (ctx.parseError) {

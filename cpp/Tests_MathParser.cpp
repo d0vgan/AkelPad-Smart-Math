@@ -3078,9 +3078,63 @@ std::vector<TestCase> buildRegressionCases() {
               }});
   t.push_back({"regression/late binding newfn definition then missing call then define newfn", [](std::string& why) {
                 MathParser p;
-                if (!expectEval(p, "f(x)=x*newfn(x)", "0", why)) return false;
+                if (!expectEval(p, "f(x)=x*newfn(x)", "defined f(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "f(2)", "unknown function: newfn", why)) return false;
                 return expectEval(p, "newfn(x)=x**(1/3); f(8)", "16", why);
+              }});
+  t.push_back({"regression/function definition result is not a number", [](std::string& why) {
+                MathParser p;
+                p.parseAndEvaluate("21+4");
+                if (!p.getError().empty() || p.getResult() != "25") {
+                  why = "setup 21+4: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+                p.parseAndEvaluate("f(x) = x*sin(x)");
+                if (!p.getError().empty()) {
+                  why = "definition error: " + p.getError();
+                  return false;
+                }
+                if (p.getResult() != "defined f(x)" || p.getResultAsHex() != "defined f(x)") {
+                  why = "definition result: \"" + p.getResult() + "\" hex=\"" + p.getResultAsHex() + "\"";
+                  return false;
+                }
+                if (p.getRawResult().hasValue()) {
+                  why = "function definition exposed a raw numeric result";
+                  return false;
+                }
+                p.parseAndEvaluate("ans");
+                if (!p.getError().empty() || p.getResult() != "25") {
+                  why = "ans after definition: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+                p.parseAndEvaluate("mix(a,b)=a+b");
+                if (!p.getError().empty() || p.getResult() != "defined mix(a, b)") {
+                  why = "two-parameter definition: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+                p.parseAndEvaluate("z()=3");
+                if (!p.getError().empty() || p.getResult() != "defined z()") {
+                  why = "zero-parameter definition: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+#if SMARTMATH_LAMBDA_FUNCTIONS
+                p.parseAndEvaluate("g=(y):y*sin(y)");
+                if (!p.getError().empty() || p.getResult() != "defined g(y)") {
+                  why = "lambda definition: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+#endif
+                p.parseAndEvaluate("ans");
+                if (!p.getError().empty() || p.getResult() != "25") {
+                  why = "ans after later definitions: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+                p.parseAndEvaluate("f(x)=x*sin(x); f(0)");
+                if (!p.getError().empty() || p.getResult() != "0") {
+                  why = "call after definition: err=\"" + p.getError() + "\" res=\"" + p.getResult() + "\"";
+                  return false;
+                }
+                return true;
               }});
 #if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/udf reject empty tuple body", [](std::string& why) {
@@ -3107,7 +3161,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(p, "atan2+1", "unknown variable: atan2", why)) return false;
                 if (!expectEvalErrorContains(p, "log10", "function: log10(value)", why)) return false;
                 if (!expectEvalErrorContains(p, "log10+1", "unknown variable: log10", why)) return false;
-                if (!expectEval(p, "f1(x)=x+1", "0", why)) return false;
+                if (!expectEval(p, "f1(x)=x+1", "defined f1(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "f1", "user-defined function:", why)) return false;
                 if (!expectEvalErrorContains(p, "f1+2", "unknown variable: f1", why)) return false;
                 if (!expectEvalErrorContains(p, "x_1+2", "unknown variable: x_1", why)) return false;
@@ -3196,7 +3250,7 @@ std::vector<TestCase> buildRegressionCases() {
               }});
   t.push_back({"regression/incomplete function call open paren hints", [](std::string& why) {
                 MathParser p;
-                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEval(p, "f(x)=x", "defined f(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "f(", "user-defined function: f(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "f (", "user-defined function: f(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "abs(", "function: abs(value)", why)) return false;
@@ -3231,7 +3285,7 @@ std::vector<TestCase> buildRegressionCases() {
                   why = "sin}: must not emit function hint";
                   return false;
                 }
-                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEval(p, "f(x)=x", "defined f(x)", why)) return false;
                 if (!expectEvalErrorContains(p, "f(x)=x; f)", "mismatched closing parenthesis", why)) return false;
                 if (p.getError().find("user-defined function:") != std::string::npos) {
                   why = "f(x)=x; f): must not emit UDF signature hint";
@@ -3316,7 +3370,7 @@ std::vector<TestCase> buildRegressionCases() {
                   return false;
                 if (!expectEvalErrorContains(p, "sortby((1,2,3, abs", "function: abs(value)", why))
                   return false;
-                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEval(p, "f(x)=x", "defined f(x)", why)) return false;
                 return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
               }});
   t.push_back({"regression/semicolon suppresses function hints", [](std::string& why) {
@@ -3342,7 +3396,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!mustNotHint("sin(;", "function: sin")) return false;
                 if (!mustNotHint("cos;", "function: cos")) return false;
                 if (!mustNotHint("sum(;", "function: sum")) return false;
-                if (!expectEval(p, "f(x)=x", "0", why)) return false;
+                if (!expectEval(p, "f(x)=x", "defined f(x)", why)) return false;
                 if (!mustNotHint("f(x)=x; f(;", "user-defined function:")) return false;
                 if (!expectEvalErrorContains(p, "f(x)=x; f(", "user-defined function: f(x)", why)) return false;
                 return expectEvalErrorContains(p, "f(x)=x; 1+f", "user-defined function: f(x)", why);
