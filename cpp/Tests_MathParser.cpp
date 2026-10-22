@@ -2671,6 +2671,28 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 return evalOk("sum(ans)", "9");
               }});
+  t.push_back({"regression/array variable and ans on a later line", [](std::string& why) {
+                MathParser p;
+                const auto evalOk = [&](const std::string& expr, const std::string& expected) {
+                  p.parseAndEvaluate(expr);
+                  if (!p.getError().empty()) {
+                    why = expr + " error: " + p.getError();
+                    return false;
+                  }
+                  if (!smokeResultCloseEnough(p.getResult(), expected)) {
+                    why = expr + " got \"" + p.getResult() + "\"";
+                    return false;
+                  }
+                  return true;
+                };
+                if (!evalOk("x=(1,2,3)", "(1,2,3)")) return false;
+                if (!evalOk("x", "(1,2,3)")) return false;
+                if (!evalOk("ans", "(1,2,3)")) return false;
+                if (!evalOk("x+1", "(2,3,4)")) return false;
+                if (!evalOk("range(1,10,3)", "(1,4,7)")) return false;
+                if (!evalOk("ans", "(1,4,7)")) return false;
+                return evalOk("ans*2", "(2,8,14)");
+              }});
   t.push_back({"regression/exact scalar metadata survives variable copy", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "a=9007199254740992+1; b=a; hex(b)", "0x20000000000001", why);

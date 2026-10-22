@@ -9725,7 +9725,17 @@ MathParser::EvalValue MathParser::runCompiledProgram(
     bool scalarOnlyMode) {
   EvalValue out = makeScalarInt(0);
   const auto evalIntoOut = [&](const Expr& ex) {
-    out = scalarOnlyMode ? evalExprScalar(ex, ctx, scopedVars) : evalExpr(ex, ctx, scopedVars);
+    if (!scalarOnlyMode) {
+      out = evalExpr(ex, ctx, scopedVars);
+      return;
+    }
+    out = evalExprScalar(ex, ctx, scopedVars);
+    // Compile time cannot know that a variable holds an array. Retry on the general path.
+    if (ctx.parseError && ctx.errorText == STR_SCALAR_ONLY_EXPRESSION_ENCOUNTERED_NON) {
+      ctx.parseError = false;
+      ctx.errorText.clear();
+      out = evalExpr(ex, ctx, scopedVars);
+    }
   };
   for (const auto& st : program) {
     ctx.referencedUnresolvedName = false;
