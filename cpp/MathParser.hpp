@@ -37,16 +37,19 @@ public:
     struct CartesianScalar {
       ScalarKind kind = ScalarKind::FloatingPoint;
       union {
-        double floatingPoint;    // valid for FloatingPoint
-        long long intValue;      // valid for Int64 and Time (total milliseconds)
-        std::uint64_t uintValue; // valid for UInt64
+        double floatingPoint;    // FloatingPoint
+        long long intValue;      // Int64 and Time (total milliseconds)
+        std::uint64_t uintValue; // UInt64
         struct {
-          long long numerator;
-          std::uint64_t denominator;
-        } rational;              // valid for Rational
+          long long numerator;       // Rational numerator; IntPower base
+          std::uint64_t denominator; // Rational denominator; IntPower exponent
+        } rational;
       };
 
-      CartesianScalar() : floatingPoint(0.0) {}
+      CartesianScalar() : kind(ScalarKind::FloatingPoint), floatingPoint(0.0) {}
+
+      void clear();
+      bool isZero() const;
 
       bool isFloatingPoint() const { return kind == ScalarKind::FloatingPoint; }
       bool isInt64() const { return kind == ScalarKind::Int64; }
@@ -84,6 +87,7 @@ public:
     /// Meaningful only when kind == Array; otherwise empty.
     std::vector<Scalar> array;
 
+    void clear();
     bool hasValue() const { return kind != Kind::None; }
     bool isScalar() const { return kind == Kind::Scalar; }
     bool isArray() const { return kind == Kind::Array; }
@@ -486,6 +490,8 @@ private:
     /** Collected like FreeBASIC (non-fatal until end of eval). */
     std::string unknownVarsText;
     std::string unknownFuncsText;
+    /** This statement referenced an unknown variable or function. */
+    bool referencedUnresolvedName = false;
     /** Params of UDFs seen earlier in the program currently being compiled (not yet in userFunctions_). */
     const std::unordered_map<std::string, std::vector<std::string>>* compilingUserFunctionParams = nullptr;
     /** Shared stack for the current top-level evaluate(); null outside evaluate(). */

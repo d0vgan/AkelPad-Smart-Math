@@ -2558,6 +2558,9 @@ std::string MathParser::formatUserFunctionSignature(const UserFunction& uf) {
 }
 
 bool MathParser::finishSubEvalFromCompiledProgram(EvalContext& parent, EvalContext& sub) const {
+  if (sub.referencedUnresolvedName || !sub.unknownVarsText.empty() || !sub.unknownFuncsText.empty()) {
+    parent.referencedUnresolvedName = true;
+  }
   if (!sub.unknownVarsText.empty()) {
     setError(parent, buildUnknownVariableErrorText(sub.unknownVarsText));
     return false;
@@ -2615,6 +2618,7 @@ bool MathParser::handleUnknownIdentifier(EvalContext& ctx, const std::string& id
     }
   }
   appendUniqueName(unknownList, ident);
+  ctx.referencedUnresolvedName = true;
   return false;
 }
 
@@ -6628,7 +6632,7 @@ MathParser::RawResult::Scalar MathParser::toRawScalar(const EvalValue::ScalarVal
   }
   out.real = toRawCartesianScalar(v, false);
   out.kind = out.real.kind;
-  out.imag = RawResult::CartesianScalar{};
+  out.imag.clear();
   return out;
 }
 
@@ -9711,6 +9715,7 @@ MathParser::EvalValue MathParser::runCompiledProgram(
     out = scalarOnlyMode ? evalExprScalar(ex, ctx, scopedVars) : evalExpr(ex, ctx, scopedVars);
   };
   for (const auto& st : program) {
+    ctx.referencedUnresolvedName = false;
     if (st.kind == AstStatement::Kind::FunDef) {
       const std::string udfErr =
           getUserFunctionDefinitionErrorText(st.fun.name, st.fun.params, st.fun.expr, true);
@@ -9728,13 +9733,17 @@ MathParser::EvalValue MathParser::runCompiledProgram(
       }
       removeUserFunctionByName(st.assignName);
       setVariable(st.assignName, out);
-      setVariable(STR_ANS, out);
+      if (!ctx.referencedUnresolvedName) {
+        setVariable(STR_ANS, out);
+      }
     } else {
       evalIntoOut(*st.expr);
       if (ctx.parseError) {
         return out;
       }
-      setVariable(STR_ANS, out);
+      if (!ctx.referencedUnresolvedName) {
+        setVariable(STR_ANS, out);
+      }
     }
   }
   return out;
@@ -12297,6 +12306,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
   UserFunction* uf = findUserFunction(fnName);
   if (!uf) {
     appendUniqueName(ctx.unknownFuncsText, fnName);
+    ctx.referencedUnresolvedName = true;
     return makeScalar(0);
   }
   if (args.size() != uf->params.size()) {
@@ -12425,6 +12435,7 @@ MathParser::EvalValue MathParser::evalFunctionCall(
       break;
   }
   appendUniqueName(ctx.unknownFuncsText, fnName);
+  ctx.referencedUnresolvedName = true;
   return makeScalar(0);
 }
 

@@ -713,6 +713,118 @@ std::vector<TestCase> buildUnitCases() {
                  }
                  return true;
                }});
+  t.push_back({"unit/RawResult clear and cartesian isZero", [](std::string& why) {
+                 using Cart = MathParser::RawResult::CartesianScalar;
+                 using Kind = MathParser::RawResult::ScalarKind;
+                 Cart c;
+                 c.kind = Kind::Int64;
+                 c.intValue = 0;
+                 if (!c.isZero()) {
+                   why = "int64 zero";
+                   return false;
+                 }
+                 c.intValue = 5;
+                 if (c.isZero()) {
+                   why = "int64 nonzero";
+                   return false;
+                 }
+
+                 c.clear();
+                 c.kind = Kind::UInt64;
+                 c.uintValue = 0;
+                 if (!c.isZero()) {
+                   why = "uint64 zero";
+                   return false;
+                 }
+                 c.uintValue = 1;
+                 if (c.isZero()) {
+                   why = "uint64 nonzero";
+                   return false;
+                 }
+
+                 c.clear();
+                 c.kind = Kind::Rational;
+                 c.rational.numerator = 0;
+                 c.rational.denominator = 2;
+                 if (!c.isZero()) {
+                   why = "rational zero";
+                   return false;
+                 }
+                 c.rational.numerator = 1;
+                 if (c.isZero()) {
+                   why = "rational nonzero";
+                   return false;
+                 }
+
+                 c.clear();
+                 c.kind = Kind::Time;
+                 c.intValue = 0;
+                 if (!c.isZero()) {
+                   why = "time zero";
+                   return false;
+                 }
+                 c.intValue = 1000;
+                 if (c.isZero()) {
+                   why = "time nonzero";
+                   return false;
+                 }
+
+                 c.clear();
+                 c.kind = Kind::FloatingPoint;
+                 c.floatingPoint = 0.0;
+                 if (!c.isZero()) {
+                   why = "float zero";
+                   return false;
+                 }
+                 c.floatingPoint = -0.0;
+                 if (!c.isZero()) {
+                   why = "float negative zero";
+                   return false;
+                 }
+                 c.floatingPoint = 0.5;
+                 if (c.isZero()) {
+                   why = "float nonzero";
+                   return false;
+                 }
+                 c.floatingPoint = std::numeric_limits<double>::quiet_NaN();
+                 if (c.isZero()) {
+                   why = "float nan";
+                   return false;
+                 }
+
+#if SMARTMATH_FACTORINT
+                 c.clear();
+                 c.kind = Kind::IntPower;
+                 c.rational.numerator = 0;
+                 c.rational.denominator = 3;
+                 if (!c.isZero()) {
+                   why = "int power zero base";
+                   return false;
+                 }
+                 c.rational.numerator = 8;
+                 if (c.isZero()) {
+                   why = "int power nonzero base";
+                   return false;
+                 }
+#endif
+
+                 MathParser::RawResult r;
+                 r.kind = MathParser::RawResult::Kind::Array;
+                 r.array.push_back(MathParser::RawResult::Scalar{});
+                 r.scalar.kind = Kind::Int64;
+                 r.scalar.real.kind = Kind::Int64;
+                 r.scalar.real.intValue = 4;
+                 r.scalar.imag.kind = Kind::UInt64;
+                 r.scalar.imag.uintValue = 7;
+                 r.clear();
+                 if (r.hasValue() || !r.array.empty() || r.scalar.kind != Kind::FloatingPoint ||
+                     r.scalar.real.kind != Kind::FloatingPoint || r.scalar.real.floatingPoint != 0.0 ||
+                     r.scalar.imag.kind != Kind::FloatingPoint || r.scalar.imag.floatingPoint != 0.0) {
+                   why = "raw result clear";
+                   return false;
+                 }
+                 return true;
+               }});
   t.push_back({"unit/parseAndEvaluateRaw returns raw and empty on error", [](std::string& why) {
                  MathParser p;
                  MathParser::RawResult r = p.parseAndEvaluateRaw("10+20");
@@ -2478,17 +2590,63 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "a=1; 2; ans", "2", why);
               }});
-  t.push_back({"regression/ans resets to zero after failed evaluation", [](std::string& why) {
+  t.push_back({"regression/ans keeps last success after failed evaluation", [](std::string& why) {
                 MathParser p;
-                if (!expectEval(p, "10+5", "15", why)) {
+                const auto evalOk = [&](const std::string& expr, const std::string& expected) {
+                  p.parseAndEvaluate(expr);
+                  if (!p.getError().empty()) {
+                    why = expr + " error: " + p.getError();
+                    return false;
+                  }
+                  if (!smokeResultCloseEnough(p.getResult(), expected)) {
+                    why = expr + " got \"" + p.getResult() + "\"";
+                    return false;
+                  }
+                  return true;
+                };
+                const auto evalErr = [&](const std::string& expr, const std::string& part) {
+                  p.parseAndEvaluate(expr);
+                  const std::string err = p.getError();
+                  if (err.find(part) == std::string::npos) {
+                    why = expr + " error got \"" + err + "\"";
+                    return false;
+                  }
+                  return true;
+                };
+                if (!evalOk("21+4", "25")) {
                   return false;
                 }
-                p.parseAndEvaluate("unknownFunc(1)");
-                if (p.getError().empty()) {
-                  why = "expected failure for unknownFunc(1)";
+                if (!evalErr("unknownFunc(8)", "unknown function:")) {
                   return false;
                 }
-                return expectEval(p, "ans", "0", why);
+                if (!evalOk("ans", "25")) {
+                  return false;
+                }
+                if (!evalErr("missingAnsKeep", "unknown variable:")) {
+                  return false;
+                }
+                if (!evalOk("ans", "25")) {
+                  return false;
+                }
+                if (!evalErr("mod(10,0)", "numeric error in mod()")) {
+                  return false;
+                }
+                if (!evalOk("ans", "25")) {
+                  return false;
+                }
+                if (!evalErr("9; unknownFunc(8)", "unknown function:")) {
+                  return false;
+                }
+                if (!evalOk("ans", "9")) {
+                  return false;
+                }
+                if (!evalOk("(4,5)", "(4,5)")) {
+                  return false;
+                }
+                if (!evalErr("unknownFunc(8)", "unknown function:")) {
+                  return false;
+                }
+                return evalOk("sum(ans)", "9");
               }});
   t.push_back({"regression/exact scalar metadata survives variable copy", [](std::string& why) {
                 MathParser p;
