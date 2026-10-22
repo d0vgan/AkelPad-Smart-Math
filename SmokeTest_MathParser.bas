@@ -2832,7 +2832,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1414) as SmokeCase
+  dim tests(1 to 1421) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4305,6 +4305,13 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1412).expr = "a=flat((18446744073709551615,2)); uhex(a[0])": tests(1412).expected = "0xFFFFFFFFFFFFFFFF" ' [flat] int64 metadata
   tests(1413).expr = "flat(1,2,1,2,3)": tests(1413).expected = "(1,2,1,2,3)" ' [flat] keep duplicates
   tests(1414).expr = "flat((9,8,7))": tests(1414).expected = "(9,8,7)" ' [flat] single-arg array edge
+  tests(1415).expr = "20+4": tests(1415).expected = "24" ' [ans] seed last success
+  tests(1416).expr = "unknownFunc(2)": tests(1416).expectedErrContains = "unknown function" ' [ans] error must not clear ans
+  tests(1417).expr = "ans": tests(1417).expected = "24" ' [ans] preserved after unknown function
+  tests(1418).expr = "missingAnsVar": tests(1418).expectedErrContains = "unknown variable" ' [ans] unknown variable
+  tests(1419).expr = "ans*1": tests(1419).expected = "24" ' [ans] preserved after unknown variable
+  tests(1420).expr = "9; unknownFunc(3)": tests(1420).expectedErrContains = "unknown function" ' [ans] later statement fails
+  tests(1421).expr = "ans": tests(1421).expected = "9" ' [ans] earlier statement in the failed line
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer
