@@ -9,8 +9,72 @@
 #if SMARTMATH_FACTORINT
 
 using smartmath_internal::gcdUInt64;
+using smartmath_internal::makeScalar;
+using smartmath_internal::makeScalarInt;
+using smartmath_internal::setFactorintPowerTerm;
+using smartmath_internal::setFactorintTermValue;
 using smartmath_internal::tryExtractExactInt64FromDoubleStrict;
 using smartmath_internal::tryPowUInt64Checked;
+using smartmath_internal::EvalValue;
+using smartmath_internal::ValueKind;
+
+namespace smartmath_internal {
+void setFactorintTermValue(
+    EvalValue::ScalarValue& sv,
+    long long signedValueI,
+    std::uint64_t valueU,
+    bool hasUIntValue) {
+  sv.setRenderIntPower(false);
+  sv.imagExactInt64 = 0;
+  sv.imagExactUInt64 = 0;
+  if (hasUIntValue) {
+    sv.scalar = static_cast<double>(valueU);
+    sv.setExactUInt64Valid(true);
+    sv.exactUInt64 = valueU;
+    if (valueU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+      sv.setExactInt64Valid(true);
+      sv.exactInt64 = static_cast<long long>(valueU);
+    } else {
+      sv.setExactInt64Valid(false);
+      sv.exactInt64 = 0;
+    }
+    sv.scalarKind = ScalarKind::UInt64;
+    return;
+  }
+  sv.scalar = static_cast<double>(signedValueI);
+  sv.setExactInt64Valid(true);
+  sv.exactInt64 = signedValueI;
+  if (signedValueI >= 0) {
+    sv.setExactUInt64Valid(true);
+    sv.exactUInt64 = static_cast<std::uint64_t>(signedValueI);
+  } else {
+    sv.setExactUInt64Valid(false);
+    sv.exactUInt64 = 0;
+  }
+  sv.scalarKind = ScalarKind::Int64;
+}
+
+void setFactorintPowerTerm(
+    EvalValue::ScalarValue& sv,
+    std::uint64_t baseU,
+    int expV,
+    long long signedValueI,
+    std::uint64_t valueU,
+    bool hasUIntValue) {
+  setFactorintTermValue(sv, signedValueI, valueU, hasUIntValue);
+  if (expV <= 1) {
+    return;
+  }
+  sv.setRenderIntPower(true);
+  long long displayBase = static_cast<long long>(baseU);
+  if (signedValueI < 0 &&
+      baseU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+    displayBase = -static_cast<long long>(baseU);
+  }
+  sv.imagExactInt64 = displayBase;
+  sv.imagExactUInt64 = static_cast<std::uint64_t>(expV);
+}
+}  // namespace smartmath_internal
 
 struct FactorintPrimeEntry {
   std::uint64_t baseU = 0;
@@ -533,67 +597,11 @@ bool MathParser::tryGetFactorintInput(
   return true;
 }
 
-void MathParser::setFactorintTermValue(
-    EvalValue::ScalarValue& sv,
-    long long signedValueI,
-    std::uint64_t valueU,
-    bool hasUIntValue) {
-  sv.setRenderIntPower(false);
-  sv.imagExactInt64 = 0;
-  sv.imagExactUInt64 = 0;
-  if (hasUIntValue) {
-    sv.scalar = static_cast<double>(valueU);
-    sv.setExactUInt64Valid(true);
-    sv.exactUInt64 = valueU;
-    if (valueU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
-      sv.setExactInt64Valid(true);
-      sv.exactInt64 = static_cast<long long>(valueU);
-    } else {
-      sv.setExactInt64Valid(false);
-      sv.exactInt64 = 0;
-    }
-    sv.scalarKind = ScalarKind::UInt64;
-    return;
-  }
-  sv.scalar = static_cast<double>(signedValueI);
-  sv.setExactInt64Valid(true);
-  sv.exactInt64 = signedValueI;
-  if (signedValueI >= 0) {
-    sv.setExactUInt64Valid(true);
-    sv.exactUInt64 = static_cast<std::uint64_t>(signedValueI);
-  } else {
-    sv.setExactUInt64Valid(false);
-    sv.exactUInt64 = 0;
-  }
-  sv.scalarKind = ScalarKind::Int64;
-}
-
-void MathParser::setFactorintPowerTerm(
-    EvalValue::ScalarValue& sv,
-    std::uint64_t baseU,
-    int expV,
-    long long signedValueI,
-    std::uint64_t valueU,
-    bool hasUIntValue) {
-  setFactorintTermValue(sv, signedValueI, valueU, hasUIntValue);
-  if (expV <= 1) {
-    return;
-  }
-  sv.setRenderIntPower(true);
-  long long displayBase = static_cast<long long>(baseU);
-  if (signedValueI < 0 &&
-      baseU <= static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
-    displayBase = -static_cast<long long>(baseU);
-  }
-  sv.imagExactInt64 = displayBase;
-  sv.imagExactUInt64 = static_cast<std::uint64_t>(expV);
-}
-
-void MathParser::appendFactorintScalarTerm(
+void appendFactorintScalarTerm(
     std::vector<EvalValue::ScalarValue>& out,
     std::uint64_t baseU,
     int expV,
-    bool& applySign) const {
+    bool& applySign) {
   std::uint64_t valueU = baseU;
   if (expV > 1 && !tryPowUInt64Checked(baseU, static_cast<std::uint64_t>(expV), valueU)) {
     return;
@@ -621,9 +629,9 @@ void MathParser::appendFactorintScalarTerm(
   out.push_back(std::move(sv));
 }
 
-MathParser::EvalValue MathParser::buildFactorintFromAbsU(
+EvalValue buildFactorintFromAbsU(
     bool isNegative,
-    std::uint64_t absU) const {
+    std::uint64_t absU) {
   EvalValue outV{};
   std::vector<EvalValue::ScalarValue> terms;
   if (absU == 0u) {
@@ -665,18 +673,18 @@ MathParser::EvalValue MathParser::builtinFactorint(
   }
 #endif
   if (args[0].kind == ValueKind::Array) {
-    setScalarValuesError(ctx, fnName);
+    ctx.failCall(CallErrorId::ScalarValues, fnName);
     return makeScalar(0);
   }
   bool isNegative = false;
   std::uint64_t absU = 0;
   if (!tryGetFactorintInput(args[0], isNegative, absU)) {
-    setIntegerValuesError(ctx, fnName);
+    ctx.failCall(CallErrorId::IntegerValues, fnName);
     return makeScalar(0);
   }
   EvalValue out = buildFactorintFromAbsU(isNegative, absU);
   if (out.kind != ValueKind::Array) {
-    setIntegerValuesError(ctx, fnName);
+    ctx.failCall(CallErrorId::IntegerValues, fnName);
     return makeScalar(0);
   }
   return out;
