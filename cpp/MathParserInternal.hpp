@@ -225,6 +225,7 @@ namespace smartmath_internal {
   EvalValue makeScalarMaybeExact(double v);
   EvalValue makeScalarInt(long long v);
   EvalValue makeScalarUInt(std::uint64_t v);
+  EvalValue makeScalarUIntPreferInt(std::uint64_t v);
 
 #if SMARTMATH_TIME_VALUES
   EvalValue makeScalarTimeMs(long long totalMs);
@@ -413,10 +414,6 @@ namespace smartmath_internal {
   bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   bool tryApplyExactCartesianBinaryOp(bool isAdd, const ExactCartesianComponent& a,
                                            const ExactCartesianComponent& b, ExactCartesianComponent& out);
-  bool tryAddExactCartesianComponents(const ExactCartesianComponent& a,
-                                           const ExactCartesianComponent& b, ExactCartesianComponent& out);
-  bool trySubExactCartesianComponents(const ExactCartesianComponent& a,
-                                           const ExactCartesianComponent& b, ExactCartesianComponent& out);
   void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
                                                        const ExactCartesianComponent& c);
   void setScalarComplexFromExactCartesian(EvalValue& v, const ExactCartesianComponent& re,
@@ -457,6 +454,8 @@ namespace smartmath_internal {
   bool tryFoldExactComplexCartesian(const std::vector<EvalValue>& args, char op, EvalValue& out);
   bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, EvalValue& out);
   bool complexUnaryTrigCartesian(BuiltinFunctionId id, double ar, double ai, double& outR, double& outI);
+  void scalarSplitCartesianParts(const EvalValue::ScalarValue& sv, double ar, double ai,
+                                 EvalValue::ScalarValue& re, EvalValue::ScalarValue& im);
   EvalValue calcRoundingFnCartesian(
     BuiltinFunctionId rid,
     const EvalValue::ScalarValue& sv,
@@ -624,7 +623,6 @@ namespace smartmath_internal {
     MaxEvaluationDepthReached,
     InvalidNumericLiteral,
     PercentageRequiresScalarValue,
-    FailedToBuildArrayLiteral,
     InternalAggregateBuiltin,
     InternalScalarBinaryBuiltin,
     InternalUnaryMathBuiltin,
