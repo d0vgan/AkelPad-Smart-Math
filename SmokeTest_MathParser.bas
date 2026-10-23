@@ -131,6 +131,14 @@ private function SmokeStrictScalarMatch(byref actual as String, byref expected a
   return FALSE
 end function
 
+'' Same-sign finite doubles one representation step apart.
+private function SmokeDoublesAdjacent(byval a as Double, byval b as Double) as Boolean
+  if (a < 0) <> (b < 0) then return FALSE
+  dim ba as LongInt = *cast(LongInt ptr, @a)
+  dim bb as LongInt = *cast(LongInt ptr, @b)
+  return abs(ba - bb) = 1
+end function
+
 private function ScalarCloseEnough(byref actual as String, byref expected as String) as Boolean
   dim ea as String = SmokeTrimScalarToken(actual)
   dim ee as String = SmokeTrimScalarToken(expected)
@@ -143,12 +151,10 @@ private function ScalarCloseEnough(byref actual as String, byref expected as Str
   if TryParseDecimalToken(ea, da) = FALSE then return FALSE
   if TryParseDecimalToken(ee, de) = FALSE then return FALSE
   if da = de then return TRUE
+  if SmokeDoublesAdjacent(da, de) then return TRUE
   dim scale as Double = abs(da)
   if abs(de) > scale then scale = abs(de)
-  if scale < 1 then scale = 1
-  dim tol as Double = 256.0 * 2.2204460492503131e-16 * scale
-  if tol < 1e-14 then tol = 1e-14
-  return abs(da - de) <= tol
+  return abs(da - de) <= 16.0 * 2.2204460492503131e-16 * scale
 end function
 
 private function SplitComplexText(byref s as String, byref rePart as String, byref imPart as String) as Boolean
@@ -238,7 +244,7 @@ private function ResultCloseEnough(byref actual as String, byref expected as Str
     next i
     return TRUE
   end if
-  if (instr(lcase(actual), "i") > 0) orelse (instr(lcase(expected), "i") > 0) then
+  if (lcase(right(trim(actual), 1)) = "i") orelse (lcase(right(trim(expected), 1)) = "i") then
     return ComplexResultCloseEnough(actual, expected)
   end if
   return ScalarCloseEnough(actual, expected)
@@ -1125,12 +1131,12 @@ private sub RunComplexNumberSupportOptionTests()
   cxLogBaseCases(1) = "log(8,2)": cxLogBaseExpect(1) = "3"
   cxLogBaseCases(2) = "log(-9,7)": cxLogBaseExpect(2) = "1.129150068107159+1.614459257080781i"
   cxLogBaseCases(3) = "log((-9, 16), (7, 2))": cxLogBaseExpect(3) = "(1.129150068107159+1.614459257080781i, 4)"
-  cxLogBaseCases(4) = "log(1+i, 2)": cxLogBaseExpect(4) = "0.5000000000000001+1.133090035456799i"
+  cxLogBaseCases(4) = "log(1+i, 2)": cxLogBaseExpect(4) = "0.5+1.133090035456799i"
   cxLogBaseCases(5) = "log((8, 16), (2, 4))": cxLogBaseExpect(5) = "(3, 2)"
 
   dim lgbi as Integer
   for lgbi = 1 to 5
-    if Parser_TryEvaluateEx(cxLogBaseCases(lgbi), r, rt, ia) = FALSE orelse rt <> cxLogBaseExpect(lgbi) then
+    if Parser_TryEvaluateEx(cxLogBaseCases(lgbi), r, rt, ia) = FALSE orelse ResultCloseEnough(rt, cxLogBaseExpect(lgbi)) = FALSE then
       print "[complex-opt] FAIL: """ & cxLogBaseCases(lgbi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
     else

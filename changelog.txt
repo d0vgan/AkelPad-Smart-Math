@@ -1,3 +1,10 @@
+SmartMath 1.5
+-------------
+- internal improvements and bug-fixes for edge cases 
++ added: "calc.cpp" for the C++ MathParser
+* maintenance: improved AI skills
+
+
 SmartMath 1.4
 -------------
 * usability improvements

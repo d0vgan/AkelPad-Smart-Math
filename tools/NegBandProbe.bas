@@ -25,3 +25,5 @@ function main() as Integer
   print "ERROR:"; Parser_GetLastError();
   return 1
 end function
+
+end main()
