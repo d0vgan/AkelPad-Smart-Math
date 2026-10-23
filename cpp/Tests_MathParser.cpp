@@ -4719,7 +4719,19 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "unpack(1,Inf,2)", "(1,inf,2)"},
     {ParityBasicCase::Kind::Expected, "flat(1,Inf,2)", "(1,inf,2)"},
     {ParityBasicCase::Kind::Expected, "sum(unpack(1,Inf,2))", "inf"},
-    {ParityBasicCase::Kind::Expected, "sortby((1,Inf,2),abs)", "(1,2,inf)"}
+    {ParityBasicCase::Kind::Expected, "sortby((1,Inf,2),abs)", "(1,2,inf)"} ,
+    {ParityBasicCase::Kind::Expected, "((1,2),3,(4,5))", "(1,2,3,4,5)"} ,
+    {ParityBasicCase::Kind::Expected, "a=(1,2); (a,3,a)", "(1,2,3,1,2)"} ,
+    {ParityBasicCase::Kind::Expected, "(((1,2),3),(4,5))", "(1,2,3,4,5)"} ,
+    {ParityBasicCase::Kind::Expected, "((),1,())", "(1)"} ,
+    {ParityBasicCase::Kind::Expected, "((),())", "()"} ,
+    {ParityBasicCase::Kind::Expected, "a=(); (a,4,a)", "(4)"} ,
+    {ParityBasicCase::Kind::Expected, "((1,Inf),2)", "(1,inf,2)"} ,
+    {ParityBasicCase::Kind::Expected, "((1,1),1)", "(1,1,1)"} ,
+    {ParityBasicCase::Kind::Expected, "uhex(((18446744073709551615,2),3)[0])", "0xFFFFFFFFFFFFFFFF"} ,
+    {ParityBasicCase::Kind::Expected, "((ratio(1),ratio(1/2)),3)", "(1,1/2,3)"} ,
+    {ParityBasicCase::Kind::Expected, "((1,2),(3,4))+1", "(2,3,4,5)"} ,
+    {ParityBasicCase::Kind::Expected, "((1,2))", "(1,2)"}
 };
 
 static const ParityBasicCase kParityTimeFromSmokeCases[] = {
@@ -4784,6 +4796,11 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "imag((5,10))", "(0,0)"} ,
     {ParityBasicCase::Kind::Expected, "cart((5,0))", "5"} ,
     {ParityBasicCase::Kind::ErrorContains, "cart((5,1))", "incompatible operands"} ,
+    {ParityBasicCase::Kind::Expected, "((1:00,2:00),3:00)", "(01:00,02:00,03:00)"} ,
+    {ParityBasicCase::Kind::Expected, "a=(1:00,2:00); (a,3:00)", "(01:00,02:00,03:00)"} ,
+    {ParityBasicCase::Kind::ErrorContains, "((1:00),2)", "time values cannot be mixed with non-time values"} ,
+    {ParityBasicCase::Kind::ErrorContains, "((1:00,2:00),3)", "time values cannot be mixed with non-time values"} ,
+    {ParityBasicCase::Kind::Expected, "((),1:00)", "(01:00)"} ,
 #include "../tools/smoke_parity_append_generated.cpp.inc"
 };
 
@@ -5887,6 +5904,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"flat((1+2i, 3), 4)", "(1+2i,3,4)"},
                      {"flat(1, Inf+2i, 3)", "(1,inf+2i,3)"},
                      {"flat(1, 2+Inf*i, 3)", "(1,2+inf*i,3)"},
+                     {"((1+2i, 3), 4)", "(1+2i,3,4)"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

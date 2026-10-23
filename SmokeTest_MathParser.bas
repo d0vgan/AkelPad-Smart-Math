@@ -1242,8 +1242,8 @@ private sub RunComplexNumberSupportOptionTests()
   next xi
 
   ' Aggregation/array utilities with complex operands (allowed vs rejected builtins).
-  dim cxAggOk(1 to 36) as String
-  dim cxAggExpect(1 to 36) as String
+  dim cxAggOk(1 to 37) as String
+  dim cxAggExpect(1 to 37) as String
   cxAggOk(1) = "sum(1+2i, 3)": cxAggExpect(1) = "4+2i"
   cxAggOk(2) = "sum((1+2i, 3+4i))": cxAggExpect(2) = "4+6i"
   cxAggOk(3) = "prod(1+i, 2)": cxAggExpect(3) = "2+2i"
@@ -1280,9 +1280,10 @@ private sub RunComplexNumberSupportOptionTests()
   cxAggOk(34) = "flat((1+2i, 3), 4)": cxAggExpect(34) = "(1+2i, 3, 4)"
   cxAggOk(35) = "flat(1, Inf+2i, 3)": cxAggExpect(35) = "(1, inf+2i, 3)"
   cxAggOk(36) = "flat(1, 2+Inf*i, 3)": cxAggExpect(36) = "(1, 2+inf*i, 3)"
+  cxAggOk(37) = "((1+2i, 3), 4)": cxAggExpect(37) = "(1+2i, 3, 4)"
 
   dim agi as Integer
-  for agi = 1 to 36
+  for agi = 1 to 37
     if Parser_TryEvaluateEx(cxAggOk(agi), r, rt, ia) = FALSE orelse rt <> cxAggExpect(agi) then
       print "[complex-opt] FAIL: """ & cxAggOk(agi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -2832,7 +2833,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1421) as SmokeCase
+  dim tests(1 to 1438) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4312,6 +4313,25 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1419).expr = "ans*1": tests(1419).expected = "24" ' [ans] preserved after unknown variable
   tests(1420).expr = "9; unknownFunc(3)": tests(1420).expectedErrContains = "unknown function" ' [ans] later statement fails
   tests(1421).expr = "ans": tests(1421).expected = "9" ' [ans] earlier statement in the failed line
+
+  ' === array literal flattens nested arrays (same as C++) ===
+  tests(1422).expr = "((1,2),3,(4,5))": tests(1422).expected = "(1,2,3,4,5)" ' [array] nested literal
+  tests(1423).expr = "a=(1,2); (a,3,a)": tests(1423).expected = "(1,2,3,1,2)" ' [array] variable elements
+  tests(1424).expr = "(((1,2),3),(4,5))": tests(1424).expected = "(1,2,3,4,5)" ' [array] deeper nesting
+  tests(1425).expr = "((),1,())": tests(1425).expected = "(1)" ' [array] empty elements skipped
+  tests(1426).expr = "((),())": tests(1426).expected = "()" ' [array] only empty elements
+  tests(1427).expr = "a=(); (a,4,a)": tests(1427).expected = "(4)" ' [array] empty variable
+  tests(1428).expr = "((1,Inf),2)": tests(1428).expected = "(1,inf,2)" ' [array] keep non-finite
+  tests(1429).expr = "((1,1),1)": tests(1429).expected = "(1,1,1)" ' [array] keep duplicates
+  tests(1430).expr = "uhex(((18446744073709551615,2),3)[0])": tests(1430).expected = "0xFFFFFFFFFFFFFFFF" ' [array] uint64 metadata
+  tests(1431).expr = "((ratio(1),ratio(1/2)),3)": tests(1431).expected = "(1,1/2,3)" ' [array] rational metadata
+  tests(1432).expr = "((1,2),(3,4))+1": tests(1432).expected = "(2,3,4,5)" ' [array] flatten then element-wise
+  tests(1433).expr = "((1,2))": tests(1433).expected = "(1,2)" ' [array] grouping is not a comma literal
+  tests(1434).expr = "((1:00,2:00),3:00)": tests(1434).expected = "(01:00,02:00,03:00)" ' [array] flatten durations
+  tests(1435).expr = "a=(1:00,2:00); (a,3:00)": tests(1435).expected = "(01:00,02:00,03:00)" ' [array] duration variables
+  tests(1436).expr = "((1:00),2)": tests(1436).expectedErrContains = "time values cannot be mixed with non-time values" ' [array] mix after flatten
+  tests(1437).expr = "((1:00,2:00),3)": tests(1437).expectedErrContains = "time values cannot be mixed with non-time values" ' [array] mix nested
+  tests(1438).expr = "((),1:00)": tests(1438).expected = "(01:00)" ' [array] empty plus duration
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

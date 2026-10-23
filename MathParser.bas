@@ -200,7 +200,6 @@ const FB_STR_INVALID_BINARY_LITERAL as string = "invalid binary literal"
 const FB_STR_INVALID_OCTAL_LITERAL as string = "invalid octal literal"
 const FB_STR_UNEXPECTED_TOKEN as string = "unexpected token"
 const FB_STR_HINT_PREFIX as string = "function: "
-const FB_STR_ARRAY_ELEMENT_MUST_BE_SCALAR as string = "array element must be scalar"
 const FB_STR_EXPRESSION_IS_TOO_LONG as string = "expression is too long"
 const FB_STR_EMPTY_STATEMENT as string = "empty statement"
 const FB_STR_RESERVED_FUNCTION_NAME_COLON as string = "reserved function name: "
@@ -4359,10 +4358,6 @@ end function
 
 private sub SetRecursiveUserFunctionCallError(byref fnName as String)
   SetParseError(FB_STR_RECURSIVE_USER_FUNCTION_CALL_COLON & fnName)
-end sub
-
-private sub SetArrayElementMustBeScalarError()
-  SetParseError(FB_STR_ARRAY_ELEMENT_MUST_BE_SCALAR)
 end sub
 
 private sub SetInvalidPrefixedLiteralError(byval prefixChar as UByte)
@@ -10652,24 +10647,17 @@ private function ParseFactor() as EvalValue
     if parseError then return n
     SkipSpaces()
     if pStream[0] = CHAR_COMMA then
-      dim vals() as EvalValue
-      redim vals(0)
-      if firstVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
-      vals(0) = firstVal
-      dim firstIsT as Boolean = ScalarIsTime(firstVal.scalarValue)
+      dim elems() as EvalValue
+      redim elems(0)
+      elems(0) = firstVal
       dim hasComma as Boolean = TRUE
       do
         if TryConsumeCommaArgSeparator(hasComma) = FALSE then return n
         if hasComma = FALSE then exit do
         dim nextVal as EvalValue = ParseExpression()
         if parseError then return n
-        if nextVal.kind <> VK_SCALAR then SetArrayElementMustBeScalarError(): return n
-        if ScalarIsTime(nextVal.scalarValue) <> firstIsT then
-          SetTimeArrayMixedError("array literal")
-          return n
-        end if
-        redim preserve vals(0 to ubound(vals) + 1)
-        vals(ubound(vals)) = nextVal
+        redim preserve elems(0 to ubound(elems) + 1)
+        elems(ubound(elems)) = nextVal
         SkipSpaces()
         if pStream[0] <> CHAR_COMMA andalso pStream[0] <> CHAR_RPAREN then
           SetMismatchedBracketBraceOrUnexpectedToken(asc(pStream[0]))
@@ -10677,11 +10665,27 @@ private function ParseFactor() as EvalValue
         end if
       loop while hasComma
       if TryConsumeClosingParenOrSetError() = FALSE then return n
-      ValueInitArrayLike(n, 0, ubound(vals))
-      dim arrI as Integer
-      for arrI = 0 to ubound(vals)
-        ValueSetArrayElemFromScalar(n, arrI, vals(arrI))
-      next arrI
+      dim vals() as ScalarValue
+      dim flatCount as Integer = CollectArgsAsScalarValues(elems(), vals())
+      if flatCount <= 0 then
+        ValueInitArrayLike(n, 0, -1)
+      else
+        dim sawTime as Boolean = FALSE
+        dim sawNonTime as Boolean = FALSE
+        dim flatI as Integer
+        for flatI = 0 to flatCount - 1
+          if ScalarIsTime(vals(flatI)) then
+            sawTime = TRUE
+          else
+            sawNonTime = TRUE
+          end if
+        next flatI
+        if sawTime andalso sawNonTime then
+          SetTimeArrayMixedError("array literal")
+          return n
+        end if
+        ValueSetArrayFromScalarValues(n, vals())
+      end if
     else
       if TryConsumeClosingParenOrSetError() = FALSE then return n
       n = firstVal
