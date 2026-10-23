@@ -61,6 +61,7 @@ Ask concise clarifying questions if ambiguous.
 | Authors or reviews smoke/parity **expectations** | `.cursor/skills/add-mathparser-function/flows/smoke-tests.md` |
 | Edits `USAGE_AND_SYNTAX.md` | `.cursor/skills/add-mathparser-function/flows/usage-docs.md` |
 | Edits Basic/C++ parser **implementation** | `.cursor/skills/add-mathparser-function/flows/coding-standards.md` |
+| Edits C++ `MathParser` shape, helpers, or builtin routing | `.cursor/skills/add-mathparser-function/flows/cpp-class-design.md` |
 | Changes Basic or C++ parser/tests (mirroring) | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
 | Is about to compile/run gates, or must decide which gates apply | `.cursor/skills/internal-mathparser-build-gates/SKILL.md` |
 
@@ -85,6 +86,7 @@ Follow in order. For a **new or changed function/constant**, steps 2–6 are man
 - Expected values from docs/Python/inverse checks, not live parser output (smoke-tests flow).
 - Integer metadata / helpers / string constants follow the exact-int section in coding-standards (`MAX_MAGNITUDE`). Do not restate that section’s ranges here.
 - No unrelated behavior changes; C++ artifacts under `cpp/` only.
+- C++ additions follow cpp-class-design: new helpers and builtin math stay off `MathParser` unless they use session state. Basic structure is unchanged.
 
 ## Response Format For Completion
 

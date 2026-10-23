@@ -13,6 +13,13 @@ For any source change (feature/fix/refactor/cleanup/optimization):
 - Reuse existing locals/state before new temporaries; add a variable only when needed for correctness, readability, or performance.
 - Keep project indentation and clean nested blocks when refactoring.
 
+## C++ class shape
+
+When the edit is under `cpp/` and would add or move a function on `MathParser`, read `.cursor/skills/add-mathparser-function/flows/cpp-class-design.md` before writing the declaration.
+
+- A new C++ helper is a `MathParser` method only when it reads or writes session state (that flow). Otherwise it is a function on the value, result, AST, or `EvalContext` type, or a function in `smartmath_internal` / the `.cpp`.
+- Basic stays procedural. Do not restructure `MathParser.bas` to match the C++ types. Behavior and error text still follow the parity skill.
+
 ## Integer metadata preservation (Required)
 
 In Basic and C++:

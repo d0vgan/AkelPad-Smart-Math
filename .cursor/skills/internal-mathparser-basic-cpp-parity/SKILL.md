@@ -27,6 +27,12 @@ All C++ artifacts (sources, test batches, tools) stay under `cpp/`.
 - **Independence requirement (no shared test sources):** C++ tests must build and run without `SmokeTest_MathParser.bas` or any Basic test source. Basic tests must build and run without C++ sources or binaries. If a convenience helper reads the other side’s test file, it is optional: missing Basic sources must not fail the C++ suite, and missing C++ binaries must not fail Basic smoke tests.
 - **Strong no to undefined behavior / no UB:** never introduce UB in C++ or Basic; rewrite any potential UB to a defined portable form before finishing.
 
+## Structure may diverge
+
+C++ may move functions off `MathParser` onto value, result, AST, and `EvalContext` types, or into `smartmath_internal`, per `.cursor/skills/add-mathparser-function/flows/cpp-class-design.md`. Basic stays a procedural module.
+
+That split is a **no-op** on the Basic side when behavior, error text, and exact-int metadata are unchanged. Say so in the reflection note. Do not add Basic types to mirror the C++ layout. A behavior or error-text change is still mirrored both ways.
+
 ## Reflection gate
 
 Whenever parser/tests change in either language, for each affected item record either:

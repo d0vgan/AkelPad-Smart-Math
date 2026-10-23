@@ -7,6 +7,7 @@ Load when adding or changing a **builtin function** (or an operator path that us
 | Phase | Path |
 |---|---|
 | Before coding parser logic | `.cursor/skills/add-mathparser-function/flows/coding-standards.md` |
+| C++ parser files will change | `.cursor/skills/add-mathparser-function/flows/cpp-class-design.md` |
 | Complex / real↔complex paths involved | `.cursor/skills/add-mathparser-function/flows/complex-support.md` |
 | `cpp/MathParser.cpp` exists and parser changes | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
 | After behavior is implemented — **tests** | `.cursor/skills/add-mathparser-function/flows/smoke-tests.md` |
@@ -43,3 +44,15 @@ For any **new operator** or **new builtin function**, decide whether `inf` / `-i
 ## 2) Signature hint
 
 In `TryGetBuiltinSignatureHint`, add/update the case so hint text matches implementation (spelling/casing, fixed/variadic arity, argument meaning/optionals). Match neighboring hint formatting.
+
+## 3) Implement in C++
+
+Mirror behavior, error text, and exact-int metadata. Do not mirror Basic’s procedure layout onto `MathParser`.
+
+Follow cpp-class-design:
+
+- One `BuiltinFunctionId`, one `kBuiltinMeta` row, one `FunctionNames` entry.
+- Scalar math as a file-local function or on `ScalarValue` / `smartmath_internal`.
+- Route through the existing family handler when the category exists (`builtinUnaryMath`, `builtinAggregateFamily`, `builtinScalarBinaryFamily`, and the other family routers).
+- Reuse `ParseErrorId`. Do not add `setFooError` or `MathParser::builtin…` unless the handler must read session state and no family router can host the call. That method stays a thin forwarder.
+- Hints and reserved-name checks read the same name tables as Basic. No extra name literals.

@@ -27,6 +27,7 @@ Do **not** preload every dependency. Read on demand:
 |---|---|
 | Before first edit | `.cursor/skills/internal-mathparser-protect-workspace/SKILL.md` |
 | Editing helpers / int metadata / string constants | `.cursor/skills/add-mathparser-function/flows/coding-standards.md` |
+| Editing `cpp/MathParser.hpp` / `.cpp`, or moving C++ functions off `MathParser` | `.cursor/skills/add-mathparser-function/flows/cpp-class-design.md` |
 | Changing real/complex operator or builtin paths | `.cursor/skills/add-mathparser-function/flows/complex-support.md` |
 | Adding or changing test expectations | `.cursor/skills/add-mathparser-function/flows/smoke-tests.md` |
 | Mirroring Basic↔C++ | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
@@ -47,6 +48,7 @@ Do not load the full `add-mathparser-function` skill unless the task becomes a f
 
 - No behavior change unless explicitly requested. A behavior-preserving edit keeps the exact-int/exact-uint behavior it found. Do not add metadata the path did not already keep. The create/restore rule in coding-standards applies to a new builtin or an intentional behavior change.
 - No user-visible error message drift unless explicitly requested.
+- C++ cleanups follow cpp-class-design. Move one cluster off `MathParser` at a time (errors, then static scalar/exact helpers, then raw-result formatting, then lexer helpers). Leave Basic’s procedure layout as it is. A file split that keeps every function as a `MathParser` method is not the cleanup.
 - No UB in C++.
 - Keep Basic/C++ parity when both sides exist (parity skill).
 - Avoid extra allocations/copies on hot paths. Do not replace iterator-style walks with eager flattening unless semantics require it.
@@ -57,7 +59,7 @@ Do not load the full `add-mathparser-function` skill unless the task becomes a f
 
 1. Read protect-workspace before the first edit. That skill skips the copy when the tree is clean.
 2. Inventory duplicates (impact / risk / testability).
-3. Choose helper strategy (reuse → extend → narrow new helper) per coding-standards.
+3. Choose helper strategy (reuse → extend → narrow new helper) per coding-standards. In C++, the new or moved helper follows cpp-class-design (session member only when it uses session state).
 4. Preserve efficiency: single-pass walks, pre-count + one allocation, scratch-buffer reuse in C++, no extra hot-path temps.
 5. Apply one logical cluster at a time. Between clusters, compile the side you touched when practical; run formatter, smoke, and C++ gates once at step 7. On compile failure use build-gates compile discipline (one hypothesis → one edit → one compile; roll back if no improvement).
 6. Remove dead code only when unused/unreachable/superseded is confirmed; otherwise keep it and list it in the report as a candidate.
