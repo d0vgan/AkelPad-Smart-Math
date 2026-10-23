@@ -202,6 +202,11 @@ constexpr std::uint64_t kFactorintSmallPrimes[kFactorintSmallPrimeCount] = {
   9941u, 9949u, 9967u, 9973u, 10007u
 };
 
+// a and b must be < modN; avoids a + b wrapping when modN > 2^63.
+inline std::uint64_t addModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  return (a >= modN - b) ? (a - (modN - b)) : (a + b);
+}
+
 std::uint64_t mulModU64AddDouble(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
   if (modN <= 1u) {
     return 0u;
@@ -210,13 +215,13 @@ std::uint64_t mulModU64AddDouble(std::uint64_t a, std::uint64_t b, std::uint64_t
   a %= modN;
   while (b > 0u) {
     if ((b & 1u) != 0u) {
-      res = (res + a) % modN;
+      res = addModU64(res, a, modN);
     }
     b >>= 1;
     if (b == 0u) {
       break;
     }
-    a = (a + a) % modN;
+    a = addModU64(a, a, modN);
   }
   return res;
 }
@@ -276,7 +281,7 @@ std::uint64_t isqrtU64(std::uint64_t n) {
     return 0u;
   }
   std::uint64_t x = n;
-  std::uint64_t y = (x + 1u) / 2u;
+  std::uint64_t y = x / 2u + (x & 1u);
   while (y < x) {
     x = y;
     y = (x + n / x) / 2u;
@@ -382,9 +387,9 @@ std::uint64_t pollardRhoU64(std::uint64_t n) {
     std::uint64_t y = y0;
     std::uint64_t d = 1;
     for (int iter = 0; iter < maxIter && d == 1u; ++iter) {
-      x = (mulModU64(x, x, n) + c) % n;
-      y = (mulModU64(y, y, n) + c) % n;
-      y = (mulModU64(y, y, n) + c) % n;
+      x = addModU64(mulModU64(x, x, n), c % n, n);
+      y = addModU64(mulModU64(y, y, n), c % n, n);
+      y = addModU64(mulModU64(y, y, n), c % n, n);
       const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
       if (diff == 0u) {
         continue;
@@ -606,19 +611,19 @@ void appendFactorintScalarTerm(
   if (expV > 1 && !tryPowUInt64Checked(baseU, static_cast<std::uint64_t>(expV), valueU)) {
     return;
   }
-  long long signedI = static_cast<long long>(valueU);
+  const std::uint64_t kInt64MaxU = static_cast<std::uint64_t>(std::numeric_limits<long long>::max());
+  long long signedI = 0;
   bool hasUInt = false;
   if (applySign) {
     applySign = false;
-    if (valueU > static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
-      hasUInt = true;
-      signedI = 0;
-    } else {
-      signedI = -static_cast<long long>(valueU);
-    }
-  } else if (valueU > static_cast<std::uint64_t>(std::numeric_limits<long long>::max())) {
+    // A negative input has magnitude <= 2^63, so the signed term always fits.
+    signedI = (valueU == (1ull << 63))
+        ? (std::numeric_limits<long long>::min)()
+        : -static_cast<long long>(valueU);
+  } else if (valueU > kInt64MaxU) {
     hasUInt = true;
-    signedI = 0;
+  } else {
+    signedI = static_cast<long long>(valueU);
   }
   EvalValue::ScalarValue sv{};
   if (expV > 1) {

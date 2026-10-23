@@ -1139,6 +1139,34 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next lgbi
 
+  dim cxLogDomainErr(1 to 3) as String
+  cxLogDomainErr(1) = "log(0,10)"
+  cxLogDomainErr(2) = "log(10,1)"
+  cxLogDomainErr(3) = "log(10,0)"
+  for lgbi = lbound(cxLogDomainErr) to ubound(cxLogDomainErr)
+    if Parser_TryEvaluateEx(cxLogDomainErr(lgbi), r, rt, ia) = FALSE andalso instr(Parser_GetLastError(), "numeric error in log()") > 0 then
+      print "[complex-opt] PASS: """ & cxLogDomainErr(lgbi) & """ -> numeric error"
+      subPass += 1
+    else
+      print "[complex-opt] FAIL: """ & cxLogDomainErr(lgbi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    end if
+  next lgbi
+
+  dim cxTinyRe(1 to 2) as String
+  dim cxTinyReExpect(1 to 2) as String
+  cxTinyRe(1) = "1e-15+2i": cxTinyReExpect(1) = "1e-015+2i"
+  cxTinyRe(2) = "-1e-15+2i": cxTinyReExpect(2) = "-1e-015+2i"
+  for lgbi = lbound(cxTinyRe) to ubound(cxTinyRe)
+    if Parser_TryEvaluateEx(cxTinyRe(lgbi), r, rt, ia) = FALSE orelse rt <> cxTinyReExpect(lgbi) then
+      print "[complex-opt] FAIL: """ & cxTinyRe(lgbi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
+      subFail += 1
+    else
+      print "[complex-opt] PASS: """ & cxTinyRe(lgbi) & """ -> """ & rt & """ (tiny real part kept)"
+      subPass += 1
+    end if
+  next lgbi
+
   ' Comparisons: `=`/`==` and `<>`/`!=` are defined for complex scalars and arrays (including mixed real/complex);
   ' ordering comparisons (`<` `<=` `>` `>=`) are errors when any operand has a nonzero imaginary part;
   ' complex mixed with time in `=`/`==`/`<>`/`!=` is an error.
@@ -1480,8 +1508,8 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next txi
 
-  dim cxFmtOk(1 to 7) as String
-  dim cxFmtExpect(1 to 7) as String
+  dim cxFmtOk(1 to 9) as String
+  dim cxFmtExpect(1 to 9) as String
   cxFmtOk(1) = "hex(10+15i)": cxFmtExpect(1) = "0xA+0xFi"
   cxFmtOk(2) = "bin(1+i)": cxFmtExpect(2) = "0b1+i"
   cxFmtOk(3) = "oct(8i)": cxFmtExpect(3) = "0o10i"
@@ -1489,6 +1517,8 @@ private sub RunComplexNumberSupportOptionTests()
   cxFmtOk(5) = "uhex(-1+2i)": cxFmtExpect(5) = "0xFFFFFFFFFFFFFFFF+0x2i"
   cxFmtOk(6) = "uoct(-1+i)": cxFmtExpect(6) = "0o1777777777777777777777+i"
   cxFmtOk(7) = "ubin(5+10i)": cxFmtExpect(7) = "0b101+0b1010i"
+  cxFmtOk(8) = "hex(-3-4i)": cxFmtExpect(8) = "-0x3-0x4i"
+  cxFmtOk(9) = "oct(-8+8i)": cxFmtExpect(9) = "-0o10+0o10i"
 
   if Parser_TryEvaluateEx("(0xFFFFFFFFFFFFFF + 0x7FFFFFFFFFFFFFi);uhex", r, rt, ia) = FALSE orelse rt <> "0xFFFFFFFFFFFFFF+0x7FFFFFFFFFFFFFi" then
     print "[complex-opt] FAIL: large hex complex uhex -> """ & rt & """ err=" & Parser_GetLastError()
@@ -1547,7 +1577,7 @@ private sub RunComplexNumberSupportOptionTests()
   end if
 
   dim ffi as Integer
-  for ffi = 1 to 7
+  for ffi = lbound(cxFmtOk) to ubound(cxFmtOk)
     if Parser_TryEvaluateEx(cxFmtOk(ffi), r, rt, ia) = FALSE orelse rt <> cxFmtExpect(ffi) then
       print "[complex-opt] FAIL: """ & cxFmtOk(ffi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       print "[complex-opt]      want: """ & cxFmtExpect(ffi) & """"
@@ -1609,7 +1639,7 @@ private sub RunComplexNumberSupportOptionTests()
   cxSortRatioOk(9) = "ratio(-0.5+0.25i)": cxSortRatioExpect(9) = "-1/2+1/4*i"
   cxSortRatioOk(10) = "ratio(3+0.25i)": cxSortRatioExpect(10) = "3+1/4*i"
   cxSortRatioOk(11) = "ratio(-2**57/3**30+2**55/7**20*i)": cxSortRatioExpect(11) = "-113792906/162571+1293463/2864607*i"
-  cxSortRatioOk(12) = "ratio(-2**57/3**30+2**55/7**20i)": cxSortRatioExpect(12) = "12411888722130364-33823353366914148i"
+  cxSortRatioOk(12) = "ratio(-2**57/3**30+2**55/7**20i)": cxSortRatioExpect(12) = "1.241188872213036e+016-3.382335336691415e+016i"
   cxSortRatioOk(13) = "ratio((1+2i)/(3+4i))": cxSortRatioExpect(13) = "11/25+2/25*i"
   cxSortRatioOk(14) = "ratio((1.11+2.33i)*(3.37+4.71i))": cxSortRatioExpect(14) = "-4521/625+65401/5000*i"
   cxSortRatioOk(15) = "ratio((1+i)**(2+3i))": cxSortRatioExpect(15) = "-740749/4531935+329494/3432051*i"
@@ -2833,7 +2863,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1438) as SmokeCase
+  dim tests(1 to 1469) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4332,6 +4362,45 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1436).expr = "((1:00),2)": tests(1436).expectedErrContains = "time values cannot be mixed with non-time values" ' [array] mix after flatten
   tests(1437).expr = "((1:00,2:00),3)": tests(1437).expectedErrContains = "time values cannot be mixed with non-time values" ' [array] mix nested
   tests(1438).expr = "((),1:00)": tests(1438).expected = "(01:00)" ' [array] empty plus duration
+
+  ' === int64/uint64 edge cases (expected values from Python) ===
+  tests(1439).expr = "-9223372036854775808/-1": tests(1439).expected = "9223372036854775808" ' [int64] INT64_MIN / -1
+  tests(1440).expr = "mod(-9223372036854775808,-1)": tests(1440).expected = "0" ' [mod] INT64_MIN mod -1
+  tests(1441).expr = "mod(-5,18446744073709551615)": tests(1441).expected = "-5" ' [mod] uint64 divisor (math.fmod)
+  tests(1442).expr = "gcd(-6,18446744073709551615)": tests(1442).expected = "3" ' [gcd] uint64 operand
+  tests(1443).expr = "gcd(-9223372036854775808,0)": tests(1443).expected = "9223372036854775808" ' [gcd] |INT64_MIN|
+  tests(1444).expr = "lcm(-9223372036854775808,1)": tests(1444).expected = "9223372036854775808" ' [lcm] |INT64_MIN|
+  tests(1445).expr = "ncr(67,33)": tests(1445).expected = "14226520737620288370" ' [ncr] uint64 result (math.comb)
+  tests(1446).expr = "npr(21,21)": tests(1446).expectedErrContains = "numeric error in npr()" ' [npr] 21! > 2**64
+  tests(1447).expr = "factorint(9223372036854775837)": tests(1447).expected = "(9223372036854775837)" ' [factorint] prime > 2**63
+  tests(1448).expr = "factorint(18446744073709551557)": tests(1448).expected = "(18446744073709551557)" ' [factorint] largest uint64 prime
+  tests(1449).expr = "factorint(-9223372036854775808)": tests(1449).expected = "(-2**63)" ' [factorint] INT64_MIN
+  tests(1450).expr = "prod(factorint(-9223372036854775808))": tests(1450).expected = "-9223372036854775808" ' [factorint] INT64_MIN round trip
+  tests(1451).expr = "factorint(18446744073709551614)": tests(1451).expected = "(2, 7**2, 73, 127, 337, 92737, 649657)" ' [factorint] 2**64-2
+  tests(1452).expr = "-3 << 62": tests(1452).expected = "-1.383505805528216e+019" ' [shift] negative overflow -> float
+  tests(1453).expr = "-2 << 62": tests(1453).expected = "-9223372036854775808" ' [shift] exact INT64_MIN
+
+  ' === float power / hypot / ratio / literals (expected values from Python) ===
+  tests(1454).expr = "3**2.0000001": tests(1454).expected = "9.000000988751113" ' [pow] near-integer exponent is not exact
+  tests(1455).expr = "27**0.33333334": tests(1455).expected = "3.000000065916738" ' [pow] near 1/3 is not a cube root
+  tests(1456).expr = "27**(1/3)": tests(1456).expected = "3" ' [pow] cube root
+  tests(1457).expr = "hypot(1e300,1e300)": tests(1457).expected = "1.414213562373095e+300" ' [hypot] no overflow
+  tests(1458).expr = "hypot(1e-200,1e-200)": tests(1458).expected = "1.414213562373095e-200" ' [hypot] no underflow
+  tests(1459).expr = "ratio(1e20)": tests(1459).expected = "1e+020" ' [ratio] above 2**53 unchanged
+  tests(1460).expr = "ratio(-1e300)": tests(1460).expected = "-1e+300" ' [ratio] above 2**53 unchanged
+  tests(1461).expr = "1e-5": tests(1461).expected = "1e-005" ' [literal] negative exponent rounding
+  tests(1462).expr = "123e-20": tests(1462).expected = "1.23e-018" ' [literal] negative exponent rounding
+  tests(1463).expr = "5 % -20": tests(1463).expected = "-19.95" ' [percent] (5%) - 20
+
+  ' === time overflow / non-finite compare ===
+  tests(1464).expr = "1:00 + 1e16": tests(1464).expectedErrContains = "incompatible operands" ' [time] ms overflow
+  tests(1465).expr = "1:00 * 1e300": tests(1465).expectedErrContains = "incompatible operands" ' [time] ms overflow
+  tests(1466).expr = "1:00 < 1e300": tests(1466).expected = "1" ' [time] compare saturates
+  tests(1467).expr = "1:00 < inf": tests(1467).expectedErrContains = "incompatible operands" ' [time] non-finite compare
+
+  ' === failed assignment must not store the variable ===
+  tests(1468).expr = "failasgvar=failasgunknown+1": tests(1468).expectedErrContains = "unknown variable: failasgunknown" ' [assign] unknown rhs
+  tests(1469).expr = "failasgvar": tests(1469).expectedErrContains = "unknown variable: failasgvar" ' [assign] not stored
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

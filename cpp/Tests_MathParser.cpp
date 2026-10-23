@@ -2784,7 +2784,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "(2**51-8)*(5/2)", "5629499534213100", why)) return false;
                 if (!expectEval(p, "(2**51-8)*((5/2)+1e-12)", "5629499534215352", why)) return false;
                 if (!expectEval(p, "-(2**50-1)*2", "-2251799813685246", why)) return false;
-                if (!expectEval(p, "-(2**50-1)*(2.0001)", "-225191240367593", why)) return false;
+                if (!expectEval(p, "-(2**50-1)*(2.0001)", "-2251912403675930", why)) return false;
                 p.parseAndEvaluate("7/3");
                 if (p.getResult().find('.') == std::string::npos && p.getResult().find('/') == std::string::npos) {
                   why = "7/3 must stay non-integer float, got \"" + p.getResult() + "\"";
@@ -4801,6 +4801,41 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "((1:00),2)", "time values cannot be mixed with non-time values"} ,
     {ParityBasicCase::Kind::ErrorContains, "((1:00,2:00),3)", "time values cannot be mixed with non-time values"} ,
     {ParityBasicCase::Kind::Expected, "((),1:00)", "(01:00)"} ,
+    {ParityBasicCase::Kind::Expected, "-9223372036854775808/-1", "9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "mod(-9223372036854775808,-1)", "0"} ,
+    {ParityBasicCase::Kind::Expected, "mod(-5,18446744073709551615)", "-5"} ,
+    {ParityBasicCase::Kind::Expected, "gcd(-6,18446744073709551615)", "3"} ,
+    {ParityBasicCase::Kind::Expected, "gcd(-9223372036854775808,0)", "9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "lcm(-9223372036854775808,1)", "9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "ncr(67,33)", "14226520737620288370"} ,
+    {ParityBasicCase::Kind::ErrorContains, "npr(21,21)", "numeric error in npr()"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(9223372036854775837)", "(9223372036854775837)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(18446744073709551557)", "(18446744073709551557)"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(-9223372036854775808)", "(-2**63)"} ,
+    {ParityBasicCase::Kind::Expected, "prod(factorint(-9223372036854775808))", "-9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "factorint(18446744073709551614)", "(2,7**2,73,127,337,92737,649657)"} ,
+    {ParityBasicCase::Kind::Expected, "-3 << 62", "-1.383505805528216e+019"} ,
+    {ParityBasicCase::Kind::Expected, "-2 << 62", "-9223372036854775808"} ,
+    {ParityBasicCase::Kind::Expected, "3**2.0000001", "9.000000988751113"} ,
+    {ParityBasicCase::Kind::Expected, "27**0.33333334", "3.000000065916738"} ,
+    {ParityBasicCase::Kind::Expected, "27**(1/3)", "3"} ,
+    {ParityBasicCase::Kind::Expected, "hypot(1e300,1e300)", "1.414213562373095e+300"} ,
+    {ParityBasicCase::Kind::Expected, "hypot(1e-200,1e-200)", "1.414213562373095e-200"} ,
+    {ParityBasicCase::Kind::Expected, "ratio(1e20)", "1e+020"} ,
+    {ParityBasicCase::Kind::Expected, "ratio(-1e300)", "-1e+300"} ,
+    {ParityBasicCase::Kind::Expected, "1e-5", "1e-005"} ,
+    {ParityBasicCase::Kind::Expected, "123e-20", "1.23e-018"} ,
+    {ParityBasicCase::Kind::Expected, "5 % -20", "-19.95"} ,
+    {ParityBasicCase::Kind::Expected, "19.95", "19.95"} ,
+    {ParityBasicCase::Kind::Expected, "4.35", "4.35"} ,
+    {ParityBasicCase::Kind::Expected, "0.1+0.2", "0.3"} ,
+    {ParityBasicCase::Kind::Expected, "1e15+0.3", "1000000000000000"} ,
+    {ParityBasicCase::Kind::Expected, "3**50", "7.178979876918526e+023"} ,
+    {ParityBasicCase::Kind::Expected, "1.5e-11", "1.5e-011"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1:00 + 1e16", "incompatible operands"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1:00 * 1e300", "incompatible operands"} ,
+    {ParityBasicCase::Kind::Expected, "1:00 < 1e300", "1"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1:00 < inf", "incompatible operands"} ,
 #include "../tools/smoke_parity_append_generated.cpp.inc"
 };
 
@@ -4824,6 +4859,11 @@ std::vector<TestCase> buildParityBasicFromSmokeCases() {
                    }});
     }
   }
+  t.push_back({"parity/basic: failed assignment does not store the variable", [](std::string& why) {
+                 MathParser p;
+                 return expectEvalErrorContains(p, "failasgvar=failasgunknown+1", "unknown variable: failasgunknown", why) &&
+                        expectEvalErrorContains(p, "failasgvar", "unknown variable: failasgvar", why);
+               }});
   return t;
 }
 
@@ -5556,7 +5596,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"cart(1/2*i)", "0.5i"},
                      {"cart(1/(1+2)i)", "-0.3333333333333333i"},
                      {"cart(1/(1+2)*i)", "0.3333333333333333i"},
-                     {"cart(1/2/3i)", "-0.1666666666666666i"},
+                     {"cart(1/2/3i)", "-0.1666666666666667i"},
                      {"ratio(1/2i)", "-1/2*i"},
                      {"cart(-2**57/3**30+2**55/7**20*i)",
                       "-699.9582090286702+0.4515324440664775i"},
@@ -5798,8 +5838,8 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"hypot(1+i,1-i)", "2"},
                      {"sqrt(-4)", "2i"},
                      {"(-2)**(1/2)", "1.414213562373095i"},
-                     {"(-7)**(3/2)", "-18.52025917745212i"},
-                     {"(-5)**(1/3)", "-1.709975946676696"},
+                     {"(-7)**(3/2)", "-18.52025917745213i"},
+                     {"(-5)**(1/3)", "-1.709975946676697"},
                      {"64**(1/3)", "4"},
                      {"pow(-27,1/3)", "-3"},
                      {"pow(2**64,1/2)", "4294967296"},
@@ -5831,20 +5871,20 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    const char* expect;
                  } kRows[] = {
                      {"ln(-1)", "3.141592653589793i"},
-                     {"ln(-2)", "0.6931471805599452+3.141592653589793i"},
+                     {"ln(-2)", "0.6931471805599453+3.141592653589793i"},
                      {"log10(-10)", "1+1.364376353841841i"},
-                     {"exp(i)", "0.5403023058681397+0.8414709848078963i"},
+                     {"exp(i)", "0.5403023058681398+0.8414709848078965i"},
                      {"exp(pi*i)", "-1"},
-                     {"ln((-1,-4))", "(3.141592653589793i,1.38629436111989+3.141592653589793i)"},
+                     {"ln((-1,-4))", "(3.141592653589793i,1.386294361119891+3.141592653589793i)"},
                      {"exp((0,pi*i))", "(1,-1)"},
                      {"log10((-10,-100))", "(1+1.364376353841841i,2+1.364376353841841i)"},
-                     {"ln(2)", "0.6931471805599452"},
+                     {"ln(2)", "0.6931471805599453"},
                      {"ln(0)", "-inf"},
                     {"ln(-1-0i)", "3.141592653589793i"},
                      {"log(8,2)", "3"},
                      {"log(-9,7)", "1.129150068107159+1.614459257080781i"},
                      {"log((-9,16),(7,2))", "(1.129150068107159+1.614459257080781i,4)"},
-                     {"log(1+i,2)", "0.5+1.133090035456798i"},
+                     {"log(1+i,2)", "0.5000000000000001+1.133090035456799i"},
                      {"log((8,16),(2,4))", "(3,2)"},
                  };
                  for (const auto& row : kRows) {
@@ -5956,7 +5996,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"ratio(2+3i)", "2+3i"},
                      {"ratio(e+10i)", "14665106/5394991+10i"},
                      {"ratio(-2**57/3**30+2**55/7**20*i)", "-113792906/162571+1293463/2864607*i"},
-                     {"ratio(-2**57/3**30+2**55/7**20i)", "12411888722130364-33823353366914148i"},
+                     {"ratio(-2**57/3**30+2**55/7**20i)", "1.241188872213036e+016-3.382335336691415e+016i"},
                      {"ratio((1+2i)/(3+4i))", "11/25+2/25*i"},
                      {"ratio((1.11+2.33i)*(3.37+4.71i))", "-4521/625+65401/5000*i"},
                      {"ratio((1+i)**(2+3i))", "-740749/4531935+329494/3432051*i"},
@@ -6085,12 +6125,12 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"floor(2.9+3.1i)", "2+3i"},
                      {"ceil(2.1+3.1i)", "3+4i"},
                      {"abs(3+4i)", "5"},
-                     {"sign(3+4i)", "0.5999999999999999+0.8i"},
+                     {"sign(3+4i)", "0.6+0.8i"},
                      {"real(1+2i)", "1"},
                      {"imag(1+2i)", "2"},
                      {"conj(1+2i)", "1-2i"},
                      {"phase(1)", "0"},
-                     {"polar(1+1i)", "(1.414213562373095,0.7853981633974482)"},
+                     {"polar(1+1i)", "(1.414213562373095,0.7853981633974483)"},
                      {"cart(polar(1+1i))", "1+i"},
                     {"phase(-1-0i)", "3.141592653589793"},
                     {"polar(-1-0i)", "(1,3.141592653589793)"},
@@ -6235,15 +6275,15 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    const char* expect;
                  } kRows[] = {
                      {"sin(i)", "1.175201193643801i"},
-                     {"cos(i)", "1.543080634815243"},
-                     {"sin(1+i)", "1.298457581415977+0.634963914784736i"},
-                     {"tan(i)", "0.7615941559557648i"},
-                     {"sinh(i)", "0.8414709848078963i"},
-                     {"cosh(1+i)", "0.8337300251311491+0.988897705762865i"},
-                     {"asinh(1+i)", "1.061275061905035+0.6662394324925152i"},
-                     {"atan(1+i)", "1.017221967897851+0.402359478108525i"},
-                     {"sin((1+i,2))", "(1.298457581415977+0.634963914784736i,0.9092974268256815)"},
-                     {"atanh(i)", "0.7853981633974482i"},
+                     {"cos(i)", "1.543080634815244"},
+                     {"sin(1+i)", "1.298457581415977+0.6349639147847361i"},
+                     {"tan(i)", "0.7615941559557649i"},
+                     {"sinh(i)", "0.8414709848078965i"},
+                     {"cosh(1+i)", "0.8337300251311491+0.9888977057628651i"},
+                     {"asinh(1+i)", "1.061275061905036+0.6662394324925153i"},
+                     {"atan(1+i)", "1.017221967897851+0.4023594781085251i"},
+                     {"sin((1+i,2))", "(1.298457581415977+0.6349639147847361i,0.9092974268256817)"},
+                     {"atanh(i)", "0.7853981633974483i"},
                      {"acos(1)", "0"},
                      {"asin(i)", "0.8813735870195428i"},
                  };
@@ -6280,6 +6320,18 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                  }
                  return true;
                }});
+  t.push_back({"complex-opt: log domain errors (parity Basic cxLogDomainErr)",
+               [](std::string& why) {
+                 for (const char* expr : {"log(0,10)", "log(10,1)", "log(10,0)"}) {
+                   MathParser p;
+                   p.setSupportComplexNumbers(true);
+                   if (!expectEvalErrorContains(p, expr, "numeric error in log()", why)) {
+                     why = std::string(expr) + ": " + why;
+                     return false;
+                   }
+                 }
+                 return true;
+               }});
   t.push_back({"complex-opt: hex/oct/bin/u* on integer complex literals (parity Basic cxFmtOk)",
                [](std::string& why) {
                  MathParser p;
@@ -6295,6 +6347,10 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"uhex(-1+2i)", "0xFFFFFFFFFFFFFFFF+0x2i"},
                      {"uoct(-1+i)", "0o1777777777777777777777+i"},
                      {"ubin(5+10i)", "0b101+0b1010i"},
+                     {"hex(-3-4i)", "-0x3-0x4i"},
+                     {"oct(-8+8i)", "-0o10+0o10i"},
+                     {"1e-15+2i", "1e-015+2i"},
+                     {"-1e-15+2i", "-1e-015+2i"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

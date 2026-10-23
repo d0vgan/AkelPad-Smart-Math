@@ -293,6 +293,15 @@ namespace smartmath_internal {
     return a;
   }
 
+  inline std::uint64_t uint64MagnitudeOfInt64(long long v) {
+    return v < 0 ? (std::uint64_t{0} - static_cast<std::uint64_t>(v)) : static_cast<std::uint64_t>(v);
+  }
+
+  // mag must be <= 2^63.
+  inline long long int64FromNegatedMagnitude(std::uint64_t mag) {
+    return mag == (1ull << 63) ? (std::numeric_limits<long long>::min)() : -static_cast<long long>(mag);
+  }
+
   bool nearlyInt(double v, long long& out);
   bool parseUInt64FromDouble(double v, std::uint64_t& out);
   bool tryGetExactSignedInt64FromScalarPolicy(
@@ -308,6 +317,8 @@ namespace smartmath_internal {
   bool tryGetArrayIndexIntFromScalarValue(const EvalValue::ScalarValue& sIn, long long& outI);
   bool tryGetExactNonNegativeUInt64FromScalar(const EvalValue::ScalarValue& s, std::uint64_t& outU);
   bool tryGetSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
+  bool tryGetExactSignMagnitudeFromScalar(const EvalValue::ScalarValue& s, bool& isNeg, std::uint64_t& mag);
+  EvalValue makeScalarFromSignMagnitude(bool isNeg, std::uint64_t mag);
   bool tryGetBothExactSignedInt64NoUIntWrapFromScalars(
     const EvalValue::ScalarValue& a,
     const EvalValue::ScalarValue& b,
