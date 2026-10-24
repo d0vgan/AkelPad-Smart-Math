@@ -1,3 +1,4 @@
+// Command-line calculator on the C++ MathParser. Keep in sync with tools/calc.bas.
 #include "MathParser.hpp"
 
 #include <cctype>

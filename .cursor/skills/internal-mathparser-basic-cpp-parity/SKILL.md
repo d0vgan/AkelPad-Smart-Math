@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 # Internal: Basic/C++ Parity
 
-Load when Basic or C++ parser/test sources change and mirroring may be required.
+Load when Basic or C++ parser/test sources change and mirroring may be required, or when `cpp/calc.cpp` or `tools/calc.bas` changes.
 
 ## Porting rules
 
@@ -45,6 +45,15 @@ Do not "fix" these unless the user asks, and do not write shared tests that requ
   - `-(-9223372036854775808)` and `h(x)=-x; h(-9223372036854775808)`: C++ returns the exact `9223372036854775808` (as Python does); Basic returns the float `9.223372036854776e+018`, the same double value.
   - `0-(-9223372036854775808)`: both return the float `9.223372036854776e+018`; Python gives the exact integer.
 - Complex `ln`/`log` real part is `log(hypot(re, im))`, which can be one ulp from Python near `|z| = 1` (`log(1+i,2)` → `0.5000000000000001+...`, Python `0.5+...`). This is allowed floating-point inaccuracy: the tests expect the Python value with tolerant comparison.
+
+## Calc tools
+
+`cpp/calc.cpp` (C++ parser) and `tools/calc.bas` (Basic parser) are command-line calculators for testing each parser. They are always synchronized:
+
+- **Every change to one is made to the other in the same task**: options, argument parsing, help text, output and error formats, exit codes, enabled features, and stdin/terminal handling. Neither is ever left ahead of the other.
+- Allowed divergence is language-level only: runtime workarounds with no counterpart (for example `_dowildcard` in `calc.bas`, which stops the MinGW runtime from expanding `*` in arguments) and idiomatic structure. Record such items as no-ops.
+- After editing either, rebuild both (build-gates "Behavior probes") and run the same command lines through both, covering the changed behavior. Outputs must match except for the parser differences listed below.
+- **Cross-language verification:** an issue found while testing with either calc tool (wrong result, wrong error, crash, hang) is checked on the other with the same command line before it is reported or fixed. Report both outputs. If the other side has it too, fix both (fix-behavior flow); if not, say so and name the side that matches the reference.
 
 ## Reflection gate
 

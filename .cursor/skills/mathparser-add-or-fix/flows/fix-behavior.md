@@ -4,7 +4,7 @@ Load when fixing a reported defect or otherwise changing existing results or err
 
 ## 1) Reproduce on every side
 
-- Probe Basic and C++ with the same inputs before editing (probe tools: build-gates skill). For numeric or literal-parsing issues, probe both Basic bitness builds (build-gates "Bitness").
+- Probe Basic and C++ with the same inputs before editing; `tools/calc.exe` and `cpp/calc.exe` take identical command lines (probe tools: build-gates skill). A defect reported or found on one side is checked on the other (parity skill "Calc tools"). For numeric or literal-parsing issues, probe both Basic bitness builds (build-gates "Bitness").
 - Record the reference value for each input (smoke-tests flow: docs, Python, IEEE/exact-int rules). A case is a defect only if a side disagrees with the reference by more than floating-point inaccuracy (smoke-tests "Handling a test mismatch").
 - When the working tree already has uncommitted parser changes, probe `HEAD` too (build-gates "Probing `HEAD`") and say in the report whether the difference already existed or came from the current diff.
 

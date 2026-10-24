@@ -47,7 +47,7 @@ Ask concise clarifying questions if ambiguous.
 | Touches complex flag / Cartesian builtins / real↔complex paths, or code under `#if SMARTMATH_*` | `.cursor/skills/mathparser-add-or-fix/flows/complex-support.md` |
 | Authors or reviews smoke/parity **expectations**, or any test fails | `.cursor/skills/mathparser-add-or-fix/flows/smoke-tests.md` |
 | Edits `USAGE_AND_SYNTAX.md` | `.cursor/skills/mathparser-add-or-fix/flows/usage-docs.md` |
-| Changes Basic or C++ parser/tests (mirroring) | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
+| Changes Basic or C++ parser/tests (mirroring), or `cpp/calc.cpp` / `tools/calc.bas` | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
 | Is about to compile/run gates, probe behavior, or decide which gates apply | `.cursor/skills/internal-mathparser-build-gates/SKILL.md` |
 
 ## Required Workflow

@@ -1,4 +1,4 @@
-'' Command-line calculator on MathParser.bas (FreeBASIC twin of cpp/calc.cpp).
+'' Command-line calculator on MathParser.bas. Keep in sync with cpp/calc.cpp.
 #include once "crt/stdio.bi"
 #ifdef __FB_WIN32__
 #include once "crt/io.bi"

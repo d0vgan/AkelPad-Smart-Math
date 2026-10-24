@@ -26,7 +26,7 @@ Read on demand:
 | Editing `cpp/MathParser.hpp` / `.cpp`, or moving C++ functions off `MathParser` | `.cursor/skills/mathparser-add-or-fix/flows/cpp-class-design.md` |
 | Changing real/complex operator or builtin paths | `.cursor/skills/mathparser-add-or-fix/flows/complex-support.md` |
 | Adding or changing test expectations, or a test fails | `.cursor/skills/mathparser-add-or-fix/flows/smoke-tests.md` |
-| Mirroring Basic↔C++ | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
+| Mirroring Basic↔C++, or editing `cpp/calc.cpp` / `tools/calc.bas` | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
 | Before compile/test or choosing gates | `.cursor/skills/internal-mathparser-build-gates/SKILL.md` |
 
 Do not load the full `mathparser-add-or-fix` skill unless the task becomes a feature add or fix.
