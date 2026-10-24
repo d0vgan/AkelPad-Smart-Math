@@ -14,9 +14,6 @@ Each builtin is one id plus one row in each table; all tables are indexed by the
 - `BuiltinFunctionId`: add a `FUNC_*` enumerator.
 - `FunctionNames(FUNC_*) = FB_STR_*`: the only spelling (string constant per coding-standards). Elsewhere (dispatch, hints, keywords, reserved-name checks) use `FunctionNames(FUNC_*)` / `OperatorNames(OP_*)` or their wrappers, never name literals. UDFs then cannot reuse the name.
 - `K_BUILTIN_META_ROWS`: one row at the enum position with flags (`BUILTIN_FLAG_*`), min/max arity (`BUILTIN_META_ARITY_UNBOUNDED` for variadic), hint kind (`BHK_*`), unary scalar kind (`USK_*`, `USK_NONE` when not unary), and category (`BC_*`, which selects the dispatch family).
-
-`tools/gen_basic_builtin_meta.py` rewrites the Basic enums and `K_BUILTIN_META_ROWS` in place from the C++ `kBuiltinMeta` and `kUnaryScalarKind` tables. It overwrites `MathParser.bas`: protect-workspace first, then review the diff.
-
 ## 2) Implement in `MathParser.bas`
 
 - Route through the handler for the row's `BC_*` category; follow existing helper patterns.
