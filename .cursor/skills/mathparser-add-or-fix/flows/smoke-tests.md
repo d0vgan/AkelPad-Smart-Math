@@ -48,6 +48,7 @@ Both tolerant comparators treat an expected `0`, `±1`, or `±inf` strictly, com
 
 Both test suites include generated tables: `tools/*_generated*.bas` in `SmokeTest_MathParser.bas`, and `tools/*_generated*.cpp.inc` in `cpp/Tests_MathParser.cpp`. Any `tools/gen_*.py` that calls `NegBandProbe.exe` or `Tests_MathParser.exe --eval` (currently `gen_neg_band_cases.py` and `gen_new_coverage_tests.py`) takes its expectations from **parser output**.
 
+- The generators do not build anything: before regenerating, rebuild `tools/NegBandProbe.exe` (`tools/build_neg_band_probe.bat`) and `cpp/Tests_MathParser.exe` (C++ test build) from the current sources. A missing or stale probe silently gives old-parser output, or falls back to C++.
 - Treat a regeneration as a draft: diff it, and confirm every changed row against Python before committing.
 - `gen_neg_band_cases.py` prefers the Basic probe (32-bit when built by `tools/build_neg_band_probe.bat`, while smoke runs 64-bit) and falls back to C++ `--eval`. Existing band tables may come from C++ output, so a regeneration can change rows where Basic differs (for example the `±2^63` cases in the parity skill) or where the two bitness builds differ. Keep the reference value for those rows.
 - After a behavior fix, prefer editing the individual stale rows by hand over regenerating.
