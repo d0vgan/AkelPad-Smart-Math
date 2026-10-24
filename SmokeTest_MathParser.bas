@@ -1632,10 +1632,11 @@ private sub RunComplexNumberSupportOptionTests()
     end if
   next uei
 
-  dim cxSortRatioOk(1 to 24) as String
-  dim cxSortRatioExpect(1 to 24) as String
+  dim cxSortRatioOk(1 to 25) as String
+  dim cxSortRatioExpect(1 to 25) as String
   cxSortRatioOk(1) = "sortby((3+4i, 1+2i), abs)": cxSortRatioExpect(1) = "(1+2i, 3+4i)"
   cxSortRatioOk(6) = "sortby((3+4i, 1+2i), polar)": cxSortRatioExpect(6) = "(1+2i, 3+4i)"
+  cxSortRatioOk(25) = "sortby((3+2i, 2+3i, 2-3i, 3-2i), x: x)": cxSortRatioExpect(25) = "(2-3i, 2+3i, 3-2i, 3+2i)"
   cxSortRatioOk(2) = "ratio(1+2i)": cxSortRatioExpect(2) = "1+2i"
   cxSortRatioOk(3) = "ratio(0.5+0.25i)": cxSortRatioExpect(3) = "1/2+1/4*i"
   cxSortRatioOk(4) = "ratio(2+3i)": cxSortRatioExpect(4) = "2+3i"
@@ -1659,7 +1660,7 @@ private sub RunComplexNumberSupportOptionTests()
   cxSortRatioOk(23) = "ratio(1/2+3i/4)": cxSortRatioExpect(23) = "1/2+3/4*i"
   cxSortRatioOk(24) = "3+ratio(0.2)i": cxSortRatioExpect(24) = "3+0.2i"
   dim sri as Integer
-  for sri = 1 to 24
+  for sri = 1 to 25
     if Parser_TryEvaluateEx(cxSortRatioOk(sri), r, rt, ia) = FALSE orelse rt <> cxSortRatioExpect(sri) then
       print "[complex-opt] FAIL: """ & cxSortRatioOk(sri) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       print "[complex-opt]      want: """ & cxSortRatioExpect(sri) & """"
@@ -2869,7 +2870,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1469) as SmokeCase
+  dim tests(1 to 1470) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4407,6 +4408,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   ' === failed assignment must not store the variable ===
   tests(1468).expr = "failasgvar=failasgunknown+1": tests(1468).expectedErrContains = "unknown variable: failasgunknown" ' [assign] unknown rhs
   tests(1469).expr = "failasgvar": tests(1469).expectedErrContains = "unknown variable: failasgvar" ' [assign] not stored
+  tests(1470).expr = "sortby(flat(1:30, 91, 89), x: x)": tests(1470).expected = "(89,01:30,91)" ' [sortby] identity key: duration compared as seconds (1:30 = 90)
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

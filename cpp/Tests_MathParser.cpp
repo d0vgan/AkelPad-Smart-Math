@@ -3726,6 +3726,10 @@ std::vector<TestCase> buildSortbyRatioCases() {
                [](std::string& why) {
                  MathParser p;
                  if (!expectEval(p, "sortby((1:30,0:30,1:00), milliseconds)", "(00:30,01:00,01:30)", why)) return false;
+#if SMARTMATH_LAMBDA_FUNCTIONS
+                 // Identity key: duration compared as seconds (USAGE: 1:30 is 90s).
+                 if (!expectEval(p, "sortby(flat(1:30, 91, 89), x: x)", "(89,01:30,91)", why)) return false;
+#endif
                  return true;
                }});
   t.push_back({"sortby/ratio: UDF divide duration via sortby",
@@ -6003,7 +6007,10 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"ratio((1+i)/(1-i))", "i"},
                      {"ratio(3i/2)", "3/2*i"},
                      {"ratio(1/2+3i/4)", "1/2+3/4*i"},
-                     {"3+ratio(0.2)i", "3+0.2i"}
+                     {"3+ratio(0.2)i", "3+0.2i"},
+#if SMARTMATH_LAMBDA_FUNCTIONS
+                     {"sortby((3+2i, 2+3i, 2-3i, 3-2i), x: x)", "(2-3i,2+3i,3-2i,3+2i)"}
+#endif
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);
