@@ -30,7 +30,7 @@ A function is a `MathParser` member only when it reads or writes session state: 
 | A feature flag and otherwise pure math | Pure function taking the flag or a small options value; `MathParser` passes the flag in |
 | Session state | `MathParser` method |
 
-Do not add a `static` private `MathParser` method. About 160 private declarations are already static and are the extraction set.
+Do not add a `static` private `MathParser` method. The existing ones (the `static` declarations in `cpp/MathParser.hpp`) are the extraction set for the cleanup order below.
 
 Do not pass `const MathParser&` into a helper to reach one lookup or one flag. Pass that fact.
 
@@ -43,7 +43,7 @@ Move operations off `MathParser` as functions first. Leave the nested types in p
 - **`EvalValue` / `ScalarValue`** — factories (`makeScalar`, `makeScalarInt`, `makeScalarUInt`, time and complex constructors), exact-metadata flags, negate, numeric real/imag, array walks that only read values. One `ScalarValue` layout stays; `vector<ScalarValue>` stays contiguous.
 - **`RawResult`** — public snapshot. Stays a nested public type; field layout stays stable. Conversion from `EvalValue` is an internal function called by `getRawResult()`. Do not add `RawResult::from(EvalValue)`: that would publish `EvalValue`.
 - **Formatting** — free functions of `(const EvalValue&, RenderBase)`. `getResult` / `getResultAsHex` / `getResultAsDec` / `getResultAsOct` / `getResultAsBin` stay one-liners on the session.
-- **`EvalContext`** — parse cursor and errors. One `setError(ParseErrorId)` (plus the few messages that need a name or a count). Do not add `setFooError`.
+- **`EvalContext`** — parse cursor and errors. Errors go through `EvalContext::fail(ParseErrorId)`, or `fail(msg)` for the few messages that need a name or a count. Do not add per-error setters (`setFooError`).
 - **`Expr`** — node constructors and structural queries (`makeBinaryExpr`, scalar-only checks).
 - **Builtin handlers** — file-local functions or an existing family function (`builtinUnaryMath`, `builtinAggregateFamily`, `builtinScalarBinaryFamily`, and the other family routers). Indexed from `kBuiltinMeta` / `BuiltinFunctionId`.
 
@@ -53,7 +53,7 @@ Real / complex / time differences are a policy or a function chosen from metadat
 
 ## Adding a builtin or operator (C++)
 
-1. One `BuiltinFunctionId` enumerator, one `kBuiltinMeta` row, one `FunctionNames` entry. Name tables stay the only spellings (coding-standards / implement-function).
+1. Register per implement-function step 4 (`BuiltinFunctionId`, `functionNames()`, `kBuiltinMeta`, `kUnaryScalarKind`). Name tables stay the only spellings.
 2. Math in a file-local function or on `ScalarValue` / `smartmath_internal`.
 3. Route through the existing family handler when the category already exists.
 4. Reuse `ParseErrorId`. A new id is a data change, not a new method.
@@ -61,7 +61,9 @@ Real / complex / time differences are a policy or a function chosen from metadat
 
 ## Cleanup order
 
-1. Error setters onto `EvalContext`.
+Single home for the extraction order (`mathparser-refactor` links here). Moving functions is cleanup work; feature and fix tasks leave existing class shape alone.
+
+1. Error setters onto `EvalContext::fail`.
 2. Static exact-int and scalar factories onto `ScalarValue` / `smartmath_internal`.
 3. `toRawResult` and formatting off the session.
 4. Lexer helpers (`skipSpaces`, identifier tests, `toLower`, `trim`) to file-local functions.
@@ -69,7 +71,7 @@ Real / complex / time differences are a policy or a function chosen from metadat
 
 Leave `compile`, `parseProgram`, `evalExpr`, and `runCompiledProgram` on `MathParser` until those clusters are done. Splitting `MathParser.cpp` into more files while every function remains a class method does not change the design.
 
-If a task already edits a static `MathParser` helper, move that helper off the class in the same edit when the declaration, definition, and call sites are in that cluster. Leave unrelated methods where they are.
+During a cleanup task that already edits a static `MathParser` helper, move that helper off the class in the same edit when the declaration, definition, and call sites are in that cluster. Leave unrelated methods where they are. Feature and fix tasks only place **new** helpers per this flow.
 
 ## Do not
 
