@@ -5,3 +5,4 @@
 *.zip
 tools/backup/*
 tools/__pycache__/*
+tools/_site/
