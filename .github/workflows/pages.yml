@@ -4,7 +4,8 @@ on:
   push:
     branches: [main, feature/maintenance-and-cpp-calc]
     paths:
-      - "cpp/**"
+      - "cpp/calc_wasm.cpp"
+      - "cpp/MathParser*.*"
       - "tools/*.inc"
       - "tools/build_web.py"
       - "tools/web/**"

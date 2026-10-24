@@ -9,8 +9,9 @@ Output folder (default: tools/_site):
 Usage:
   python tools/build_web.py [--out DIR] [--no-help] [--tests]
 
---tests also builds cpp/Tests_MathParser.cpp with Emscripten and runs it with Node.js,
-so the WebAssembly build of the parser is checked against the same tests as the MSVC build.
+--tests also builds cpp/Tests_MathParser.cpp with Emscripten into tools/_wasm-tests/
+and runs it with Node.js, so the WebAssembly build of the parser is checked against
+the same tests as the MSVC build.
 em++, pandoc and node are looked up on PATH.
 """
 
@@ -21,8 +22,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TOOLS = Path(__file__).resolve().parent
 CPP = ROOT / "cpp"
-WEB = Path(__file__).resolve().parent / "web"
+WEB = TOOLS / "web"
+WASM_TESTS = TOOLS / "_wasm-tests"
 
 PARSER_SOURCES = ["MathParser.cpp", "MathParserFactorInt.cpp", "MathParserRawResult.cpp"]
 STATIC_FILES = ["index.html", "app.js", "style.css"]
@@ -82,7 +85,7 @@ def run_tests(build_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Build the SmartMath web calculator.")
-    parser.add_argument("--out", default=str(Path(__file__).resolve().parent / "_site"),
+    parser.add_argument("--out", default=str(TOOLS / "_site"),
                         help="output folder (default: tools/_site)")
     parser.add_argument("--no-help", action="store_true", help="skip help.html (no pandoc needed)")
     parser.add_argument("--tests", action="store_true", help="also build and run the C++ tests under Node.js")
@@ -97,7 +100,7 @@ def main():
     if not args.no_help:
         build_help(out_dir)
     if args.tests:
-        run_tests(ROOT / "_build" / "wasm-tests")
+        run_tests(WASM_TESTS)
     print(f"Done: {out_dir}")
 
 
