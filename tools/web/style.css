@@ -173,6 +173,7 @@ body.is-resizing .calc-page {
 
 .help-page {
   display: flex;
+  align-items: flex-start;
   flex: 1;
   min-height: 0;
   gap: 16px;
@@ -181,6 +182,7 @@ body.is-resizing .calc-page {
   margin: 0 auto;
   padding: 16px 12px;
   overflow: auto;
+  background: #eceef2;
 }
 
 .help-page nav {
@@ -194,7 +196,7 @@ body.is-resizing .calc-page {
   padding: 10px 14px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  background: #fff;
+  background: #eceef2;
   font-size: 13px;
 }
 
@@ -208,22 +210,23 @@ body.is-resizing .calc-page {
 .help-page main {
   flex: 1;
   min-width: 0;
+  min-height: calc(100% - 32px);
   padding: 8px 28px 28px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  background: #fff;
+  background: #eceef2;
 }
 
 .help-page main h1 { font-size: 26px; }
 .help-page main h2 { margin-top: 32px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; font-size: 21px; }
 .help-page main h3 { margin-top: 22px; font-size: 17px; }
 .help-page main a { color: #2563eb; }
-.help-page main code { padding: 1px 4px; border-radius: 3px; background: #f3f4f6; font-size: 0.92em; }
-.help-page main pre { padding: 10px 12px; overflow-x: auto; border-radius: 4px; background: #f3f4f6; }
+.help-page main code { padding: 1px 4px; border-radius: 3px; background: #e2e5ea; font-size: 0.92em; }
+.help-page main pre { padding: 10px 12px; overflow-x: auto; border-radius: 4px; background: #e2e5ea; }
 .help-page main pre code { padding: 0; background: none; }
 .help-page main table { border-collapse: collapse; margin: 8px 0; }
 .help-page main th, .help-page main td { padding: 4px 10px; border: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
-.help-page main th { background: #f9fafb; }
+.help-page main th { background: #e4e7ec; }
 
 .web-note {
   margin: 16px 0 0;

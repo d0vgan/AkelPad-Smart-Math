@@ -137,7 +137,7 @@ const helpHost = document.getElementById('helpHost');
 const helpBtn = document.getElementById('helpBtn');
 const splitter = document.getElementById('splitter');
 
-const kDefaultHelpRatio = 0.7;
+const kDefaultHelpRatio = 0.65;
 const kMinPanePx = 180;
 let helpRatio = kDefaultHelpRatio;
 let helpOpen = false;
