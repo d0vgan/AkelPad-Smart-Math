@@ -553,7 +553,6 @@ With complex numbers, the meaning of functions is different:
 - `exp(a + b*i)`: `exp(a)*(cos(b) + i*sin(b))`
 - `ln(c)`: `ln(abs(c)) + i*phase(c)`
 - `log(c, base)`: `ln(c)/ln(base)`
-- `log(0, base)`, `log(c, 0)`, and `log(c, 1)` -> `numeric error in log()` (same as without complex numbers)
 
 ### Power and Root
 
