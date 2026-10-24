@@ -5754,7 +5754,9 @@ EvalValue calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s)
 
   if (x > K_MAX_EXACT_INT_FROM_DOUBLE || x < -K_MAX_EXACT_INT_FROM_DOUBLE)
   {
-    if (x <= (std::numeric_limits<long long>::max)() && x >= (std::numeric_limits<long long>::min)())
+    const double p63 = std::ldexp(1.0, 63);
+    // [-2^63, 2^63): LLONG_MAX is not a double, so do not convert it (clang -Wimplicit-const-int-float-conversion).
+    if (x < p63 && x >= -p63)
       return makeScalarInt(static_cast<long long>(x));
 
     const double p64 = std::ldexp(1.0, 64);
