@@ -765,7 +765,6 @@ Purpose: complex numbers utilities.
   - `cart((2.236068, 1.107149))` -> `0.999999+2i`
   - `cart(2.236068, 1.107149)` -> `0.999999+2i`
   - `conj(1+2i)` -> `1-2i`
-
 - See also:
   - [Complex Number Operators](#complex-number-operators)
   - [Trigonometric and Hyperbolic With Complex Numbers](#trigonometric-and-hyperbolic-with-complex-numbers)
