@@ -9,6 +9,7 @@ on:
       - "tools/*.inc"
       - "tools/build_web.py"
       - "tools/web/**"
+      - "AkelFiles/Plugs/Coder/smartmath.coder"
       - "USAGE_AND_SYNTAX.md"
       - ".github/workflows/pages.yml"
   workflow_dispatch:

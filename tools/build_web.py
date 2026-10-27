@@ -2,6 +2,7 @@
 
 Output folder (default: tools/_site):
   index.html, app.js, style.css   copied from tools/web/
+  builtin-functions.js            function names from AkelFiles/Plugs/Coder/smartmath.coder
   smartmath.js, smartmath.wasm    cpp/calc_wasm.cpp + the C++ MathParser, built with Emscripten (emcc)
   help.html                       USAGE_AND_SYNTAX.md converted with pandoc
                                   (the AkelPad-only "SmartMath Options" section is omitted)
@@ -44,6 +45,36 @@ def tool(name):
 def run(args):
     print("+ " + " ".join(str(a) for a in args), flush=True)
     subprocess.run([str(a) for a in args], check=True)
+
+
+def coder_function_names():
+    path = ROOT / "AkelFiles" / "Plugs" / "Coder" / "smartmath.coder"
+    names = []
+    in_functions = False
+    for line in path.read_text(encoding="utf-16").splitlines():
+        stripped = line.strip()
+        if not in_functions:
+            if stripped == "; functions:":
+                in_functions = True
+            continue
+        if not stripped or stripped.startswith(";"):
+            break
+        names.append(stripped.split()[-1])
+    if not names:
+        sys.exit(f"error: no function names found in {path}")
+    return names
+
+
+def write_builtin_functions(out_dir):
+    names = coder_function_names()
+    lines = [
+        "// Generated from AkelFiles/Plugs/Coder/smartmath.coder (the ; functions: section).",
+        "export default new Set([",
+    ]
+    lines.extend(f'  "{name}",' for name in names)
+    lines.append("]);\n")
+    (out_dir / "builtin-functions.js").write_text("\n".join(lines), encoding="utf-8")
+    print(f"+ wrote {len(names)} builtin function names")
 
 
 def build_wasm(out_dir):
@@ -95,6 +126,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     for name in STATIC_FILES:
         shutil.copy2(WEB / name, out_dir / name)
+    write_builtin_functions(out_dir)
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
     build_wasm(out_dir)
     if not args.no_help:

@@ -1,8 +1,10 @@
 import createSmartMath from './smartmath.js';
+import builtinFunctions from './builtin-functions.js';
 
 const consoleBox = document.getElementById('console');
 const output = document.getElementById('output');
 const input = document.getElementById('input');
+const inputHighlight = document.getElementById('inputHighlight');
 const statusLine = document.getElementById('status');
 
 const history = [];
@@ -13,7 +15,11 @@ let calc = null;
 function appendLine(text, className) {
   const div = document.createElement('div');
   div.className = 'line ' + className;
-  div.textContent = text;
+  if (className === 'in') {
+    div.innerHTML = highlightExpression(text);
+  } else {
+    div.textContent = text;
+  }
   output.appendChild(div);
   return div;
 }
@@ -55,6 +61,63 @@ async function evaluateLines(lines) {
   scrollToEnd();
 }
 
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function highlightExpression(text, selStart, selEnd) {
+  const from = selStart ?? 0;
+  const to = selEnd ?? 0;
+  let html = '';
+  const ident = /[A-Za-z_][A-Za-z0-9_]*/g;
+  let last = 0;
+  let match;
+  while ((match = ident.exec(text)) !== null) {
+    html += escapeHtml(text.slice(last, match.index));
+    const token = match[0];
+    if (builtinFunctions.has(token.toLowerCase())) {
+      html += highlightFnToken(token, match.index, from, to);
+    } else {
+      html += escapeHtml(token);
+    }
+    last = match.index + token.length;
+  }
+  return html + escapeHtml(text.slice(last));
+}
+
+function highlightFnToken(token, tokStart, selStart, selEnd) {
+  if (!(selEnd > selStart)) {
+    return '<span class="fn">' + escapeHtml(token) + '</span>';
+  }
+  const a = Math.max(0, Math.min(token.length, selStart - tokStart));
+  const b = Math.max(0, Math.min(token.length, selEnd - tokStart));
+  let html = '';
+  if (a > 0) {
+    html += '<span class="fn">' + escapeHtml(token.slice(0, a)) + '</span>';
+  }
+  if (b > a) {
+    html += escapeHtml(token.slice(a, b));
+  }
+  if (b < token.length) {
+    html += '<span class="fn">' + escapeHtml(token.slice(b)) + '</span>';
+  }
+  return html;
+}
+
+function syncInputHighlight() {
+  inputHighlight.innerHTML = highlightExpression(
+    input.value,
+    input.selectionStart,
+    input.selectionEnd
+  );
+  inputHighlight.scrollLeft = input.scrollLeft;
+}
+
+function setInputValue(value) {
+  input.value = value;
+  syncInputHighlight();
+}
+
 function remember(line) {
   if (line.trim() !== '' && history[history.length - 1] !== line) {
     history.push(line);
@@ -66,19 +129,27 @@ input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     const line = input.value;
-    input.value = '';
+    setInputValue('');
     remember(line);
     evaluateLines([line]);
   } else if (e.key === 'ArrowUp' && historyPos > 0) {
     e.preventDefault();
-    input.value = history[--historyPos];
+    setInputValue(history[--historyPos]);
   } else if (e.key === 'ArrowDown' && historyPos < history.length) {
     e.preventDefault();
     historyPos++;
-    input.value = historyPos < history.length ? history[historyPos] : '';
+    setInputValue(historyPos < history.length ? history[historyPos] : '');
   } else if (e.key === 'Escape') {
-    input.value = '';
+    setInputValue('');
     historyPos = history.length;
+  }
+});
+
+input.addEventListener('input', syncInputHighlight);
+input.addEventListener('scroll', syncInputHighlight);
+document.addEventListener('selectionchange', () => {
+  if (document.activeElement === input) {
+    syncInputHighlight();
   }
 });
 
@@ -92,7 +163,7 @@ input.addEventListener('paste', (e) => {
   if (lines[lines.length - 1] === '') {
     lines.pop();
   }
-  input.value = '';
+  setInputValue('');
   lines.forEach(remember);
   evaluateLines(lines);
 });
