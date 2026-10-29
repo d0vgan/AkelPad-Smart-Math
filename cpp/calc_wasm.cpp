@@ -1,4 +1,4 @@
-// WebAssembly calculator for the web page in tools/web/. Built by tools/build_web.py with Emscripten.
+// WebAssembly calculator for the web page in tools/web/. Built by tools/build_web_calc.py with Emscripten.
 #include "MathParser.hpp"
 
 #include <emscripten/bind.h>

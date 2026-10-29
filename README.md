@@ -47,7 +47,7 @@ The full expression language reference (functions, operators, precedence, arrays
 The C++ parser is also published as a WebAssembly page (console layout, Help opens the language reference):
 - https://d0vgan.github.io/AkelPad-Smart-Math/
 
-To rebuild the site locally: install [Emscripten](https://emscripten.org/) and [Pandoc](https://pandoc.org/), then run `python tools/build_web.py`. The output is `tools/_site/`. GitHub Actions rebuilds and deploys it on every push to `main` that touches the parser, `tools/web/`, or `USAGE_AND_SYNTAX.md`. In the repo Settings, Pages → Source must be **GitHub Actions**.
+To rebuild the site locally: install [Emscripten](https://emscripten.org/) and [Pandoc](https://pandoc.org/), then run `python tools/build_web_calc.py`. The output is `tools/_site/`. GitHub Actions rebuilds and deploys it on every push to `main` that touches the parser, `tools/web/`, or `USAGE_AND_SYNTAX.md`. In the repo Settings, Pages → Source must be **GitHub Actions**.
 
 ### 📦 Installation
 1.  Locate your AkelPad installation directory.

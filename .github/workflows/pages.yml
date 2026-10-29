@@ -7,7 +7,7 @@ on:
       - "cpp/calc_wasm.cpp"
       - "cpp/MathParser*.*"
       - "tools/*.inc"
-      - "tools/build_web.py"
+      - "tools/build_web_calc.py"
       - "tools/web/**"
       - "AkelFiles/Plugs/Coder/smartmath.coder"
       - "USAGE_AND_SYNTAX.md"
@@ -39,7 +39,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pandoc
 
       - name: Build the site and run the C++ tests under WebAssembly
-        run: python3 tools/build_web.py --out tools/_site --tests
+        run: python3 tools/build_web_calc.py --out tools/_site --tests
 
       - uses: actions/upload-pages-artifact@v3
         with:

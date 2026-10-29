@@ -8,7 +8,7 @@ Output folder (default: tools/_site):
                                   (the AkelPad-only "SmartMath Options" section is omitted)
 
 Usage:
-  python tools/build_web.py [--out DIR] [--no-help] [--tests]
+  python tools/build_web_calc.py [--out DIR] [--no-help] [--tests]
 
 --tests also builds cpp/Tests_MathParser.cpp with Emscripten into tools/_wasm-tests/
 and runs it with Node.js, so the WebAssembly build of the parser is checked against
