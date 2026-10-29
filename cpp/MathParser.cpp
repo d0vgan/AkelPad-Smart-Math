@@ -11436,14 +11436,6 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     const std::string& fnName,
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
-  auto keyForUnique = [](double v) -> std::uint64_t {
-    std::uint64_t bits = 0;
-    static_assert(sizeof(bits) == sizeof(v));
-    std::memcpy(&bits, &v, sizeof(bits));
-    // Canonicalize signed zero to preserve equality semantics of (0 == -0).
-    if ((bits << 1) == 0) bits = 0;
-    return bits;
-  };
   auto dedupUniqueInPlace = [&](std::vector<EvalValue>& values) {
 #if SMARTMATH_COMPLEX_NUMBERS
     bool useComplexDedup = false;
@@ -11481,7 +11473,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       return;
     }
 #endif
-    std::unordered_set<std::uint64_t> seen;
+    std::unordered_set<double> seen;
     seen.reserve(values.size() * 2 + 1);
     std::size_t writePos = 0;
     for (std::size_t readPos = 0; readPos < values.size(); ++readPos) {
@@ -11490,7 +11482,9 @@ MathParser::EvalValue MathParser::builtinSortFamily(
         values[writePos++] = values[readPos]; // NaN never equals NaN in existing semantics; keep all.
         continue;
       }
-      if (seen.insert(keyForUnique(v)).second) {
+      // Canonicalize signed zero to preserve equality semantics of (0 == -0).
+      const double key = (v == 0.0) ? 0.0 : v;
+      if (seen.insert(key).second) {
         values[writePos++] = values[readPos];
       }
     }
