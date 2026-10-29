@@ -13,7 +13,9 @@ Usage:
 --tests also builds cpp/Tests_MathParser.cpp with Emscripten into tools/_wasm-tests/
 and runs it with Node.js, so the WebAssembly build of the parser is checked against
 the same tests as the MSVC build.
-em++, pandoc and node are looked up on PATH.
+em++, pandoc and node are looked up on PATH. The tools this run will
+actually call are checked first; any that are missing are listed, with a
+link to where to get them, and the build stops before it writes anything.
 """
 
 import argparse
@@ -34,12 +36,39 @@ STATIC_FILES = ["index.html", "app.js", "style.css"]
 # The parser recurses per nesting level; Emscripten's default 64 KB stack is far below MSVC's 1 MB.
 COMMON_EMCC_FLAGS = ["-O2", "-sALLOW_MEMORY_GROWTH=1", "-sSTACK_SIZE=4MB"]
 
+# Printed when the tool is not on PATH. Keyed by the executable name.
+TOOL_HINTS = {
+    "em++": "Emscripten SDK (activate it so em++ is on PATH): https://emscripten.org/docs/getting_started/downloads.html",
+    "pandoc": "Pandoc (or rerun with --no-help): https://pandoc.org/installing.html",
+    "node": "Node.js: https://nodejs.org/",
+}
 
-def tool(name):
-    path = shutil.which(name)
-    if path is None:
-        sys.exit(f"error: '{name}' was not found on PATH")
-    return path
+
+def tools_needed(no_help, tests):
+    names = ["em++"]
+    if not no_help:
+        names.append("pandoc")
+    if tests:
+        names.append("node")
+    return names
+
+
+def resolve_tools(names):
+    resolved = {}
+    missing = []
+    for name in names:
+        path = shutil.which(name)
+        if path is None:
+            missing.append(name)
+        else:
+            resolved[name] = path
+    if missing:
+        width = max(len(name) for name in missing)
+        lines = ["error: missing tools (not on PATH):"]
+        for name in missing:
+            lines.append(f"  {name:<{width}}  {TOOL_HINTS[name]}")
+        sys.exit("\n".join(lines))
+    return resolved
 
 
 def run(args):
@@ -77,9 +106,9 @@ def write_builtin_functions(out_dir):
     print(f"+ wrote {len(names)} builtin function names")
 
 
-def build_wasm(out_dir):
+def build_wasm(out_dir, emxx):
     sources = [CPP / "calc_wasm.cpp"] + [CPP / s for s in PARSER_SOURCES]
-    run([tool("em++"), "-std=c++17", *COMMON_EMCC_FLAGS, "-lembind",
+    run([emxx, "-std=c++17", *COMMON_EMCC_FLAGS, "-lembind",
          "-sMODULARIZE=1", "-sEXPORT_ES6=1", "-sEXPORT_NAME=createSmartMath",
          "-sENVIRONMENT=web",
          *sources, "-o", out_dir / "smartmath.js"])
@@ -94,8 +123,8 @@ def markdown_for_web_help():
     return text[:cut].rstrip() + "\n"
 
 
-def build_help(out_dir):
-    args = [tool("pandoc"), "--from=gfm", "--to=html5", "--standalone",
+def build_help(out_dir, pandoc):
+    args = [pandoc, "--from=gfm", "--to=html5", "--standalone",
             "--toc", "--toc-depth=3",
             "--template", WEB / "help-template.html",
             "--metadata", "pagetitle=SmartMath Usage and Syntax",
@@ -105,13 +134,13 @@ def build_help(out_dir):
                    text=True, encoding="utf-8", check=True)
 
 
-def run_tests(build_dir):
+def run_tests(build_dir, emxx, node):
     build_dir.mkdir(parents=True, exist_ok=True)
     test_js = build_dir / "Tests_MathParser.js"
     sources = [CPP / "Tests_MathParser.cpp"] + [CPP / s for s in PARSER_SOURCES]
-    run([tool("em++"), "-std=c++14", *COMMON_EMCC_FLAGS, "-sENVIRONMENT=node",
+    run([emxx, "-std=c++14", *COMMON_EMCC_FLAGS, "-sENVIRONMENT=node",
          *sources, "-o", test_js])
-    run([tool("node"), test_js])
+    run([node, test_js])
 
 
 def main():
@@ -121,6 +150,7 @@ def main():
     parser.add_argument("--no-help", action="store_true", help="skip help.html (no pandoc needed)")
     parser.add_argument("--tests", action="store_true", help="also build and run the C++ tests under Node.js")
     args = parser.parse_args()
+    tools = resolve_tools(tools_needed(args.no_help, args.tests))
 
     out_dir = Path(args.out).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -128,11 +158,11 @@ def main():
         shutil.copy2(WEB / name, out_dir / name)
     write_builtin_functions(out_dir)
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
-    build_wasm(out_dir)
+    build_wasm(out_dir, tools["em++"])
     if not args.no_help:
-        build_help(out_dir)
+        build_help(out_dir, tools["pandoc"])
     if args.tests:
-        run_tests(WASM_TESTS)
+        run_tests(WASM_TESTS, tools["em++"], tools["node"])
     print(f"Done: {out_dir}")
 
 
