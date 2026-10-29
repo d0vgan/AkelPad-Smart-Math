@@ -1879,6 +1879,10 @@ std::vector<TestCase> buildNanInfCases() {
                  MathParser p;
                  return expectEval(p, "nan==nan", "0", why);
                }});
+  t.push_back({"naninf/nan==-nan literal false", [](std::string& why) {
+                 MathParser p;
+                 return expectEval(p, "nan==-nan", "0", why);
+               }});
   t.push_back({"naninf/nan!=nan literal true", [](std::string& why) {
                  MathParser p;
                  return expectEval(p, "nan!=nan", "1", why);
@@ -4715,6 +4719,10 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "reverse(1,Inf,2)", "(2,inf,1)"},
     {ParityBasicCase::Kind::Expected, "reversed(1,Inf,2)", "(2,inf,1)"},
     {ParityBasicCase::Kind::Expected, "unique(1,Inf,2,Inf)", "(1,inf,2)"},
+    {ParityBasicCase::Kind::Expected, "unique(1, nan, inf, 3, nan, -inf, nan, -inf, inf)", "(1,nan,inf,3,-inf)"},
+    {ParityBasicCase::Kind::Expected, "unique(nan, -nan, nan)", "(nan)"},
+    {ParityBasicCase::Kind::Expected, "unique(inf, -inf, inf, -inf)", "(inf,-inf)"},
+    {ParityBasicCase::Kind::Expected, "nan==-nan", "0"},
     {ParityBasicCase::Kind::Expected, "unpack(1,Inf,2)", "(1,inf,2)"},
     {ParityBasicCase::Kind::Expected, "flat(1,Inf,2)", "(1,inf,2)"},
     {ParityBasicCase::Kind::Expected, "sum(unpack(1,Inf,2))", "inf"},
@@ -5944,6 +5952,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"flat(1, Inf+2i, 3)", "(1,inf+2i,3)"},
                      {"flat(1, 2+Inf*i, 3)", "(1,2+inf*i,3)"},
                      {"((1+2i, 3), 4)", "(1+2i,3,4)"},
+                     {"unique(2, nan+i, nan, 1+nan*i)", "(2,nan)"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

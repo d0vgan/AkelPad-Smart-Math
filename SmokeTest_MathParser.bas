@@ -1276,8 +1276,8 @@ private sub RunComplexNumberSupportOptionTests()
   next xi
 
   ' Aggregation/array utilities with complex operands (allowed vs rejected builtins).
-  dim cxAggOk(1 to 37) as String
-  dim cxAggExpect(1 to 37) as String
+  dim cxAggOk(1 to 38) as String
+  dim cxAggExpect(1 to 38) as String
   cxAggOk(1) = "sum(1+2i, 3)": cxAggExpect(1) = "4+2i"
   cxAggOk(2) = "sum((1+2i, 3+4i))": cxAggExpect(2) = "4+6i"
   cxAggOk(3) = "prod(1+i, 2)": cxAggExpect(3) = "2+2i"
@@ -1315,9 +1315,10 @@ private sub RunComplexNumberSupportOptionTests()
   cxAggOk(35) = "flat(1, Inf+2i, 3)": cxAggExpect(35) = "(1, inf+2i, 3)"
   cxAggOk(36) = "flat(1, 2+Inf*i, 3)": cxAggExpect(36) = "(1, 2+inf*i, 3)"
   cxAggOk(37) = "((1+2i, 3), 4)": cxAggExpect(37) = "(1+2i, 3, 4)"
+  cxAggOk(38) = "unique(2, nan+i, nan, 1+nan*i)": cxAggExpect(38) = "(2, nan)"
 
   dim agi as Integer
-  for agi = 1 to 37
+  for agi = 1 to 38
     if Parser_TryEvaluateEx(cxAggOk(agi), r, rt, ia) = FALSE orelse rt <> cxAggExpect(agi) then
       print "[complex-opt] FAIL: """ & cxAggOk(agi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -2870,7 +2871,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
 end sub
 
 sub Main()
-  dim tests(1 to 1470) as SmokeCase
+  dim tests(1 to 1474) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4409,6 +4410,11 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1468).expr = "failasgvar=failasgunknown+1": tests(1468).expectedErrContains = "unknown variable: failasgunknown" ' [assign] unknown rhs
   tests(1469).expr = "failasgvar": tests(1469).expectedErrContains = "unknown variable: failasgvar" ' [assign] not stored
   tests(1470).expr = "sortby(flat(1:30, 91, 89), x: x)": tests(1470).expected = "(89,01:30,91)" ' [sortby] identity key: duration compared as seconds (1:30 = 90)
+  ' unique keeps the first NaN only. nan == nan stays 0. +inf and -inf each collapse to the first copy.
+  tests(1471).expr = "unique(1, nan, inf, 3, nan, -inf, nan, -inf, inf)": tests(1471).expected = "(1, nan, inf, 3, -inf)" ' [unique-nan]
+  tests(1472).expr = "unique(nan, -nan, nan)": tests(1472).expected = "(nan)" ' [unique-nan] -nan counts as the same NaN slot
+  tests(1473).expr = "unique(inf, -inf, inf, -inf)": tests(1473).expected = "(inf, -inf)" ' [unique-nan] opposite infinities stay distinct
+  tests(1474).expr = "nan==-nan": tests(1474).expected = "0" ' [unique-nan] sign bit does not make NaNs equal
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

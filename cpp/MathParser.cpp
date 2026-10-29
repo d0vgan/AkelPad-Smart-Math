@@ -11437,6 +11437,13 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     BuiltinFunctionId id,
     const std::vector<EvalValue>& args) const {
   auto dedupUniqueInPlace = [&](std::vector<EvalValue>& values) {
+    bool seenNan = false;
+    auto isNanBearing = [](const EvalValue& ev) {
+      double re = 0.0;
+      double im = 0.0;
+      scalarLoadCartesian(ev.scalarValue, re, im);
+      return std::isnan(re) || std::isnan(im);
+    };
 #if SMARTMATH_COMPLEX_NUMBERS
     bool useComplexDedup = false;
     if (getSupportComplexNumbers()) {
@@ -11451,6 +11458,13 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       std::vector<EvalValue> out;
       out.reserve(values.size());
       for (const auto& ev : values) {
+        if (isNanBearing(ev)) {
+          if (!seenNan) {
+            seenNan = true;
+            out.push_back(ev);
+          }
+          continue;
+        }
         bool seen = false;
         for (const auto& prev : out) {
           int cmpDup = 0;
@@ -11478,8 +11492,12 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     std::size_t writePos = 0;
     for (std::size_t readPos = 0; readPos < values.size(); ++readPos) {
       const double v = values[readPos].scalarValue.scalar;
-      if (std::isnan(v)) {
-        values[writePos++] = values[readPos]; // NaN never equals NaN in existing semantics; keep all.
+      if (isNanBearing(values[readPos])) {
+        // unique keeps one NaN. nan != nan remains false.
+        if (!seenNan) {
+          seenNan = true;
+          values[writePos++] = values[readPos];
+        }
         continue;
       }
       // Canonicalize signed zero to preserve equality semantics of (0 == -0).
