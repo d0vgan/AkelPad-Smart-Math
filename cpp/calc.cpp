@@ -16,9 +16,18 @@
 
 namespace {
 
+#if SMARTMATH_TIME_VALUES
 const bool kEnableTimeValues = true;
+#endif
+
+#if SMARTMATH_COMPLEX_NUMBERS
 const bool kEnableComplexNumbers = true;
+#endif
+
+#if SMARTMATH_LAMBDA_FUNCTIONS
 const bool kEnableLambdaFunctions = true;
+#endif
+
 const bool kShowErrors = true;
 
 typedef unsigned LineFlags;
@@ -253,7 +262,12 @@ void printInteractiveBanner(const std::string& loadedFile) {
   if (!loadedFile.empty()) {
     std::cout << "Loaded " << loadedFile << '.' << std::endl;
   }
+#if (SMARTMATH_TIME_VALUES && SMARTMATH_COMPLEX_NUMBERS && SMARTMATH_LAMBDA_FUNCTIONS)
   std::cout << "Time values, complex numbers, and lambdas are on." << std::endl
+#else
+  // assuming it is a minimal build, where everything is off
+  std::cout << "Time values, complex numbers, and lambdas are off." << std::endl
+#endif
             << "Waiting for a math expression or 'quit'/'exit'." << std::endl;
 }
 
@@ -272,9 +286,18 @@ int main(int argc, char** argv) {
   }
 
   MathParser parser;
+
+#if SMARTMATH_TIME_VALUES
   parser.setSupportTimeValues(kEnableTimeValues);
+#endif
+
+#if SMARTMATH_COMPLEX_NUMBERS
   parser.setSupportComplexNumbers(kEnableComplexNumbers);
+#endif
+
+#if SMARTMATH_LAMBDA_FUNCTIONS
   parser.setSupportLambdaFunctions(kEnableLambdaFunctions);
+#endif
 
   const bool fileIsStdin = args.filePath == kStdinFilePath;
   std::ifstream file;
