@@ -3271,7 +3271,23 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "prod(factorint(2**52))", "4503599627370496", why)) return false;
                 if (!expectEvalErrorContains(p, "factorint(33.5)", "factorint() expects integer values", why))
                   return false;
+                if (!expectEvalErrorContains(p, "factorint", "function: factorint(n)", why)) return false;
                 return true;
+              }});
+#else
+  t.push_back({"regression/factorint compiled out is an unknown name", [](std::string& why) {
+                MathParser p;
+                if (!expectEvalErrorContains(p, "factorint", "unknown variable: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint(", "unexpected token", why)) return false;
+                if (!expectEvalErrorContains(p, "1+factorint", "unknown variable: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint+1", "unknown variable: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint(777)", "unknown function: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint()", "unknown function: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint(1,2)", "unknown function: factorint", why)) return false;
+                if (!expectEvalErrorContains(p, "factorint(33.5)", "unknown function: factorint", why)) return false;
+                if (!expectEval(p, "factorint=5", "5", why)) return false;
+                MathParser defined;
+                return expectEval(defined, "factorint(x)=x+1; factorint(3)", "4", why);
               }});
 #endif
   t.push_back({"regression/binary builtin array length mismatch", [](std::string& why) {

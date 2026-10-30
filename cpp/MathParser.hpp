@@ -362,7 +362,9 @@ private:
   std::unique_ptr<Expr> parsePower(EvalContext& ctx);
   std::unique_ptr<Expr> parseUnary(EvalContext& ctx);
   std::unique_ptr<Expr> parsePrimary(EvalContext& ctx);
+#if SMARTMATH_COMPLEX_NUMBERS
   std::unique_ptr<Expr> wrapExprWithTightImagSuffixIfPresent(EvalContext& ctx, std::unique_ptr<Expr> expr);
+#endif
 
   EvalValue evalExpr(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
   EvalValue evalExprScalar(const Expr& e, EvalContext& ctx, const std::unordered_map<std::string, EvalValue>* scopedVars);
@@ -535,7 +537,9 @@ private:
       const EvalValue::ScalarValue& sb,
       int& cmpOut,
       CmpScalarIncompatiblePolicy policy) const;
+#if SMARTMATH_COMPLEX_NUMBERS
   bool rejectBuiltinArgsWithComplexImaginary(EvalContext& ctx, const std::vector<EvalValue>& args) const;
+#endif
 #if SMARTMATH_TIME_VALUES
   bool scalarMsForCompare(const EvalValue::ScalarValue& sv, long long& outMs) const;
   EvalValue mapTimeUnitOverArray(

@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (!args.error.empty()) {
-    std::cerr << args.error << '\n';
+    std::cerr << args.error << "\n\n";
     printUsage(std::cerr);
     return 1;
   }

@@ -77,7 +77,9 @@ namespace smartmath_internal {
     Repeat,
     Len,
     Fact,
+#if SMARTMATH_FACTORINT
     Factorint,
+#endif
     Avg,
     Mean,
     Mod,
@@ -240,7 +242,6 @@ namespace smartmath_internal {
   EvalValue makeInlineLambdaValue(std::vector<std::string> params, std::string body);
   EvalValue makeUdfFormalValidationDummy();
 
-  void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s);
   void scalarClearImaginary(EvalValue::ScalarValue& s);
 
   enum class ExactSignedInt64Policy {
@@ -309,7 +310,6 @@ namespace smartmath_internal {
     long long& outI,
     ExactSignedInt64Policy policy);
   bool tryGetExactSignedInt64FromScalar(const EvalValue::ScalarValue& s, long long& outI);
-  bool tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& outI);
   bool tryGetExactSignedInt64NoUIntWrapFromScalar(const EvalValue::ScalarValue& s, long long& outI);
   bool scalarHasExactIntegerPayload(const EvalValue::ScalarValue& s);
   bool tryMulExactInt64Square(long long i, long long& outSq);
@@ -382,7 +382,6 @@ namespace smartmath_internal {
     EvalValue& outV);
   void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, long long num,
                                           std::uint64_t den);
-  void scalarApplyExactInt64Part(EvalValue::ScalarValue& s, bool imagPart, long long n);
   void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV);
   bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV);
   bool tryApplyHypotExactScalars(
@@ -406,13 +405,8 @@ namespace smartmath_internal {
   void exactCartesianComponentClear(ExactCartesianComponent& c);
   void exactCartesianComponentAssignFromSignedInt64(ExactCartesianComponent& c, long long n);
   void exactCartesianComponentAssignFromUInt64(ExactCartesianComponent& c, std::uint64_t u);
-  bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
-  bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue& sv,
-                                              ExactCartesianComponent& c);
   bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
-  bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
-  void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
   int expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector<EvalValue>& out);
 
 #if SMARTMATH_TIME_VALUES
@@ -420,6 +414,14 @@ namespace smartmath_internal {
 #endif
 
 #if SMARTMATH_COMPLEX_NUMBERS
+  void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s);
+  bool tryGetExactImagInt64Strict(const EvalValue::ScalarValue& s, long long& outI);
+  void scalarApplyExactInt64Part(EvalValue::ScalarValue& s, bool imagPart, long long n);
+  bool tryExactCartesianComponentToInt64(const ExactCartesianComponent& c, long long& outI);
+  bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue& sv,
+                                              ExactCartesianComponent& c);
+  bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);
+  void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::ScalarValue& magSv);
   void complexCartesianBinary(double ar, double ai, double br, double bi, char op, double& outR,
                                    double& outI);
   bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
