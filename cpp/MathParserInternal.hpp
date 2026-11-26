@@ -704,6 +704,14 @@ namespace smartmath_internal {
     BuiltinCategory category;
   };
 
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  enum class LambdaBodyStop {
+    WrappedParenClose,
+    ArgDelim,
+    TopLevelSemicolonOrEof
+  };
+#endif
+
   enum class ParseErrorId : std::uint8_t {
     UnexpectedComma,
     IndexingRequiresArray,

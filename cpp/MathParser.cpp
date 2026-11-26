@@ -2377,6 +2377,7 @@ using smartmath_internal::ParseErrorId;
 using smartmath_internal::RenderBase;
 using smartmath_internal::ScalarExactKind;
 using smartmath_internal::ScalarKind;
+using smartmath_internal::UserFunction;
 using smartmath_internal::ValueKind;
 
 // value * 2^shiftCount: exact SmInt when it fits, otherwise a float (same as the SmUInt overflow path).
@@ -2659,9 +2660,17 @@ std::size_t countFlattenedScalars(const std::vector<EvalValue>& args) {
   return forEachCallArgScalarValues(args, [](const EvalValue::ScalarValue&) {});
 }
 
+std::size_t countFlattenedScalarCapacity(const EvalValue* args, std::size_t argc) {
+  std::size_t total = 0;
+  for (std::size_t i = 0; i < argc; ++i) {
+    total += (args[i].kind == ValueKind::Scalar) ? 1u : args[i].arr.size();
+  }
+  return total;
+}
+
 bool flattenArgs(const std::vector<EvalValue>& args, std::vector<SmFloat>& out) {
   out.clear();
-  out.reserve(countFlattenedScalars(args));
+  out.reserve(countFlattenedScalarCapacity(args.data(), args.size()));
   forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue& sv) { out.emplace_back(sv.scalar); });
   return !out.empty();
 }
@@ -2669,11 +2678,7 @@ bool flattenArgs(const std::vector<EvalValue>& args, std::vector<SmFloat>& out) 
 // Flattens argc values starting at args without copying them into a temporary vector first.
 bool flattenArgsToScalars(const EvalValue* args, std::size_t argc, std::vector<EvalValue>& out) {
   out.clear();
-  std::size_t total = 0;
-  for (std::size_t i = 0; i < argc; ++i) {
-    total += (args[i].kind == ValueKind::Scalar) ? 1u : args[i].arr.size();
-  }
-  out.reserve(total);
+  out.reserve(countFlattenedScalarCapacity(args, argc));
   for (std::size_t i = 0; i < argc; ++i) {
     if (args[i].kind == ValueKind::Scalar) {
       out.emplace_back(args[i]);
@@ -2688,6 +2693,21 @@ bool flattenArgsToScalars(const EvalValue* args, std::size_t argc, std::vector<E
 
 bool flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out) {
   return flattenArgsToScalars(args.data(), args.size(), out);
+}
+
+bool flattenArgsToScalarValues(const EvalValue* args, std::size_t argc, std::vector<EvalValue::ScalarValue>& out) {
+  out.clear();
+  out.reserve(countFlattenedScalarCapacity(args, argc));
+  for (std::size_t i = 0; i < argc; ++i) {
+    if (args[i].kind == ValueKind::Scalar) {
+      out.push_back(args[i].scalarValue);
+    } else {
+      for (const auto& item : args[i].arr) {
+        out.push_back(item);
+      }
+    }
+  }
+  return !out.empty();
 }
 
 bool tryApplyExactSmUIntBinaryScalarOp(
@@ -7300,6 +7320,18 @@ bool MathParser::trySetIncompleteOpenedFunctionCallHint(
   return false;
 }
 
+std::string formatUserFunctionSignature(const smartmath_internal::UserFunction& uf) {
+  std::string sig = uf.name + "(";
+  for (std::size_t i = 0; i < uf.params.size(); ++i) {
+    if (i > 0) {
+      sig += STR_COMMA;
+    }
+    sig += uf.params[i];
+  }
+  sig += ")";
+  return sig;
+}
+
 bool MathParser::trySetBareUserFunctionNameError(
     EvalContext& ctx,
     const std::string& ident,
@@ -7334,18 +7366,6 @@ bool MathParser::trySetBareUserFunctionNameError(
     ctx.fail(std::string(STR_USER_DEFINED_FUNCTION_COLON) + formatUserFunctionSignature(stub));
   }
   return true;
-}
-
-std::string MathParser::formatUserFunctionSignature(const UserFunction& uf) {
-  std::string sig = uf.name + "(";
-  for (std::size_t i = 0; i < uf.params.size(); ++i) {
-    if (i > 0) {
-      sig += STR_COMMA;
-    }
-    sig += uf.params[i];
-  }
-  sig += ")";
-  return sig;
 }
 
 bool MathParser::finishSubEvalFromCompiledProgram(EvalContext& parent, EvalContext& sub) const {
@@ -7695,7 +7715,9 @@ bool MathParser::consumeProgramStatementSeparator(EvalContext& ctx) {
   return false;
 }
 
-bool MathParser::hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node) {
+bool hasExprParseFailure(
+    const smartmath_internal::EvalContext& ctx,
+    const std::unique_ptr<smartmath_internal::Expr>& node) {
   return ctx.parseError || !node;
 }
 
@@ -8948,10 +8970,10 @@ bool MathParser::parseFunctionDefinition(
 }
 
 #if SMARTMATH_LAMBDA_FUNCTIONS
-bool MathParser::lambdaBodyConsume(
-    EvalContext& ctx,
+bool lambdaBodyConsume(
+    smartmath_internal::EvalContext& ctx,
     std::string& outBody,
-    LambdaBodyStop stop,
+    smartmath_internal::LambdaBodyStop stop,
     const char* lambdaArgStart) {
   outBody.clear();
   int g = 0;
@@ -8959,18 +8981,18 @@ bool MathParser::lambdaBodyConsume(
     const char c = *ctx.p;
     if (g == 0) {
       switch (stop) {
-        case LambdaBodyStop::WrappedParenClose:
+        case smartmath_internal::LambdaBodyStop::WrappedParenClose:
           if (c == ')') {
             return true;
           }
           break;
-        case LambdaBodyStop::ArgDelim:
+        case smartmath_internal::LambdaBodyStop::ArgDelim:
           if ((c == ',' || c == ')') && lambdaArgStart != nullptr &&
               netRoundParenDepthBetween(lambdaArgStart, ctx.p) == 0) {
             return true;
           }
           break;
-        case LambdaBodyStop::TopLevelSemicolonOrEof:
+        case smartmath_internal::LambdaBodyStop::TopLevelSemicolonOrEof:
           if (c == ';') {
             return true;
           }
@@ -8997,7 +9019,8 @@ bool MathParser::lambdaBodyConsume(
     outBody.push_back(c);
     ++ctx.p;
   }
-  return stop == LambdaBodyStop::TopLevelSemicolonOrEof || stop == LambdaBodyStop::ArgDelim;
+  return stop == smartmath_internal::LambdaBodyStop::TopLevelSemicolonOrEof ||
+         stop == smartmath_internal::LambdaBodyStop::ArgDelim;
 }
 
 bool MathParser::tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const {
@@ -9207,16 +9230,28 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
     return makeScalar(0);
   }
 
-  std::unordered_map<std::string, EvalValue> localVars;
-  if (parentScopedVars != nullptr) {
-    localVars = *parentScopedVars;
+  // With a walk cache (sortby/filter): copy parent scope once, rebind params per element.
+  std::unordered_map<std::string, EvalValue> scratchLocalVars;
+  std::unordered_map<std::string, EvalValue>* localVars = &scratchLocalVars;
+  if (cache != nullptr) {
+    if (!cache->localVarsReady) {
+      if (parentScopedVars != nullptr) {
+        cache->localVars = *parentScopedVars;
+      } else {
+        cache->localVars.clear();
+      }
+      cache->localVarsReady = true;
+    }
+    localVars = &cache->localVars;
+  } else if (parentScopedVars != nullptr) {
+    scratchLocalVars = *parentScopedVars;
   }
   for (std::size_t i = 0; i < paramNames.size(); ++i) {
-    localVars[paramNames[i]] = std::move(args[i]);
+    (*localVars)[paramNames[i]] = std::move(args[i]);
   }
 
   if (cache != nullptr && cache->ready) {
-    return runBoundProgram(ctx, cache->program, &localVars, true);
+    return runBoundProgram(ctx, cache->program, localVars, true);
   }
 
   const std::string trimmedBody = trim(bodyExpr);
@@ -9241,9 +9276,9 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   if (cache != nullptr) {
     cache->program = std::move(compiledBody);
     cache->ready = true;
-    return runBoundProgram(ctx, cache->program, &localVars, true);
+    return runBoundProgram(ctx, cache->program, localVars, true);
   }
-  return runBoundProgram(ctx, compiledBody, &localVars, true);
+  return runBoundProgram(ctx, compiledBody, localVars, true);
 }
 #endif
 
@@ -10318,11 +10353,11 @@ bool MathParser::programIsScalarOnly(const std::vector<AstStatement>& program) c
   return true;
 }
 
-void MathParser::bindExprVariableRefs(
-    Expr& e,
+void bindExprVariableRefs(
+    smartmath_internal::Expr& e,
     bool hasAssignments,
-    const std::unordered_map<std::string, EvalValue>& variables) {
-  if (e.tag == Expr::Tag::Variable) {
+    const std::unordered_map<std::string, smartmath_internal::EvalValue>& variables) {
+  if (e.tag == smartmath_internal::Expr::Tag::Variable) {
     if (hasAssignments) {
       e.boundVariable = nullptr;
       return;
@@ -11584,7 +11619,7 @@ MathParser::EvalValue MathParser::builtinUnpack(EvalContext& ctx, const std::vec
 MathParser::EvalValue MathParser::builtinLen(
     EvalContext& /*ctx*/,
     const std::vector<EvalValue>& args) const {
-  return makeScalarInt(static_cast<SmInt>(countAggregateArgScalarItems(args)));
+  return makeScalarInt(static_cast<SmInt>(countFlattenedScalars(args)));
 }
 
 MathParser::EvalValue MathParser::builtinRepeat(
@@ -11722,12 +11757,6 @@ MathParser::EvalValue MathParser::builtinRange(
   return makeArrayFromScalars(out);
 }
 
-std::size_t MathParser::countAggregateArgScalarItems(const std::vector<EvalValue>& args) const {
-  std::size_t itemCount = 0;
-  forEachCallArgScalarValues(args, [&](const EvalValue::ScalarValue&) { ++itemCount; });
-  return itemCount;
-}
-
 template <typename IntT, typename ReadFn, typename AddFn, typename MakeFn>
 bool tryFoldExactSumMinMax(
     BuiltinFunctionId id,
@@ -11848,7 +11877,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
     ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
     return makeScalar(0);
   }
-  if (countAggregateArgScalarItems(args) == 0) {
+  if (countFlattenedScalars(args) == 0) {
     return makeArrayFromScalars({});
   }
   switch (mode) {
@@ -11864,7 +11893,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
   if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
     return args[0];
   }
-  const std::size_t itemCount = countAggregateArgScalarItems(args);
+  const std::size_t itemCount = countFlattenedScalars(args);
   if (itemCount == 0) {
     ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
     return makeScalar(0);
@@ -12747,19 +12776,13 @@ bool MathParser::prepareUnaryCallableScalars(
       return false;
     }
   }
-  std::vector<EvalValue> flat;
-  if (!flattenArgsToScalars(&dataArg, 1, flat)) {
+  if (!flattenArgsToScalarValues(&dataArg, 1, vals)) {
     if (dataArg.kind == ValueKind::Array) {
       emptyArray = true;
       return false;
     }
     ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
     return false;
-  }
-  vals.clear();
-  vals.reserve(flat.size());
-  for (const auto& item : flat) {
-    vals.push_back(item.scalarValue);
   }
   return true;
 }

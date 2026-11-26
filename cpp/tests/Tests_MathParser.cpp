@@ -3675,6 +3675,60 @@ std::vector<TestCase> buildRegressionCases() {
                     "recursive function call",
                     why);
               }});
+  t.push_back({"regression/128 UDF chain within max evaluation depth", [](std::string& why) {
+                MathParser p;
+                std::string expr;
+                for (int i = 1; i <= 128; ++i) {
+                  if (i < 128) {
+                    expr += "f" + std::to_string(i) + "(x)=f" + std::to_string(i + 1) + "(x); ";
+                  } else {
+                    expr += "f" + std::to_string(i) + "(x)=x; ";
+                  }
+                }
+                expr += "f1(1)";
+                return expectEval(p, expr, "1", why);
+              }});
+  t.push_back({"regression/129 UDF chain hits max evaluation depth", [](std::string& why) {
+                MathParser p;
+                std::string expr;
+                for (int i = 1; i <= 129; ++i) {
+                  if (i < 129) {
+                    expr += "f" + std::to_string(i) + "(x)=f" + std::to_string(i + 1) + "(x); ";
+                  } else {
+                    expr += "f" + std::to_string(i) + "(x)=x; ";
+                  }
+                }
+                expr += "f1(1)";
+                return expectEvalErrorContains(p, expr, "max evaluation depth reached", why);
+              }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  t.push_back({"regression/10 nested sortby lambdas within max evaluation depth", [](std::string& why) {
+                MathParser p;
+                p.setSupportLambdaFunctions(true);
+                std::string expr;
+                for (int i = 0; i < 10; ++i) {
+                  expr += "sortby((1), x:";
+                }
+                expr += "x";
+                for (int i = 0; i < 10; ++i) {
+                  expr += ")";
+                }
+                return expectEval(p, expr, "(1)", why);
+              }});
+  t.push_back({"regression/129 nested sortby lambdas hit max evaluation depth", [](std::string& why) {
+                MathParser p;
+                p.setSupportLambdaFunctions(true);
+                std::string expr;
+                for (int i = 0; i < 129; ++i) {
+                  expr += "sortby((1), x:";
+                }
+                expr += "x";
+                for (int i = 0; i < 129; ++i) {
+                  expr += ")";
+                }
+                return expectEvalErrorContains(p, expr, "max evaluation depth reached", why);
+              }});
+#endif
   t.push_back({"regression/unique single-array variable keeps order", [](std::string& why) {
                 MathParser p;
                 return expectEval(p, "a=(5,2,5,9,2); unique(a)", "(5,2,9)", why);

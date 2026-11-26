@@ -143,6 +143,9 @@ private:
   struct LambdaProgramCache {
     bool ready = false;
     std::vector<AstStatement> program;
+    /// Parent scope copied once per sortby/filter walk; parameters rebound per element.
+    bool localVarsReady = false;
+    std::unordered_map<std::string, EvalValue> localVars;
     bool refResolved = false;
     bool refIsBuiltin = false;
     smartmath_internal::BuiltinFunctionId refFnId = smartmath_internal::BuiltinFunctionId::Count;
@@ -192,18 +195,9 @@ private:
       EvalContext& ctx,
       const char* expectsOneFunction,
       const char* expectsUnaryFunction);
-  enum class LambdaBodyStop {
-    WrappedParenClose,
-    ArgDelim,
-    TopLevelSemicolonOrEof
-  };
 #if SMARTMATH_LAMBDA_FUNCTIONS
+  using LambdaBodyStop = smartmath_internal::LambdaBodyStop;
   bool tryConsumeLambdaParameterList(EvalContext& ctx, std::vector<std::string>& outParams, bool quiet) const;
-  static bool lambdaBodyConsume(
-      EvalContext& ctx,
-      std::string& outBody,
-      LambdaBodyStop stop,
-      const char* lambdaArgStart);
   bool tryParseLambdaInnerUnwrappedSuffix(
       EvalContext& ctx,
       std::vector<std::string>& outParams,
@@ -305,7 +299,6 @@ private:
       bool suppressBareFunctionTailHint,
       const std::vector<std::string>* boundBodyParamNames,
       std::vector<AstStatement>& outProgram);
-  static std::string formatUserFunctionSignature(const UserFunction& uf);
   bool handleUnknownIdentifier(EvalContext& ctx, const std::string& ident, std::string& unknownList) const;
   bool tryResolveVariableValue(
       const Expr& e,
@@ -361,7 +354,6 @@ private:
       EvalContext& ctx,
       std::vector<AstStatement>& out,
       bool& handled);
-  static bool hasExprParseFailure(const EvalContext& ctx, const std::unique_ptr<Expr>& node);
 #if SMARTMATH_TIME_VALUES
   bool rejectBinaryBuiltinTimeOperands(EvalContext& ctx, const EvalValue& left, const EvalValue& right) const;
   bool rejectNumericBinaryPowWithTime(
@@ -483,7 +475,6 @@ private:
       const std::string& fnName,
       BuiltinFunctionId id,
       const std::vector<EvalValue>& args) const;
-  std::size_t countAggregateArgScalarItems(const std::vector<EvalValue>& args) const;
   EvalValue aggregateFoldByMode(
       EvalContext& ctx,
       const std::string& fnName,
@@ -632,7 +623,6 @@ private:
   void removeVariableByName(const std::string& name);
   void removeUserFunctionByName(const std::string& name);
   void normalizeCallArgs(std::vector<EvalValue>& args);
-  static void bindExprVariableRefs(Expr& e, bool hasAssignments, const std::unordered_map<std::string, EvalValue>& variables);
   void bindCompiledVariableRefs(CompiledProgramState& state);
 
 #if SMARTMATH_COMPLEX_NUMBERS

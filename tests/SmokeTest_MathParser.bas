@@ -16,6 +16,7 @@ end type
 
 dim shared g_total as Integer = 0
 dim shared g_passed as Integer = 0
+common shared smBoundEvalDepthSeed as Integer
 dim shared g_failed as Integer = 0
 dim shared g_idx as Integer = 0
 
@@ -3305,6 +3306,125 @@ private sub RunLambdaFunctionsSupportOptionTests()
   print ""
 end sub
 
+'' Bound-body nesting limit (128), mirrored from C++ kMaxEvalDepth.
+private function BuildUdfChainExpr(byval depth as Integer, byval callInnermost as Boolean) as String
+  dim expr as String = ""
+  dim i as Integer
+  for i = 1 to depth
+    if i < depth then
+      expr &= "f" & str(i) & "(x)=f" & str(i + 1) & "(x); "
+    else
+      expr &= "f" & str(i) & "(x)=x; "
+    end if
+  next i
+  if callInnermost then
+    expr &= "f1(1)"
+  end if
+  return expr
+end function
+
+private function BuildNestedSortbyLambdaExpr(byval depth as Integer) as String
+  dim expr as String = ""
+  dim i as Integer
+  for i = 1 to depth
+    expr &= "sortby((1), x:"
+  next i
+  expr &= "x"
+  for i = 1 to depth
+    expr &= ")"
+  next i
+  return expr
+end function
+
+private sub RunMaxEvaluationDepthTests()
+  print "=== Max evaluation depth (bound body) ==="
+  dim subPass as Integer = 0
+  dim subFail as Integer = 0
+  dim r as SmFloat
+  dim rt as String
+  dim ia as Boolean
+  '' Basic EvaluateBoundBody frames are heavy; keep success nests well under BOUND_EVAL_DEPTH_MAX.
+  '' The reject cases still use depth 129 so the shared 128 limit is what fires (same as C++).
+  const OK_DEPTH as Integer = 40
+
+  dim okChain as String = BuildUdfChainExpr(OK_DEPTH, TRUE)
+  if Parser_TryEvaluateEx(okChain, r, rt, ia) = FALSE orelse rt <> "1" then
+    print "[max-depth] FAIL: " & str(OK_DEPTH) & " UDF chain expected 1, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[max-depth] PASS: " & str(OK_DEPTH) & " distinct UDF chain succeeds"
+    subPass += 1
+  end if
+  Parser_ClearVariables()
+
+  dim okLam as String = BuildNestedSortbyLambdaExpr(OK_DEPTH)
+  dim okLamPass as Boolean = FALSE
+  if Parser_TryEvaluateEx(okLam, r, rt, ia) then
+    if rt = "(1)" orelse rt = "1" then okLamPass = TRUE
+  end if
+  if okLamPass = FALSE then
+    print "[max-depth] FAIL: " & str(OK_DEPTH) & " nested sortby lambdas expected (1), got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[max-depth] PASS: " & str(OK_DEPTH) & " nested sortby lambdas succeed"
+    subPass += 1
+  end if
+
+  '' Seed depth to the limit without 129 recursive frames (Basic stack cannot host them).
+  smBoundEvalDepthSeed = 128
+  if Parser_TryEvaluateEx("f(x)=x; f(1)", r, rt, ia) then
+    print "[max-depth] FAIL: seeded depth 128 UDF call expected max evaluation depth, got """ & rt & """"
+    subFail += 1
+  else
+    dim errSeed as String = lcase(Parser_GetLastError())
+    if instr(errSeed, "max evaluation depth reached") > 0 then
+      print "[max-depth] PASS: seeded depth 128 UDF call -> max evaluation depth reached"
+      subPass += 1
+    else
+      print "[max-depth] FAIL: seeded depth 128 UDF call expected max evaluation depth, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+  smBoundEvalDepthSeed = 0
+  Parser_ClearVariables()
+
+  smBoundEvalDepthSeed = 128
+  if Parser_TryEvaluateEx("sortby((1), x:x)", r, rt, ia) then
+    print "[max-depth] FAIL: seeded depth 128 sortby lambda expected max evaluation depth, got """ & rt & """"
+    subFail += 1
+  else
+    dim errLam as String = lcase(Parser_GetLastError())
+    if instr(errLam, "max evaluation depth reached") > 0 then
+      print "[max-depth] PASS: seeded depth 128 sortby lambda -> max evaluation depth reached"
+      subPass += 1
+    else
+      print "[max-depth] FAIL: seeded depth 128 sortby lambda expected max evaluation depth, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+  smBoundEvalDepthSeed = 0
+
+  if Parser_TryEvaluateEx("g(a)=y(a)+1; y(a)=g(a)+2; y(5)", r, rt, ia) then
+    print "[max-depth] FAIL: mutual recursion expected recursive function call, got """ & rt & """"
+    subFail += 1
+  else
+    dim errRec as String = lcase(Parser_GetLastError())
+    if instr(errRec, "recursive function call") > 0 then
+      print "[max-depth] PASS: mutual recursion still recursive function call"
+      subPass += 1
+    else
+      print "[max-depth] FAIL: mutual recursion expected recursive function call, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+  Parser_ClearVariables()
+
+  g_passed += subPass
+  g_failed += subFail
+  print "max-evaluation-depth sub-tests: passed " & str(subPass) & ", failed " & str(subFail)
+  print ""
+end sub
+
 '' filter copies the original element, so exact SmInt/SmUInt metadata must survive.
 private sub RunFilterExactIntegerTests()
   print "=== filter exact integer metadata ==="
@@ -5909,6 +6029,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
 
   RunInexactFloatDisplayTests()
   RunFilterExactIntegerTests()
+  RunMaxEvaluationDepthTests()
 #endif  '' SM_BASELINE_WIDTHS: the table and suites above expect 64-bit / binary64 text
   RunIifRandTests()
   RunWidthGenericTests()

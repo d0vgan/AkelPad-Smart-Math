@@ -868,8 +868,13 @@ dim shared functionVariableCount as Integer
 #endif
 dim shared evalDepth as Integer
 const UDF_CALL_STACK_MAX as Integer = 128
+'' Bound-body nesting (UDF + lambda), mirrored from C++ kMaxEvalDepth.
+const BOUND_EVAL_DEPTH_MAX as Integer = 128
 dim shared udfCallStack(0 to UDF_CALL_STACK_MAX - 1) as String
 dim shared udfCallStackSp as Integer
+dim shared boundEvalDepth as Integer
+'' Smoke can set this before Parser_TryEvaluateEx; ResetTopLevelEvaluationState applies it once then clears it.
+common shared smBoundEvalDepthSeed as Integer
 dim shared validatingUserFunctionName as String
 ' suppressBareFunctionTailHint: skip bare-function tail hints when ';' context was lost.
 ' Path A: whole bare name + ';' (e.g. cos;) -> unexpected token in TryEvaluateTopLevelStatements.
@@ -2472,6 +2477,13 @@ private function UniqueHashKeyFromFloat(byval v as SmFloat) as SmUInt
   return bits.u
 end function
 
+'' Combine real/imag float keys the same way as C++ CartesianKeyHash (unique complex path).
+private function UniqueHashKeyFromCartesian(byval re as SmFloat, byval im as SmFloat) as SmUInt
+  dim h1 as SmUInt = UniqueHashKeyFromFloat(re)
+  dim h2 as SmUInt = UniqueHashKeyFromFloat(im)
+  return h1 xor (h2 + &h9e3779b9u + (h1 shl 6) + (h1 shr 2))
+end function
+
 private function NextPow2AtLeast(byval n as Integer) as Integer
   dim cap as Integer = 1
   while cap < n
@@ -2488,7 +2500,7 @@ private sub SwapFloat(byref a as SmFloat, byref b as SmFloat)
 end sub
 
 private function TryAddSmInt(byval a as SmInt, byval b as SmInt, byref outV as SmInt) as Boolean
-  '' Post-hoc signed overflow test (avoids SM_INT_MIN/MAX +/- b on x86_64 -gen gcc).
+  '' Post-hoc wrap test: SM_INT_MAX/MIN +/- b pre-checks miscompile under -gen gcc -O2.
   outV = a + b
   if b > 0 andalso outV < a then return FALSE
   if b < 0 andalso outV > a then return FALSE
@@ -2496,6 +2508,7 @@ private function TryAddSmInt(byval a as SmInt, byval b as SmInt, byref outV as S
 end function
 
 private function TrySubSmInt(byval a as SmInt, byval b as SmInt, byref outV as SmInt) as Boolean
+  '' Post-hoc wrap test (same gcc constraint as TryAddSmInt).
   outV = a - b
   if b > 0 andalso outV > a then return FALSE
   if b < 0 andalso outV < a then return FALSE
@@ -2514,9 +2527,16 @@ private function TryMulSmInt(byval a as SmInt, byval b as SmInt, byref outV as S
     outV = -a
     return TRUE
   end if
-  '' Post-hoc signed overflow test (avoids SM_INT_MAX \ b style pre-checks under -gen gcc -O2).
-  outV = a * b
-  if a <> 0 andalso (outV \ a) <> b then return FALSE
+  '' Magnitude pre-check + product: avoids signed SM_INT_MIN \ b and post-hoc wrap (INT_MIN*2 → 0).
+  dim ua as SmUInt = UIntMagnitudeOfSmInt(a)
+  dim ub as SmUInt = UIntMagnitudeOfSmInt(b)
+  if ub <> SmCUInt(0) andalso ua > (SM_INT_MAX_U \ ub) then return FALSE
+  dim prodU as SmUInt = ua * ub
+  if (a < 0) xor (b < 0) then
+    outV = -SmCInt(prodU)
+  else
+    outV = SmCInt(prodU)
+  end if
   return TRUE
 end function
 
@@ -5209,6 +5229,12 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
     return TRUE
   end if
 
+  '' Same order as C++ evalUserFunctionCall: depth before recursion / call-stack size.
+  if boundEvalDepth >= BOUND_EVAL_DEPTH_MAX then
+    SetParseErrorById(PARSE_ERR_MAX_EVALUATION_DEPTH_REACHED)
+    return TRUE
+  end if
+
   dim lowNm as String = lcase(fnName)
   dim si as Integer
   for si = 0 to udfCallStackSp - 1
@@ -5224,7 +5250,9 @@ private function EvaluateUserFunction(byref fnName as String, args() as EvalValu
   udfCallStack(udfCallStackSp) = lowNm
   udfCallStackSp += 1
 
+  boundEvalDepth += 1
   dim evalError as Boolean = EvaluateBoundBody(userFunctions(idx).params(), 0, args(), 0, pCount, userFunctions(idx).expr, FALSE, FALSE, outV)
+  boundEvalDepth -= 1
 
   udfCallStackSp -= 1
 
@@ -5247,7 +5275,14 @@ private function EvaluateInlineLambda(fnParams() as string, byref lambdaBodyTxt 
     return TRUE
   end if
 
+  if boundEvalDepth >= BOUND_EVAL_DEPTH_MAX then
+    SetParseErrorById(PARSE_ERR_MAX_EVALUATION_DEPTH_REACHED)
+    return TRUE
+  end if
+
+  boundEvalDepth += 1
   dim evalError as Boolean = EvaluateBoundBody(fnParams(), lbound(fnParams), args(), lbound(args), pCount, lambdaBodyTxt, TRUE, TRUE, outV)
+  boundEvalDepth -= 1
   if evalError then parseError = TRUE
   return TRUE
 end function
@@ -9194,16 +9229,18 @@ declare function TryEvaluateStatementCore(byref exprInput as String, byref resul
 declare function IsStmtUdfDefinitionAt(byref stmt as String) as Boolean
 declare function TrySingleArgPassthroughOrCollect(args() as EvalValue, byref fnName as String, byval reverseSingleArray as Boolean, byref outV as EvalValue, vals() as ScalarValue, byref c as Integer) as Integer
 
+'' O(argc) capacity from arg shapes (no per-element walk).
 private function CountFlattenedArgs(args() as EvalValue) as Integer
+  if ubound(args) = -1 then return 0
   dim count as Integer = 0
-  dim argIdx as Integer = lbound(args)
-  dim elemIdx as Integer = -1
-  dim srcArgIdx as Integer
-  dim srcElemIdx as Integer
-  dim isScalar as Boolean
-  while ArgWalkNextPosition(args(), argIdx, elemIdx, srcArgIdx, srcElemIdx, isScalar)
-    count += 1
-  wend
+  dim i as Integer
+  for i = lbound(args) to ubound(args)
+    if args(i).kind = VK_SCALAR then
+      count += 1
+    else
+      count += ValueArrayLen(args(i))
+    end if
+  next i
   return count
 end function
 
@@ -11561,47 +11598,39 @@ private function TryBuiltinUniqueScalars(uniqueVals() as ScalarValue, byval c as
       continue for
     end if
     dim seen as Boolean = FALSE
+    dim v as SmFloat = uniqueVals(i).scalar
+    dim key as SmUInt
     if useComplexUnique then
-      dim j as Integer
-      for j = 0 to outCount - 1
-        if ScalarValuesEqualForCompare(uniqueVals(i), tmp(j)) then
-          seen = TRUE
-          exit for
-        end if
-      next j
-      if seen = FALSE then
-        tmp(outCount) = uniqueVals(i)
-        outCount += 1
-      end if
+      dim rePart as SmFloat = v
+      dim imPart as SmFloat = uniqueVals(i).imag
+      if rePart = 0 then rePart = 0
+      if imPart = 0 then imPart = 0
+      key = UniqueHashKeyFromCartesian(rePart, imPart)
+    elseif ScalarIsTime(uniqueVals(i)) then
+      key = UniqueHashKeyFromFloat(SmCFloat(TimeTotalMsFromScalarValue(uniqueVals(i))))
     else
-      dim v as SmFloat = uniqueVals(i).scalar
-      dim key as SmUInt
-      if ScalarIsTime(uniqueVals(i)) then
-        key = UniqueHashKeyFromFloat(SmCFloat(TimeTotalMsFromScalarValue(uniqueVals(i))))
-      else
-        key = UniqueHashKeyFromFloat(v)
-      end if
-      dim smallKey as Boolean = (abs(v) < SM_MAX_EXACT_INT_FROM_FLOAT)
-      dim idx as Integer = CInt(key and SmCUInt(cap - 1))
-      do
-        if used(idx) = 0 then exit do
-        if keys(idx) = key then
-          ' Distinct exact integers above 2^mantissa can share one float key: confirm with the exact compare.
-          if smallKey orelse ScalarIsTime(uniqueVals(i)) orelse ScalarIsTime(tmp(slotOf(idx))) orelse _
-             ScalarValuesEqualForCompare(uniqueVals(i), tmp(slotOf(idx))) then
-            seen = TRUE
-            exit do
-          end if
+      key = UniqueHashKeyFromFloat(v)
+    end if
+    dim smallKey as Boolean = (useComplexUnique = FALSE) andalso (abs(v) < SM_MAX_EXACT_INT_FROM_FLOAT)
+    dim idx as Integer = CInt(key and SmCUInt(cap - 1))
+    do
+      if used(idx) = 0 then exit do
+      if keys(idx) = key then
+        ' Distinct exact integers above 2^mantissa can share one float key: confirm with the exact compare.
+        if smallKey orelse ScalarIsTime(uniqueVals(i)) orelse ScalarIsTime(tmp(slotOf(idx))) orelse _
+           ScalarValuesEqualForCompare(uniqueVals(i), tmp(slotOf(idx))) then
+          seen = TRUE
+          exit do
         end if
-        idx = (idx + 1) and (cap - 1)
-      loop
-      if seen = FALSE then
-        used(idx) = 1
-        keys(idx) = key
-        slotOf(idx) = outCount
-        tmp(outCount) = uniqueVals(i)
-        outCount += 1
       end if
+      idx = (idx + 1) and (cap - 1)
+    loop
+    if seen = FALSE then
+      used(idx) = 1
+      keys(idx) = key
+      slotOf(idx) = outCount
+      tmp(outCount) = uniqueVals(i)
+      outCount += 1
     end if
   next i
   redim preserve tmp(0 to outCount - 1)
@@ -12987,6 +13016,8 @@ private sub ResetTopLevelEvaluationState(byref exprInput as String)
   unknownVarsText = ""
   unknownFuncsText = ""
   udfCallStackSp = 0
+  boundEvalDepth = smBoundEvalDepthSeed
+  smBoundEvalDepthSeed = 0
   errorBaseCol = 1
   rootInputExpr = exprInput
   parseError = FALSE
