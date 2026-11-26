@@ -133,9 +133,9 @@ namespace smartmath_internal {
   };
 
   enum class ScalarKind {
-    FloatingPoint,
-    SInt,
-    UInt,
+    SmFloatingPoint,
+    SmInt,
+    SmUInt,
     Time
   };
 
@@ -150,11 +150,11 @@ namespace smartmath_internal {
   struct EvalValue {
     struct ScalarValue {
       enum : unsigned int {
-        fExactSIntValid = 0x01u,
-        fExactUIntValid = 0x02u,
-        fDecScientificPow63High = 0x10u,
-        fImagExactSIntValid = 0x20u,
-        fImagExactUIntValid = 0x40u,
+        fExactSmIntValid = 0x01u,
+        fExactSmUIntValid = 0x02u,
+        fDecScientificSmIntBoundHigh = 0x10u,
+        fImagExactSmIntValid = 0x20u,
+        fImagExactSmUIntValid = 0x40u,
         fRenderRational = 0x80u,
         fImagRenderRational = 0x100u
       #if SMARTMATH_FACTORINT
@@ -163,37 +163,37 @@ namespace smartmath_internal {
       #endif
       };
 
-      ScalarKind scalarKind = ScalarKind::FloatingPoint;
-      /// Do not read for exact-int policy; use hasExactSInt() / hasRenderRational().
+      ScalarKind scalarKind = ScalarKind::SmFloatingPoint;
+      /// Do not read for exact-int policy; use hasExactSmInt() / hasRenderRational().
       unsigned int flags = 0;
       SmFloat scalar = 0.0;
-      /// Numerator for render-rational and exact integers; prefer hasExactSInt() in eval paths.
-      SmInt exactSInt = 0;
-      /// Denominator for render-rational and exact uintegers; prefer hasExactUInt() in eval paths.
+      /// Numerator for render-rational and exact integers; prefer hasExactSmInt() in eval paths.
+      SmInt exactInt = 0;
+      /// Denominator for render-rational and exact uintegers; prefer hasExactSmUInt() in eval paths.
       SmUInt exactUInt = 0;
       SmFloat imag = 0.0;
-      SmInt imagExactSInt = 0;
+      SmInt imagExactInt = 0;
       SmUInt imagExactUInt = 0;
 
-      bool hasExactSIntMetadata() const { return (flags & fExactSIntValid) != 0; }
-      bool hasExactUIntMetadata() const { return (flags & fExactUIntValid) != 0; }
-      bool hasImagExactSIntMetadata() const { return (flags & fImagExactSIntValid) != 0; }
-      bool hasImagExactUIntMetadata() const { return (flags & fImagExactUIntValid) != 0; }
+      bool hasExactSmIntMetadata() const { return (flags & fExactSmIntValid) != 0; }
+      bool hasExactSmUIntMetadata() const { return (flags & fExactSmUIntValid) != 0; }
+      bool hasImagExactSmIntMetadata() const { return (flags & fImagExactSmIntValid) != 0; }
+      bool hasImagExactSmUIntMetadata() const { return (flags & fImagExactSmUIntValid) != 0; }
       /// Exact SmInt for arithmetic (not render-rational numerator storage).
-      bool hasExactSInt() const { return hasExactSIntMetadata() && !hasRenderRational(); }
-      void setExactSIntValid(bool v) { flags = v ? (flags | fExactSIntValid) : (flags & ~fExactSIntValid); }
+      bool hasExactSmInt() const { return hasExactSmIntMetadata() && !hasRenderRational(); }
+      void setExactSmIntValid(bool v) { flags = v ? (flags | fExactSmIntValid) : (flags & ~fExactSmIntValid); }
       /// Exact SmUInt for arithmetic (not render-rational denominator storage).
-      bool hasExactUInt() const { return hasExactUIntMetadata() && !hasRenderRational(); }
-      void setExactUIntValid(bool v) { flags = v ? (flags | fExactUIntValid) : (flags & ~fExactUIntValid); }
-      bool hasDecScientificPow63High() const { return (flags & fDecScientificPow63High) != 0; }
-      void setDecScientificPow63High(bool v) {
-        flags = v ? (flags | fDecScientificPow63High) : (flags & ~fDecScientificPow63High);
+      bool hasExactSmUInt() const { return hasExactSmUIntMetadata() && !hasRenderRational(); }
+      void setExactSmUIntValid(bool v) { flags = v ? (flags | fExactSmUIntValid) : (flags & ~fExactSmUIntValid); }
+      bool hasDecScientificSmIntBoundHigh() const { return (flags & fDecScientificSmIntBoundHigh) != 0; }
+      void setDecScientificSmIntBoundHigh(bool v) {
+        flags = v ? (flags | fDecScientificSmIntBoundHigh) : (flags & ~fDecScientificSmIntBoundHigh);
       }
-      bool hasImagExactSInt() const { return hasImagExactSIntMetadata() && !hasImagRenderRational(); }
-      void setImagExactSIntValid(bool v) { flags = v ? (flags | fImagExactSIntValid) : (flags & ~fImagExactSIntValid); }
-      bool hasImagExactUInt() const { return hasImagExactUIntMetadata() && !hasImagRenderRational(); }
-      void setImagExactUIntValid(bool v) {
-        flags = v ? (flags | fImagExactUIntValid) : (flags & ~fImagExactUIntValid);
+      bool hasImagExactSmInt() const { return hasImagExactSmIntMetadata() && !hasImagRenderRational(); }
+      void setImagExactSmIntValid(bool v) { flags = v ? (flags | fImagExactSmIntValid) : (flags & ~fImagExactSmIntValid); }
+      bool hasImagExactSmUInt() const { return hasImagExactSmUIntMetadata() && !hasImagRenderRational(); }
+      void setImagExactSmUIntValid(bool v) {
+        flags = v ? (flags | fImagExactSmUIntValid) : (flags & ~fImagExactSmUIntValid);
       }
       bool hasRenderRational() const { return (flags & fRenderRational) != 0; }
       void setRenderRational(bool v) { flags = v ? (flags | fRenderRational) : (flags & ~fRenderRational); }
@@ -241,8 +241,8 @@ namespace smartmath_internal {
   EvalValue makeScalar(SmFloat v);
   EvalValue makeScalarMaybeExact(SmFloat v);
   EvalValue makeScalarInt(SmInt v);
-  EvalValue makeScalarUInt(SmUInt v);
-  EvalValue makeScalarUIntPreferInt(SmUInt v);
+  EvalValue makeScalarSmUInt(SmUInt v);
+  EvalValue makeScalarSmUIntPreferInt(SmUInt v);
 
 #if SMARTMATH_TIME_VALUES
   EvalValue makeScalarTimeMs(SmInt totalMs);
@@ -259,9 +259,9 @@ namespace smartmath_internal {
   void scalarClearImaginary(EvalValue::ScalarValue& s);
 
   enum class ExactSignedIntPolicy {
-    AllowUIntBitReinterpret,
-    NoUIntWrap,
-    NoUIntWrapWithRepairAndStorageKind,
+    AllowSmUIntBitReinterpret,
+    NoSmUIntWrap,
+    NoSmUIntWrapWithRepairAndStorageKind,
   };
 
   enum class ScalarExactKind : std::uint8_t {
@@ -276,16 +276,16 @@ namespace smartmath_internal {
     SmUInt uintV = 0;
   };
 
-  
+
   inline bool isWithinExactIntFromFloatRange(SmFloat v) {
     return std::isfinite(v) && std::fabs(v) <= smartmath::kMaxExactIntFromFloat;
   }
 
-  inline bool tryExtractExactSIntFromFloatStrict(SmFloat v, SmInt& out) {
+  inline bool tryExtractExactSmIntFromFloatStrict(SmFloat v, SmInt& out) {
     if (!isWithinExactIntFromFloatRange(v)) {
       return false;
     }
-    if (!smartmath::isFloatInSIntRange(v)) {
+    if (!smartmath::isFloatInSmIntRange(v)) {
       return false;
     }
     const SmInt asInt = static_cast<SmInt>(v);
@@ -296,7 +296,7 @@ namespace smartmath_internal {
     return true;
   }
 
-  inline SmUInt gcdUInt(SmUInt a, SmUInt b) {
+  inline SmUInt gcdSmUInt(SmUInt a, SmUInt b) {
     while (b != 0u) {
       const SmUInt t = a % b;
       a = b;
@@ -305,12 +305,12 @@ namespace smartmath_internal {
     return a;
   }
 
-  inline SmUInt uintMagnitudeOfSInt(SmInt v) {
+  inline SmUInt uintMagnitudeOfSmInt(SmInt v) {
     return v < 0 ? (SmUInt{0} - static_cast<SmUInt>(v)) : static_cast<SmUInt>(v);
   }
 
-  // mag must be <= 2^63.
-  inline SmInt sintFromNegatedMagnitude(SmUInt mag) {
+  // mag must be <= kIntMinMag (2^(kIntBits-1)).
+  inline SmInt smIntFromNegatedMagnitude(SmUInt mag) {
     return mag == smartmath::kIntMinMag ? kIntMin : -static_cast<SmInt>(mag);
   }
 
@@ -357,7 +357,7 @@ namespace smartmath_internal {
     outStop = stopIdx;
   }
 
-  // ``stepV`` is not zero. Start and stop are already normalized into a range that fits in signed 64-bit.
+  // ``stepV`` is not zero. Start and stop are already normalized into a range that fits SmInt.
   inline SmInt estimateSliceItemCount(SmInt startV, SmInt stopV, SmInt stepV) {
     if (stepV > 0) {
       if (startV >= stopV) {
@@ -370,8 +370,8 @@ namespace smartmath_internal {
       return 0;
     }
     const SmInt dist = startV - stopV;
-    const SmUInt mag = uintMagnitudeOfSInt(stepV);
-    return static_cast<SmInt>((static_cast<SmUInt>(dist - 1) / mag) + 1ull);
+    const SmUInt mag = uintMagnitudeOfSmInt(stepV);
+    return static_cast<SmInt>((static_cast<SmUInt>(dist - 1) / mag) + 1u);
   }
 
   // Negative indexes wrap. An index that does not land in ``[0, length)`` returns false.
@@ -392,40 +392,40 @@ namespace smartmath_internal {
   }
 
   bool nearlyInt(SmFloat v, SmInt& out);
-  bool parseUIntFromFloat(SmFloat v, SmUInt& out);
+  bool parseSmUIntFromFloat(SmFloat v, SmUInt& out);
   bool tryGetExactSignedIntFromScalarPolicy(
     const EvalValue::ScalarValue& s,
     SmInt& outI,
     ExactSignedIntPolicy policy);
   bool tryGetExactSignedIntFromScalar(const EvalValue::ScalarValue& s, SmInt& outI);
-  bool tryGetExactSignedIntNoUIntWrapFromScalar(const EvalValue::ScalarValue& s, SmInt& outI);
+  bool tryGetExactSignedIntNoSmUIntWrapFromScalar(const EvalValue::ScalarValue& s, SmInt& outI);
   bool scalarHasExactIntegerPayload(const EvalValue::ScalarValue& s);
-  bool TryMulExactSIntSquare(SmInt i, SmInt& outSq);
-  bool TryGetExactSignedIntNoUIntWrapScalarStrict(const EvalValue::ScalarValue& s, SmInt& outI);
+  bool tryMulExactSmIntSquare(SmInt i, SmInt& outSq);
+  bool tryGetExactSignedIntNoSmUIntWrapScalarStrict(const EvalValue::ScalarValue& s, SmInt& outI);
   enum class ArrayIndexIntKind { Ok, NotInteger, OutOfSignedRange };
   ArrayIndexIntKind classifyArrayIndexInt(const EvalValue::ScalarValue& sIn, SmInt& outI);
   bool tryGetArrayIndexIntFromScalarValue(const EvalValue::ScalarValue& sIn, SmInt& outI);
-  bool tryGetExactNonNegativeUIntFromScalar(const EvalValue::ScalarValue& s, SmUInt& outU);
+  bool tryGetExactNonNegativeSmUIntFromScalar(const EvalValue::ScalarValue& s, SmUInt& outU);
   bool tryGetSignedIntFromScalar(const EvalValue::ScalarValue& s, SmInt& outI);
   bool tryGetExactSignMagnitudeFromScalar(const EvalValue::ScalarValue& s, bool& isNeg, SmUInt& mag);
   EvalValue makeScalarFromSignMagnitude(bool isNeg, SmUInt mag);
-  bool tryGetBothExactSignedIntNoUIntWrapFromScalars(
+  bool tryGetBothExactSignedIntNoSmUIntWrapFromScalars(
     const EvalValue::ScalarValue& a,
     const EvalValue::ScalarValue& b,
     SmInt& outA,
     SmInt& outB);
-  bool tryGetBothExactNonNegativeUIntFromScalars(
+  bool tryGetBothExactNonNegativeSmUIntFromScalars(
     const EvalValue::ScalarValue& a,
     const EvalValue::ScalarValue& b,
     SmUInt& outA,
     SmUInt& outB);
-  bool tryShiftLeftU64ExactOrMaybe(
+  bool tryShiftLeftSmUIntExactOrMaybe(
     SmUInt aU,
     SmUInt bU,
     EvalValue& outV);
-  bool tryMulUIntChecked(SmUInt a, SmUInt b, SmUInt& out);
-  bool tryPowUIntChecked(SmUInt base, SmUInt exp, SmUInt& out);
-  bool TryQuotExactSInt(SmInt num, SmInt den, SmInt& quo);
+  bool tryMulSmUIntChecked(SmUInt a, SmUInt b, SmUInt& out);
+  bool tryPowSmUIntChecked(SmUInt base, SmUInt exp, SmUInt& out);
+  bool tryQuotExactSmInt(SmInt num, SmInt den, SmInt& quo);
   bool passExactAbsFloatFactorGates(SmFloat f, bool strictAbsFAboveOne);
   bool getExactRoundedIntFromFloatResult(SmFloat r, bool boundAbsResultTo2_53, SmInt& outI);
   bool verifyExactIntFloatOpResidue(
@@ -493,8 +493,8 @@ namespace smartmath_internal {
   EvalValue negateEvalValue(const EvalValue& v);
   EvalValue applyAbsScalarValue(const EvalValue::ScalarValue& s);
   void exactCartesianComponentClear(ExactCartesianComponent& c);
-  void ExactCartesianComponentAssignFromSignedInt(ExactCartesianComponent& c, SmInt n);
-  void ExactCartesianComponentAssignFromUInt(ExactCartesianComponent& c, SmUInt u);
+  void exactCartesianComponentAssignFromSignedInt(ExactCartesianComponent& c, SmInt n);
+  void exactCartesianComponentAssignFromSmUInt(ExactCartesianComponent& c, SmUInt u);
   bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesianComponent& c);
   void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c);
   int expandUnpackedArgs(const std::vector<EvalValue>& in, std::vector<EvalValue>& out);
@@ -505,9 +505,9 @@ namespace smartmath_internal {
 
 #if SMARTMATH_COMPLEX_NUMBERS
   void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s);
-  bool tryGetExactImagSIntStrict(const EvalValue::ScalarValue& s, SmInt& outI);
-  void ScalarApplyExactSIntPart(EvalValue::ScalarValue& s, bool imagPart, SmInt n);
-  bool TryExactCartesianComponentToSInt(const ExactCartesianComponent& c, SmInt& outI);
+  bool tryGetExactImagSmIntStrict(const EvalValue::ScalarValue& s, SmInt& outI);
+  void scalarApplyExactSmIntPart(EvalValue::ScalarValue& s, bool imagPart, SmInt n);
+  bool tryExactCartesianComponentToSmInt(const ExactCartesianComponent& c, SmInt& outI);
   bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue& sv,
                                               ExactCartesianComponent& c);
   bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC);

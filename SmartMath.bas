@@ -684,9 +684,9 @@ end function
 private function RawCartesianScalarToString(byref scalar as RawCartesianScalar) as String
   dim s as String = "kind=" & ltrim(str(scalar.kind))
   select case scalar.kind
-    case RSK_SINT: s &= " int64=" & ltrim(str(scalar.intValue))
-    case RSK_UINT: s &= " uint64=" & ltrim(str(scalar.uintValue))
-    case RSK_FLOATING: s &= " float=" & ltrim(str(scalar.floatValue))
+    case RSK_SMINT: s &= " int=" & ltrim(str(scalar.intValue))
+    case RSK_SMUINT: s &= " uint=" & ltrim(str(scalar.uintValue))
+    case RSK_SMFLOATING: s &= " float=" & ltrim(str(scalar.floatValue))
     case RSK_RATIONAL: s &= " ratio=" & ltrim(str(scalar.ratNum)) & "/" & ltrim(str(scalar.ratDen))
     case else: s &= " ..."
   end select

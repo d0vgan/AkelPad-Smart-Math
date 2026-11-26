@@ -43,7 +43,7 @@ Implementation stops at the concern, including one found mid-task from reading c
 These are not new concerns:
 
 - behavior the user specified in this task
-- behavior specified by `USAGE_AND_SYNTAX.md`, by empty-array-policy, or by another rule in these skills
+- behavior specified by `USAGE_AND_SYNTAX.md`, by empty-array-policy, by numeric-behavior, or by another rule in these skills
 - a difference the user already accepted that is recorded in the parity skill
 - floating-point inaccuracy as defined by smoke-tests "Handling a test mismatch"
 

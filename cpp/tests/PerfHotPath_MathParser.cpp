@@ -9,12 +9,12 @@
 
 namespace {
 
-long long rawCartesianToSInt(const MathParser::RawResult::CartesianScalar& s) {
+long long rawCartesianToSmInt(const MathParser::RawResult::CartesianScalar& s) {
   switch (s.kind) {
     case MathParser::RawResult::ScalarKind::Time:
-    case MathParser::RawResult::ScalarKind::SInt:
+    case MathParser::RawResult::ScalarKind::SmInt:
       return s.intValue;
-    case MathParser::RawResult::ScalarKind::UInt:
+    case MathParser::RawResult::ScalarKind::SmUInt:
       return static_cast<long long>(s.uintValue);
     case MathParser::RawResult::ScalarKind::Rational:
       return static_cast<long long>(static_cast<double>(s.rational.numerator) /
@@ -23,14 +23,14 @@ long long rawCartesianToSInt(const MathParser::RawResult::CartesianScalar& s) {
     case MathParser::RawResult::ScalarKind::IntPower:
       return s.rational.numerator;
 #endif
-    case MathParser::RawResult::ScalarKind::FloatingPoint:
+    case MathParser::RawResult::ScalarKind::SmFloatingPoint:
     default:
       return static_cast<long long>(s.floatingPoint);
   }
 }
 
-long long rawScalarToSInt(const MathParser::RawResult::Scalar& s) {
-  return rawCartesianToSInt(s.real);
+long long rawScalarToSmInt(const MathParser::RawResult::Scalar& s) {
+  return rawCartesianToSmInt(s.real);
 }
 
 long long benchResultChecksum(const MathParser::RawResult& r) {
@@ -38,11 +38,11 @@ long long benchResultChecksum(const MathParser::RawResult& r) {
     return 0;
   }
   if (r.isScalar()) {
-    return rawScalarToSInt(r.scalar);
+    return rawScalarToSmInt(r.scalar);
   }
   long long sum = 0;
   for (const auto& item : r.array) {
-    sum += rawScalarToSInt(item);
+    sum += rawScalarToSmInt(item);
   }
   return sum;
 }
@@ -156,7 +156,7 @@ void runPhaseProfileBench(std::uint64_t iterations) {
     if (!compiled || !r.hasValue() || !r.isScalar()) {
       ++errors;
     } else {
-      checksum += rawScalarToSInt(r.scalar);
+      checksum += rawScalarToSmInt(r.scalar);
     }
   }
 
@@ -284,7 +284,7 @@ int main(int argc, char** argv) {
       if (!r.hasValue() || !r.isScalar()) {
         ++errors;
       } else {
-        checksum += rawScalarToSInt(r.scalar);
+        checksum += rawScalarToSmInt(r.scalar);
       }
     }
     const auto t1 = std::chrono::steady_clock::now();

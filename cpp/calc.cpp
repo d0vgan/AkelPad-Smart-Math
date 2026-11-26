@@ -3,6 +3,8 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -284,6 +286,9 @@ int main(int argc, char** argv) {
     printUsage(std::cerr);
     return 1;
   }
+
+  // The library never seeds std::rand (the host owns the seed); without this every run repeats one sequence.
+  std::srand(static_cast<unsigned>(std::time(nullptr)));
 
   MathParser parser;
 

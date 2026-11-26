@@ -14,7 +14,7 @@ class MathParser {
 public:
   struct RawResult {
     enum class Kind { None, Scalar, Array };
-    enum class ScalarKind { FloatingPoint, SInt, UInt, Rational,
+    enum class ScalarKind { SmFloatingPoint, SmInt, SmUInt, Rational,
 #if SMARTMATH_FACTORINT
                             IntPower,
 #endif
@@ -22,25 +22,25 @@ public:
 
     /// One real or imaginary component. Only the union member for ``kind`` is meaningful.
     struct CartesianScalar {
-      ScalarKind kind = ScalarKind::FloatingPoint;
+      ScalarKind kind = ScalarKind::SmFloatingPoint;
       union {
-        smartmath::SmFloat floatingPoint;    // FloatingPoint
-        smartmath::SmInt intValue;      // SInt and Time (total milliseconds)
-        smartmath::SmUInt uintValue; // UInt
+        smartmath::SmFloat floatingPoint;    // SmFloatingPoint
+        smartmath::SmInt intValue;      // SmInt and Time (total milliseconds)
+        smartmath::SmUInt uintValue; // SmUInt
         struct {
           smartmath::SmInt numerator;       // Rational numerator; IntPower base
           smartmath::SmUInt denominator; // Rational denominator; IntPower exponent
         } rational;
       };
 
-      CartesianScalar() : kind(ScalarKind::FloatingPoint), floatingPoint(0.0) {}
+      CartesianScalar() : kind(ScalarKind::SmFloatingPoint), floatingPoint(0.0) {}
 
       void clear();
       bool isZero() const;
 
-      bool isFloatingPoint() const { return kind == ScalarKind::FloatingPoint; }
-      bool isSInt() const { return kind == ScalarKind::SInt; }
-      bool isUInt() const { return kind == ScalarKind::UInt; }
+      bool isSmFloatingPoint() const { return kind == ScalarKind::SmFloatingPoint; }
+      bool isSmInt() const { return kind == ScalarKind::SmInt; }
+      bool isSmUInt() const { return kind == ScalarKind::SmUInt; }
       bool isRational() const { return kind == ScalarKind::Rational; }
 #if SMARTMATH_FACTORINT
       bool isIntPower() const { return kind == ScalarKind::IntPower; }
@@ -53,14 +53,14 @@ public:
     /// Rational -> real.rational member.
     /// Time -> real.intValue ms.
     struct Scalar {
-      ScalarKind kind = ScalarKind::FloatingPoint;
+      ScalarKind kind = ScalarKind::SmFloatingPoint;
       CartesianScalar real{};
       CartesianScalar imag{};
 
       bool isComplex() const { return kind == ScalarKind::Complex; }
-      bool isFloatingPoint() const { return !isComplex() && real.isFloatingPoint(); }
-      bool isSInt() const { return !isComplex() && real.isSInt(); }
-      bool isUInt() const { return !isComplex() && real.isUInt(); }
+      bool isSmFloatingPoint() const { return !isComplex() && real.isSmFloatingPoint(); }
+      bool isSmInt() const { return !isComplex() && real.isSmInt(); }
+      bool isSmUInt() const { return !isComplex() && real.isSmUInt(); }
       bool isRational() const { return !isComplex() && real.isRational(); }
       bool isTime() const { return !isComplex() && real.isTime(); }
     };
@@ -138,6 +138,16 @@ private:
   using UserFunction = smartmath_internal::UserFunction;
   using Expr = smartmath_internal::Expr;
   using AstStatement = smartmath_internal::AstStatement;
+  /// Per-call state reused across the elements of one sortby/filter call: the compiled lambda body, or the
+  /// function reference resolved once.
+  struct LambdaProgramCache {
+    bool ready = false;
+    std::vector<AstStatement> program;
+    bool refResolved = false;
+    bool refIsBuiltin = false;
+    smartmath_internal::BuiltinFunctionId refFnId = smartmath_internal::BuiltinFunctionId::Count;
+    bool refIsRestricted = false;
+  };
   using ParseErrorId = smartmath_internal::ParseErrorId;
   using CallErrorId = smartmath_internal::CallErrorId;
   using EvalContext = smartmath_internal::EvalContext;
@@ -223,7 +233,8 @@ private:
       const std::vector<std::string>& paramNames,
       const std::string& bodyExpr,
       std::vector<EvalValue>&& args,
-      const std::unordered_map<std::string, EvalValue>* parentScopedVars);
+      const std::unordered_map<std::string, EvalValue>* parentScopedVars,
+      LambdaProgramCache* cache = nullptr);
 #endif
   std::unique_ptr<Expr> parseUnaryFunctionArg(
       EvalContext& ctx,
@@ -359,7 +370,7 @@ private:
       const EvalValue& right,
       char op) const;
 #endif
-  bool RejectSIntBinaryOperands(
+  bool rejectSmIntBinaryOperands(
       EvalContext& ctx,
       const EvalValue& left,
       const EvalValue& right,
@@ -429,7 +440,7 @@ private:
       bool rhsIsDirectPostfixPercent,
       const EvalValue& left,
       EvalValue& right) const;
-  EvalValue evalSIntBinaryOp(
+  EvalValue evalSmIntBinaryOp(
       EvalContext& ctx,
       const EvalValue& left,
       const EvalValue& right,
@@ -500,7 +511,8 @@ private:
       bool isLambda,
       const EvalValue::ScalarValue& elem,
       const std::unordered_map<std::string, EvalValue>* scopedVars,
-      const char* expectsUnaryFunction);
+      const char* expectsUnaryFunction,
+      LambdaProgramCache* lambdaCache = nullptr);
   EvalValue builtinSortby(
       EvalContext& ctx,
       const std::string& fnName,
@@ -512,7 +524,8 @@ private:
       const std::string& funcName,
       const EvalValue::ScalarValue& elem,
       const std::unordered_map<std::string, EvalValue>* scopedVars,
-      const char* expectsUnaryFunction);
+      const char* expectsUnaryFunction,
+      LambdaProgramCache* cache = nullptr);
   bool isEligibleUnaryFunctionName(
       const std::string& funcName,
       std::string& outErr,

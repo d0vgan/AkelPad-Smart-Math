@@ -55,14 +55,14 @@ private function CasePassed(byref c as FactorintCase, byval ok as Boolean, byref
   return ok andalso (len(errText) = 0) andalso (trim(actual) = trim(c.expected))
 end function
 
-private function RunCaseIndex(byval idx as Integer, byref elapsedSec as SmFloat) as Integer
+private function RunCaseIndex(byval idx as Integer, byref elapsedMs as SmFloat) as Integer
   dim c as FactorintCase = g_cases(idx)
   dim t0 as SmFloat = timer
   dim result as SmFloat
   dim resultText as String
   dim isArray as Boolean
   dim ok as Boolean = Parser_TryEvaluateEx(c.expr, result, resultText, isArray)
-  elapsedSec = timer - t0
+  elapsedMs = (timer - t0) * 1000.0
 
   dim errText as String = Parser_GetLastError()
   dim actual as String
@@ -72,7 +72,7 @@ private function RunCaseIndex(byval idx as Integer, byref elapsedSec as SmFloat)
     actual = "ERR: " & errText
   end if
 
-  print "CASE " & idx & "/" & FACTORINT_TEST_COUNT & " (" & elapsedSec & "s): " & c.expr
+  print "CASE " & idx & "/" & FACTORINT_TEST_COUNT & " (" & elapsedMs & " ms): " & c.expr
   if CasePassed(c, ok, actual, errText) then
     print "  PASS -> " & actual
     return 0

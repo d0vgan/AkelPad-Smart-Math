@@ -21,8 +21,9 @@ Applies to every expectation: `tests/SmokeTest_MathParser.bas`, `cpp/tests/Tests
 - **Never** seed `expected` from current parser output (`Parser_TryEvaluateEx`, `parseAndEvaluate`, `calc.exe`, probes) — that locks bugs in.
 - Derive expectations from:
   1. **Python** (`math` / `cmath` / `statistics` / project rules) — prefer `tools/verify_smoke_expected_vs_python.py` when it translates the expression; else a short script.
-  2. `USAGE_AND_SYNTAX.md` for intentional project semantics Python does not model (percent postfix, time values, exact-int promotion, error policy). When the docs and Python disagree on plain math, verify by hand and fix whichever is wrong.
-  3. IEEE / exact-integer rules when both are silent (e.g. `nan==nan` → `0`, SmInt overflow promotion).
+  2. Internal skills/flows for intentional project semantics Python does not model: `numeric-behavior.md` (trig snap, NaN per function, compensated `sum`, exact-int aggregates/compares, display digits), coding-standards (exact-int metadata), empty-array-policy, complex-support, percent/time rules. Keep `tools/verify_smoke_expected_vs_python.py` stubs aligned with those flows.
+  3. `USAGE_AND_SYNTAX.md` only for **end-user** semantics it actually states (everyday signatures, Advanced Behavior overview, error policy phrasing). Do not invent USAGE bullets for edge cases — put the rule in numeric-behavior (usage-docs "Audience"). When USAGE and Python disagree on plain everyday math, verify by hand and fix whichever is wrong.
+  4. IEEE / exact-integer rules when the above are silent (e.g. `nan==nan` → `0`, SmInt overflow promotion).
 - After setting expectations, run both harnesses and handle every failure with "Handling a test mismatch" below.
 
 ### Expected string format

@@ -19,6 +19,7 @@
 //  factorint keeps its own explicit 64-bit domain (see MathParserFactorInt.cpp).
 // =============================================================================
 
+#include <cassert>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -101,8 +102,15 @@ constexpr SmFloat pow2Float(int n) {
   }
   SmFloat r = static_cast<SmFloat>(1);
   if (n >= 0) {
-    for (int i = 0; i < n; ++i) {
-      r *= static_cast<SmFloat>(2);
+    // Square-and-multiply: O(log n) steps. Every intermediate is a power of two below 2^n, so all products are exact.
+    SmFloat base = static_cast<SmFloat>(2);
+    for (int m = n; m > 0; m >>= 1) {
+      if ((m & 1) != 0) {
+        r *= base;
+      }
+      if (m > 1) {
+        base *= base;
+      }
     }
   } else {
     for (int i = 0; i < -n; ++i) {
@@ -143,31 +151,33 @@ constexpr F baselineOr(double baseline, F derived) {
 
 /// 2^kFloatMantDigits: the largest magnitude at which every integer is exact (2^53 for double).
 constexpr SmFloat kMaxExactIntFromFloat = pow2Float(kFloatMantDigits);
-/// Exclusive float bounds: SmInt covers [-kFloatSIntBound, kFloatSIntBound), SmUInt covers [0, kFloatUIntBound).
-constexpr SmFloat kFloatSIntBound = pow2Float(kIntBits - 1);
-constexpr SmFloat kFloatUIntBound = pow2Float(kIntBits);
+/// Exclusive float bounds: SmInt covers [-kFloatSmIntBound, kFloatSmIntBound), SmUInt covers [0, kFloatSmUIntBound).
+constexpr SmFloat kFloatSmIntBound = pow2Float(kIntBits - 1);
+constexpr SmFloat kFloatSmUIntBound = pow2Float(kIntBits);
+/// Veltkamp splitting constant 2^ceil(mantissa/2) + 1 (2^27 + 1 for double); computed once at compile time.
+constexpr SmFloat kVeltkampSplitFactor = pow2Float((kFloatMantDigits + 1) / 2) + static_cast<SmFloat>(1);
 
 /// True when 2^mantissa exceeds every SmUInt, so every integer magnitude is below the exact-float limit.
-constexpr bool kExactLimitCoversUInt = (kFloatMantDigits >= kIntBits);
-/// 2^mantissa as SmUInt (saturated to kUIntMax when kExactLimitCoversUInt; use isMagBelowExactFloatLimit).
+constexpr bool kExactLimitCoversSmUInt = (kFloatMantDigits >= kIntBits);
+/// 2^mantissa as SmUInt (saturated to kUIntMax when kExactLimitCoversSmUInt; use isMagBelowExactFloatLimit).
 constexpr SmUInt kExactLimitMag =
-    kExactLimitCoversUInt ? kUIntMax : static_cast<SmUInt>(static_cast<SmUInt>(1) << (kExactLimitCoversUInt ? 0 : kFloatMantDigits));
+    kExactLimitCoversSmUInt ? kUIntMax : static_cast<SmUInt>(static_cast<SmUInt>(1) << (kExactLimitCoversSmUInt ? 0 : kFloatMantDigits));
 /// mag < 2^mantissa: the integer magnitude is exactly representable as SmFloat.
-inline bool isMagBelowExactFloatLimit(SmUInt mag) { return kExactLimitCoversUInt || mag < kExactLimitMag; }
+inline bool isMagBelowExactFloatLimit(SmUInt mag) { return kExactLimitCoversSmUInt || mag < kExactLimitMag; }
 
 /// True when v (finite) lies in the SmInt range, so static_cast<SmInt>(v) is defined (it truncates).
-inline bool isFloatInSIntRange(SmFloat v) {
-  return v >= -kFloatSIntBound && v < kFloatSIntBound && v <= std::numeric_limits<SmFloat>::max();
+inline bool isFloatInSmIntRange(SmFloat v) {
+  return v >= -kFloatSmIntBound && v < kFloatSmIntBound && v <= std::numeric_limits<SmFloat>::max();
 }
 /// True when v (finite) lies in the SmUInt range, so static_cast<SmUInt>(v) is defined (it truncates).
-inline bool isFloatInUIntRange(SmFloat v) {
-  return v >= static_cast<SmFloat>(0) && v < kFloatUIntBound && v <= std::numeric_limits<SmFloat>::max();
+inline bool isFloatInSmUIntRange(SmFloat v) {
+  return v >= static_cast<SmFloat>(0) && v < kFloatSmUIntBound && v <= std::numeric_limits<SmFloat>::max();
 }
 
 // ---- decimal digits of the integer type -------------------------------------------------------
 namespace detail {
 /// Largest n with 10^n <= kUIntMax (19 for 64-bit).
-constexpr int maxPow10ExponentOfUInt() {
+constexpr int maxPow10ExponentOfSmUInt() {
   int n = 0;
   SmUInt p = 1;
   while (p <= kUIntMax / 10u) {
@@ -199,22 +209,22 @@ constexpr int maxFactorialArgOfInt() {
 }  // namespace detail
 
 /// Number of decimal digits of kUIntMax (20 for 64-bit).
-constexpr int kUIntDigits10 = detail::maxPow10ExponentOfUInt() + 1;
-/// Number of entries in kPow10UInt: 10^0 ... 10^(kUIntDigits10-1), all fit SmUInt.
-constexpr int kPow10UIntCount = kUIntDigits10;
+constexpr int kUIntDigits10 = detail::maxPow10ExponentOfSmUInt() + 1;
+/// Number of entries in kPow10SmUInt: 10^0 ... 10^(kUIntDigits10-1), all fit SmUInt.
+constexpr int kPow10SmUIntCount = kUIntDigits10;
 /// Largest n whose factorial fits SmInt.
 constexpr int kMaxFactorialArg = detail::maxFactorialArgOfInt();
 /// Largest n with 10^n <= kIntMax (18 for 64-bit): 10^n converts to SmInt without overflow.
 constexpr int kMaxPow10ExponentOfInt = detail::maxPow10ExponentOfInt();
 
 namespace detail {
-struct Pow10UIntTable {
-  SmUInt v[kPow10UIntCount];
-  constexpr Pow10UIntTable() : v() {
+struct Pow10SmUIntTable {
+  SmUInt v[kPow10SmUIntCount];
+  constexpr Pow10SmUIntTable() : v() {
     SmUInt p = 1;
-    for (int i = 0; i < kPow10UIntCount; ++i) {
+    for (int i = 0; i < kPow10SmUIntCount; ++i) {
       v[i] = p;
-      if (i + 1 < kPow10UIntCount) {
+      if (i + 1 < kPow10SmUIntCount) {
         p *= 10u;
       }
     }
@@ -232,14 +242,20 @@ struct FactorialIntTable {
     }
   }
 };
-constexpr Pow10UIntTable kPow10UIntTableData{};
+constexpr Pow10SmUIntTable kPow10SmUIntTableData{};
 constexpr FactorialIntTable kFactorialIntTableData{};
 }  // namespace detail
 
-/// 10^i as SmUInt, 0 <= i < kPow10UIntCount.
-inline SmUInt pow10UInt(int i) { return detail::kPow10UIntTableData.v[i]; }
-/// i! as SmInt, 0 <= i <= kMaxFactorialArg.
-inline SmInt factorialInt(int i) { return detail::kFactorialIntTableData.v[i]; }
+/// 10^i as SmUInt. Precondition: 0 <= i < kPow10SmUIntCount (checked by assert only; Basic Pow10SmUInt returns 1 outside).
+inline SmUInt pow10SmUInt(int i) {
+  assert(i >= 0 && i < kPow10SmUIntCount);
+  return detail::kPow10SmUIntTableData.v[i];
+}
+/// i! as SmInt. Precondition: 0 <= i <= kMaxFactorialArg (checked by assert only; callers range-check first).
+inline SmInt factorialInt(int i) {
+  assert(i >= 0 && i <= kMaxFactorialArg);
+  return detail::kFactorialIntTableData.v[i];
+}
 
 // ---- integer text and float rounding helpers ------------------------------------------------------
 // std::to_string has no __int128 overload, so integer text is produced here (same digits as to_string).
@@ -260,10 +276,25 @@ inline std::string intToString(SmInt v) {
   return "-" + uintToString(static_cast<SmUInt>(static_cast<SmUInt>(0) - static_cast<SmUInt>(v)));
 }
 
-/// Nearest integer (half away from zero) as SmInt; out of range or NaN gives kIntMin (what llround does on x86).
-inline SmInt roundFloatToSInt(SmFloat x) {
+/// Nearest integer (half away from zero) as SmInt. False (out untouched) for NaN, infinity or a rounded
+/// value outside the SmInt range [-2^(b-1), 2^(b-1)).
+inline bool tryRoundFloatToSmInt(SmFloat x, SmInt& out) {
   const SmFloat r = std::round(x);
-  return isFloatInSIntRange(r) ? static_cast<SmInt>(r) : kIntMin;
+  if (!isFloatInSmIntRange(r)) {
+    return false;
+  }
+  out = static_cast<SmInt>(r);
+  return true;
+}
+/// Nearest integer (half away from zero) as SmUInt. False (out untouched) for NaN, infinity or a rounded
+/// value outside the SmUInt range [0, 2^b).
+inline bool tryRoundFloatToSmUInt(SmFloat x, SmUInt& out) {
+  const SmFloat r = std::round(x);
+  if (!isFloatInSmUIntRange(r)) {
+    return false;
+  }
+  out = static_cast<SmUInt>(r);
+  return true;
 }
 
 // ---- radix output -----------------------------------------------------------------------------
@@ -302,10 +333,14 @@ inline SmFloat parseFloatPrefix(const char* s, char** end) {
 }
 
 // ---- tolerances and thresholds (decimal-digit derived) ------------------------------------------
-/// 10^-(kFloatDigits10 - lostDigits): an absolute tolerance that leaves lostDigits digits of noise room.
+/// Most digits a tolerance may give up: at least 3/5 of kFloatDigits10 always stay significant, so every
+/// tolerance stays well below 1 (double: 6 of 15, float: 3 of 6, long double: 8 of 18).
+constexpr int kMaxLostDigits = kFloatDigits10 - (kFloatDigits10 * 3) / 5;
+/// 10^-(kFloatDigits10 - lostDigits): an absolute tolerance that leaves lostDigits digits of noise room
+/// (lostDigits is capped at kMaxLostDigits).
 /// double: 0 -> 1e-15, 1 -> 1e-14, 2 -> 1e-13, 3 -> 1e-12, 6 -> 1e-9.
 constexpr SmFloat floatTolerance(int lostDigits) {
-  return pow10Float(-(kFloatDigits10 - lostDigits));
+  return pow10Float(-(kFloatDigits10 - (lostDigits < kMaxLostDigits ? lostDigits : kMaxLostDigits)));
 }
 constexpr SmFloat kTolLost0 = floatTolerance(0);
 constexpr SmFloat kTolLost1 = floatTolerance(1);
@@ -316,10 +351,21 @@ constexpr SmFloat kTolLost6 = floatTolerance(6);
 /// hypot switches to the scaled algorithm above this magnitude (1e150 for double) and below its inverse.
 constexpr SmFloat kHypotDirectMax = baselineOr<SmFloat>(1e150, pow10Float(kFloatMaxExp10 / 2 - 4));
 constexpr SmFloat kHypotDirectMin = baselineOr<SmFloat>(1e-150, pow10Float(-(kFloatMaxExp10 / 2 - 4)));
+/// From this magnitude on, asinh and the complex asin/acos paths use their ln(2|z|) asymptotic form, because
+/// z * z could overflow. Same value as kHypotDirectMax (squares stay finite below it).
+constexpr SmFloat kLargeMagnitudeMin = kHypotDirectMax;
 
 /// Start value for "smallest error so far" searches: larger than any real error, and still finite after
 /// being multiplied by a denominator up to 1e7 (1e300 for double).
 constexpr SmFloat kHugeSentinel = baselineOr<SmFloat>(1e300, pow10Float(kFloatMaxExp10 - 8));
+
+/// acosh(z) is ln(2z) from this magnitude on (1e8 for double): the dropped term 1/(4 z^2) is then below the
+/// float rounding noise, so ln(2z) is as accurate as the exact formula and cannot overflow.
+constexpr SmFloat kAcoshLogMin = baselineOr<SmFloat>(1e8, pow10Float((kFloatDigits10 + 1) / 2));
+
+static_assert(kTolLost0 > static_cast<SmFloat>(0) && kTolLost0 <= kTolLost1 && kTolLost1 <= kTolLost2 && kTolLost2 <= kTolLost3 &&
+                  kTolLost3 <= kTolLost6 && kTolLost6 < static_cast<SmFloat>(1) / 100,
+              "tolerances must grow with lost digits and stay well below 1");
 
 // Baseline guards: the default config must reproduce the historical literals bit for bit.
 static_assert(!kFloatIsBinary64 || kTolLost0 == 1e-15, "tolerance 1e-15 changed");
@@ -330,12 +376,13 @@ static_assert(!kFloatIsBinary64 || kTolLost6 == 1e-9, "tolerance 1e-9 changed");
 static_assert(!kFloatIsBinary64 || kMaxExactIntFromFloat == 9007199254740992.0, "2^53 changed");
 static_assert(!kFloatIsBinary64 || kFloatDisplayDigits == 16, "display digits changed");
 static_assert(!kFloatIsBinary64 || kHypotDirectMax == 1e150, "hypot threshold changed");
+static_assert(!kFloatIsBinary64 || kAcoshLogMin == 1e8, "acosh threshold changed");
 static_assert(!std::is_same<SmInt, long long>::value ||
                   (kIntBits == 64 && kIntMax == 9223372036854775807LL && kUIntMax == 18446744073709551615ULL &&
                    kIntMinMag == 9223372036854775808ULL),
               "64-bit integer limits changed");
 static_assert(!std::is_same<SmInt, long long>::value ||
-                  (kUIntDigits10 == 20 && kPow10UIntCount == 20 && kMaxFactorialArg == 20 && kMaxShift == 63 &&
+                  (kUIntDigits10 == 20 && kPow10SmUIntCount == 20 && kMaxFactorialArg == 20 && kMaxShift == 63 &&
                    kMaxPow10ExponentOfInt == 18),
               "64-bit digit/factorial/shift limits changed");
 

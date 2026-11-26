@@ -3,23 +3,23 @@
 #include <cmath>
 
 void MathParser::RawResult::CartesianScalar::clear() {
-  kind = ScalarKind::FloatingPoint;
+  kind = ScalarKind::SmFloatingPoint;
   floatingPoint = 0.0;
 }
 
 bool MathParser::RawResult::CartesianScalar::isZero() const {
   switch (kind) {
-  case ScalarKind::SInt:
+  case ScalarKind::SmInt:
   case ScalarKind::Time:
     return intValue == 0;
-  case ScalarKind::UInt:
+  case ScalarKind::SmUInt:
     return uintValue == 0;
   case ScalarKind::Rational:
 #if SMARTMATH_FACTORINT
   case ScalarKind::IntPower:
 #endif
     return rational.numerator == 0;
-  case ScalarKind::FloatingPoint:
+  case ScalarKind::SmFloatingPoint:
   case ScalarKind::Complex:
     break;
   }
@@ -31,7 +31,7 @@ bool MathParser::RawResult::CartesianScalar::isZero() const {
 
 void MathParser::RawResult::clear() {
   kind = Kind::None;
-  scalar.kind = ScalarKind::FloatingPoint;
+  scalar.kind = ScalarKind::SmFloatingPoint;
   scalar.real.clear();
   scalar.imag.clear();
   array.clear();

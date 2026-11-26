@@ -54,6 +54,7 @@ Ask concise clarifying questions if ambiguous.
 | Edits `cpp/MathParser.hpp` / `.cpp` shape, helpers, or builtin routing | `.cursor/skills/mathparser-add-or-fix/flows/cpp-class-design.md` |
 | Touches complex flag / Cartesian builtins / real↔complex paths, or code under `#if SMARTMATH_*` | `.cursor/skills/mathparser-add-or-fix/flows/complex-support.md` |
 | Authors or reviews smoke/parity **expectations**, or any test fails | `.cursor/skills/mathparser-add-or-fix/flows/smoke-tests.md` |
+| Touches numeric edge cases, NaN/Inf per-function rules, trig snap, aggregation accuracy, float display digits, or RNG detail | `.cursor/skills/mathparser-add-or-fix/flows/numeric-behavior.md` |
 | Edits `USAGE_AND_SYNTAX.md` | `.cursor/skills/mathparser-add-or-fix/flows/usage-docs.md` |
 | Changes Basic or C++ parser/tests (mirroring), or `cpp/calc.cpp` / `tools/calc.bas` | `.cursor/skills/internal-mathparser-basic-cpp-parity/SKILL.md` |
 | Is about to compile/run gates, probe behavior, or decide which gates apply | `.cursor/skills/internal-mathparser-build-gates/SKILL.md` |
@@ -66,19 +67,19 @@ Follow in order. Skip a step only when its trigger does not apply.
 2. **Protect** — before the first source/script edit.
 3. **Implement** — every table row that applies to the edit.
 4. **Tests** — for any new or changed function, operator, constant, or behavior, mirrored in C++. A user function or lambda change includes both surfaces (user-functions-and-lambdas flow).
-5. **Docs** — when documented behavior is added or changes.
+5. **Docs** — when **end-user** documented behavior is added or changes (usage-docs "Audience"). Technical edge cases and numeric limits go to numeric-behavior (and tests), not into USAGE function bullets.
 6. **Gates** — before finishing any change; build-gates decides which apply (a docs-only change that touches the Quick index still runs the docs index check).
 7. **Reflect** — when either parser or its tests changed: parity skill reflection gate (it owns the gate-rerun rule).
 
 ## Validation Checklist
 
 - Concerns found in reasoning were raised per raise-concerns, each with a proposed fix and before/after examples, and the user decided each one before it was treated as settled.
-- Required gates from build-gates ran; Basic passed before any required C++.
+- Required gates from build-gates ran; Basic passed before any required C++; no build printed a new compiler warning (build-gates "Warnings"), and the C++ analyze gate is clean when C++ changed.
 - Parity complete (parity skill reflection gate).
 - `FunctionNames`, `OperatorNames`, and `ConstNames` stay the only Basic name tables; C++ name lists follow implement-function / implement-constant.
 - Complex work is gated and its tests are isolated (complex-support flow).
 - Expected values come from references, not parser output; every mismatch was handled per smoke-tests "Handling a test mismatch".
-- Integer metadata, helpers, string constants, and non-finite handling follow coding-standards.
+- Integer metadata, helpers, string constants, and non-finite handling follow coding-standards; numeric edge rules follow numeric-behavior; USAGE stays end-user (usage-docs).
 - Array and `()` results follow empty-array-policy; implementation, tests, and docs agree with it.
 - User-function and lambda work covered both surfaces through the shared helpers (user-functions-and-lambdas flow).
 - No unrelated behavior changes; C++ artifacts under `cpp/` only.
@@ -91,6 +92,6 @@ Report:
 - files changed;
 - concise behavior summary (when a user function or a lambda was in scope: both surfaces, and the shared helper that owns the rule);
 - test coverage added, and any existing expectations corrected (with the reference that justified each correction);
-- one pass/fail line for each gate that ran (gate names as in build-gates "Invocation");
+- one pass/fail line for each gate that ran (gate names as in build-gates "Invocation"), plus any warnings found, whether each was fixed or already existed;
 - concerns raised to the user, and the decision for each; or that none were identified
 - remaining Basic/C++ or Python differences (noting which are allowed floating-point inaccuracy) and assumptions from missing requirements. A rejection or limit appears here only after the user has decided to keep it.

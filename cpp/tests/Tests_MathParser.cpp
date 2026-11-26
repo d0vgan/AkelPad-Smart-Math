@@ -576,7 +576,7 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  MathParser::RawResult r = p.getRawResult();
-                 if (!r.isScalar() || !r.scalar.real.isSInt() || r.scalar.real.intValue != 5LL) {
+                 if (!r.isScalar() || !r.scalar.real.isSmInt() || r.scalar.real.intValue != 5LL) {
                    why = "expected scalar int64=5";
                    return false;
                  }
@@ -587,7 +587,7 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  r = p.getRawResult();
-                 if (!r.isScalar() || !r.scalar.real.isFloatingPoint() ||
+                 if (!r.isScalar() || !r.scalar.real.isSmFloatingPoint() ||
                      std::fabs(r.scalar.real.floatingPoint - 0.5) > 1e-12) {
                    why = "expected scalar float=0.5";
                    return false;
@@ -627,8 +627,8 @@ std::vector<TestCase> buildUnitCases() {
                    return false;
                  }
                  r = p.getRawResult();
-                 if (!r.isArray() || r.array.size() != 2 || !r.array[0].real.isSInt() || r.array[0].real.intValue != 60000LL ||
-                     !r.array[1].real.isSInt() || r.array[1].real.intValue != 120000LL) {
+                 if (!r.isArray() || r.array.size() != 2 || !r.array[0].real.isSmInt() || r.array[0].real.intValue != 60000LL ||
+                     !r.array[1].real.isSmInt() || r.array[1].real.intValue != 120000LL) {
                    why = "expected time array converted to int64 ms via milliseconds()";
                    return false;
                  }
@@ -647,16 +647,16 @@ std::vector<TestCase> buildUnitCases() {
                    why = "expected array[3]";
                    return false;
                  }
-                 if (!r.array[0].real.isSInt() || r.array[0].real.intValue != 1LL) {
+                 if (!r.array[0].real.isSmInt() || r.array[0].real.intValue != 1LL) {
                    why = "array[0] mismatch";
                    return false;
                  }
-                 if (!r.array[1].real.isFloatingPoint() ||
+                 if (!r.array[1].real.isSmFloatingPoint() ||
                      std::fabs(r.array[1].real.floatingPoint - 2.5) > 1e-12) {
                    why = "array[1] mismatch";
                    return false;
                  }
-                 if (!r.array[2].real.isSInt() || r.array[2].real.intValue != 3LL) {
+                 if (!r.array[2].real.isSmInt() || r.array[2].real.intValue != 3LL) {
                    why = "array[2] mismatch";
                    return false;
                  }
@@ -734,7 +734,7 @@ std::vector<TestCase> buildUnitCases() {
                  using Cart = MathParser::RawResult::CartesianScalar;
                  using Kind = MathParser::RawResult::ScalarKind;
                  Cart c;
-                 c.kind = Kind::SInt;
+                 c.kind = Kind::SmInt;
                  c.intValue = 0;
                  if (!c.isZero()) {
                    why = "int64 zero";
@@ -747,7 +747,7 @@ std::vector<TestCase> buildUnitCases() {
                  }
 
                  c.clear();
-                 c.kind = Kind::UInt;
+                 c.kind = Kind::SmUInt;
                  c.uintValue = 0;
                  if (!c.isZero()) {
                    why = "uint64 zero";
@@ -787,7 +787,7 @@ std::vector<TestCase> buildUnitCases() {
                  }
 
                  c.clear();
-                 c.kind = Kind::FloatingPoint;
+                 c.kind = Kind::SmFloatingPoint;
                  c.floatingPoint = 0.0;
                  if (!c.isZero()) {
                    why = "float zero";
@@ -828,15 +828,15 @@ std::vector<TestCase> buildUnitCases() {
                  MathParser::RawResult r;
                  r.kind = MathParser::RawResult::Kind::Array;
                  r.array.push_back(MathParser::RawResult::Scalar{});
-                 r.scalar.kind = Kind::SInt;
-                 r.scalar.real.kind = Kind::SInt;
+                 r.scalar.kind = Kind::SmInt;
+                 r.scalar.real.kind = Kind::SmInt;
                  r.scalar.real.intValue = 4;
-                 r.scalar.imag.kind = Kind::UInt;
+                 r.scalar.imag.kind = Kind::SmUInt;
                  r.scalar.imag.uintValue = 7;
                  r.clear();
-                 if (r.hasValue() || !r.array.empty() || r.scalar.kind != Kind::FloatingPoint ||
-                     r.scalar.real.kind != Kind::FloatingPoint || r.scalar.real.floatingPoint != 0.0 ||
-                     r.scalar.imag.kind != Kind::FloatingPoint || r.scalar.imag.floatingPoint != 0.0) {
+                 if (r.hasValue() || !r.array.empty() || r.scalar.kind != Kind::SmFloatingPoint ||
+                     r.scalar.real.kind != Kind::SmFloatingPoint || r.scalar.real.floatingPoint != 0.0 ||
+                     r.scalar.imag.kind != Kind::SmFloatingPoint || r.scalar.imag.floatingPoint != 0.0) {
                    why = "raw result clear";
                    return false;
                  }
@@ -849,7 +849,7 @@ std::vector<TestCase> buildUnitCases() {
                    why = p.getError();
                    return false;
                  }
-                 if (!r.isScalar() || !r.scalar.real.isSInt() || r.scalar.real.intValue != 30LL) {
+                 if (!r.isScalar() || !r.scalar.real.isSmInt() || r.scalar.real.intValue != 30LL) {
                    why = "expected scalar int64=30";
                    return false;
                  }
@@ -1434,13 +1434,13 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                  }
                  const std::string actual = p.getResult();
                  const MathParser::RawResult raw = p.getRawResult();
-                 if (!raw.isScalar() || !raw.scalar.real.isSInt() ||
+                 if (!raw.isScalar() || !raw.scalar.real.isSmInt() ||
                      raw.scalar.real.intValue != 9223372030926249001LL) {
                    why = "expected exact int64 square in raw, got result=\"" + actual + "\" kind=" +
                          std::to_string(static_cast<int>(raw.scalar.real.kind));
-                   if (raw.isScalar() && raw.scalar.real.isSInt()) {
+                   if (raw.isScalar() && raw.scalar.real.isSmInt()) {
                      why += " intValue=" + std::to_string(raw.scalar.real.intValue);
-                   } else if (raw.isScalar() && raw.scalar.real.isFloatingPoint()) {
+                   } else if (raw.isScalar() && raw.scalar.real.isSmFloatingPoint()) {
                      why += " fp=" + std::to_string(raw.scalar.real.floatingPoint);
                    }
                    return false;
@@ -1475,7 +1475,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                    return false;
                  }
                  const MathParser::RawResult raw = p.getRawResult();
-                 if (!raw.isScalar() || raw.scalar.real.isSInt() || raw.scalar.real.isUInt()) {
+                 if (!raw.isScalar() || raw.scalar.real.isSmInt() || raw.scalar.real.isSmUInt()) {
                    why = "expected floating raw for non-perfect-square sqrt";
                    return false;
                  }
@@ -1495,7 +1495,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                    return false;
                  }
                  const MathParser::RawResult raw = p.getRawResult();
-                 if (!raw.isScalar() || !raw.scalar.real.isSInt() || raw.scalar.real.intValue != 9LL) {
+                 if (!raw.isScalar() || !raw.scalar.real.isSmInt() || raw.scalar.real.intValue != 9LL) {
                    why = "expected int64 9 in raw for sqrt(81)";
                    return false;
                  }
@@ -1782,7 +1782,7 @@ std::vector<TestCase> buildNanInfCases() {
   t.push_back({"naninf/sign nan", [kQNaN](std::string& why) {
                  MathParser p;
                  addConstTracked(p, "x", kQNaN);
-                 return expectEval(p, "sign(x)", "0", why);
+                 return expectEval(p, "sign(x)", "nan", why);
                }});
 
   t.push_back({"naninf/ln nan", [kQNaN](std::string& why) {
@@ -3751,6 +3751,213 @@ std::vector<TestCase> buildRegressionCases() {
                 MathParser p;
                 return expectEval(p, "median((42))", "42", why);
               }});
+  t.push_back({"stage1/median with NaN is NaN, midpoint cannot overflow", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "median(nan,1)", "nan", why)) return false;
+                if (!expectEval(p, "median(1,2,nan,3)", "nan", why)) return false;
+                if (!expectEval(p, "median((1,nan,2,3))", "nan", why)) return false;
+                if (!expectEval(p, "median(nan,nan)", "nan", why)) return false;
+                if (!expectEval(p, "median(-1e308,1e308)", "0", why)) return false;
+                return expectEval(p, "median(1e308,1.5e308)", "1.25e+308", why);
+              }});
+  t.push_back({"stage1/round tie edge below 0.5, half away from zero stays", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "round(0.49999999999999994)", "0", why)) return false;
+                if (!expectEval(p, "round(-0.49999999999999994)", "0", why)) return false;
+                if (!expectEval(p, "round(0.5)", "1", why)) return false;
+                return expectEval(p, "round(-0.5)", "-1", why);
+              }});
+  t.push_back({"stage1/log10 exact for powers of ten", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "log10(1000)-3", "0", why)) return false;
+                if (!expectEval(p, "log10(1000)==3", "1", why)) return false;
+                if (!expectEval(p, "log10(1e15)==15", "1", why)) return false;
+                return expectEval(p, "log10(0.001)", "-3", why);
+              }});
+  t.push_back({"stage1/-(-2^63) is the exact SmUInt magnitude", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "-(-9223372036854775808)", "9223372036854775808", why)) return false;
+                if (!expectEval(p, "-(-9223372036854775808)+1-9223372036854775808", "1", why)) return false;
+                return expectEval(p, "h(x)=-x; h(-9223372036854775808)+1-9223372036854775808", "1", why);
+              }});
+  t.push_back({"stage2/exact integer compare above 2^53", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"9007199254740993 == 9007199254740992", "0"},
+                    {"9007199254740993 > 9007199254740992", "1"},
+                    {"9007199254740992 < 9007199254740993", "1"},
+                    {"9007199254740993 != 9007199254740992", "1"},
+                    {"18446744073709551615 == 18446744073709551614", "0"},
+                    {"18446744073709551615 - 1 == 18446744073709551615", "0"},
+                    {"9223372036854775807 < 9223372036854775808", "1"},
+                    {"-9223372036854775808 < 9223372036854775808", "1"},
+                    {"sort(9007199254740993, 9007199254740992)", "(9007199254740992, 9007199254740993)"},
+                    {"unique(9007199254740993, 9007199254740992)", "(9007199254740993, 9007199254740992)"},
+                    {"unique(9007199254740993, 9007199254740993, 9007199254740992)", "(9007199254740993, 9007199254740992)"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+  t.push_back({"stage2/exact avg and median of large integers", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"avg(9007199254740993, 9007199254740995)", "9007199254740994"},
+                    {"avg(9223372036854775807, 9223372036854775805)", "9223372036854775806"},
+                    {"avg(2, 4, 6)", "4"},
+                    {"avg(-3, -2)", "-2.5"},
+                    {"median(9007199254740993, 9007199254740995, 9007199254740994)", "9007199254740994"},
+                    {"median(9007199254740992, 9007199254740994)", "9007199254740993"},
+                    {"median(-9223372036854775808, 9223372036854775807)", "-0.5"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+  t.push_back({"stage2/sum uses compensated summation", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"sum(0.1, 0.2, 0.3)", "0.6"},
+                    {"sum(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1)", "1"},
+                    {"sum(repeat(0.1, 1000))", "100"},
+                    {"sum(1e100, 1, -1e100)", "1"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+  t.push_back({"stage2/sign of nan and infinities", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "sign(nan)", "nan", why)) return false;
+                if (!expectEval(p, "sign(inf)", "1", why)) return false;
+                return expectEval(p, "sign(-inf)", "-1", why);
+              }});
+  t.push_back({"stage2/sign of nan with complex support on", [](std::string& why) {
+                MathParser p;
+                p.setSupportComplexNumbers(true);
+                if (!expectEval(p, "sign(nan)", "nan", why)) return false;
+                return expectEval(p, "sign(-inf)", "-1", why);
+              }});
+  t.push_back({"stage2/random uses the full mantissa and random(a, a) is a", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "random(5, 5)", "5", why)) return false;
+                std::srand(7);
+                bool sawLowBits = false;
+                for (int i = 0; i < 64 && !sawLowBits; ++i) {
+                  p.parseAndEvaluate("rand()");
+                  if (!p.getError().empty()) {
+                    why = "rand() error: " + p.getError();
+                    return false;
+                  }
+                  const double v = std::strtod(p.getResult().c_str(), nullptr);
+                  if (v < 0.0 || v >= 1.0) {
+                    why = "rand() out of [0,1): " + p.getResult();
+                    return false;
+                  }
+                  // A 15-bit generator (RAND_MAX 32767) would only ever give multiples of 2^-15.
+                  const double scaled = v * 4294967296.0;
+                  if (scaled != std::floor(scaled)) sawLowBits = true;
+                }
+                if (!sawLowBits) {
+                  why = "rand() resolution is coarser than 2^-32";
+                  return false;
+                }
+                return true;
+              }});
+  t.push_back({"stage2/shortest round-trip float display", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "1e23", "1e+23", why)) return false;
+                return expectEval(p, "1e22 * 10.0", "1e+23", why);
+              }});
+  t.push_back({"stage2/time literal overflow and non-unit suffix errors", [](std::string& why) {
+                MathParser p;
+#if SMARTMATH_TIME_VALUES
+                if (!expectEvalErrorContains(p, "1:9300000000000000", "time literal: invalid segment", why)) return false;
+#endif
+                if (!expectEvalErrorContains(p, "2 sin(pi/2)", "unexpected token", why)) return false;
+                if (!expectEvalErrorContains(p, "2 min(1, 2)", "unexpected token", why)) return false;
+                return expectEvalErrorContains(p, "5hx", "unexpected token", why);
+              }});
+  t.push_back({"stage2/trig snap only near exact multiples of pi", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"sin(1e-10)", "1e-10"},
+                    {"tan(1e-10)", "1e-10"},
+                    {"sin(3.14159265359) < 0", "1"},
+                    {"abs(sin(3.14159265359)) > 1e-13", "1"},
+                    {"cos(1.5707963268) < 0", "1"},
+                    {"tan(1.5707963268) < -100000000000", "1"},
+                    {"sin(pi)", "0"},
+                    {"cos(pi)", "-1.0"},
+                    {"cos(2*pi)", "1.0"},
+                    {"cos(1e12*pi)", "1.0"},
+                    {"cos(-pi)", "-1.0"},
+                    {"cos(3.14) != -1", "1"},
+                    {"abs(cos(3.14) + 1) > 1e-9", "1"},
+                    {"sin(2**52) != 0", "1"},
+                    {"sin(3**32) != 0", "1"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#if SMARTMATH_COMPLEX_NUMBERS
+  t.push_back({"stage2/complex gamma reflection for negative real part", [](std::string& why) {
+                MathParser p;
+                p.setSupportComplexNumbers(true);
+                return expectEval(p, "abs(fact(-10+i) - (-6.129213711061211e-07 - 4.984824354487957e-07i)) < 1e-18", "1", why);
+              }});
+#endif
+  t.push_back({"stage3/table, compare and callable rewrites keep their results", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"fact(22)", "1.1240007277776077e+21"},
+                    {"fact(169)", "4.269068009004705e+304"},
+                    {"fact(172)", "inf"},
+                    {"6*0.5", "3"},
+                    {"0.5*8", "4"},
+                    {"a=(10,20,30); a[1]+a[-1]", "50"},
+                    {"f(a)=a[1]; f((7,8))", "8"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#if SMARTMATH_FACTORINT
+  t.push_back({"stage3/factorint splits a semiprime beyond the trial cap", [](std::string& why) {
+                MathParser p;
+                if (!expectEval(p, "factorint(1000000007*1000000009)", "(1000000007, 1000000009)", why)) return false;
+                return expectEval(p, "factorint(2*3*5*1000000007)", "(2, 3, 5, 1000000007)", why);
+              }});
+#endif
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  t.push_back({"stage3/lambda compile cache keeps sortby and filter results", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"sortby(range(0,6), x: -x)", "(5, 4, 3, 2, 1, 0)"},
+                    {"sortby((3,1,2,4), x: x%2)", "(2, 4, 3, 1)"},
+                    {"k=3; sortby((9,5,1), x: abs(x-k))", "(5, 1, 9)"},
+                    {"filter(range(0,10), x: x%3==0)", "(0, 3, 6, 9)"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#endif
+#if SMARTMATH_COMPLEX_NUMBERS
+  t.push_back({"stage3/unique on complex values keeps first occurrences", [](std::string& why) {
+                MathParser p;
+                p.setSupportComplexNumbers(true);
+                if (!expectEval(p, "unique(1+i, 1+i, 2, 1-i, 2, 1+i)", "(1+i, 2, 1-i)", why)) return false;
+                return expectEval(p, "unique(0+i, -0+i, 3i)", "(i, 3i)", why);
+              }});
+#endif
 
   return t;
 }
@@ -6507,6 +6714,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    const char* expect;
                  } kRows[] = {
                      {"(1+i)**2", "2i"},
+                     {"(1+i)**1e19", "nan"},  // huge exponent: overflow, phase unknowable (was UB cast / 1 in Basic)
                      {"(3+4*i)**0.5", "2+i"},
                      {"pow(1+i,2)", "2i"},
                      {"(1+i,2)**(2,2)", "(2i, 4)"},
@@ -6733,8 +6941,8 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    return false;
                  }
                  MathParser::RawResult r = p.getRawResult();
-                 if (!r.isScalar() || !r.scalar.isComplex() || !r.scalar.real.isSInt() || r.scalar.real.intValue != 10LL ||
-                     !r.scalar.imag.isSInt() || r.scalar.imag.intValue != 5LL) {
+                 if (!r.isScalar() || !r.scalar.isComplex() || !r.scalar.real.isSmInt() || r.scalar.real.intValue != 10LL ||
+                     !r.scalar.imag.isSmInt() || r.scalar.imag.intValue != 5LL) {
                    why = "expected complex int64 10+5i";
                    return false;
                  }
@@ -6765,7 +6973,7 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                    return false;
                  }
                  const bool imagTenInt =
-                     r.scalar.imag.isSInt() && r.scalar.imag.intValue == 10LL;
+                     r.scalar.imag.isSmInt() && r.scalar.imag.intValue == 10LL;
                  const bool imagTenRat = r.scalar.imag.isRational() && r.scalar.imag.rational.numerator == 10LL &&
                                          r.scalar.imag.rational.denominator == 1ULL;
                  if (!imagTenInt && !imagTenRat) {
@@ -7621,6 +7829,42 @@ bool expectExact(MathParser& p, const std::string& expr, const std::string& expe
   return true;
 }
 
+std::string decimalAdd(const std::string& a, const std::string& b) {
+  std::string r;
+  int carry = 0;
+  std::size_t ia = a.size();
+  std::size_t ib = b.size();
+  while (ia > 0 || ib > 0 || carry != 0) {
+    int v = carry;
+    if (ia > 0) v += a[--ia] - '0';
+    if (ib > 0) v += b[--ib] - '0';
+    r.insert(r.begin(), static_cast<char>('0' + v % 10));
+    carry = v / 10;
+  }
+  return r;
+}
+
+// C(n, k) by Pascal's triangle on decimal strings (additions only, no division).
+std::string decimalBinomial(int n, int k) {
+  std::vector<std::string> row(static_cast<std::size_t>(k) + 1U, "0");
+  row[0] = "1";
+  for (int i = 1; i <= n; ++i) {
+    for (int j = (i < k ? i : k); j >= 1; --j) {
+      row[static_cast<std::size_t>(j)] = decimalAdd(row[static_cast<std::size_t>(j)], row[static_cast<std::size_t>(j) - 1U]);
+    }
+  }
+  return row[static_cast<std::size_t>(k)];
+}
+
+// n * (n-1) * ... * (n-r+1) on decimal strings.
+std::string decimalFalling(int n, int r) {
+  std::string p = "1";
+  for (int i = 0; i < r; ++i) {
+    p = decimalMul(p, n - i);
+  }
+  return p;
+}
+
 // 10^e by plain repeated multiplication/division in long double (no libm pow: some runtimes, e.g. emscripten,
 // evaluate long double pow in double precision).
 long double referencePow10(int e) {
@@ -7640,6 +7884,28 @@ long double printRoundTripTolerance() {
   }
 #endif
   return referencePow10(-(smartmath::kFloatDigits10 - 1));
+}
+
+// Evaluates expr and compares the printed number with a reference: |got - ref| <= relTol * max(|ref|, 1).
+bool expectNear(MathParser& p, const std::string& expr, long double ref, long double relTol, std::string& why) {
+  p.parseAndEvaluate(expr);
+  if (!p.getError().empty()) {
+    why = expr + " -> error: " + p.getError();
+    return false;
+  }
+  const std::string text = p.getResult();
+  char* end = nullptr;
+  const long double got = std::strtold(text.c_str(), &end);
+  if (end == text.c_str()) {
+    why = expr + " -> \"" + text + "\" is not a number";
+    return false;
+  }
+  const long double scale = std::fabs(ref) > 1.0L ? std::fabs(ref) : 1.0L;
+  if (!(std::fabs(got - ref) <= relTol * scale)) {
+    why = expr + " -> \"" + text + "\" is not close to the reference";
+    return false;
+  }
+  return true;
 }
 
 // Compares values that are compile-time constants for a given configuration. Going through a call keeps
@@ -7676,10 +7942,10 @@ std::vector<TestCase> buildWidthGenericCases() {
                  if (!check(smartmath::intToString(0) == "0" && smartmath::intToString(-7) == "-7", "intToString small", why)) return false;
                  if (!check(smartmath::kMaxShift == intBits() - 1, "kMaxShift", why)) return false;
                  if (!check(smartmath::kUIntDigits10 == static_cast<int>(uintMaxText().size()), "kUIntDigits10", why)) return false;
-                 if (!check(same(smartmath::kPow10UIntCount, smartmath::kUIntDigits10), "kPow10UIntCount", why)) return false;
+                 if (!check(same(smartmath::kPow10SmUIntCount, smartmath::kUIntDigits10), "kPow10SmUIntCount", why)) return false;
                  if (!check(smartmath::kMaxPow10ExponentOfInt == referenceMaxPow10Exponent(intMaxText()), "kMaxPow10ExponentOfInt", why)) return false;
-                 for (int i = 0; i < smartmath::kPow10UIntCount; ++i) {
-                   if (!check(smartmath::uintToString(smartmath::pow10UInt(i)) == decimalPow10(i), "pow10UInt(" + std::to_string(i) + ")", why)) return false;
+                 for (int i = 0; i < smartmath::kPow10SmUIntCount; ++i) {
+                   if (!check(smartmath::uintToString(smartmath::pow10SmUInt(i)) == decimalPow10(i), "pow10SmUInt(" + std::to_string(i) + ")", why)) return false;
                  }
                  return true;
                }});
@@ -7697,38 +7963,78 @@ std::vector<TestCase> buildWidthGenericCases() {
                  const SmFloat inf = std::numeric_limits<SmFloat>::infinity();
                  const SmFloat sBound = std::ldexp(one, intBits() - 1);
                  const SmFloat uBound = std::ldexp(one, intBits());
-                 if (!check(smartmath::kFloatSIntBound == sBound, "kFloatSIntBound", why)) return false;
-                 if (!check(smartmath::kFloatUIntBound == uBound, "kFloatUIntBound", why)) return false;
+                 if (!check(smartmath::kFloatSmIntBound == sBound, "kFloatSmIntBound", why)) return false;
+                 if (!check(smartmath::kFloatSmUIntBound == uBound, "kFloatSmUIntBound", why)) return false;
                  if (!check(smartmath::kMaxExactIntFromFloat == std::ldexp(one, smartmath::kFloatMantDigits), "kMaxExactIntFromFloat", why)) return false;
+                 // pow2Float uses square-and-multiply; it must agree with ldexp over the whole finite range and saturate to +inf.
+                 for (int n = 0; n < smartmath::kFloatMaxExp2; ++n) {
+                   if (!check(smartmath::pow2Float(n) == std::ldexp(one, n), "pow2Float(" + std::to_string(n) + ")", why)) return false;
+                 }
+                 if (!check(smartmath::pow2Float(smartmath::kFloatMaxExp2) == inf, "pow2Float(kFloatMaxExp2) is +inf", why)) return false;
+                 if (!check(smartmath::pow2Float(-3) == std::ldexp(one, -3), "pow2Float(-3)", why)) return false;
+                 if (!check(smartmath::kVeltkampSplitFactor == std::ldexp(one, (smartmath::kFloatMantDigits + 1) / 2) + one, "kVeltkampSplitFactor", why)) return false;
                  // Signed range is [-2^(b-1), 2^(b-1)): the upper bound itself is outside (the old <= check accepted it).
-                 if (!check(!smartmath::isFloatInSIntRange(sBound), "2^(b-1) not in SInt range", why)) return false;
-                 if (!check(smartmath::isFloatInSIntRange(std::nextafter(sBound, zero)), "below 2^(b-1) in SInt range", why)) return false;
-                 if (!check(smartmath::isFloatInSIntRange(-sBound), "-2^(b-1) in SInt range", why)) return false;
-                 if (!check(!smartmath::isFloatInSIntRange(std::nextafter(-sBound, -inf)), "below -2^(b-1) not in SInt range", why)) return false;
-                 if (!check(!smartmath::isFloatInUIntRange(uBound), "2^b not in UInt range", why)) return false;
-                 if (!check(smartmath::isFloatInUIntRange(std::nextafter(uBound, zero)), "below 2^b in UInt range", why)) return false;
-                 if (!check(smartmath::isFloatInUIntRange(zero), "0 in UInt range", why)) return false;
-                 if (!check(!smartmath::isFloatInUIntRange(-one), "-1 not in UInt range", why)) return false;
-                 if (!smartmath::kExactLimitCoversUInt) {
+                 if (!check(!smartmath::isFloatInSmIntRange(sBound), "2^(b-1) not in SmInt range", why)) return false;
+                 if (!check(smartmath::isFloatInSmIntRange(std::nextafter(sBound, zero)), "below 2^(b-1) in SmInt range", why)) return false;
+                 if (!check(smartmath::isFloatInSmIntRange(-sBound), "-2^(b-1) in SmInt range", why)) return false;
+                 if (!check(!smartmath::isFloatInSmIntRange(std::nextafter(-sBound, -inf)), "below -2^(b-1) not in SmInt range", why)) return false;
+                 if (!check(!smartmath::isFloatInSmUIntRange(uBound), "2^b not in SmUInt range", why)) return false;
+                 if (!check(smartmath::isFloatInSmUIntRange(std::nextafter(uBound, zero)), "below 2^b in SmUInt range", why)) return false;
+                 if (!check(smartmath::isFloatInSmUIntRange(zero), "0 in SmUInt range", why)) return false;
+                 if (!check(!smartmath::isFloatInSmUIntRange(-one), "-1 not in SmUInt range", why)) return false;
+                 if (!smartmath::kExactLimitCoversSmUInt) {
                    if (!check(smartmath::isMagBelowExactFloatLimit(smartmath::kExactLimitMag - 1), "limit-1 below exact limit", why)) return false;
                    if (!check(!smartmath::isMagBelowExactFloatLimit(smartmath::kExactLimitMag), "limit not below exact limit", why)) return false;
                  } else if (!check(smartmath::isMagBelowExactFloatLimit(smartmath::kUIntMax), "uint max below exact limit", why)) {
                    return false;
                  }
                  const SmFloat half = one / static_cast<SmFloat>(2);
-                 if (!check(smartmath::roundFloatToSInt(static_cast<SmFloat>(2) + half) == 3, "round(2.5)", why)) return false;
-                 if (!check(smartmath::roundFloatToSInt(-static_cast<SmFloat>(2) - half) == -3, "round(-2.5)", why)) return false;
-                 if (!check(smartmath::roundFloatToSInt(std::numeric_limits<SmFloat>::quiet_NaN()) == smartmath::kIntMin, "round(nan)", why)) return false;
-                 if (!check(smartmath::roundFloatToSInt(sBound) == smartmath::kIntMin, "round(2^(b-1))", why)) return false;
-                 // Tolerances: 10^-(digits10 - lost), strictly growing with the lost digits.
+                 SmInt si = 7;
+                 SmUInt ui = 7;
+                 if (!check(smartmath::tryRoundFloatToSmInt(static_cast<SmFloat>(2) + half, si) && si == 3, "round(2.5)", why)) return false;
+                 if (!check(smartmath::tryRoundFloatToSmInt(-static_cast<SmFloat>(2) - half, si) && si == -3, "round(-2.5)", why)) return false;
+                 if (!check(smartmath::tryRoundFloatToSmInt(-sBound, si) && si == smartmath::kIntMin, "round(-2^(b-1)) is kIntMin", why)) return false;
+                 { // With a mantissa wider than the int, round() of the value below the bound lands on the bound itself.
+                   const SmFloat below = std::nextafter(sBound, zero);
+                   const bool expectOk = std::round(below) < sBound;
+                   if (!check(smartmath::tryRoundFloatToSmInt(below, si) == expectOk && (!expectOk || si > 0), "round(below 2^(b-1))", why)) return false;
+                 }
+                 si = 7;
+                 if (!check(!smartmath::tryRoundFloatToSmInt(std::numeric_limits<SmFloat>::quiet_NaN(), si) && si == 7, "round(nan) fails, out untouched", why)) return false;
+                 if (!check(!smartmath::tryRoundFloatToSmInt(inf, si) && !smartmath::tryRoundFloatToSmInt(-inf, si) && si == 7, "round(inf) fails", why)) return false;
+                 if (!check(!smartmath::tryRoundFloatToSmInt(sBound, si) && si == 7, "round(2^(b-1)) fails", why)) return false;
+                 {
+                   const SmFloat belowMin = std::nextafter(-sBound, -inf);
+                   const bool expectOk = std::round(belowMin) >= -sBound;  // rounds back onto kIntMin when the mantissa is wider than the int
+                   if (!check(smartmath::tryRoundFloatToSmInt(belowMin, si) == expectOk && (expectOk || si == 7), "round(below -2^(b-1))", why)) return false;
+                 }
+                 if (!check(smartmath::tryRoundFloatToSmUInt(static_cast<SmFloat>(2) + half, ui) && ui == 3, "uround(2.5)", why)) return false;
+                 if (!check(smartmath::tryRoundFloatToSmUInt(-half / static_cast<SmFloat>(2), ui) && ui == 0, "uround(-0.25) is 0", why)) return false;
+                 {
+                   const SmFloat below = std::nextafter(uBound, zero);
+                   const bool expectOk = std::round(below) < uBound;
+                   if (!check(smartmath::tryRoundFloatToSmUInt(below, ui) == expectOk && (!expectOk || ui > 0), "uround(below 2^b)", why)) return false;
+                 }
+                 ui = 7;
+                 if (!check(!smartmath::tryRoundFloatToSmUInt(-one, ui) && ui == 7, "uround(-1) fails, out untouched", why)) return false;
+                 if (!check(!smartmath::tryRoundFloatToSmUInt(uBound, ui) && !smartmath::tryRoundFloatToSmUInt(inf, ui) &&
+                                !smartmath::tryRoundFloatToSmUInt(std::numeric_limits<SmFloat>::quiet_NaN(), ui) && ui == 7,
+                            "uround(2^b / inf / nan) fails", why)) return false;
+                 // Tolerances: 10^-(digits10 - lost), with lost capped so that 3/5 of the digits always stay significant.
+                 // They never decrease with the lost digits and always stay well below 1 (a tolerance of 1 would make
+                 // every x a multiple of pi, so sin/cos/tan would return 0 for float).
                  const SmFloat tolerances[] = {smartmath::kTolLost0, smartmath::kTolLost1, smartmath::kTolLost2, smartmath::kTolLost3, smartmath::kTolLost6};
                  const int lost[] = {0, 1, 2, 3, 6};
+                 const int maxLost = smartmath::kFloatDigits10 - (smartmath::kFloatDigits10 * 3) / 5;
                  for (int i = 0; i < 5; ++i) {
-                   const long double expected = referencePow10(lost[i] - smartmath::kFloatDigits10);
+                   const int effLost = lost[i] < maxLost ? lost[i] : maxLost;
+                   const long double expected = referencePow10(effLost - smartmath::kFloatDigits10);
                    const long double rel = std::fabs(static_cast<long double>(tolerances[i]) - expected) / expected;
                    if (!check(rel <= 4.0L * static_cast<long double>(std::numeric_limits<SmFloat>::epsilon()), "tolerance " + std::to_string(lost[i]), why)) return false;
-                   if (i > 0 && !check(tolerances[i] > tolerances[i - 1], "tolerances grow", why)) return false;
+                   if (!check(tolerances[i] < one / static_cast<SmFloat>(100), "tolerance below 1/100 " + std::to_string(lost[i]), why)) return false;
+                   if (i > 0 && !check(tolerances[i] >= tolerances[i - 1], "tolerances do not shrink", why)) return false;
                  }
+                 if (!check(greater(smartmath::kTolLost6, smartmath::kTolLost0), "tolerance range is not degenerate", why)) return false;
                  if (!check(same(smartmath::kFloatDisplayDigits, smartmath::kFloatDigits10 + 1), "kFloatDisplayDigits", why)) return false;
                  if (!check(greater(smartmath::kHypotDirectMax, one) && greater(one, smartmath::kHypotDirectMin) &&
                                 std::isfinite(smartmath::kHypotDirectMax * smartmath::kHypotDirectMax * static_cast<SmFloat>(2)) &&
@@ -7799,6 +8105,92 @@ std::vector<TestCase> buildWidthGenericCases() {
                  if (!expectExact(p, "round(2.5)", "3", why)) return false;
                  if (!expectExact(p, "floor(-2.5)", "-3", why)) return false;
                  return expectExact(p, "27 ** (1/3)", "3", why);
+               }});
+  // Reference values: Python math.sin(1), math.cos(1), math.tan(1) (binary64), exact multiples of pi are 0.
+  t.push_back({"width: sin/cos/tan snap multiples of pi to zero and keep other angles", [](std::string& why) {
+                 MathParser p;
+                 const char* zeros[] = {"sin(pi)", "cos(pi/2)", "tan(pi)", "sin(2*pi)", "cos(3*pi/2)", "sin(3*pi)"};
+                 for (const char* e : zeros) {
+                   if (!expectExact(p, e, "0", why)) return false;
+                 }
+                 const long double tol = printRoundTripTolerance();
+                 if (!expectNear(p, "sin(1)", 0.8414709848078965L, tol, why)) return false;
+                 if (!expectNear(p, "cos(1)", 0.5403023058681398L, tol, why)) return false;
+                 if (!expectNear(p, "tan(1)", 1.5574077246549023L, tol, why)) return false;
+                 if (!expectNear(p, "sin(pi/6)", 0.5L, tol, why)) return false;
+                 if (!expectNear(p, "cos(pi/3)", 0.5L, tol, why)) return false;
+                 return expectNear(p, "tan(pi/4)", 1.0L, tol, why);
+               }});
+  t.push_back({"width: values at and past the exact integer boundaries", [](std::string& why) {
+                 MathParser p;
+                 const std::string uintMax = uintMaxText();
+                 const std::string last(1, uintMax.back());
+                 if (!expectExact(p, "abs(-" + intMinMagText() + ")", intMinMagText(), why)) return false;
+                 if (!expectExact(p, intMinMagText() + " - 1", intMaxText(), why)) return false;
+                 if (!expectExact(p, uintMax + " - " + intMinMagText(), intMaxText(), why)) return false;
+                 if (!expectExact(p, uintMax + " % 10", last, why)) return false;
+                 // One step past the exact range the result is a float near the exact value (2^b, 2^(b-1) + 1).
+                 const long double tol = printRoundTripTolerance();
+                 const long double twoB = std::ldexp(1.0L, intBits());
+                 const long double twoB1 = std::ldexp(1.0L, intBits() - 1);
+                 if (!expectNear(p, uintMax + " + 1", twoB, tol, why)) return false;
+                 if (!expectNear(p, "2 ** " + std::to_string(intBits()), twoB, tol, why)) return false;
+                 return expectNear(p, "-" + intMaxText() + " - 2", -(twoB1 + 1.0L), tol, why);
+               }});
+  t.push_back({"width: arithmetic right shift rounds toward negative infinity", [](std::string& why) {
+                 MathParser p;
+                 const std::string maxShift = std::to_string(intBits() - 1);
+                 if (!expectExact(p, "-1 >> 1", "-1", why)) return false;
+                 if (!expectExact(p, "-8 >> 1", "-4", why)) return false;
+                 if (!expectExact(p, "-5 >> 1", "-3", why)) return false;
+                 if (!expectExact(p, "-1 >> " + maxShift, "-1", why)) return false;
+                 const std::string minInt = "(-" + intMaxText() + " - 1)";
+                 if (!expectExact(p, minInt + " >> 1", "-" + decimalPow2(intBits() - 2), why)) return false;
+                 return expectExact(p, minInt + " >> " + maxShift, "-1", why);
+               }});
+  t.push_back({"width: ratio keeps its denominator limit for every float width", [](std::string& why) {
+                 MathParser p;
+                 if (!expectExact(p, "ratio(0.5)", "1/2", why)) return false;
+                 if (!expectExact(p, "ratio(0.75)", "3/4", why)) return false;
+                 if (!expectExact(p, "ratio(0.125)", "1/8", why)) return false;
+                 if (!expectExact(p, "ratio(-2/7)", "-2/7", why)) return false;
+                 // Documented limit: the best fraction n/m of a non-exact value has m <= 10_000_000.
+                 p.parseAndEvaluate("ratio(3.14159265)");
+                 if (!check(p.getError().empty(), "ratio(3.14159265) error", why)) return false;
+                 const std::string text = p.getResult();
+                 const std::size_t slash = text.find('/');
+                 if (!check(slash != std::string::npos, "ratio(3.14159265) -> " + text, why)) return false;
+                 const long double num = std::strtold(text.substr(0, slash).c_str(), nullptr);
+                 const long double den = std::strtold(text.c_str() + slash + 1, nullptr);
+                 if (!check(den >= 1.0L && den <= 10000000.0L, "denominator limit: " + text, why)) return false;
+                 return check(std::fabs(num / den - 3.14159265L) <= printRoundTripTolerance() * 4.0L, "ratio value: " + text, why);
+               }});
+  // Past the exact range ncr/npr use the double-double product (ddMulExactDekker for every non-binary64 SmFloat).
+  t.push_back({"width: ncr/npr past the exact range match decimal references", [](std::string& why) {
+                 MathParser p;
+                 const std::string limit = uintMaxText();
+                 const long double tol = printRoundTripTolerance();
+                 int n = 2;
+                 while (decimalLessOrEqual(decimalBinomial(n, n / 2), limit)) {
+                   ++n;
+                 }
+                 for (int i = 0; i < 4; ++i) {
+                   const int nn = n + i;
+                   const std::string ref = decimalBinomial(nn, nn / 2);
+                   const std::string expr = "ncr(" + std::to_string(nn) + "," + std::to_string(nn / 2) + ")";
+                   if (!expectNear(p, expr, std::strtold(ref.c_str(), nullptr), tol, why)) return false;
+                 }
+                 const int top = 60;
+                 int r = 1;
+                 while (decimalLessOrEqual(decimalFalling(top, r), limit)) {
+                   ++r;
+                 }
+                 for (int i = 0; i < 3; ++i) {
+                   const std::string ref = decimalFalling(top, r + i);
+                   const std::string expr = "npr(" + std::to_string(top) + "," + std::to_string(r + i) + ")";
+                   if (!expectNear(p, expr, std::strtold(ref.c_str(), nullptr), tol, why)) return false;
+                 }
+                 return true;
                }});
 #if SMARTMATH_FACTORINT
   t.push_back({"width: factorint domain", [](std::string& why) {

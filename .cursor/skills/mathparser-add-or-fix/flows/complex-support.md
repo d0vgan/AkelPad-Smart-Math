@@ -38,4 +38,4 @@ Treat real-only and complex-enabled behavior as one design surface. Apply both d
 
 - Name the real dispatch and the complex dispatch (if any), and the shared helpers or the documented asymmetry.
 - Exact SmInt on one side and float on the other for the same numeric situation is a bug unless tests lock different semantics. A part whose magnitude is greater than `MAX_MAGNITUDE` is not that situation: do not promote the double so the sides match.
-- Mirror display-kind expectations (`RSK_SINT` vs `RSK_FLOATING`) in Basic, C++, and formatter/raw-export tests when affected.
+- Mirror display-kind expectations (`RSK_SMINT` vs `RSK_SMFLOATING`) in Basic, C++, and formatter/raw-export tests when affected.

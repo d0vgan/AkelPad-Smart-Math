@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-rem Isolated factorint tests with a 20-second wall-clock limit per case.
+rem Isolated factorint tests with a 10-second wall-clock limit per case.
 rem Stops at the first case that exceeds the limit or returns non-zero.
 
 set "FB_HOME=C:\tools\FreeBASIC"
@@ -13,7 +13,7 @@ if exist "%FB_HOME%\bin\win64" (
   set "FBC_ARCH="
 )
 
-set "TIMEOUT_SEC=20"
+set "TIMEOUT_SEC=10"
 set "CASE_COUNT=29"
 set "EXE=SmokeTest_Factorint.exe"
 

@@ -42,7 +42,7 @@ A `const` method whose only effect is writing `EvalContext` is not session logic
 
 Move operations off `MathParser` as functions first. Leave the nested types in place while doing that. `EvalValue` stays internal. `RawResult` stays a public nested type. A namespace-scope alias is only for a later move that would otherwise break `MathParser::EvalValue` spellings inside the parser.
 
-- **`EvalValue` / `ScalarValue`** — factories (`makeScalar`, `makeScalarInt`, `makeScalarUInt`, time and complex constructors), exact-metadata flags, negate, numeric real/imag, array walks that only read values. One `ScalarValue` layout stays; `vector<ScalarValue>` stays contiguous.
+- **`EvalValue` / `ScalarValue`** — factories (`makeScalar`, `makeScalarInt`, `makeScalarSmUInt`, time and complex constructors), exact-metadata flags, negate, numeric real/imag, array walks that only read values. One `ScalarValue` layout stays; `vector<ScalarValue>` stays contiguous.
 - **`RawResult`** — public snapshot. Stays a nested public type; field layout stays stable. Conversion from `EvalValue` is an internal function called by `getRawResult()`. Do not add `RawResult::from(EvalValue)`: that would publish `EvalValue`.
 - **Formatting** — free functions of `(const EvalValue&, RenderBase)`. `getResult` / `getResultAsHex` / `getResultAsDec` / `getResultAsOct` / `getResultAsBin` stay one-liners on the session.
 - **`EvalContext`** — parse cursor and errors. Errors go through `EvalContext::fail(ParseErrorId)`, or `fail(msg)` for the few messages that need a name or a count. Do not add per-error setters (`setFooError`).

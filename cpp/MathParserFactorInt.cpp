@@ -15,13 +15,13 @@ using smartmath::SmUInt;
 using smartmath::kIntMax;
 using smartmath::kIntMin;
 using smartmath::kIntMinMag;
-using smartmath_internal::gcdUInt;
+using smartmath_internal::gcdSmUInt;
 using smartmath_internal::makeScalar;
 using smartmath_internal::makeScalarInt;
 using smartmath_internal::setFactorintPowerTerm;
 using smartmath_internal::setFactorintTermValue;
-using smartmath_internal::tryExtractExactSIntFromFloatStrict;
-using smartmath_internal::tryPowUIntChecked;
+using smartmath_internal::tryExtractExactSmIntFromFloatStrict;
+using smartmath_internal::tryPowSmUIntChecked;
 using smartmath_internal::EvalValue;
 using smartmath_internal::ValueKind;
 
@@ -32,33 +32,33 @@ void setFactorintTermValue(
     SmUInt valueU,
     bool hasUIntValue) {
   sv.setRenderIntPower(false);
-  sv.imagExactSInt = 0;
+  sv.imagExactInt = 0;
   sv.imagExactUInt = 0;
   if (hasUIntValue) {
     sv.scalar = static_cast<SmFloat>(valueU);
-    sv.setExactUIntValid(true);
+    sv.setExactSmUIntValid(true);
     sv.exactUInt = valueU;
     if (valueU <= static_cast<SmUInt>(kIntMax)) {
-      sv.setExactSIntValid(true);
-      sv.exactSInt = static_cast<SmInt>(valueU);
+      sv.setExactSmIntValid(true);
+      sv.exactInt = static_cast<SmInt>(valueU);
     } else {
-      sv.setExactSIntValid(false);
-      sv.exactSInt = 0;
+      sv.setExactSmIntValid(false);
+      sv.exactInt = 0;
     }
-    sv.scalarKind = ScalarKind::UInt;
+    sv.scalarKind = ScalarKind::SmUInt;
     return;
   }
   sv.scalar = static_cast<SmFloat>(signedValueI);
-  sv.setExactSIntValid(true);
-  sv.exactSInt = signedValueI;
+  sv.setExactSmIntValid(true);
+  sv.exactInt = signedValueI;
   if (signedValueI >= 0) {
-    sv.setExactUIntValid(true);
+    sv.setExactSmUIntValid(true);
     sv.exactUInt = static_cast<SmUInt>(signedValueI);
   } else {
-    sv.setExactUIntValid(false);
+    sv.setExactSmUIntValid(false);
     sv.exactUInt = 0;
   }
-  sv.scalarKind = ScalarKind::SInt;
+  sv.scalarKind = ScalarKind::SmInt;
 }
 
 void setFactorintPowerTerm(
@@ -78,7 +78,7 @@ void setFactorintPowerTerm(
       baseU <= static_cast<SmUInt>(kIntMax)) {
     displayBase = -static_cast<SmInt>(baseU);
   }
-  sv.imagExactSInt = displayBase;
+  sv.imagExactInt = displayBase;
   sv.imagExactUInt = static_cast<SmUInt>(expV);
 }
 }  // namespace smartmath_internal
@@ -96,15 +96,23 @@ struct FactorintPrimeEntry {
 namespace {
 
 constexpr const char* STR_FACTORINT_INPUT_LIMITED_TO_64_BITS = " input is limited to 64 bits";
+constexpr const char* STR_FACTORINT_UNABLE_TO_FACTOR = " could not factor the input";
 
 constexpr int kFactorintPollardMaxOuter = 48;
 constexpr int kFactorintRhoMaxIters = 400000;
 constexpr int kFactorintRhoMaxItersSmall = 80000;
-constexpr int kFactorintFermatMaxSteps = 4096;
-constexpr std::uint64_t kFactorintFermatMaxN = 100000000u;
 constexpr std::uint64_t kFactorintOddTrialMaxPrime = 10000000u;
+// Short odd-trial band before early Pollard when sqrt(n) > odd-trial cap (medium factors).
+constexpr std::uint64_t kFactorintEarlyTrialMaxPrime = 1000000u;
+#if defined(_MSC_VER) && defined(_M_IX86)
+// Portable/x86 mulmod is expensive vs gcd; Brent batching adds a mulmod every step.
+constexpr int kFactorintRhoGcdBatch = 1;
+#else
+constexpr int kFactorintRhoGcdBatch = 128;
+#endif
+// Deterministic for every n < 2^64 (Jim Sinclair's set); each base is reduced mod n and skipped when it becomes 0.
 constexpr std::uint64_t kFactorintMrBases[] = {
-    2u, 32544231u, 2567547226u, 4118087717u, 6700417u, 12917328u, 1297059741u};
+    2u, 325u, 9375u, 28178u, 450775u, 9780504u, 1795265022u};
 constexpr std::size_t kFactorintMrBaseCount =
     sizeof(kFactorintMrBases) / sizeof(kFactorintMrBases[0]);
 
@@ -255,6 +263,22 @@ std::uint64_t mulModU64Portable(std::uint64_t a, std::uint64_t b, std::uint64_t 
   return mulModU64AddDouble(a, b, modN);
 }
 
+// (hi:lo) % modN without a 128-bit division intrinsic (MSVC x86).
+inline std::uint64_t remU128(std::uint64_t hi, std::uint64_t lo, std::uint64_t modN) {
+  if (modN <= 1u) {
+    return 0u;
+  }
+  // Fold hi, then shift in each bit of lo: rem = ((hi % m) * 2^64 + lo) % m.
+  std::uint64_t rem = hi % modN;
+  for (int i = 0; i < 64; ++i) {
+    rem = addModU64(rem, rem, modN);
+    if (((lo >> (63 - i)) & 1u) != 0u) {
+      rem = addModU64(rem, 1u, modN);
+    }
+  }
+  return rem;
+}
+
 #if defined(__SIZEOF_INT128__)
 using FactorintU128 = unsigned __int128;
 inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
@@ -270,6 +294,36 @@ inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t m
   _udiv128(hi, lo, modN, &rem);
   return rem;
 }
+#elif defined(_MSC_VER) && defined(_M_IX86)
+#include <intrin.h>
+#pragma intrinsic(__emulu)
+inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
+  if (modN <= 1u) {
+    return 0u;
+  }
+  a %= modN;
+  b %= modN;
+  if (a == 0u || b == 0u) {
+    return 0u;
+  }
+  if (b <= UINT64_MAX / a) {
+    return (a * b) % modN;
+  }
+  const std::uint32_t a0 = static_cast<std::uint32_t>(a);
+  const std::uint32_t a1 = static_cast<std::uint32_t>(a >> 32);
+  const std::uint32_t b0 = static_cast<std::uint32_t>(b);
+  const std::uint32_t b1 = static_cast<std::uint32_t>(b >> 32);
+  const std::uint64_t p00 = __emulu(a0, b0);
+  const std::uint64_t p01 = __emulu(a0, b1);
+  const std::uint64_t p10 = __emulu(a1, b0);
+  const std::uint64_t p11 = __emulu(a1, b1);
+  std::uint64_t mid = p01 + p10;
+  const std::uint64_t midCarry = (mid < p01) ? 1u : 0u;
+  std::uint64_t lo = p00 + (mid << 32);
+  const std::uint64_t loCarry = (lo < p00) ? 1u : 0u;
+  const std::uint64_t hi = p11 + (mid >> 32) + (midCarry << 32) + loCarry;
+  return remU128(hi, lo, modN);
+}
 #else
 inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t modN) {
   return mulModU64Portable(a, b, modN);
@@ -277,6 +331,8 @@ inline std::uint64_t mulModU64(std::uint64_t a, std::uint64_t b, std::uint64_t m
 #endif
 
 std::uint64_t powModU64(std::uint64_t baseVal, std::uint64_t exp, std::uint64_t modN) {
+  // volatile is required: without it the 32-bit MSVC build (vc2022 win32) miscompiles this loop and
+  // composites/primes are misclassified (factorint of 18446744073709551557 fails). Verified by removing it.
   volatile std::uint64_t res = 1;
   volatile std::uint64_t b = baseVal % modN;
   volatile std::uint64_t e = exp;
@@ -329,9 +385,9 @@ bool isPrimeU64(std::uint64_t n) {
     ++s;
   }
   for (std::size_t bi = 0; bi < kFactorintMrBaseCount; ++bi) {
-    const std::uint64_t a = kFactorintMrBases[bi];
-    if (n <= a) {
-      break;
+    const std::uint64_t a = kFactorintMrBases[bi] % n;
+    if (a == 0u) {
+      continue;
     }
     std::uint64_t x = powModU64(a, d, n);
     if (x == 1u || x == n - 1u) {
@@ -352,33 +408,6 @@ bool isPrimeU64(std::uint64_t n) {
   return true;
 }
 
-std::uint64_t fermatFactorU64(std::uint64_t n) {
-  if ((n & 1u) == 0u) {
-    return 2u;
-  }
-  std::uint64_t a = isqrtU64(n);
-  if (a * a < n) {
-    ++a;
-  }
-  std::uint64_t b2 = a * a - n;
-  for (int step = 0; step < kFactorintFermatMaxSteps; ++step) {
-    const std::uint64_t b = isqrtU64(b2);
-    if (b * b == b2) {
-      const std::uint64_t p = a - b;
-      const std::uint64_t q = a + b;
-      if (p > 1u && p < n) {
-        return p;
-      }
-      if (q > 1u && q < n) {
-        return q;
-      }
-    }
-    ++a;
-    b2 = a * a - n;
-  }
-  return n;
-}
-
 int pollardRhoMaxIters(std::uint64_t n) {
   if (n < 4294967296u) {
     return kFactorintRhoMaxItersSmall;
@@ -396,22 +425,34 @@ std::uint64_t pollardRhoU64(std::uint64_t n) {
   const int maxIter = pollardRhoMaxIters(n);
   for (int attempt = 0; attempt < kFactorintPollardMaxOuter; ++attempt) {
     const std::uint64_t c = 1u + static_cast<std::uint64_t>(attempt);
+    const std::uint64_t cMod = c % n;
     const std::uint64_t y0 = 2u + ((n % 1000003u) + static_cast<std::uint64_t>(attempt)) % (n - 2u);
     std::uint64_t x = y0;
     std::uint64_t y = y0;
     std::uint64_t d = 1;
+    std::uint64_t prod = 1;
+    int sinceGcd = 0;
     for (int iter = 0; iter < maxIter && d == 1u; ++iter) {
-      x = addModU64(mulModU64(x, x, n), c % n, n);
-      y = addModU64(mulModU64(y, y, n), c % n, n);
-      y = addModU64(mulModU64(y, y, n), c % n, n);
+      x = addModU64(mulModU64(x, x, n), cMod, n);
+      y = addModU64(mulModU64(y, y, n), cMod, n);
+      y = addModU64(mulModU64(y, y, n), cMod, n);
       const std::uint64_t diff = (x >= y) ? (x - y) : (y - x);
       if (diff == 0u) {
+        break;  // the sequence closed on itself: restart with a new (c, y0)
+      }
+      // Brent on x64 (batch>1): multiply differences before each gcd. On win32 batch is 1 (mulmod ≫ gcd).
+      prod = mulModU64(prod, diff, n);
+      ++sinceGcd;
+      if (sinceGcd < kFactorintRhoGcdBatch && iter + 1 < maxIter) {
         continue;
       }
-      d = gcdUInt(diff, n);
+      sinceGcd = 0;
+      d = gcdSmUInt(prod, n);
+      prod = 1;
       if (d == n) {
-        y = x;
+        // A factor was overshot in the product; restart with a fresh (c, y0).
         d = 1;
+        break;
       }
     }
     if (d > 1u && d < n) {
@@ -456,15 +497,20 @@ std::uint64_t factorintOddTrialLimit(std::uint64_t n) {
 }
 
 bool factorintExhaustiveTrialDone(std::uint64_t n) {
-  return isqrtU64(n) <= factorintOddTrialLimit(n);
+  // Equivalent to isqrt(n) <= min(isqrt(n), odd-trial cap): trial reached sqrt(n) only when sqrt(n) <= cap.
+  return isqrtU64(n) <= kFactorintOddTrialMaxPrime;
 }
 
-void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>& out) {
+void factorintTrialDivideOddUpTo(
+    std::uint64_t& n,
+    std::vector<FactorintPrimeEntry>& out,
+    std::uint64_t maxPrime) {
   std::uint64_t d = kFactorintSmallMaxPrime + 2u;
   if ((d & 1u) == 0u) {
     ++d;
   }
-  const std::uint64_t limit = factorintOddTrialLimit(n);
+  const std::uint64_t sqrtCap = factorintOddTrialLimit(n);
+  const std::uint64_t limit = (maxPrime < sqrtCap) ? maxPrime : sqrtCap;
   while (d <= limit) {
     factorintTrialDividePrime(d, n, out);
     if (n <= 1u) {
@@ -474,16 +520,16 @@ void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>&
   }
 }
 
+void factorintTrialDivideOdd(std::uint64_t& n, std::vector<FactorintPrimeEntry>& out) {
+  factorintTrialDivideOddUpTo(n, out, kFactorintOddTrialMaxPrime);
+}
+
 std::uint64_t factorintFindSplitFactor(std::uint64_t n) {
   if (isPrimeU64(n)) {
     return n;
   }
-  if (n <= kFactorintFermatMaxN) {
-    std::uint64_t factor = fermatFactorU64(n);
-    if (factor > 1u && factor < n) {
-      return factor;
-    }
-  }
+  // Fermat was unreachable here: for n <= 1e8, odd trial already reaches sqrt(n), so this path
+  // only runs after exhaustive trial has failed on a larger composite. Rho finds the split.
   const std::uint64_t factor = pollardRhoU64(n);
   if (factor > 1u && factor < n) {
     return factor;
@@ -491,9 +537,10 @@ std::uint64_t factorintFindSplitFactor(std::uint64_t n) {
   return n;
 }
 
-void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& out) {
+// False when a composite cofactor could not be split (it is never reported as a prime).
+bool factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& out) {
   if (n <= 1u) {
-    return;
+    return true;
   }
   unsigned int twoExp = 0;
   while ((n & 1u) == 0u) {
@@ -504,7 +551,7 @@ void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& 
     factorintEntriesPushMerged(out, 2u, twoExp);
   }
   if (n <= 1u) {
-    return;
+    return true;
   }
   std::size_t trialLimit = kFactorintSmallPrimeCount;
   std::size_t lo = 0;
@@ -522,33 +569,55 @@ void factorizeU64IntoEntries(std::uint64_t n, std::vector<FactorintPrimeEntry>& 
   for (std::size_t si = 0; si < trialLimit; ++si) {
     factorintTrialDividePrime(kFactorintSmallPrimes[si], n, out);
     if (n <= 1u) {
-      return;
+      return true;
     }
   }
   if (n <= 1u) {
-    return;
+    return true;
   }
+  std::uint64_t sqrtN = isqrtU64(n);
   // When sqrt(n) exceeds the odd-trial cap, trial only reaches 10^7; MR can prove primality
   // without ~5M divisions (e.g. large prime cofactors after a small factor is stripped).
-  if (isqrtU64(n) > kFactorintOddTrialMaxPrime && isPrimeU64(n)) {
+  if (sqrtN > kFactorintOddTrialMaxPrime && isPrimeU64(n)) {
     factorintEntriesPushMerged(out, n, 1u);
-    return;
+    return true;
+  }
+  // Medium factors first (cheap), then early Pollard, then full odd trial as fallback.
+  std::uint64_t rhoFailedOn = 0;
+  if (sqrtN > kFactorintOddTrialMaxPrime) {
+    factorintTrialDivideOddUpTo(n, out, kFactorintEarlyTrialMaxPrime);
+    if (n <= 1u) {
+      return true;
+    }
+    sqrtN = isqrtU64(n);
+    if (sqrtN > kFactorintOddTrialMaxPrime && isPrimeU64(n)) {
+      factorintEntriesPushMerged(out, n, 1u);
+      return true;
+    }
+    if (sqrtN > kFactorintOddTrialMaxPrime) {
+      const std::uint64_t early = factorintFindSplitFactor(n);
+      if (early > 1u && early < n) {
+        return factorizeU64IntoEntries(early, out) && factorizeU64IntoEntries(n / early, out);
+      }
+      rhoFailedOn = n;
+    }
   }
   factorintTrialDivideOdd(n, out);
   if (n <= 1u) {
-    return;
+    return true;
   }
   if (factorintExhaustiveTrialDone(n) || isPrimeU64(n)) {
     factorintEntriesPushMerged(out, n, 1u);
-    return;
+    return true;
+  }
+  if (n == rhoFailedOn) {
+    return false;  // rho already failed on this exact cofactor
   }
   const std::uint64_t factor = factorintFindSplitFactor(n);
   if (factor <= 1u || factor >= n) {
-    factorintEntriesPushMerged(out, n, 1u);
-    return;
+    return false;
   }
-  factorizeU64IntoEntries(factor, out);
-  factorizeU64IntoEntries(n / factor, out);
+  return factorizeU64IntoEntries(factor, out) && factorizeU64IntoEntries(n / factor, out);
 }
 
 void sortFactorintEntries(std::vector<FactorintPrimeEntry>& entries) {
@@ -592,8 +661,8 @@ bool MathParser::tryGetFactorintInput(
     return false;
   }
   const auto& sv = v.scalarValue;
-  if (sv.hasExactSInt()) {
-    const SmInt iv = sv.exactSInt;
+  if (sv.hasExactSmInt()) {
+    const SmInt iv = sv.exactInt;
     if (iv < 0) {
       isNegative = true;
       if (iv == kIntMin) {
@@ -607,13 +676,13 @@ bool MathParser::tryGetFactorintInput(
     absU = static_cast<SmUInt>(iv);
     return true;
   }
-  if (sv.hasExactUInt() || sv.scalarKind == ScalarKind::UInt) {
+  if (sv.hasExactSmUInt() || sv.scalarKind == ScalarKind::SmUInt) {
     isNegative = false;
     absU = sv.exactUInt;
     return true;
   }
   SmInt li = 0;
-  if (!tryExtractExactSIntFromFloatStrict(sv.scalar, li)) {
+  if (!tryExtractExactSmIntFromFloatStrict(sv.scalar, li)) {
     return false;
   }
   if (li < 0) {
@@ -636,10 +705,10 @@ void appendFactorintScalarTerm(
     int expV,
     bool& applySign) {
   SmUInt valueU = baseU;
-  if (expV > 1 && !tryPowUIntChecked(baseU, static_cast<SmUInt>(expV), valueU)) {
+  if (expV > 1 && !tryPowSmUIntChecked(baseU, static_cast<SmUInt>(expV), valueU)) {
     return;
   }
-  const SmUInt kSIntMaxU = static_cast<SmUInt>(kIntMax);
+  const SmUInt kIntMaxU = static_cast<SmUInt>(kIntMax);
   SmInt signedI = 0;
   bool hasUInt = false;
   if (applySign) {
@@ -648,7 +717,7 @@ void appendFactorintScalarTerm(
     signedI = (valueU == kIntMinMag)
         ? kIntMin
         : -static_cast<SmInt>(valueU);
-  } else if (valueU > kSIntMaxU) {
+  } else if (valueU > kIntMaxU) {
     hasUInt = true;
   } else {
     signedI = static_cast<SmInt>(valueU);
@@ -662,10 +731,12 @@ void appendFactorintScalarTerm(
   out.push_back(std::move(sv));
 }
 
-EvalValue buildFactorintFromAbsU(
+// False when the input could not be factored completely.
+bool buildFactorintFromAbsU(
     bool isNegative,
-    SmUInt absU) {
-  EvalValue outV{};
+    SmUInt absU,
+    EvalValue& outV) {
+  outV = EvalValue{};
   std::vector<EvalValue::ScalarValue> terms;
   if (absU == 0u) {
     EvalValue::ScalarValue sv{};
@@ -673,13 +744,16 @@ EvalValue buildFactorintFromAbsU(
     terms.push_back(std::move(sv));
   } else if (absU == 1u) {
     EvalValue::ScalarValue sv{};
-    setFactorintTermValue(sv, isNegative ? -1LL : 1LL, 1u, false);
+    setFactorintTermValue(sv, isNegative ? -1 : 1, 1u, false);
     terms.push_back(std::move(sv));
   } else {
     std::vector<FactorintPrimeEntry> entries;
-    factorizeU64IntoEntries(static_cast<FactorUInt>(absU), entries);
+    if (!factorizeU64IntoEntries(static_cast<FactorUInt>(absU), entries)) {
+      return false;
+    }
     if (entries.empty()) {
-      return makeScalar(0);
+      outV = makeScalar(0);
+      return true;
     }
     sortFactorintEntries(entries);
     for (std::size_t ei = 0; ei < entries.size(); ++ei) {
@@ -689,11 +763,12 @@ EvalValue buildFactorintFromAbsU(
     }
   }
   if (terms.empty()) {
-    return makeScalar(0);
+    outV = makeScalar(0);
+    return true;
   }
   outV.kind = ValueKind::Array;
   outV.arr = std::move(terms);
-  return outV;
+  return true;
 }
 
 MathParser::EvalValue MathParser::builtinFactorint(
@@ -720,7 +795,11 @@ MathParser::EvalValue MathParser::builtinFactorint(
     ctx.fail(fnName + STR_FACTORINT_INPUT_LIMITED_TO_64_BITS);
     return makeScalar(0);
   }
-  EvalValue out = buildFactorintFromAbsU(isNegative, absU);
+  EvalValue out;
+  if (!buildFactorintFromAbsU(isNegative, absU, out)) {
+    ctx.fail(fnName + STR_FACTORINT_UNABLE_TO_FACTOR);
+    return makeScalar(0);
+  }
   if (out.kind != ValueKind::Array) {
     ctx.failCall(CallErrorId::IntegerValues, fnName);
     return makeScalar(0);

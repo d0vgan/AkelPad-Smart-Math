@@ -38,11 +38,20 @@ Float agreement uses the same tolerance as ``ScalarCloseEnough`` in
 Smart-Math rules plain Python does not model:
   * ``min`` / ``max`` skip ``nan`` once any non-NaN value is present (NaN is absence).
     ``clamp`` uses the same absence rules for a NaN value or a NaN bound.
+  * ``sign(nan)`` is ``nan`` (plain ``x < 0`` / ``x > 0`` would yield ``0``).
   * Comparisons are lexicographic: a scalar counts as length 1 (``flat(inf)==inf``),
     and a ``nan`` in a compared element makes the whole compare unordered
     (only ``!=`` / ``<>`` is true), including ``flat(nan)==flat(nan)`` and
     ``(1,nan)!=(1,nan)``. Plain Python ``tuple`` equality is wrong here because
     the ``math.nan`` singleton compares equal to itself by identity.
+    Exact integers (including above ``2**53`` / uint64 range) compare digit-exact;
+    float tolerance must not collapse distinct ints that round to the same double.
+  * ``sum`` uses compensated summation (``math.fsum`` / Neumaier), so
+    ``sum(1e100, 1, -1e100)`` is ``1``; plain ``sum`` on older Python loses the ``1``.
+  * ``median`` averages the two middle values without overflowing
+    (``median(1e308,1.5e308)`` -> ``1.25e+308``); integer middles stay exact.
+  * ``cos`` / ``sin`` / ``tan`` snap exact ``pi/2`` multiples to ``0`` / ``+-1`` /
+    ``+-inf`` (e.g. ``cos(1e12*pi)`` -> ``1``); plain ``math.cos`` does not.
   * Arrays are flattened as they are built, so a result never contains a nested array.
   * No scalars left yields ``()`` (``sum(())``, ``prod(())``, ``sin(())``), not Python's
     ``sum([]) == 0`` or ``math.prod([]) == 1``. An empty ``range`` span is ``()``,
@@ -1250,9 +1259,21 @@ def sin_sm(x: float) -> float:
 
 
 def cos_sm(x: float) -> float:
+    """Mirror CalcCos: multiples of pi/2 map to exact 0, +-1 (cos(n*pi) = (-1)^n)."""
     if math.isfinite(x):
-        if not is_multiple_of(x, math.pi) and is_multiple_of(x, math.pi / 2.0):
-            return 0.0
+        half = math.pi / 2.0
+        if is_multiple_of(x, half):
+            q = round(x / half)
+            # Same gate as TryTrigHalfPiQuotient: |k| must fit exact-int-from-float.
+            if abs(q) < float(1 << 53):
+                r = int(q) % 4
+                if r < 0:
+                    r += 4
+                if r == 0:
+                    return 1.0
+                if r == 2:
+                    return -1.0
+                return 0.0
     return math.cos(x)
 
 
@@ -1320,6 +1341,13 @@ def _cmp_elements(a: Any, b: Any) -> int:
         if a > b:
             return 1
         return 0
+    # Exact ints must not go through float close_enough (distinct values above 2^53
+    # round to the same double when str→float, e.g. 2^53+1 vs 2^53).
+    if _is_plain_int(a) and _is_plain_int(b):
+        ai, bi = int(a), int(b)
+        if ai == bi:
+            return 0
+        return -1 if ai < bi else 1
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
         if close_enough_str(str(a), str(b)) or a == b:
             return 0
@@ -4168,10 +4196,14 @@ def sign_sm(x):
         if mag < 1e-15:
             return 0
         return c / mag
+    if isinstance(x, float) and math.isnan(x):
+        return math.nan
     return -1 if x < 0 else (1 if x > 0 else 0)
 
 
 def sign_sm_real(x):
+    if isinstance(x, float) and math.isnan(x):
+        return math.nan
     return -1 if x < 0 else (1 if x > 0 else 0)
 
 
@@ -4566,11 +4598,31 @@ def lcm_sm(a, b):
     return _broadcast2(_lcm_scalar, a, b)
 
 
+def _median_average_middles(lo: Any, hi: Any) -> Any:
+    """Average two median middles: exact ints stay exact; floats avoid overflow."""
+    if _is_plain_int(lo) and _is_plain_int(hi):
+        s = int(lo) + int(hi)
+        if s % 2 == 0:
+            return s // 2
+        return s / 2.0
+    lf, hf = float(lo), float(hi)
+    # 0.5*a+0.5*b survives both same-sign near DBL_MAX and opposite-sign +-1e308;
+    # (a+b)/2 and a+(b-a)/2 each overflow on one of those pairs.
+    return 0.5 * lf + 0.5 * hf
+
+
 def median_sm(*args):
     flat = _flatten_args(*args)
     if not flat:
         return tuple()
-    return statistics.median(flat)
+    if any(_is_nan_number(item) for item in flat):
+        return math.nan
+    ordered = sorted(flat)
+    n = len(ordered)
+    mid = n // 2
+    if n % 2 == 1:
+        return ordered[mid]
+    return _median_average_middles(ordered[mid - 1], ordered[mid])
 
 
 def _finite_stats(*args):
@@ -4635,10 +4687,22 @@ def max_sm(*args):
 
 
 def sum_sm(*args):
+    """Compensated float sum (math.fsum / Neumaier); integers stay exact; empty -> ()."""
     flat = _flatten_args(*args)
     if not flat:
         return tuple()
-    return sum(flat)
+    if any(isinstance(item, (complex, ExactComplex)) for item in flat):
+        acc: Any = flat[0]
+        for item in flat[1:]:
+            acc = acc + item
+        return acc
+    if all(isinstance(item, Duration) for item in flat):
+        return Duration(sum(item.ms for item in flat))
+    if all(_is_plain_int(item) for item in flat):
+        return sum(int(item) for item in flat)
+    return math.fsum(
+        float(item.ms if isinstance(item, Duration) else item) for item in flat
+    )
 
 
 def random_sm(lo, hi):

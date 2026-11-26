@@ -50,6 +50,49 @@ private function WgDecMul(byref a as String, byval m as Integer) as String
   return r
 end function
 
+private function WgDecAdd(byref a as String, byref b as String) as String
+  dim r as String = ""
+  dim carry as Integer = 0
+  dim ia as Integer = len(a)
+  dim ib as Integer = len(b)
+  dim v as Integer
+  while ia > 0 orelse ib > 0 orelse carry <> 0
+    v = carry
+    if ia > 0 then v += asc(mid(a, ia, 1)) - 48: ia -= 1
+    if ib > 0 then v += asc(mid(b, ib, 1)) - 48: ib -= 1
+    r = chr(48 + v mod 10) & r
+    carry = v \ 10
+  wend
+  return r
+end function
+
+'' C(n, k) by Pascal's triangle on decimal strings (additions only, no division).
+private function WgDecBinomial(byval n as Integer, byval k as Integer) as String
+  dim row(0 to k) as String
+  for j as Integer = 0 to k
+    row(j) = "0"
+  next j
+  row(0) = "1"
+  dim top as Integer
+  for i as Integer = 1 to n
+    top = i
+    if top > k then top = k
+    for j as Integer = top to 1 step -1
+      row(j) = WgDecAdd(row(j), row(j - 1))
+    next j
+  next i
+  return row(k)
+end function
+
+'' n * (n-1) * ... * (n-r+1) on decimal strings.
+private function WgDecFalling(byval n as Integer, byval r as Integer) as String
+  dim p as String = "1"
+  for i as Integer = 0 to r - 1
+    p = WgDecMul(p, n - i)
+  next i
+  return p
+end function
+
 private function WgDecFactorial(byval n as Integer) as String
   dim f as String = "1"
   for i as Integer = 2 to n
@@ -71,7 +114,7 @@ private function WgIntMinMagText() as String
   return WgDecPow2(SM_INT_BITS - 1)
 end function
 
-private function WgUIntMaxText() as String
+private function WgSmUIntMaxText() as String
   return WgDecPow2Minus1(SM_INT_BITS)
 end function
 

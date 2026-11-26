@@ -297,7 +297,7 @@ private function InsertThousandsIntPart(byref intPart as String, byref localThou
 end function
 
 '' Raw %.15e text. FormatNumericValue trims the mantissa and the exponent.
-private function FormatForcedScientific16(byval d as SmFloat) as String
+private function FormatForcedScientificFull(byval d as SmFloat) as String
   dim buf as zstring * 64
   if sprintf(@buf, SM_FMT_SCIENTIFIC_FULL, d) < 0 then return "0"
   return buf
@@ -317,7 +317,7 @@ private function FormatNumericValue(byval d as SmFloat) as String
     '' Above 2^53 a bare integer is not an exact int. Keep the same scientific form as other auto floats.
     if eScanPos = 0 andalso PositionOfNumericDecimal(sRes) = 0 then
       if d <> 0.0 andalso Abs(d) > SM_MAX_EXACT_INT_FROM_FLOAT then
-        sRes = FormatForcedScientific16(d)
+        sRes = FormatForcedScientificFull(d)
         eScanPos = IndexOfExponentLetter(sRes)
       end if
     end if
@@ -331,20 +331,9 @@ private function FormatNumericValue(byval d as SmFloat) as String
         if ad < 1.0 / Pow10Cached(leadingZeroDigits) then useScientific = TRUE
       end if
 
-      dim isSIntLike as Boolean = FALSE
-      '
-      ' Note: the Formatter must not do this;
+      ' Note: the Formatter must not treat integer-valued floats specially (no "is int-like" exemption);
       ' instead, rely on the parser to preserve exact integers.
-      '
-      ' const I64_MAX_D as Double = 9223372036854775807.0
-      ' const I64_MIN_D as Double = -9223372036854775808.0
-      ' if d >= I64_MIN_D andalso d <= I64_MAX_D then
-      '   if d = Fix(d) then isSIntLike = TRUE
-      ' end if
-
-      if isSIntLike = FALSE then
-        if ad >= Pow10Cached(g_nDecimals + 6) then useScientific = TRUE
-      end if
+      if ad >= Pow10Cached(g_nDecimals + 6) then useScientific = TRUE
     end if
 
     if useScientific then
@@ -443,8 +432,8 @@ private function ContainsDecimalSepOrExponent(byref s as String) as Boolean
   return ScanNumericStringChars(TRUE, TRUE, s)
 end function
 
-'' Raw RSK_FLOATING display: append explicit fractional digit when none is shown.
-private function FormatRawFloatingValue(byval d as SmFloat) as String
+'' Raw RSK_SMFLOATING display: append explicit fractional digit when none is shown.
+private function FormatRawSmFloatingValue(byval d as SmFloat) as String
   dim nf as String = FormatNonFiniteFromFloat(d)
   if Len(nf) > 0 then return nf
   dim s as String = FormatNumericValue(d)
@@ -491,9 +480,9 @@ private function FormatRawCartesianComponentText(byref c as RawCartesianScalar) 
   select case c.kind
   case RSK_TIME
     return Parser_FormatTimeMs(c.intValue)
-  case RSK_SINT
+  case RSK_SMINT
     return AddThousandsSeparator(ltrim(str(c.intValue)))
-  case RSK_UINT
+  case RSK_SMUINT
     return AddThousandsSeparator(ltrim(str(c.uintValue)))
   case RSK_RATIONAL
     if c.ratDen = 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
@@ -502,7 +491,7 @@ private function FormatRawCartesianComponentText(byref c as RawCartesianScalar) 
     if c.ratDen <= 1 then return AddThousandsSeparator(ltrim(str(c.ratNum)))
     return AddThousandsSeparator(ltrim(str(c.ratNum))) & "**" & AddThousandsSeparator(ltrim(str(c.ratDen)))
   case else
-    return FormatRawFloatingValue(c.floatValue)
+    return FormatRawSmFloatingValue(c.floatValue)
   end select
 end function
 
@@ -511,14 +500,14 @@ private function FormatRawCartesianDisplay(byref c as RawCartesianScalar) as Str
 end function
 
 private function RawCartesianIsZeroForComplexReal(byref c as RawCartesianScalar) as Boolean
-  if c.kind = RSK_FLOATING then
+  if c.kind = RSK_SMFLOATING then
     if Len(FormatNonFiniteFromFloat(c.floatValue)) > 0 then return FALSE
   end if
   return RawCartesianIsZero(c)
 end function
 
 private function RawCartesianIsNaN(byref c as RawCartesianScalar) as Boolean
-  if c.kind <> RSK_FLOATING then return FALSE
+  if c.kind <> RSK_SMFLOATING then return FALSE
   return FormatNonFiniteFromFloat(c.floatValue) = SM_FMT_NAN
 end function
 
@@ -590,5 +579,5 @@ function FormatRawEvaluationResult(byref raw as RawResult) as String
 end function
 
 function FormatResult(byval d as SmFloat) as String
-  return SMARTMATH_RESULT_PREFIX & FormatRawFloatingValue(d)
+  return SMARTMATH_RESULT_PREFIX & FormatRawSmFloatingValue(d)
 end function

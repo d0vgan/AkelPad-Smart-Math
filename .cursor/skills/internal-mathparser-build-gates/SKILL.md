@@ -2,8 +2,8 @@
 name: internal-mathparser-build-gates
 description: >-
   Internal MathParser build/test gate rules (sequential Basic then C++, compile
-  error discipline, change-detection inventories, invocation, feature matrix,
-  factorint and docs index checks, behavior probes, bitness, performance).
+  error and warning discipline, change-detection inventories, invocation, feature matrix,
+  C++ static analysis, factorint and docs index checks, behavior probes, bitness, performance).
   Not a user entry point — load only when referenced by mathparser-add-or-fix
   or mathparser-refactor.
 disable-model-invocation: true
@@ -67,11 +67,12 @@ The batch files pause at the end; run them non-interactively:
 | Smoke | repo root | `cmd /c "RunSmokeTests.bat < nul"` (compiles `SmokeTest_MathParser.exe` itself) |
 | C++ build | `cpp/` | `cmd /c "BuildTests_vc2022_x64.bat < nul"` |
 | C++ run | `cpp/` | `.\Tests_MathParser.exe` (exit code 0 = pass) |
+| C++ analyze | `cpp/` | `cmd /c "BuildTestsAnalyze_vc2022_x64.bat < nul"` (`/std:c++17 /W4 /analyze`; builds only, then delete the ignored `Tests_MathParser_analyze.exe`; the `*.nativecodeanalysis.xml` files it writes are generated noise, never add them) |
 | Feature matrix | `cpp/` | `cmd /c "RunFeatureMatrixTests_vc2022_x64.bat < nul"` (builds and runs all 8 flag combinations; replaces C++ build + run) |
 | Factorint | repo root | `cmd /c "RunFactorintTimeoutTests.bat < nul"` (29 cases, 20 s limit each) |
 | Docs index | repo root | `cmd /c "cpp\CheckDocsFunctionIndex.bat < nul"` |
 
-Output is long: redirect to a file and search it for `FAIL` and the final totals, rather than reading it whole. The C++ build is MSVC with the default language standard (C++14); do not use C++17 library features.
+Output is long: redirect to a file and search it for `FAIL`, `warning` and the final totals, rather than reading it whole. The C++ build is MSVC with the default language standard (C++14); do not use C++17 library features.
 
 ## Behavior probes (not gates)
 
@@ -84,12 +85,12 @@ Use probes to reproduce and re-verify behavior; never to seed test expectations 
 - **Basic, one expression:** `tools/NegBandProbe.bas` evaluates one expression from the command line (`--complex` first to enable complex mode; time and lambdas keep parser defaults). `tools/build_neg_band_probe.bat` (from the repo root) builds the 32-bit `tools/NegBandProbe.exe`, which the `tools/gen_*.py` generators also use; rebuild after parser changes. For a 64-bit probe, from the repo root with `C:\tools\FreeBASIC` and its `bin\win64` on `PATH`: `fbc -arch x86_64 -s console -O 2 tools\NegBandProbe.bas MathParser.bas -x <temp>\NegBandProbe64.exe` (output outside the repo, or delete it when done). For a 32-bit calc, run `tools/build_calc.bat` on a machine without `bin\win64`, or call `fbc` without `-arch x86_64` the same way.
 - **Probing `HEAD`:** to tell whether a difference predates the current diff, build the probe from a temporary `git worktree` outside the repo (protect-workspace); never `git checkout` over the working tree. If the probe source differs from `HEAD` or is missing there (`git diff HEAD -- tools/NegBandProbe.bas tools/calc.bas cpp/calc.cpp`, `git ls-files`), copy the current probe source into the worktree first; an older copy may not print results.
 - **Bitness:** `RunSmokeTests.bat` builds 64-bit when FreeBASIC `bin\win64` exists, otherwise 32-bit, so smoke covers one architecture. The plugin ships both (`Compile32.bat` / `Compile64.bat`). For numeric, literal-parsing, shift, or overflow changes, probe Basic built with and without `-arch x86_64`: 32-bit x87 extended precision can hide double rounding and overflow, and FreeBASIC 64-bit constant handling can differ. For the same changes on the C++ side, also run `cpp/BuildTests_vc2022_win32.bat` then `cpp/Tests_MathParser.exe`.
-- **Type configurations:** a change to numeric code, limits or tests also has to work for other `SmFloat`/`SmInt`/`SmUInt` choices (coding-standards "Numeric types and limits"). Narrow C++ (MSVC): `cl /EHsc /I. /DSMARTMATH_FLOAT_TYPE=float /DSMARTMATH_INT_TYPE=int /DSMARTMATH_UINT_TYPE=unsigned tests\Tests_MathParser.cpp MathParser.cpp MathParserFactorInt.cpp MathParserRawResult.cpp` (outputs outside the repo; the run executes only the width-generic suites). Wide C++ (emscripten, 128-bit int and `long double`): the same sources with `em++ -std=c++17 "-DSMARTMATH_FLOAT_TYPE=long double" -DSMARTMATH_INT_TYPE=__int128 "-DSMARTMATH_UINT_TYPE=unsigned __int128"` and `node` (emscripten prints and parses `long double` through double precision, so the width-generic suite compares prefixes there). Narrow Basic: `fbc -arch x86_64 -d SM_NARROW_TYPES tests\SmokeTest_MathParser.bas MathParser.bas -x <temp>\narrow.exe` (Single/Long/ULong; also the formatter, factorint and calc builds). fbc has nothing wider than 64 bits. `powershell -File tools\check_type_literals.ps1 -Strict` reports hard-coded widths.
+- **Type configurations:** a change to numeric code, limits or tests also has to work for other `SmFloat`/`SmInt`/`SmUInt` choices (coding-standards "Numeric types and limits"). Narrow C++ (MSVC): `cl /EHsc /I. /DSMARTMATH_FLOAT_TYPE=float /DSMARTMATH_INT_TYPE=int /DSMARTMATH_UINT_TYPE=unsigned tests\Tests_MathParser.cpp MathParser.cpp MathParserFactorInt.cpp MathParserRawResult.cpp` (outputs outside the repo; the run executes only the width-generic suites). Wide C++ (emscripten, 128-bit int and `long double`): the same sources with `em++ -std=c++17 "-DSMARTMATH_FLOAT_TYPE=long double" -DSMARTMATH_INT_TYPE=__int128 "-DSMARTMATH_UINT_TYPE=unsigned __int128"` and `node` (emscripten prints and parses `long double` through double precision, so the width-generic suite compares prefixes there). Narrow Basic: `fbc -arch x86_64 -d SM_NARROW_TYPES tests\SmokeTest_MathParser.bas MathParser.bas -x <temp>\narrow.exe` (Single/Long/ULong; also the formatter, factorint and calc builds). fbc has nothing wider than 64 bits. `RunTypeProfileTests.bat` runs the whole set that MSVC and fbc can do (`powershell -File tools\check_type_literals.ps1 -Strict` for hard-coded widths, Basic narrow, C++ float/int/unsigned and C++ double/int/unsigned) and prints one PASS/FAIL line per gate; it writes only to `%TEMP%\smartmath_profiles`. Wrap code that is bound to one width in `SM_FIXED_WIDTH` / `SM_FIXED_WIDTH_BEGIN..END` so the checker allows it (unbalanced markers are reported).
 - **Performance:** for refactors of hot paths (evaluation loop, scalar arithmetic, array walks), compare `cpp/RunPerfBaseline_vc2022_x64.bat` timings before and after the change, run sequentially on an idle machine. Report the numbers; treat a consistent slowdown beyond run-to-run noise as a regression.
 
-## Compile and build error discipline (Required)
+## Compile, build error and warning discipline (Required)
 
-On any build/compile failure (`Compile.bat`, `Compile32.bat`, `Compile64.bat`, formatter/copy/smoke/factorint batches, `cpp/BuildTests_vc2022_x64.bat` / `_win32.bat`, the feature matrix, related toolchains):
+On any build/compile failure or compiler warning (`Compile.bat`, `Compile32.bat`, `Compile64.bat`, formatter/copy/smoke/factorint batches, `cpp/BuildTests_vc2022_x64.bat` / `_win32.bat`, the feature matrix, related toolchains):
 
 - **Toolchain stop:** if the batch is missing or the failure is the environment (FreeBASIC path, MSVC toolset), stop immediately. Report the blocker and the last output. Do not edit sources to work around it, and do not spend the 3-iteration loop on it.
 - Assume the toolchain is right; "compiler bug" is last resort after the checklist.
@@ -105,25 +106,38 @@ On any build/compile failure (`Compile.bat`, `Compile32.bat`, `Compile64.bat`, f
   6. Clean rebuild (incremental artifacts)
   7. Toolchain versions (FreeBASIC path, MSVC toolset)
   8. API/parity drift (renamed helpers, moved declarations, Basic vs C++)
-- **Hard loop limit:** after **3** failed fix-compile iterations on the same primary error, stop, summarize facts (first error text, files changed, hypotheses tried, rollback status), and ask for human review — do not invent workarounds or disable checks.
+- **Hard loop limit:** after **3** failed fix-compile iterations on the same primary error or warning, stop, summarize facts (first diagnostic text, files changed, hypotheses tried, rollback status), and ask for human review — do not invent workarounds or disable checks.
+
+### Warnings
+
+A warning is a finding, exactly like an error. A build that exits 0 but prints a new warning has not passed.
+
+- **Look for them every time.** Redirect each build to a file and search it for `warning` as well as `error` / `FAIL`: MSVC prints `warning C####` (compiler), `warning D####` (driver) and `warning LNK####`; `fbc` prints `warning` lines before the program runs (smoke, formatter, copy, factorint, `Compile.bat`). The profile gate keeps its logs in `%TEMP%\smartmath_profiles` (`cpp_*\build.log`, `smoke_narrow.log`); scan those too. The C++ analyze gate below is where the stricter MSVC diagnostics (C6326, C4127, ...) appear; the plain test builds do not print them.
+- **Baseline.** Warnings already present before your change are pre-existing: note them in the report, do not fix them unless asked, and do not let them hide new ones (compare by message number, file and line text, not by count). Every warning your diff adds or moves into new code must be fixed. When unsure, build the same flags from `HEAD` (a temporary worktree outside the repo, as for probes).
+- **Read before fixing.** Take the first new warning, read the diagnostic number and the exact line, and decide which kind it is:
+  1. a real defect (uninitialized value, narrowing or sign change, unreachable code, ignored result, shadowed name): fix the code, and add or adjust a test when behavior could differ;
+  2. a type-configuration artifact (a comparison or condition that folds to a constant for one `SmFloat`/`SmInt`/`SmUInt` choice, such as C6326 "Potential comparison of a constant with another constant" or C4127 "conditional expression is constant"): keep the check, but make it width-generic without a runtime constant condition. In `cpp/tests/Tests_MathParser.cpp` compare through the `widthgeneric::same()` / `greater()` helpers; in parser code use a `static_assert`, a template overload or tag dispatch (the build is C++14, no `if constexpr`; see `ddMulExactBy`); in Basic use `SM_STATIC_ASSERT` or `#if`.
+- **Never silence.** No `#pragma warning(disable)`, `/wd`, `NOLINT`, `#pragma GCC diagnostic`, `(void)` or a cast on a value that is used, removed checks, or changes to the warning flags in the `.bat` files (`/W4 /analyze` stays). If a warning looks like a false positive, show the evidence and ask instead of suppressing it.
+- **Same discipline as errors:** smallest direct fix, one hypothesis per rebuild, roll back an edit that did not clear the warning, and apply the hard loop limit.
+- **A fix must not move the problem.** After clearing a warning rebuild every build that compiles the file (analyze, x64, win32 and VC2017 for C++; the narrow and mixed profiles for width-sensitive code; Basic `Compile.bat` and smoke for Basic) and confirm no new warning appeared elsewhere.
 
 ## Test and guard execution order (Required)
 
-- Always run sequentially — **never in parallel**. Each gate must exit 0 before the next starts, except for the `Compile.bat` exception below.
+- Always run sequentially — **never in parallel**. Each gate must exit 0 and print no new warning (see "Warnings") before the next starts, except for the `Compile.bat` exception below.
 - **Any test failure** (formatter, copy, smoke, factorint, C++, feature matrix): handle each failing value with mathparser-add-or-fix `flows/smoke-tests.md` "Handling a test mismatch" before changing code or expectations (re-derive the expected value first; floating-point inaccuracy is allowed). Some suites stop at their first failing row; after a fix, rerun until the suite is clean rather than assuming one failure was the only one.
 - **Exception:** if `Compile.bat` failed, still run `RunFormatterTests.bat` then `RunCopyRegressionTests.bat` so those regressions stay visible. After fixing compile, rerun `Compile.bat` and both regression batches.
 - When Basic and C++ gates are both required, complete **all** required Basic gates first; a failed Basic gate blocks C++:
   1. `Compile.bat`
   2. `RunFormatterTests.bat` then `RunCopyRegressionTests.bat`
   3. `RunSmokeTests.bat`, then `RunFactorintTimeoutTests.bat` when triggered
-  4. `cpp/BuildTests_vc2022_x64.bat` then `cpp/Tests_MathParser.exe`, or the feature matrix when triggered
+  4. `cpp/BuildTests_vc2022_x64.bat` then `cpp/Tests_MathParser.exe`, or the feature matrix when triggered; then the C++ analyze gate (same triggers, not part of the feature matrix)
   5. Docs index check, when triggered (no build dependency; may also run alone for docs-only changes)
 
 ## Gate: Compile (`Compile.bat`)
 
 - Run only when a **Basic implementation source** changed.
 - If you edit `Compile.bat`'s module list, keep `Compile32.bat` and `Compile64.bat` in lockstep (same sources, same order; only `-arch` / `-x` / arch flags may differ).
-- On failure: toolchain stop, otherwise compile-error discipline.
+- On failure or a new warning: toolchain stop, otherwise compile, error and warning discipline.
 
 ## Gate: Formatter + copy regression
 
@@ -139,9 +153,15 @@ On any build/compile failure (`Compile.bat`, `Compile32.bat`, `Compile64.bat`, f
 ## Gate: C++ build/test
 
 - Run only for **C++ triggers**, after every required Basic gate passed.
-- Build failure: toolchain stop, otherwise compile-error discipline.
+- Build failure or a new warning in the build output: toolchain stop, otherwise compile, error and warning discipline.
 - Test failure: mismatch handling (execution order section), then fix → rebuild → rerun until pass.
 - When the feature matrix is triggered, it replaces the single build/run; a failure names the flag combination to reproduce.
+
+## Gate: C++ analyze (`cpp/BuildTestsAnalyze_vc2022_x64.bat`)
+
+- Run for **C++ triggers**, after the C++ build/run passed. It compiles the tests and parser with `/std:c++17 /W4 /analyze /wd4100` and runs nothing; it is the only gate that shows C6326, C4127, null-dereference, uninitialized-use and similar diagnostics.
+- Success is exit 0 **and zero new warnings**. At the time of writing the tree is clean, so any `warning` line in the output is new: fix it by the warnings rules above, then rerun until the output has none. Compare against a `HEAD` build if a warning looks pre-existing.
+- Cleanup: delete `cpp/Tests_MathParser_analyze.exe` (ignored by git) and do not add the `cpp/*.nativecodeanalysis.xml` files it writes.
 
 ## Gate: Factorint (`RunFactorintTimeoutTests.bat`)
 

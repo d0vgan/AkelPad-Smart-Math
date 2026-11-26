@@ -62,9 +62,9 @@ All of it within the hard constraints below.
 2. Inventory duplicates (impact / risk / testability).
 3. Choose helper strategy (reuse → extend → narrow new helper) per coding-standards and cpp-class-design.
 4. Preserve efficiency: single-pass walks, pre-count + one allocation, scratch-buffer reuse in C++, no extra hot-path temps. For hot-path clusters, record a perf baseline before the first edit and compare after (build-gates "Performance").
-5. Apply one logical cluster at a time. Between clusters, compile the side you touched when practical (build-gates compile discipline on failure).
+5. Apply one logical cluster at a time. Between clusters, compile the side you touched when practical (build-gates compile, error and warning discipline on a failure or any new warning).
 6. Remove dead code only when unused/unreachable/superseded is confirmed; otherwise list it as a candidate.
-7. Mirror and reflect via the parity skill, then run the required build-gates once for the final diff; all of them must pass before completion.
+7. Mirror and reflect via the parity skill, then run the required build-gates once for the final diff; all of them must pass before completion, with no new compiler warning and a clean C++ analyze gate (build-gates "Warnings").
 
 ## Dead/unused code criteria
 
@@ -78,4 +78,4 @@ Record a short justification per removal.
 
 ## Completion report format
 
-Report: files changed; duplicates eliminated; helper reuse/extraction; when a user function or a lambda was in scope, both surfaces checked and which shared helper owns the rule; dead code removed + reason; dead-code candidates kept (and why); efficiency notes (why no slowdown, with perf baseline numbers when measured); concerns raised to the user, and the decision for each, or that none were identified; one pass/fail line per gate that ran; defects found but not fixed.
+Report: files changed; duplicates eliminated; helper reuse/extraction; when a user function or a lambda was in scope, both surfaces checked and which shared helper owns the rule; dead code removed + reason; dead-code candidates kept (and why); warnings found and fixed (or confirmed pre-existing); efficiency notes (why no slowdown, with perf baseline numbers when measured); concerns raised to the user, and the decision for each, or that none were identified; one pass/fail line per gate that ran; defects found but not fixed.

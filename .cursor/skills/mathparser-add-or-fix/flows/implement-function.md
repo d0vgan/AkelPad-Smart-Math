@@ -20,7 +20,7 @@ Each builtin is one id plus one row in each table; all tables are indexed by the
 - Validate arity and type/support rules beyond what the metadata row enforces.
 - Arrays: `()` and return shape follow empty-array-policy. Preserve broadcasting and size checks.
 - Variadic: enforce minimum arity; process extra args deterministically.
-- Decide non-finite handling per raise-concerns and follow the other coding-standards rules.
+- Decide non-finite handling per raise-concerns and follow the other coding-standards rules. Settled numeric edge rules (trig snap, aggregation accuracy, `sign(nan)`, …) are in numeric-behavior — implement and test them there; do not add those details to USAGE function bullets (usage-docs).
 
 ## 3) Signature hint
 

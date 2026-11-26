@@ -154,7 +154,7 @@ def naninf_cases() -> list[tuple[str, str, Optional[str], Optional[str]]]:
         ("naninf/abs nan", "abs(nan)", "nan", None),
         ("naninf/sign +inf", "sign(inf)", "1", None),
         ("naninf/sign -inf", "sign(-inf)", "-1", None),
-        ("naninf/sign nan", "sign(nan)", "0", None),
+        ("naninf/sign nan", "sign(nan)", "nan", None),
         ("naninf/ln nan", "ln(nan)", "nan", None),
         ("naninf/ln +inf", "ln(inf)", "inf", None),
         ("naninf/ln zero to -inf", "ln(0)", "-inf", None),

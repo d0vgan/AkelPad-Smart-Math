@@ -360,7 +360,7 @@ private sub RunRawResultApiTests()
   if Parser_TryEvaluateEx("2+3", r, rt, ia) = FALSE then
     print "[raw] FAIL: 2+3 eval"
     subFail += 1
-  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SINT orelse raw.scalar.real.intValue <> 5 then
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SMINT orelse raw.scalar.real.intValue <> 5 then
     print "[raw] FAIL: 2+3 raw int64"
     subFail += 1
   else
@@ -376,9 +376,9 @@ private sub RunRawResultApiTests()
     subFail += 1
   else
     dim badArrKind as Boolean = FALSE
-    if raw.arr(0).kind <> RSK_SINT then badArrKind = TRUE
-    if raw.arr(1).kind <> RSK_SINT then badArrKind = TRUE
-    if raw.arr(2).kind <> RSK_SINT then badArrKind = TRUE
+    if raw.arr(0).kind <> RSK_SMINT then badArrKind = TRUE
+    if raw.arr(1).kind <> RSK_SMINT then badArrKind = TRUE
+    if raw.arr(2).kind <> RSK_SMINT then badArrKind = TRUE
     if badArrKind then
       print "[raw] FAIL: ratio array element kinds"
       subFail += 1
@@ -416,7 +416,7 @@ private sub RunRawResultApiTests()
   if Parser_TryEvaluateEx("sqrt(81)", r, rt, ia) = FALSE then
     print "[raw] FAIL: sqrt(81) eval"
     subFail += 1
-  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SINT orelse raw.scalar.real.intValue <> 9 then
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SMINT orelse raw.scalar.real.intValue <> 9 then
     print "[raw] FAIL: sqrt(81) raw int64 9"
     subFail += 1
   else
@@ -427,7 +427,7 @@ private sub RunRawResultApiTests()
   if Parser_TryEvaluateEx("sqrt(4611686014132420611)", r, rt, ia) = FALSE then
     print "[raw] FAIL: sqrt(4611686014132420611) eval"
     subFail += 1
-  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_FLOATING then
+  elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SMFLOATING then
     print "[raw] FAIL: sqrt(4611686014132420611) must be floating (not fake exact int)"
     subFail += 1
   else
@@ -629,13 +629,17 @@ private sub RunTrigAngleReductionTests()
   nearZeroExpr(4) = "cos(3*pi/2)"
   nearZeroExpr(5) = "tan(pi)"
   nearZeroExpr(6) = "tan(2*pi)"
-  dim exactOneExpr(1 to 4) as String
-  dim exactOneExpect(1 to 4) as String
+  dim exactOneExpr(1 to 8) as String
+  dim exactOneExpect(1 to 8) as String
   '' Angle reduction returns the float 1, not an exact int, so the display keeps ".0".
   exactOneExpr(1) = "tan(pi/4)": exactOneExpect(1) = "1.0"
   exactOneExpr(2) = "tan(3*pi/4)": exactOneExpect(2) = "-1.0"
   exactOneExpr(3) = "tan(-pi/4)": exactOneExpect(3) = "-1.0"
   exactOneExpr(4) = "tan(-3*pi/4)": exactOneExpect(4) = "1.0"
+  exactOneExpr(5) = "cos(pi)": exactOneExpect(5) = "-1.0"
+  exactOneExpr(6) = "cos(2*pi)": exactOneExpect(6) = "1.0"
+  exactOneExpr(7) = "cos(1e12*pi)": exactOneExpect(7) = "1.0"
+  exactOneExpr(8) = "cos(-pi)": exactOneExpect(8) = "-1.0"
   dim ti as Integer
   dim mag as SmFloat
   for ti = 1 to 12
@@ -658,7 +662,7 @@ private sub RunTrigAngleReductionTests()
       subPass += 1
     end if
   next ti
-  for ti = 1 to 4
+  for ti = 1 to 8
     dim tr as SmFloat
     dim trt as String
     dim tia as Boolean
@@ -795,6 +799,14 @@ private sub RunComplexNumberSupportOptionTests()
     subPass += 1
   end if
 
+  if Parser_TryEvaluateEx("abs(fact(-10+i) - (-6.129213711061211e-07 - 4.984824354487957e-07i)) < 1e-18", r, rt, ia) = FALSE orelse rt <> "1" then
+    print "[complex-opt] FAIL: fact(-10+i) reflection, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: fact(-10+i) matches the Python reflection value"
+    subPass += 1
+  end if
+
   if Parser_TryEvaluateEx("iif(1, 0, ~2i)", r, rt, ia) = FALSE orelse rt <> "0" then
     print "[complex-opt] FAIL: iif(1, 0, ~2i) got """ & rt & """ err=" & Parser_GetLastError()
     subFail += 1
@@ -882,7 +894,7 @@ private sub RunComplexNumberSupportOptionTests()
   cxMaxExactExpr(8) = "hex(conj(" & cxMaxLit & "))": cxMaxExactExpect(8) = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
   dim rawConj as RawResult
   if Parser_TryEvaluateExRaw(cxMaxExactExpr(4), rawConj) = FALSE orelse _
-     rawConj.scalar.real.kind <> RSK_SINT orelse rawConj.scalar.imag.kind <> RSK_SINT then
+     rawConj.scalar.real.kind <> RSK_SMINT orelse rawConj.scalar.imag.kind <> RSK_SMINT then
     print "[complex-opt] FAIL: conj raw export not exact int64"
     subFail += 1
   else
@@ -911,7 +923,7 @@ private sub RunComplexNumberSupportOptionTests()
     subPass += 1
   end if
   if Parser_TryEvaluateExRaw(cxNegLit, rawNeg) = FALSE orelse rawNeg.scalar.kind <> RSK_COMPLEX orelse _
-     rawNeg.scalar.real.kind <> RSK_SINT orelse rawNeg.scalar.imag.kind <> RSK_SINT then
+     rawNeg.scalar.real.kind <> RSK_SMINT orelse rawNeg.scalar.imag.kind <> RSK_SMINT then
     print "[complex-opt] FAIL: bare raw """ & cxNegLit & """"
     subFail += 1
   else
@@ -929,7 +941,7 @@ private sub RunComplexNumberSupportOptionTests()
     subPass += 1
   end if
   if Parser_TryEvaluateExRaw(cxNegLit2, rawNeg) = FALSE orelse rawNeg.scalar.kind <> RSK_COMPLEX orelse _
-     rawNeg.scalar.real.kind <> RSK_SINT orelse rawNeg.scalar.imag.kind <> RSK_SINT then
+     rawNeg.scalar.real.kind <> RSK_SMINT orelse rawNeg.scalar.imag.kind <> RSK_SMINT then
     print "[complex-opt] FAIL: bare raw """ & cxNegLit2 & """"
     subFail += 1
   else
@@ -960,11 +972,11 @@ private sub RunComplexNumberSupportOptionTests()
       print "[complex-opt] FAIL: raw """ & cxNegExpr(cni) & """"
       subFail += 1
     elseif cni = 1 orelse cni = 2 orelse cni = 5 orelse cni = 6 then
-      if rawNeg.scalar.kind <> RSK_SINT then
+      if rawNeg.scalar.kind <> RSK_SMINT then
         print "[complex-opt] FAIL: raw scalar """ & cxNegExpr(cni) & """ kind=" & rawNeg.scalar.kind
         subFail += 1
       end if
-    elseif rawNeg.scalar.kind <> RSK_COMPLEX orelse rawNeg.scalar.real.kind <> RSK_SINT orelse rawNeg.scalar.imag.kind <> RSK_SINT then
+    elseif rawNeg.scalar.kind <> RSK_COMPLEX orelse rawNeg.scalar.real.kind <> RSK_SMINT orelse rawNeg.scalar.imag.kind <> RSK_SMINT then
       print "[complex-opt] FAIL: raw complex """ & cxNegExpr(cni) & """"
       subFail += 1
     end if
@@ -1146,8 +1158,8 @@ private sub RunComplexNumberSupportOptionTests()
     subPass += 1
   end if
 
-  dim powCases(1 to 17) as String
-  dim powExpect(1 to 17) as String
+  dim powCases(1 to 18) as String
+  dim powExpect(1 to 18) as String
   powCases(1) = "(1+i)**2": powExpect(1) = "2i"
   powCases(2) = "(3+4i)**0.5": powExpect(2) = "2+i"
   powCases(3) = "pow(1+i,2)": powExpect(3) = "2i"
@@ -1165,6 +1177,7 @@ private sub RunComplexNumberSupportOptionTests()
   powCases(15) = "pow(2**64,1/2)": powExpect(15) = "4294967296"
   powCases(16) = "(-8)**(1/3)": powExpect(16) = "-2"
   powCases(17) = "pow(-1-0i,1/2)": powExpect(17) = "i"
+  powCases(18) = "(1+i)**1e19": powExpect(18) = "nan" ' overflow, phase unknowable: not 1 (SmCInt of a huge exponent wrapped)
 
   dim sqrtCases(1 to 3) as String
   dim sqrtExpect(1 to 3) as String
@@ -1183,7 +1196,7 @@ private sub RunComplexNumberSupportOptionTests()
   next swi
 
   dim pwi as Integer
-  for pwi = 1 to 17
+  for pwi = 1 to 18
     if Parser_TryEvaluateEx(powCases(pwi), r, rt, ia) = FALSE orelse rt <> powExpect(pwi) then
       print "[complex-opt] FAIL: """ & powCases(pwi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -2934,7 +2947,7 @@ private sub RunExactIntegerMultiplicationTests()
     if Parser_TryEvaluateEx(noExprs(ni), r, rt, ia) = FALSE then
       print "[exact-int-mul] FAIL: """ & noExprs(ni) & """ -> " & Parser_GetLastError()
       subFail += 1
-    elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_FLOATING then
+    elseif Parser_GetLastRawResult(raw) = FALSE orelse raw.kind <> RRK_SCALAR orelse raw.scalar.real.kind <> RSK_SMFLOATING then
       print "[exact-int-mul] FAIL: """ & noExprs(ni) & """ must stay floating scalar, got """ & rt & """"
       subFail += 1
     else
@@ -3474,12 +3487,30 @@ private sub WgExpect(byref expr as String, byref expected as String, byref subPa
   end if
 end sub
 
+'' Evaluates expr and compares the printed number with a reference: |got - ref| <= relTol * max(|ref|, 1).
+private sub WgExpectNear(byref expr as String, byval ref as Double, byval relTol as Double, byref subPass as Integer, byref subFail as Integer)
+  dim r as SmFloat
+  dim rt as String
+  dim ia as Boolean
+  dim scale as Double = abs(ref)
+  if scale < 1.0 then scale = 1.0
+  if Parser_TryEvaluateEx(expr, r, rt, ia) = FALSE then
+    print "[width] FAIL: " & expr & " -> error: " & Parser_GetLastError()
+    subFail += 1
+  elseif abs(val(rt) - ref) > relTol * scale then
+    print "[width] FAIL: " & expr & " -> """ & rt & """ is not close to the reference"
+    subFail += 1
+  else
+    subPass += 1
+  end if
+end sub
+
 private sub RunWidthGenericTests()
   print "=== Width-generic (SmFloat/SmInt/SmUInt) ==="
   dim subPass as Integer = 0
   dim subFail as Integer = 0
   dim intMaxText as String = WgIntMaxText()
-  dim uintMaxText as String = WgUIntMaxText()
+  dim uintMaxText as String = WgSmUIntMaxText()
   dim intMinMagText as String = WgIntMinMagText()
   dim maxFactArg as Integer = WgMaxFactorialArg()
   dim e as Integer
@@ -3494,24 +3525,31 @@ private sub RunWidthGenericTests()
   WgCheck(str(SM_INT_MIN_MAG) = intMinMagText, "str(SM_INT_MIN_MAG)", subPass, subFail)
   WgCheck(SM_MAX_SHIFT = SM_INT_BITS - 1, "SM_MAX_SHIFT", subPass, subFail)
   WgCheck(SM_UINT_DIGITS10 = len(uintMaxText), "SM_UINT_DIGITS10", subPass, subFail)
-  WgCheck(SM_POW10_UINT_COUNT = SM_UINT_DIGITS10, "SM_POW10_UINT_COUNT", subPass, subFail)
+  WgCheck(SM_POW10_SMUINT_COUNT = SM_UINT_DIGITS10, "SM_POW10_SMUINT_COUNT", subPass, subFail)
   WgCheck(SM_MAX_POW10_EXP_OF_INT = WgMaxPow10Exponent(intMaxText), "SM_MAX_POW10_EXP_OF_INT", subPass, subFail)
 
   '' float bound constants and tolerances
-  WgCheck(SM_FLOAT_SINT_BOUND = WgPow2Float(SM_INT_BITS - 1), "SM_FLOAT_SINT_BOUND", subPass, subFail)
-  WgCheck(SM_FLOAT_SINT_MIN = -WgPow2Float(SM_INT_BITS - 1), "SM_FLOAT_SINT_MIN", subPass, subFail)
-  WgCheck(SM_FLOAT_UINT_BOUND = WgPow2Float(SM_INT_BITS), "SM_FLOAT_UINT_BOUND", subPass, subFail)
+  WgCheck(SM_FLOAT_SMINT_BOUND = WgPow2Float(SM_INT_BITS - 1), "SM_FLOAT_SMINT_BOUND", subPass, subFail)
+  WgCheck(SM_FLOAT_SMINT_MIN = -WgPow2Float(SM_INT_BITS - 1), "SM_FLOAT_SMINT_MIN", subPass, subFail)
+  WgCheck(SM_FLOAT_SMUINT_BOUND = WgPow2Float(SM_INT_BITS), "SM_FLOAT_SMUINT_BOUND", subPass, subFail)
   WgCheck(SM_MAX_EXACT_INT_FROM_FLOAT = WgPow2Float(SM_FLOAT_MANT_DIGITS), "SM_MAX_EXACT_INT_FROM_FLOAT", subPass, subFail)
   WgCheck(SM_FLOAT_EPSILON = 1.0 / WgPow2Float(SM_FLOAT_MANT_DIGITS - 1), "SM_FLOAT_EPSILON", subPass, subFail)
   dim tol(0 to 4) as SmFloat
   dim lost(0 to 4) as Integer
   tol(0) = SM_TOL_LOST0: tol(1) = SM_TOL_LOST1: tol(2) = SM_TOL_LOST2: tol(3) = SM_TOL_LOST3: tol(4) = SM_TOL_LOST6
   lost(0) = 0: lost(1) = 1: lost(2) = 2: lost(3) = 3: lost(4) = 6
+  '' lost digits are capped so that 3/5 of the digits stay significant; tolerances never shrink and stay well
+  '' below 1 (a tolerance of 1 would make every x a multiple of pi, so sin/cos/tan would return 0 for Single)
+  dim maxLost as Integer = SM_FLOAT_DIGITS10 - (SM_FLOAT_DIGITS10 * 3) \ 5
   for i as Integer = 0 to 4
-    dim expectedTol as Double = WgPow10Float(lost(i) - SM_FLOAT_DIGITS10)
+    dim effLost as Integer = lost(i)
+    if effLost > maxLost then effLost = maxLost
+    dim expectedTol as Double = WgPow10Float(effLost - SM_FLOAT_DIGITS10)
     WgCheck(abs(cdbl(tol(i)) - expectedTol) / expectedTol <= 4.0 * SM_FLOAT_EPSILON, "tolerance " & lost(i), subPass, subFail)
-    if i > 0 then WgCheck(tol(i) > tol(i - 1), "tolerances grow", subPass, subFail)
+    WgCheck(tol(i) < 0.01, "tolerance below 1/100 " & lost(i), subPass, subFail)
+    if i > 0 then WgCheck(tol(i) >= tol(i - 1), "tolerances do not shrink", subPass, subFail)
   next i
+  WgCheck(SM_TOL_LOST0 < SM_TOL_LOST6, "tolerance range is not degenerate", subPass, subFail)
   WgCheck(SM_FLOAT_DISPLAY_DIGITS = SM_FLOAT_DIGITS10 + 1, "SM_FLOAT_DISPLAY_DIGITS", subPass, subFail)
   WgCheck(SM_HYPOT_DIRECT_MAX > 1 andalso SM_HYPOT_DIRECT_MIN < 1 andalso _
           cdbl(SM_HYPOT_DIRECT_MAX) * cdbl(SM_HYPOT_DIRECT_MAX) * 2.0 <= cdbl(SM_FLOAT_MAX) andalso _
@@ -3566,6 +3604,81 @@ private sub RunWidthGenericTests()
   WgExpect("floor(-2.5)", "-3", subPass, subFail)
   WgExpect("27 ** (1/3)", "3", subPass, subFail)
 
+  '' sin/cos/tan snap multiples of pi to zero and keep other angles (Python math.sin(1), math.cos(1), math.tan(1))
+  dim trigTol as Double = WgPow10Float(-(SM_FLOAT_DIGITS10 - 1))
+  WgExpect("sin(pi)", "0", subPass, subFail)
+  WgExpect("cos(pi/2)", "0", subPass, subFail)
+  WgExpect("tan(pi)", "0", subPass, subFail)
+  WgExpect("sin(2*pi)", "0", subPass, subFail)
+  WgExpect("cos(3*pi/2)", "0", subPass, subFail)
+  WgExpect("sin(3*pi)", "0", subPass, subFail)
+  WgExpectNear("sin(1)", 0.8414709848078965, trigTol, subPass, subFail)
+  WgExpectNear("cos(1)", 0.5403023058681398, trigTol, subPass, subFail)
+  WgExpectNear("tan(1)", 1.5574077246549023, trigTol, subPass, subFail)
+  WgExpectNear("sin(pi/6)", 0.5, trigTol, subPass, subFail)
+  WgExpectNear("cos(pi/3)", 0.5, trigTol, subPass, subFail)
+  WgExpectNear("tan(pi/4)", 1.0, trigTol, subPass, subFail)
+
+  '' values at and past the exact integer boundaries
+  dim lastDigit as String = right(uintMaxText, 1)
+  WgExpect("abs(-" & intMinMagText & ")", intMinMagText, subPass, subFail)
+  WgExpect(intMinMagText & " - 1", intMaxText, subPass, subFail)
+  WgExpect(uintMaxText & " - " & intMinMagText, intMaxText, subPass, subFail)
+  WgExpect(uintMaxText & " % 10", lastDigit, subPass, subFail)
+  dim twoB as Double = WgPow2Float(SM_INT_BITS)
+  dim twoB1 as Double = WgPow2Float(SM_INT_BITS - 1)
+  WgExpectNear(uintMaxText & " + 1", twoB, trigTol, subPass, subFail)
+  WgExpectNear("2 ** " & str(SM_INT_BITS), twoB, trigTol, subPass, subFail)
+  WgExpectNear("-" & intMaxText & " - 2", -(twoB1 + 1.0), trigTol, subPass, subFail)
+
+  '' arithmetic right shift rounds toward negative infinity
+  dim minInt as String = "(-" & intMaxText & " - 1)"
+  WgExpect("-1 >> 1", "-1", subPass, subFail)
+  WgExpect("-8 >> 1", "-4", subPass, subFail)
+  WgExpect("-5 >> 1", "-3", subPass, subFail)
+  WgExpect("-1 >> " & str(SM_INT_BITS - 1), "-1", subPass, subFail)
+  WgExpect(minInt & " >> 1", "-" & WgDecPow2(SM_INT_BITS - 2), subPass, subFail)
+  WgExpect(minInt & " >> " & str(SM_INT_BITS - 1), "-1", subPass, subFail)
+
+  '' ratio keeps its denominator limit for every float width
+  WgExpect("ratio(0.5)", "1/2", subPass, subFail)
+  WgExpect("ratio(0.75)", "3/4", subPass, subFail)
+  WgExpect("ratio(0.125)", "1/8", subPass, subFail)
+  WgExpect("ratio(-2/7)", "-2/7", subPass, subFail)
+  dim rr as SmFloat
+  dim rrt as String
+  dim rria as Boolean
+  if Parser_TryEvaluateEx("ratio(3.14159265)", rr, rrt, rria) = FALSE then
+    print "[width] FAIL: ratio(3.14159265) -> error: " & Parser_GetLastError()
+    subFail += 1
+  else
+    dim slash as Integer = instr(rrt, "/")
+    WgCheck(slash > 0, "ratio(3.14159265) -> " & rrt, subPass, subFail)
+    if slash > 0 then
+      dim num as Double = val(left(rrt, slash - 1))
+      dim den as Double = val(mid(rrt, slash + 1))
+      WgCheck(den >= 1.0 andalso den <= 10000000.0, "denominator limit: " & rrt, subPass, subFail)
+      WgCheck(abs(num / den - 3.14159265) <= trigTol * 4.0, "ratio value: " & rrt, subPass, subFail)
+    end if
+  end if
+
+  '' ncr/npr past the exact range match decimal references (double-double product for every non-binary64 SmFloat)
+  dim nn as Integer = 2
+  while WgDecLessOrEqual(WgDecBinomial(nn, nn \ 2), uintMaxText)
+    nn += 1
+  wend
+  for i as Integer = 0 to 3
+    WgExpectNear("ncr(" & str(nn + i) & "," & str((nn + i) \ 2) & ")", val(WgDecBinomial(nn + i, (nn + i) \ 2)), trigTol, subPass, subFail)
+  next i
+  dim topN as Integer = 60
+  dim rn as Integer = 1
+  while WgDecLessOrEqual(WgDecFalling(topN, rn), uintMaxText)
+    rn += 1
+  wend
+  for i as Integer = 0 to 2
+    WgExpectNear("npr(" & str(topN) & "," & str(rn + i) & ")", val(WgDecFalling(topN, rn + i)), trigTol, subPass, subFail)
+  next i
+
   '' factorint domain
   WgExpect("factorint(12)", "(2**2, 3)", subPass, subFail)
 
@@ -3577,7 +3690,7 @@ end sub
 
 sub Main()
 #ifdef SM_BASELINE_WIDTHS
-  dim tests(1 to 1988) as SmokeCase
+  dim tests(1 to 2056) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -4270,7 +4383,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(643).expr = "x=0.0/0.0; abs(x)": tests(643).expected = "nan"
   tests(644).expr = "x=1.0/0.0; sign(x)": tests(644).expected = "1"
   tests(645).expr = "x=-1.0/0.0; sign(x)": tests(645).expected = "-1"
-  tests(646).expr = "x=0.0/0.0; sign(x)": tests(646).expected = "0"
+  tests(646).expr = "x=0.0/0.0; sign(x)": tests(646).expected = "nan"
   tests(647).expr = "x=0.0/0.0; ln(x)": tests(647).expected = "nan"
   tests(648).expr = "x=1.0/0.0; ln(x)": tests(648).expected = "inf"
   tests(649).expr = "z=0.0; ln(z)": tests(649).expected = "-inf"
@@ -5644,6 +5757,75 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1986).expr = "f(x)=x; sortby((nan,2,1), f)": tests(1986).expected = "(nan, 1, 2)" ' [spec] NaN keys first like sort (named UDF; works with lambdas off)
   tests(1987).expr = "f(x)=x; sortby((3,1,nan,2), f)": tests(1987).expected = "(nan, 1, 2, 3)" ' [spec] NaN first, then ascending
   tests(1988).expr = "f(x)=x; sortby(flat(2:00,1:00,nan,1:30), f)": tests(1988).expected = "(nan, 01:00, 01:30, 02:00)" ' [spec] NaN first, then times by duration
+  ' === Stage 1 (parser scan): NaN median, round tie edge, exact log10, -(-2^63) exact, huge complex exponent ===
+  tests(1989).expr = "median(nan,1)":        tests(1989).expected = "nan" ' [spec] a NaN element makes the median NaN (no crash, no unordered result)
+  tests(1990).expr = "median(1,2,nan,3)":    tests(1990).expected = "nan" ' [spec] NaN anywhere in the set
+  tests(1991).expr = "median((1,nan,2,3))":  tests(1991).expected = "nan" ' [spec] NaN inside an array argument
+  tests(1992).expr = "median(nan,nan)":      tests(1992).expected = "nan" ' [spec]
+  tests(1993).expr = "median(-1e308,1e308)": tests(1993).expected = "0" ' [spec] midpoint of opposite signs cannot overflow
+  tests(1994).expr = "median(1e308,1.5e308)": tests(1994).expected = "1.25e+308" ' [spec] mathematically (1e308+1.5e308)/2; Python's a+b overflows to inf
+  tests(1995).expr = "round(0.49999999999999994)":  tests(1995).expected = "0" ' [spec] largest double below 0.5 rounds down (floor(x+0.5) gave 1)
+  tests(1996).expr = "round(-0.49999999999999994)": tests(1996).expected = "0" ' [spec]
+  tests(1997).expr = "round(0.5)":           tests(1997).expected = "1" ' [spec] half away from zero stays
+  tests(1998).expr = "round(-0.5)":          tests(1998).expected = "-1" ' [spec]
+  tests(1999).expr = "log10(1000)-3":        tests(1999).expected = "0" ' [spec] libm log10 is exact for powers of ten
+  tests(2000).expr = "log10(1000)==3":       tests(2000).expected = "1" ' [spec]
+  tests(2001).expr = "log10(1e15)==15":      tests(2001).expected = "1" ' [spec]
+  tests(2002).expr = "log10(0.001)":         tests(2002).expected = "-3" ' [spec]
+  tests(2003).expr = "-(-9223372036854775808)": tests(2003).expected = "9223372036854775808" ' [spec] exact SmUInt magnitude, as in C++
+  tests(2004).expr = "-(-9223372036854775808)+1-9223372036854775808": tests(2004).expected = "1" ' [spec] stays exact (a float would absorb the +1)
+  tests(2005).expr = "h(x)=-x; h(-9223372036854775808)+1-9223372036854775808": tests(2005).expected = "1" ' [spec] same through a user function
+  tests(2006).expr = "9007199254740993 == 9007199254740992": tests(2006).expected = "0" ' [spec] exact compare above 2^53
+  tests(2007).expr = "9007199254740993 > 9007199254740992": tests(2007).expected = "1" ' [spec]
+  tests(2008).expr = "9007199254740992 < 9007199254740993": tests(2008).expected = "1" ' [spec]
+  tests(2009).expr = "9007199254740993 != 9007199254740992": tests(2009).expected = "1" ' [spec]
+  tests(2010).expr = "18446744073709551615 == 18446744073709551614": tests(2010).expected = "0" ' [spec] SmUInt compare
+  tests(2011).expr = "18446744073709551615 - 1 == 18446744073709551615": tests(2011).expected = "0" ' [spec]
+  tests(2012).expr = "9223372036854775807 < 9223372036854775808": tests(2012).expected = "1" ' [spec] mixed SmInt/SmUInt compare
+  tests(2013).expr = "-9223372036854775808 < 9223372036854775808": tests(2013).expected = "1" ' [spec]
+  tests(2014).expr = "sort(9007199254740993, 9007199254740992)": tests(2014).expected = "(9007199254740992, 9007199254740993)" ' [spec] exact sort order
+  tests(2015).expr = "unique(9007199254740993, 9007199254740992)": tests(2015).expected = "(9007199254740993, 9007199254740992)" ' [spec] distinct big integers stay distinct
+  tests(2016).expr = "unique(9007199254740993, 9007199254740993, 9007199254740992)": tests(2016).expected = "(9007199254740993, 9007199254740992)" ' [spec]
+  tests(2017).expr = "avg(9007199254740993, 9007199254740995)": tests(2017).expected = "9007199254740994" ' [spec] exact avg
+  tests(2018).expr = "avg(9223372036854775807, 9223372036854775805)": tests(2018).expected = "9223372036854775806" ' [spec] sum above SmInt max, still exact
+  tests(2019).expr = "avg(2, 4, 6)": tests(2019).expected = "4" ' [spec]
+  tests(2020).expr = "avg(-3, -2)": tests(2020).expected = "-2.5" ' [spec]
+  tests(2021).expr = "median(9007199254740993, 9007199254740995, 9007199254740994)": tests(2021).expected = "9007199254740994" ' [spec] exact median
+  tests(2022).expr = "median(9007199254740992, 9007199254740994)": tests(2022).expected = "9007199254740993" ' [spec]
+  tests(2023).expr = "median(-9223372036854775808, 9223372036854775807)": tests(2023).expected = "-0.5" ' [spec]
+  tests(2024).expr = "sum(0.1, 0.2, 0.3)": tests(2024).expected = "0.6" ' [spec] Neumaier (Python 3.12 sum)
+  tests(2025).expr = "sum(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1)": tests(2025).expected = "1" ' [spec]
+  tests(2026).expr = "sum(repeat(0.1, 1000))": tests(2026).expected = "100" ' [spec]
+  tests(2027).expr = "sum(1e100, 1, -1e100)": tests(2027).expected = "1" ' [spec]
+  tests(2028).expr = "sign(nan)": tests(2028).expected = "nan" ' [spec] sign(nan) is nan
+  tests(2029).expr = "sign(inf)": tests(2029).expected = "1" ' [spec]
+  tests(2030).expr = "sign(-inf)": tests(2030).expected = "-1" ' [spec]
+  tests(2031).expr = "random(5, 5)": tests(2031).expected = "5" ' [spec] random(a, a) is a
+  tests(2032).expr = "1e23": tests(2032).expected = "1e+023" ' [spec] shortest round-trip digits
+  tests(2033).expr = "1e22 * 10.0": tests(2033).expected = "1e+023" ' [spec]
+  tests(2034).expr = "1:9300000000000000": tests(2034).expectedErrContains = "time literal: invalid segment" ' [spec] time literal overflow
+  tests(2035).expr = "2 sin(pi/2)": tests(2035).expectedErrContains = "unexpected token" ' [spec] not a compact time literal
+  tests(2036).expr = "2 min(1, 2)": tests(2036).expectedErrContains = "unexpected token" ' [spec]
+  tests(2037).expr = "5hx": tests(2037).expectedErrContains = "unexpected token" ' [spec]
+  tests(2038).expr = "sin(1e-10)": tests(2038).expected = "1e-010" ' [spec] tiny argument is not snapped to 0
+  tests(2039).expr = "tan(1e-10)": tests(2039).expected = "1e-010" ' [spec]
+  tests(2040).expr = "sin(3.14159265359) < 0": tests(2040).expected = "1" ' [spec] decimal pi approximation is not snapped
+  tests(2041).expr = "abs(sin(3.14159265359)) > 1e-13": tests(2041).expected = "1" ' [spec]
+  tests(2042).expr = "cos(1.5707963268) < 0": tests(2042).expected = "1" ' [spec]
+  tests(2043).expr = "tan(1.5707963268) < -100000000000": tests(2043).expected = "1" ' [spec]
+  tests(2044).expr = "fact(22)": tests(2044).expected = "1.1240007277776077e+21" ' [spec] stage3 behavior-preserving rewrites
+  tests(2045).expr = "fact(169)": tests(2045).expected = "4.269068009004705e+304" ' [spec] stage3 behavior-preserving rewrites
+  tests(2046).expr = "fact(172)": tests(2046).expected = "inf" ' [spec] stage3 behavior-preserving rewrites
+  tests(2047).expr = "6*0.5": tests(2047).expected = "3" ' [spec] stage3 behavior-preserving rewrites
+  tests(2048).expr = "0.5*8": tests(2048).expected = "4" ' [spec] stage3 behavior-preserving rewrites
+  tests(2049).expr = "a=(10,20,30); a[1]+a[-1]": tests(2049).expected = "50" ' [spec] stage3 behavior-preserving rewrites
+  tests(2050).expr = "f(a)=a[1]; f((7,8))": tests(2050).expected = "8" ' [spec] stage3 behavior-preserving rewrites
+  tests(2051).expr = "sortby(range(0,6), x: -x)": tests(2051).expected = "(5, 4, 3, 2, 1, 0)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2052).expr = "sortby((3,1,2,4), x: x%2)": tests(2052).expected = "(2, 4, 3, 1)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2053).expr = "k=3; sortby((9,5,1), x: abs(x-k))": tests(2053).expected = "(5, 1, 9)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2054).expr = "filter(range(0,10), x: x%3==0)": tests(2054).expected = "(0, 3, 6, 9)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2055).expr = "factorint(1000000007*1000000009)": tests(2055).expected = "(1000000007, 1000000009)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2056).expr = "factorint(2*3*5*1000000007)": tests(2056).expected = "(2, 3, 5, 1000000007)" ' [spec] stage3 behavior-preserving rewrites
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

@@ -23,7 +23,7 @@ Load when fixing a reported defect or otherwise changing existing results or err
 
 - Add a regression case for each fixed input (smoke-tests flow), mirrored in C++.
 - Existing expectations that fail after the fix: handle each with smoke-tests "Handling a test mismatch". Update an expectation only when Python (or the reference) shows it encoded the defect, and list each correction in the report. If it already matched the reference (within floating-point inaccuracy), the fix is wrong.
-- Update `USAGE_AND_SYNTAX.md` when documented semantics change, or when the docs were wrong (usage-docs flow).
+- Update `USAGE_AND_SYNTAX.md` only when **end-user** wording must change or was wrong (usage-docs "Audience"). Technical edge cases, NaN catalogs, and numeric limits go into `numeric-behavior.md` (and tests), not into USAGE function bullets; a brief Advanced Behavior note is enough when the user needs a high-level heads-up.
 
 ## 5) Report what stays different
 

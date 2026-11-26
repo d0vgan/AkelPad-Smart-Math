@@ -1,46 +1,46 @@
 #include "MathParser.hpp"
 #include "MathParserInternal.hpp"
 
-using smartmath_internal::gcdUInt;
+using smartmath_internal::gcdSmUInt;
 using smartmath_internal::isWithinExactIntFromFloatRange;
-using smartmath_internal::tryExtractExactSIntFromFloatStrict;
+using smartmath_internal::tryExtractExactSmIntFromFloatStrict;
 using smartmath_internal::makeArrayFromScalars;
 using smartmath_internal::makeInlineLambdaValue;
 using smartmath_internal::makeScalar;
 using smartmath_internal::makeScalarInt;
 using smartmath_internal::makeScalarMaybeExact;
-using smartmath_internal::makeScalarUInt;
-using smartmath_internal::makeScalarUIntPreferInt;
+using smartmath_internal::makeScalarSmUInt;
+using smartmath_internal::makeScalarSmUIntPreferInt;
 using smartmath_internal::scalarClearImaginary;
 using smartmath_internal::tryApplyRealScalarPowNegFractional;
 using smartmath_internal::tryApplyScalarPowSpecialPaths;
 using smartmath_internal::calcRoundingFn;
 using smartmath_internal::nearlyInt;
-using smartmath_internal::parseUIntFromFloat;
+using smartmath_internal::parseSmUIntFromFloat;
 using smartmath_internal::tryGetExactSignedIntFromScalarPolicy;
 using smartmath_internal::tryGetExactSignedIntFromScalar;
-using smartmath_internal::tryGetExactSignedIntNoUIntWrapFromScalar;
+using smartmath_internal::tryGetExactSignedIntNoSmUIntWrapFromScalar;
 using smartmath_internal::scalarHasExactIntegerPayload;
-using smartmath_internal::TryMulExactSIntSquare;
-using smartmath_internal::TryGetExactSignedIntNoUIntWrapScalarStrict;
+using smartmath_internal::tryMulExactSmIntSquare;
+using smartmath_internal::tryGetExactSignedIntNoSmUIntWrapScalarStrict;
 using smartmath_internal::ArrayIndexIntKind;
 using smartmath_internal::classifyArrayIndexInt;
 using smartmath_internal::tryGetArrayIndexIntFromScalarValue;
 using smartmath_internal::normalizePythonSliceBounds;
 using smartmath_internal::estimateSliceItemCount;
 using smartmath_internal::tryResolveArrayIndex;
-using smartmath_internal::tryGetExactNonNegativeUIntFromScalar;
+using smartmath_internal::tryGetExactNonNegativeSmUIntFromScalar;
 using smartmath_internal::tryGetSignedIntFromScalar;
 using smartmath_internal::tryGetExactSignMagnitudeFromScalar;
 using smartmath_internal::makeScalarFromSignMagnitude;
-using smartmath_internal::uintMagnitudeOfSInt;
-using smartmath_internal::sintFromNegatedMagnitude;
-using smartmath_internal::tryGetBothExactSignedIntNoUIntWrapFromScalars;
-using smartmath_internal::tryGetBothExactNonNegativeUIntFromScalars;
-using smartmath_internal::tryShiftLeftU64ExactOrMaybe;
-using smartmath_internal::TryQuotExactSInt;
-using smartmath_internal::tryMulUIntChecked;
-using smartmath_internal::tryPowUIntChecked;
+using smartmath_internal::uintMagnitudeOfSmInt;
+using smartmath_internal::smIntFromNegatedMagnitude;
+using smartmath_internal::tryGetBothExactSignedIntNoSmUIntWrapFromScalars;
+using smartmath_internal::tryGetBothExactNonNegativeSmUIntFromScalars;
+using smartmath_internal::tryShiftLeftSmUIntExactOrMaybe;
+using smartmath_internal::tryQuotExactSmInt;
+using smartmath_internal::tryMulSmUIntChecked;
+using smartmath_internal::tryPowSmUIntChecked;
 using smartmath_internal::passExactAbsFloatFactorGates;
 using smartmath_internal::getExactRoundedIntFromFloatResult;
 using smartmath_internal::verifyExactIntFloatOpResidue;
@@ -61,8 +61,8 @@ using smartmath_internal::makeRationalReduced;
 using smartmath_internal::negateEvalValue;
 using smartmath_internal::applyAbsScalarValue;
 using smartmath_internal::exactCartesianComponentClear;
-using smartmath_internal::ExactCartesianComponentAssignFromSignedInt;
-using smartmath_internal::ExactCartesianComponentAssignFromUInt;
+using smartmath_internal::exactCartesianComponentAssignFromSignedInt;
+using smartmath_internal::exactCartesianComponentAssignFromSmUInt;
 using smartmath_internal::tryExtractExactRealComponent;
 using smartmath_internal::setScalarFromExactCartesianComponent;
 using smartmath_internal::expandUnpackedArgs;
@@ -76,9 +76,9 @@ using smartmath_internal::timeTotalMsFromScalarValue;
 
 #if SMARTMATH_COMPLEX_NUMBERS
 using smartmath_internal::scalarClearCartesianRenderExact;
-using smartmath_internal::tryGetExactImagSIntStrict;
-using smartmath_internal::ScalarApplyExactSIntPart;
-using smartmath_internal::TryExactCartesianComponentToSInt;
+using smartmath_internal::tryGetExactImagSmIntStrict;
+using smartmath_internal::scalarApplyExactSmIntPart;
+using smartmath_internal::tryExactCartesianComponentToSmInt;
 using smartmath_internal::tryExtractExactCartesianComponent;
 using smartmath_internal::tryNegateExactCartesianComponent;
 using smartmath_internal::setPureImaginaryFromMagnitudeScalar;
@@ -124,12 +124,12 @@ using smartmath_internal::tryNegateExactComplexScalar;
 using smartmath::SmFloat;
 using smartmath::SmInt;
 using smartmath::SmUInt;
-using smartmath::floatTolerance;
-using smartmath::isFloatInSIntRange;
-using smartmath::isFloatInUIntRange;
+using smartmath::isFloatInSmIntRange;
+using smartmath::isFloatInSmUIntRange;
+using smartmath::kAcoshLogMin;
 using smartmath::kFloatDisplayDigits;
-using smartmath::kFloatSIntBound;
-using smartmath::kFloatUIntBound;
+using smartmath::kFloatSmIntBound;
+using smartmath::kFloatSmUIntBound;
 using smartmath::kHugeSentinel;
 using smartmath::kHypotDirectMax;
 using smartmath::kHypotDirectMin;
@@ -137,11 +137,11 @@ using smartmath::kIntBits;
 using smartmath::kIntMax;
 using smartmath::kIntMin;
 using smartmath::kIntMinMag;
+using smartmath::kLargeMagnitudeMin;
 using smartmath::kMaxExactIntFromFloat;
 using smartmath::kMaxFactorialArg;
 using smartmath::kMaxPow10ExponentOfInt;
 using smartmath::kMaxShift;
-using smartmath::kPow10UIntCount;
 using smartmath::kRadixDigitBufLen;
 using smartmath::kTolLost0;
 using smartmath::kTolLost1;
@@ -151,7 +151,9 @@ using smartmath::kTolLost6;
 using smartmath::kUIntDigits10;
 using smartmath::kUIntMax;
 using smartmath::factorialInt;
-using smartmath::pow10UInt;
+using smartmath::pow10SmUInt;
+using smartmath::tryRoundFloatToSmInt;
+using smartmath::tryRoundFloatToSmUInt;
 
 namespace {
 
@@ -159,10 +161,12 @@ constexpr SmFloat K_UNIT_ROOT_EXPONENT_TOL = kTolLost0;
 constexpr SmFloat K_HYPOT_DIRECT_MAX = kHypotDirectMax;
 constexpr SmFloat K_HYPOT_DIRECT_MIN = kHypotDirectMin;
 constexpr SmFloat kPi = static_cast<SmFloat>(3.1415926535897932384626433832795L);
+constexpr SmFloat kHalfPi = kPi / 2.0;
+constexpr SmFloat kQuarterPi = kPi / 4.0;
+constexpr SmFloat kSqrtTwoPi = static_cast<SmFloat>(2.506628274631000502415765284811L);  // sqrt(2*pi)
 constexpr SmFloat kInvLn10 = static_cast<SmFloat>(0.43429448190325182046017448968723710L);  // 1 / ln(10)
 constexpr SmFloat kTrigMaxAbsRadians = kMaxExactIntFromFloat;  // 2^mantissa (2^53 for binary64)
 constexpr int kMaxEvalDepth = 128;
-constexpr std::uint8_t kBuiltinMetaArityUnset = 254;
 constexpr std::uint8_t kBuiltinArityUnbounded = 255;
 
 using smartmath_internal::BuiltinFunctionId;
@@ -430,7 +434,8 @@ bool peekRhsMayBeLambdaSyntaxAt(const char* p) {
 }
 #endif
 
-bool isMultipleOf(SmFloat x, SmFloat x_mult)
+// When true, outN is the nearest integer quotient x/x_mult (same N used in the tolerance test).
+bool tryMultipleQuotient(SmFloat x, SmFloat x_mult, SmFloat& outN)
 {
   if (x_mult == 0.0) {
     return false;
@@ -440,15 +445,30 @@ bool isMultipleOf(SmFloat x, SmFloat x_mult)
     return false;
   }
   const SmFloat n = std::round(q);
-  return std::fabs(q - n) <= kTolLost6;
+  // Tiny |x| is not a multiple (sin(1e-10) stays 1e-10); the rest must agree to a few ulps of N, which covers
+  // pi, rad(180), N*pi but not decimal approximations such as 3.14159265359.
+  if (n == 0.0) {
+    return false;
+  }
+  const SmFloat tol = std::min(static_cast<SmFloat>(16) * std::numeric_limits<SmFloat>::epsilon() * std::fabs(n), kTolLost6);
+  if (std::fabs(q - n) > tol) {
+    return false;
+  }
+  outN = n;
+  return true;
+}
+
+bool isMultipleOf(SmFloat x, SmFloat x_mult)
+{
+  SmFloat n = 0.0;
+  return tryMultipleQuotient(x, x_mult, n);
 }
 
 bool tryTrigHalfPiQuotient(SmFloat x, SmInt& outK) {
-  constexpr SmFloat kHalfPi = kPi / 2.0;
-  if (!isMultipleOf(x, kHalfPi)) {
+  SmFloat q = 0.0;
+  if (!tryMultipleQuotient(x, kHalfPi, q)) {
     return false;
   }
-  const SmFloat q = std::round(x / kHalfPi);
   if (!std::isfinite(q) || std::fabs(q) >= kTrigMaxAbsRadians) {
     return false;
   }
@@ -457,11 +477,10 @@ bool tryTrigHalfPiQuotient(SmFloat x, SmInt& outK) {
 }
 
 bool tryTrigQuarterPiQuotient(SmFloat x, SmInt& outK) {
-  constexpr SmFloat kQuarterPi = kPi / 4.0;
-  if (!isMultipleOf(x, kQuarterPi)) {
+  SmFloat q = 0.0;
+  if (!tryMultipleQuotient(x, kQuarterPi, q)) {
     return false;
   }
-  const SmFloat q = std::round(x / kQuarterPi);
   if (!std::isfinite(q) || std::fabs(q) >= kTrigMaxAbsRadians) {
     return false;
   }
@@ -502,11 +521,20 @@ SmFloat calcCos(SmFloat x)
   if (!std::isfinite(x)) {
     return std::cos(x);
   }
-  if (!isMultipleOf(x, kPi)) {
-    SmInt k = 0;
-    if (tryTrigHalfPiQuotient(x, k) && (k % 2) != 0) {
-      return 0.0;
+  // Mirror sin's half-pi snap: multiples of pi/2 map to exact 0, +-1 (cos(n*pi) = (-1)^n).
+  SmInt k = 0;
+  if (tryTrigHalfPiQuotient(x, k)) {
+    SmInt r = k % 4;
+    if (r < 0) {
+      r += 4;
     }
+    if (r == 0) {
+      return 1.0;
+    }
+    if (r == 2) {
+      return -1.0;
+    }
+    return 0.0;
   }
   return std::cos(x);
 }
@@ -577,12 +605,11 @@ bool fractionalPowerIsOddUnitRoot(SmFloat p, SmInt& outN) {
     return false;
   }
   const SmFloat inv = 1.0 / p;
-  // Any odd n whose reciprocal is still the closest double. 2^53 is the last exact integer double.
+  // Any odd n whose reciprocal is still the closest SmFloat. 2^mantissa is the last exact integer SmFloat.
   if (inv < 2.0 || inv > kMaxExactIntFromFloat) {
     return false;
   }
-  outN = smartmath::roundFloatToSInt(inv);
-  if (outN < 2) {
+  if (!tryRoundFloatToSmInt(inv, outN) || outN < 2) {
     return false;
   }
   // Only the double nearest 1/n qualifies; 0.33333334 is not a cube root.
@@ -608,24 +635,6 @@ bool tryGetSmallIntegerExponent(SmFloat p, SmInt& outN) {
     return false;
   }
   outN = static_cast<SmInt>(p);
-  return true;
-}
-
-bool tryRoundFloatToSInt(SmFloat r, SmInt& out) {
-  const SmFloat rounded = std::round(r);
-  if (!(std::fabs(rounded) < kFloatSIntBound)) {
-    return false;
-  }
-  out = static_cast<SmInt>(rounded);
-  return true;
-}
-
-bool tryRoundFloatToUInt(SmFloat r, SmUInt& out) {
-  const SmFloat rounded = std::round(r);
-  if (!(rounded >= 0.0 && rounded < kFloatUIntBound)) {
-    return false;
-  }
-  out = static_cast<SmUInt>(rounded);
   return true;
 }
 
@@ -724,7 +733,8 @@ void complexPowPrincipal(SmFloat ar, SmFloat ai, SmFloat br, SmFloat bi, SmFloat
       complexCartesianPrincipalNthRoot(ar, ai, 1.0 / static_cast<SmFloat>(nRootFrac), outRe, outIm);
       return;
     }
-    if (std::fabs(br - std::trunc(br)) < kTolLost3) {
+    // Range-check the float before converting: casting a huge double to SmInt is undefined behavior.
+    if (std::fabs(br) < static_cast<SmFloat>(257) && std::fabs(br - std::trunc(br)) < kTolLost3) {
       const SmInt n = static_cast<SmInt>(std::trunc(br));
       if (n >= -256 && n <= 256) {
         if (n >= 0) {
@@ -837,6 +847,22 @@ void complexGamma(SmFloat zr, SmFloat zi, SmFloat& outR, SmFloat& outI) {
     outI = nanv;
     return;
   }
+  if (zr < 0.5) {
+    // The Lanczos sum below loses accuracy left of Re(z) = 0.5 (fact(-10+i) was off by 2e-3):
+    // Gamma(z) = pi / (sin(pi z) Gamma(1 - z)), with sin(pi z) = sin(pi x) cosh(pi y) + i cos(pi x) sinh(pi y).
+    const SmFloat sinPiR = calcSin(kPi * zr) * std::cosh(kPi * zi);
+    const SmFloat sinPiI = calcCos(kPi * zr) * std::sinh(kPi * zi);
+    SmFloat gR = 0.0;
+    SmFloat gI = 0.0;
+    complexGamma(1.0 - zr, -zi, gR, gI);
+    SmFloat denR = 0.0;
+    SmFloat denI = 0.0;
+    complexMultiply(sinPiR, sinPiI, gR, gI, denR, denI);
+    complexDivide(kPi, 0.0, denR, denI, outR, outI);
+    snapComplexNearZeroAxis(outR, outI);
+    return;
+  }
+  // SM_FIXED_WIDTH_BEGIN: Lanczos (g = 7, n = 9) coefficients carry about 15 digits; they set the accuracy of Gamma.
   static constexpr SmFloat kLanczosC[] = {
       0.99999999999980993,
       676.5203681218851,
@@ -847,6 +873,7 @@ void complexGamma(SmFloat zr, SmFloat zi, SmFloat& outR, SmFloat& outI) {
       -0.13857109526572012,
       9.9843695780195716e-6,
       1.5056327351493116e-7};
+  // SM_FIXED_WIDTH_END
   constexpr SmFloat kG = 7.0;
   const SmFloat zmr = zr - 1.0;
   const SmFloat zmi = zi;
@@ -883,10 +910,9 @@ void complexGamma(SmFloat zr, SmFloat zi, SmFloat& outR, SmFloat& outI) {
     outI = nanv;
     return;
   }
-  const SmFloat scale = std::sqrt(2.0 * kPi);
   SmFloat prodRe = 0.0;
   SmFloat prodIm = 0.0;
-  complexMultiply(scale * powRe, scale * powIm, expNegPrR, expNegPrI, prodRe, prodIm);
+  complexMultiply(kSqrtTwoPi * powRe, kSqrtTwoPi * powIm, expNegPrR, expNegPrI, prodRe, prodIm);
   complexMultiply(prodRe, prodIm, xRe, xIm, outR, outI);
   snapComplexNearZeroAxis(outR, outI);
 }
@@ -970,7 +996,10 @@ constexpr const char* STR_FILTER_EXPECTS_UNARY_FUNCTION = "filter expects a func
 constexpr const char* STR_FILTER_PREDICATE_MUST_BE_SCALAR_OR_ARRAY = "filter predicate must return a scalar or an array";
 constexpr const char* STR_PAR_ARRAY_COMMA_FUNC = "(array, func)";
 constexpr SmFloat RATIO_APPROX_EPS = kTolLost1;
-constexpr SmInt RATIO_MAX_DENOMINATOR = 10000000LL;
+constexpr SmInt RATIO_MAX_DENOMINATOR = 10000000;
+// Denominators, semiconvergent products (h * q) and 1 / RATIO_MAX_DENOMINATOR must be exact in SmInt and SmFloat.
+static_assert(RATIO_MAX_DENOMINATOR < kIntMax / 8 && static_cast<SmFloat>(RATIO_MAX_DENOMINATOR) < kMaxExactIntFromFloat,
+              "RATIO_MAX_DENOMINATOR must fit SmInt and be exact in SmFloat");
 constexpr int RATIO_MAX_POWER10_EXP = kMaxPow10ExponentOfInt;
 constexpr int RATIO_SEMICONV_LINEAR_THRESH = 64;
 // Cap on continued-fraction terms; the denominator limit stops the expansion much earlier.
@@ -1178,8 +1207,32 @@ bool udfBodyCallsDefinedFunction(const std::string& body, const std::string& fnN
   return false;
 }
 
+// Uniform value in [0, 1) with a full mantissa: std::rand() yields only 15 bits on MSVC (RAND_MAX = 32767),
+// and rand() / RAND_MAX can reach 1, which would let random(a, b) return b.
+constexpr unsigned randMaxBitCount() {
+  unsigned bits = 0;
+  for (std::uintmax_t m = static_cast<std::uintmax_t>(RAND_MAX); m != 0; m >>= 1U) {
+    ++bits;
+  }
+  return bits;
+}
+
 SmFloat randomUnitScalar() {
-  return static_cast<SmFloat>(std::rand()) / static_cast<SmFloat>(RAND_MAX);
+  using Acc = std::uintmax_t;
+  constexpr unsigned kMantissaBits = static_cast<unsigned>(std::numeric_limits<SmFloat>::digits);
+  constexpr unsigned kBitsPerDraw = randMaxBitCount();
+  static_assert(kMantissaBits <= static_cast<unsigned>(std::numeric_limits<Acc>::digits),
+                "randomUnitScalar accumulator is too narrow");
+  constexpr Acc kDrawMask = (static_cast<Acc>(1) << kBitsPerDraw) - 1;
+  Acc acc = 0;
+  unsigned have = 0U;
+  while (have < kMantissaBits) {
+    const unsigned take = (kMantissaBits - have < kBitsPerDraw) ? (kMantissaBits - have) : kBitsPerDraw;
+    const Acc draw = static_cast<Acc>(std::rand()) & kDrawMask;
+    acc = (acc << take) | (draw >> (kBitsPerDraw - take));
+    have += take;
+  }
+  return std::ldexp(static_cast<SmFloat>(acc), -static_cast<int>(kMantissaBits));
 }
 
 int parseDigitForRadix(char c, unsigned int radix) {
@@ -1193,7 +1246,7 @@ int parseDigitForRadix(char c, unsigned int radix) {
   return d;
 }
 
-bool tryParsePrefixedUIntLiteral(const char* p, char prefixLower, unsigned int radix, const char*& outEnd, SmUInt& outValue) {
+bool tryParsePrefixedSmUIntLiteral(const char* p, char prefixLower, unsigned int radix, const char*& outEnd, SmUInt& outValue) {
   if (p[0] != '0') {
     return false;
   }
@@ -1227,8 +1280,8 @@ bool tryParsePrefixedUIntLiteral(const char* p, char prefixLower, unsigned int r
   return true;
 }
 
-// Helper: Convert a digit array to uint64_t with overflow checking
-inline bool digitsToUint(const unsigned char* digits, int digitCount, SmUInt& outValue) {
+// Helper: Convert a digit array to SmUInt with overflow checking
+inline bool digitsToSmUInt(const unsigned char* digits, int digitCount, SmUInt& outValue) {
   SmUInt value = 0;
   for (int i = 0; i < digitCount; ++i) {
     const unsigned char digit = digits[i];
@@ -1346,15 +1399,15 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, SmUI
     }
 
     SmUInt value = 0;
-    if (!digitsToUint(digits, storedDigitCount, value)) {
+    if (!digitsToSmUInt(digits, storedDigitCount, value)) {
       return false;
     }
 
     if (adjust > 0) {
-      if (value > kUIntMax / pow10UInt(adjust)) {
+      if (value > kUIntMax / pow10SmUInt(adjust)) {
         return false;
       }
-      value *= pow10UInt(adjust);
+      value *= pow10SmUInt(adjust);
     }
 
     outValue = value;
@@ -1378,7 +1431,7 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, SmUI
   }
 
   SmUInt value = 0;
-  if (!digitsToUint(digits, resultDigitCount, value)) {
+  if (!digitsToSmUInt(digits, resultDigitCount, value)) {
     return false;
   }
 
@@ -1386,17 +1439,17 @@ bool tryParseInputNumberAsInteger(const char* numStart, const char* numEnd, SmUI
   return true;
 }
 
-// Callers must not pass operands whose gcd is 2^63 (e.g. kIntMin with 0); use gcdUInt on magnitudes.
-SmInt GcdSInt(SmInt a, SmInt b) {
-  return static_cast<SmInt>(gcdUInt(uintMagnitudeOfSInt(a), uintMagnitudeOfSInt(b)));
+// Callers must not pass operands whose gcd is 2^63 (e.g. kIntMin with 0); use gcdSmUInt on magnitudes.
+SmInt gcdSmInt(SmInt a, SmInt b) {
+  return static_cast<SmInt>(gcdSmUInt(uintMagnitudeOfSmInt(a), uintMagnitudeOfSmInt(b)));
 }
 
-bool tryLcmUInt(SmUInt a, SmUInt b, SmUInt& out) {
+bool tryLcmSmUInt(SmUInt a, SmUInt b, SmUInt& out) {
   if (a == 0u || b == 0u) {
     out = 0u;
     return true;
   }
-  const SmUInt g = gcdUInt(a, b);
+  const SmUInt g = gcdSmUInt(a, b);
   const SmUInt a1 = a / g;
   if (a1 > (kUIntMax / b)) {
     return false;
@@ -1405,7 +1458,7 @@ bool tryLcmUInt(SmUInt a, SmUInt b, SmUInt& out) {
   return true;
 }
 
-bool tryAddUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
+bool tryAddSmUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
   const SmUInt s = a + b;
   if (s < a) {
     return false;
@@ -1414,7 +1467,7 @@ bool tryAddUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
   return true;
 }
 
-bool tryAddSIntChecked(SmInt a, SmInt b, SmInt& out) {
+bool tryAddSmIntChecked(SmInt a, SmInt b, SmInt& out) {
   if ((b > 0 && a > kIntMax - b) ||
       (b < 0 && a < kIntMin - b)) {
     return false;
@@ -1423,7 +1476,7 @@ bool tryAddSIntChecked(SmInt a, SmInt b, SmInt& out) {
   return true;
 }
 
-bool tryMulSIntChecked(SmInt a, SmInt b, SmInt& out) {
+bool tryMulSmIntChecked(SmInt a, SmInt b, SmInt& out) {
   if (a == 0 || b == 0) {
     out = 0;
     return true;
@@ -1455,7 +1508,7 @@ bool tryMulSIntChecked(SmInt a, SmInt b, SmInt& out) {
   return true;
 }
 
-bool tryPowSIntChecked(SmInt base, SmInt exp, SmInt& out) {
+bool tryPowSmIntChecked(SmInt base, SmInt exp, SmInt& out) {
   if (exp < 0) {
     return false;
   }
@@ -1463,11 +1516,11 @@ bool tryPowSIntChecked(SmInt base, SmInt exp, SmInt& out) {
   SmInt b = base;
   SmInt e = exp;
   while (e > 0) {
-    if ((e & 1) != 0 && !tryMulSIntChecked(r, b, r)) {
+    if ((e & 1) != 0 && !tryMulSmIntChecked(r, b, r)) {
       return false;
     }
     e >>= 1;
-    if (e > 0 && !tryMulSIntChecked(b, b, b)) {
+    if (e > 0 && !tryMulSmIntChecked(b, b, b)) {
       return false;
     }
   }
@@ -1475,29 +1528,29 @@ bool tryPowSIntChecked(SmInt base, SmInt exp, SmInt& out) {
   return true;
 }
 
-bool tryQuotExactUInt(SmUInt num, SmUInt den, SmUInt& quo) {
+bool tryQuotExactSmUInt(SmUInt num, SmUInt den, SmUInt& quo) {
   if (den == 0u) {
     return false;
   }
   quo = num / den;
   SmUInt prod = 0;
-  if (!tryMulUIntChecked(quo, den, prod)) {
+  if (!tryMulSmUIntChecked(quo, den, prod)) {
     return false;
   }
   return prod == num;
 }
 
-bool tryComputeNprUInt(SmUInt n, SmUInt r, SmUInt& out) {
+bool tryComputeNprSmUInt(SmUInt n, SmUInt r, SmUInt& out) {
   if (r > n) return false;
   SmUInt acc = 1;
   for (SmUInt i = 0; i < r; ++i) {
-    if (!tryMulUIntChecked(acc, n - i, acc)) return false;
+    if (!tryMulSmUIntChecked(acc, n - i, acc)) return false;
   }
   out = acc;
   return true;
 }
 
-bool tryComputeNcrUInt(SmUInt n, SmUInt r, SmUInt& out) {
+bool tryComputeNcrSmUInt(SmUInt n, SmUInt r, SmUInt& out) {
   if (r > n) return false;
   SmUInt rEff = r;
   if ((n - rEff) < rEff) rEff = (n - rEff);
@@ -1505,35 +1558,91 @@ bool tryComputeNcrUInt(SmUInt n, SmUInt r, SmUInt& out) {
   for (SmUInt i = 1; i <= rEff; ++i) {
     SmUInt num = (n - rEff) + i;
     SmUInt den = i;
-    const SmUInt g1 = gcdUInt(num, den);
+    const SmUInt g1 = gcdSmUInt(num, den);
     num /= g1;
     den /= g1;
-    const SmUInt g2 = gcdUInt(acc, den);
+    const SmUInt g2 = gcdSmUInt(acc, den);
     acc /= g2;
     den /= g2;
     if (den != 1u) return false;
-    if (!tryMulUIntChecked(acc, num, acc)) return false;
+    if (!tryMulSmUIntChecked(acc, num, acc)) return false;
   }
   out = acc;
   return true;
 }
 
 
-SmFloat factorialScalarFloatFromInt(SmInt n) {
-  SmFloat d = static_cast<SmFloat>(factorialInt(kMaxFactorialArg));
-  for (SmInt i = kMaxFactorialArg + 1; i <= n; ++i) {
-    d *= static_cast<SmFloat>(i);
-    if (!std::isfinite(d)) {
-      break;
+// n! as SmFloat for 0 <= n <= kFactorialFloatMaxFiniteArg (170 for binary64), built by the same recurrence the old
+// run-time loop used: exact SmInt factorials up to kMaxFactorialArg, then one multiplication per step.
+constexpr int factorialFloatMaxFiniteArg() {
+  SmFloat d = static_cast<SmFloat>(smartmath::detail::kFactorialIntTableData.v[kMaxFactorialArg]);
+  int i = kMaxFactorialArg;
+  while (d <= std::numeric_limits<SmFloat>::max() / static_cast<SmFloat>(i + 1)) {
+    d *= static_cast<SmFloat>(i + 1);
+    ++i;
+  }
+  return i;
+}
+constexpr int kFactorialFloatMaxFiniteArg = factorialFloatMaxFiniteArg();
+
+struct FactorialFloatTable {
+  SmFloat v[kFactorialFloatMaxFiniteArg + 1];
+  constexpr FactorialFloatTable() : v() {
+    for (int i = 0; i <= kMaxFactorialArg; ++i) {
+      v[i] = static_cast<SmFloat>(smartmath::detail::kFactorialIntTableData.v[i]);
+    }
+    for (int i = kMaxFactorialArg + 1; i <= kFactorialFloatMaxFiniteArg; ++i) {
+      v[i] = v[i - 1] * static_cast<SmFloat>(i);
     }
   }
-  return d;
+};
+constexpr FactorialFloatTable kFactorialFloatTable{};
+
+// Precondition: n > kMaxFactorialArg (the exact SmInt table covers the rest). Above the largest finite factorial
+// the result is +inf.
+SmFloat factorialScalarFloatFromInt(SmInt n) {
+  if (n <= kFactorialFloatMaxFiniteArg) {
+    return kFactorialFloatTable.v[n];
+  }
+  return std::numeric_limits<SmFloat>::infinity();
 }
 
-std::string formatScientific16(SmFloat v) {
-  // kFloatDisplayDigits (16 for double) significant digits, trailing mantissa zeros removed, exponent at least 3 digits.
+// Significant digits to print for a finite nonzero v: kFloatDigits10 (15 for double) when that already round-trips
+// ("1e+23" instead of "9.999999999999999e+022"), else kFloatDisplayDigits (16). Never 17: 0.1+0.2 keeps printing 0.3.
+// Magnitudes in [10^kFloatDigits10, 10^(kFloatDigits10+1)) keep the wider form so the fixed/exponent choice of the
+// general format does not change.
+int floatDisplayDigits(SmFloat v) {
+  constexpr SmFloat kBandLow = smartmath::pow10Float(smartmath::kFloatDigits10);
+  constexpr SmFloat kBandHigh = smartmath::pow10Float(smartmath::kFloatDigits10 + 1);
+  const SmFloat a = std::fabs(v);
+  if (a >= kBandLow && a < kBandHigh) {
+    return kFloatDisplayDigits;
+  }
   char buf[kFloatDisplayDigits + 32];
-  const int n = smartmath::snprintfFloatE(buf, sizeof(buf), kFloatDisplayDigits - 1, v);
+  const int n = smartmath::snprintfFloatE(buf, sizeof(buf), smartmath::kFloatDigits10 - 1, v);
+  if (n > 0 && n < static_cast<int>(sizeof(buf)) && smartmath::parseFloatPrefix(buf, nullptr) == v) {
+    return smartmath::kFloatDigits10;
+  }
+  return kFloatDisplayDigits;
+}
+
+std::string formatScientificFull(SmFloat v) {
+  // Up to kFloatDisplayDigits (16 for double) significant digits, trailing mantissa zeros removed, exponent at least 3 digits.
+  // Prefer the 15-digit form when it round-trips (same rule as floatDisplayDigits) so the probe snprintf is the result.
+  char buf[kFloatDisplayDigits + 32];
+  constexpr SmFloat kBandLow = smartmath::pow10Float(smartmath::kFloatDigits10);
+  constexpr SmFloat kBandHigh = smartmath::pow10Float(smartmath::kFloatDigits10 + 1);
+  const SmFloat a = std::fabs(v);
+  int digits = kFloatDisplayDigits;
+  if (!(a >= kBandLow && a < kBandHigh)) {
+    const int n15 = smartmath::snprintfFloatE(buf, sizeof(buf), smartmath::kFloatDigits10 - 1, v);
+    if (n15 > 0 && n15 < static_cast<int>(sizeof(buf)) && smartmath::parseFloatPrefix(buf, nullptr) == v) {
+      digits = smartmath::kFloatDigits10;
+    }
+  }
+  const int n = (digits == smartmath::kFloatDigits10)
+                    ? static_cast<int>(std::strlen(buf))
+                    : smartmath::snprintfFloatE(buf, sizeof(buf), digits - 1, v);
   if (n <= 0 || n >= static_cast<int>(sizeof(buf))) return "0";
   std::string text(buf, static_cast<std::size_t>(n));
   for (char& ch : text) {
@@ -1565,15 +1674,15 @@ std::string formatScientific16(SmFloat v) {
 }
 
 // Decimal display of the float just above 2^(kIntBits-1) ("9.223372036854778e+018" for double): the deliberate
-// display of the +-2^(kIntBits-1) float results flagged with DecScientificPow63High.
-const std::string& posPow63DecText() {
+// display of the +-2^(kIntBits-1) float results flagged with DecScientificSmIntBoundHigh.
+const std::string& posSmIntBoundDecText() {
   static const std::string text =
-      formatScientific16(std::nextafter(kFloatSIntBound, std::numeric_limits<SmFloat>::infinity()));
+      formatScientificFull(std::nextafter(kFloatSmIntBound, std::numeric_limits<SmFloat>::infinity()));
   return text;
 }
 
-const std::string& negPow63DecText() {
-  static const std::string text = "-" + posPow63DecText();
+const std::string& negSmIntBoundDecText() {
+  static const std::string text = "-" + posSmIntBoundDecText();
   return text;
 }
 
@@ -1590,7 +1699,7 @@ std::string formatFloatFast(SmFloat v) {
   if (std::isinf(v)) return (v < 0.0) ? STR_NEG_INF : STR_INF;
   if (v == 0.0) return "0";
   char buf[kFloatDisplayDigits + 32];
-  const int n = smartmath::snprintfFloatG(buf, sizeof(buf), kFloatDisplayDigits, v);
+  const int n = smartmath::snprintfFloatG(buf, sizeof(buf), floatDisplayDigits(v), v);
   if (n <= 0 || n >= static_cast<int>(sizeof(buf))) return "0";
   const char* expMark = std::strchr(buf, 'e');
   std::string text;
@@ -1609,7 +1718,7 @@ std::string formatFloatFast(SmFloat v) {
     }
   }
   if (!generalFormatHidesFraction(text)) return text;
-  if (std::fabs(v) > kMaxExactIntFromFloat) return formatScientific16(v);
+  if (std::fabs(v) > kMaxExactIntFromFloat) return formatScientificFull(v);
   text += STR_EXPLICIT_FLOAT_FRAC_SUFFIX;
   return text;
 }
@@ -1744,21 +1853,13 @@ void assignLowerIdentFromRange(std::string& out, const char* begin, const char* 
   }
 }
 
-bool checkedAddLL(SmInt a, SmInt b, SmInt& out) {
-  return tryAddSIntChecked(a, b, out);
-}
-
-bool checkedSubLL(SmInt a, SmInt b, SmInt& out) {
+bool trySubSmIntChecked(SmInt a, SmInt b, SmInt& out) {
   if ((b < 0 && a > kIntMax + b) ||
       (b > 0 && a < kIntMin + b)) {
     return false;
   }
   out = a - b;
   return true;
-}
-
-bool checkedMulLL(SmInt a, SmInt b, SmInt& out) {
-  return tryMulSIntChecked(a, b, out);
 }
 
 SmInt bitwiseShiftLeftDefined(SmInt value, unsigned int shiftCount) {
@@ -1824,7 +1925,7 @@ void mergeUnknownNameList(std::string& dest, const std::string& src) {
   }
 }
 
-std::string pad2DigitsLl(SmInt n) {
+std::string pad2DigitsInt(SmInt n) {
   if (n < 0) {
     n = 0;
   }
@@ -1838,12 +1939,18 @@ std::string pad2DigitsLl(SmInt n) {
 }
 
 #if SMARTMATH_TIME_VALUES
-bool tryRoundHalfUpFloatToSInt(SmFloat x, SmInt& out) {
+bool tryRoundHalfUpFloatToSmInt(SmFloat x, SmInt& out) {
   if (!std::isfinite(x)) {
     return false;
   }
-  const SmFloat r = (x >= 0.0) ? std::floor(x + 0.5) : -std::floor(-x + 0.5);
-  if (r < -kFloatSIntBound || r >= kFloatSIntBound) {
+  // x - floor(x) is exact, unlike floor(x + 0.5), which rounds 0.49999999999999994 up to 1.
+  const SmFloat ax = std::fabs(x);
+  SmFloat rAbs = std::floor(ax);
+  if (ax - rAbs >= static_cast<SmFloat>(0.5)) {
+    rAbs += static_cast<SmFloat>(1);
+  }
+  const SmFloat r = (x >= 0) ? rAbs : -rAbs;
+  if (r < -kFloatSmIntBound || r >= kFloatSmIntBound) {
     return false;
   }
   out = static_cast<SmInt>(r);
@@ -1851,31 +1958,33 @@ bool tryRoundHalfUpFloatToSInt(SmFloat x, SmInt& out) {
 }
 
 // For values already known to be in SmInt range; returns 0 otherwise.
-SmInt roundHalfUpFloatToSInt(SmFloat x) {
+SmInt roundHalfUpFloatToSmInt(SmFloat x) {
   SmInt r = 0;
-  return tryRoundHalfUpFloatToSInt(x, r) ? r : 0;
+  return tryRoundHalfUpFloatToSmInt(x, r) ? r : 0;
 }
 
-SmInt secondsFieldToMsRounded(SmInt wholeSec, const std::string& fracDigits) {
+// False when the seconds field in milliseconds does not fit SmInt (1:9300000000000000 must not wrap to 0).
+bool trySecondsFieldToMsRounded(SmInt wholeSec, const std::string& fracDigits, SmInt& outMs) {
   SmFloat d = static_cast<SmFloat>(wholeSec);
   if (!fracDigits.empty()) {
     const std::string s = std::string("0.") + fracDigits;
     char* end = nullptr;
     const SmFloat fd = smartmath::parseFloatPrefix(s.c_str(), &end);
     if (end == s.c_str() || !std::isfinite(fd)) {
-      return 0;
+      outMs = 0;
+      return true;
     }
     d += fd;
   }
-  return roundHalfUpFloatToSInt(d * 1000.0);
+  return tryRoundHalfUpFloatToSmInt(d * 1000.0, outMs);
 }
 
 bool tryAddTimeMsChecked(SmInt a, SmInt b, SmInt& outMs) {
-  return tryRoundHalfUpFloatToSInt(static_cast<SmFloat>(a) + static_cast<SmFloat>(b), outMs);
+  return tryRoundHalfUpFloatToSmInt(static_cast<SmFloat>(a) + static_cast<SmFloat>(b), outMs);
 }
 
 bool trySubTimeMsChecked(SmInt a, SmInt b, SmInt& outMs) {
-  return tryRoundHalfUpFloatToSInt(static_cast<SmFloat>(a) - static_cast<SmFloat>(b), outMs);
+  return tryRoundHalfUpFloatToSmInt(static_cast<SmFloat>(a) - static_cast<SmFloat>(b), outMs);
 }
 
 bool tryProductCoeffUnitMs(SmInt coeff, SmInt factor, SmInt& outDelta) {
@@ -2001,7 +2110,11 @@ bool parseTimeLiteralStringToMs(const char* litStart, const char* litEnd, SmInt&
     getSegStart = segEnd + 2;
   }
 
-  const SmInt secMs = secondsFieldToMsRounded(lastWhole, fracPart);
+  SmInt secMs = 0;
+  if (!trySecondsFieldToMsRounded(lastWhole, fracPart, secMs)) {
+    err = STR_TIME_LITERAL_INVALID_SEGMENT;
+    return false;
+  }
   SmFloat t = 0.0;
   switch (segCount) {
     case 2:
@@ -2022,7 +2135,7 @@ bool parseTimeLiteralStringToMs(const char* litStart, const char* litEnd, SmInt&
     err = STR_TIME_LITERAL_INVALID_SEGMENT;
     return false;
   }
-  if (!tryRoundHalfUpFloatToSInt(t, outMs)) {
+  if (!tryRoundHalfUpFloatToSmInt(t, outMs)) {
     err = STR_TIME_LITERAL_INVALID_SEGMENT;
     return false;
   }
@@ -2041,22 +2154,22 @@ std::string formatTimeCanonicalFromMs(SmInt totalMs) {
   } else {
     rU = static_cast<SmUInt>(totalMs);
   }
-  SmInt msPart = static_cast<SmInt>(rU % 1000ull);
-  rU /= 1000ull;
-  SmInt sPart = static_cast<SmInt>(rU % 60ull);
-  rU /= 60ull;
-  SmInt mPart = static_cast<SmInt>(rU % 60ull);
-  rU /= 60ull;
-  SmInt hPart = static_cast<SmInt>(rU % 24ull);
-  rU /= 24ull;
+  SmInt msPart = static_cast<SmInt>(rU % 1000u);
+  rU /= 1000u;
+  SmInt sPart = static_cast<SmInt>(rU % 60u);
+  rU /= 60u;
+  SmInt mPart = static_cast<SmInt>(rU % 60u);
+  rU /= 60u;
+  SmInt hPart = static_cast<SmInt>(rU % 24u);
+  rU /= 24u;
   const SmUInt dPart = rU;
   std::string body;
-  if (dPart > 0ull) {
-    body = smartmath::uintToString(dPart) + ":" + pad2DigitsLl(hPart) + ":" + pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+  if (dPart > 0u) {
+    body = smartmath::uintToString(dPart) + ":" + pad2DigitsInt(hPart) + ":" + pad2DigitsInt(mPart) + ":" + pad2DigitsInt(sPart);
   } else if (hPart > 0) {
-    body = pad2DigitsLl(hPart) + ":" + pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+    body = pad2DigitsInt(hPart) + ":" + pad2DigitsInt(mPart) + ":" + pad2DigitsInt(sPart);
   } else {
-    body = pad2DigitsLl(mPart) + ":" + pad2DigitsLl(sPart);
+    body = pad2DigitsInt(mPart) + ":" + pad2DigitsInt(sPart);
   }
   if (msPart != 0) {
     body.push_back('.');
@@ -2170,7 +2283,7 @@ bool tryPowFloatGuess(SmInt valueInt, SmFloat baseScalar, SmFloat p, SmFloat& ou
     return std::isfinite(outR);
   }
   const SmFloat magD = (valueInt == kIntMin)
-    ? kFloatSIntBound
+    ? kFloatSmIntBound
     : static_cast<SmFloat>(-valueInt);
   const SmFloat rootMag = std::pow(magD, p);
   if (!std::isfinite(rootMag)) {
@@ -2189,34 +2302,65 @@ bool relCloseExactIntFloat(SmFloat a, SmFloat b) {
 
 bool tryRecoverReducedRationalFromFloatAbs(SmFloat fAbs, SmInt& outNum, SmInt& outDen) {
   constexpr SmInt kMaxB = 4096;
-  SmFloat bestErr = kHugeSentinel;
+  static_assert(kMaxB < kIntMax / 8 && static_cast<SmFloat>(kMaxB) < kMaxExactIntFromFloat, "kMaxB must fit SmInt and be exact in SmFloat");
+  if (!(fAbs > 0) || !std::isfinite(fAbs)) {
+    return false;
+  }
+  // Continued fraction (O(log) steps). Convergents are the best approximations under a denominator bound,
+  // so this matches the old 1..4096 scan for every recoverable exact float factor.
+  const SmFloat scale = std::max(static_cast<SmFloat>(1), fAbs);
+  const SmFloat tol = kExactIntFloatEps * scale;
+  SmInt p0 = 0;
+  SmInt p1 = 1;
+  SmInt q0 = 1;
+  SmInt q1 = 0;
+  SmFloat frac = fAbs;
   SmInt bestA = 0;
   SmInt bestB = 0;
-  for (SmInt b = 1; b <= kMaxB; ++b) {
-    SmInt a = smartmath::roundFloatToSInt(fAbs * static_cast<SmFloat>(b));
-    if (a < 1) {
-      continue;
+  SmFloat bestErr = kHugeSentinel;
+  for (int term = 0; term < 64; ++term) {
+    SmFloat ipart = 0;
+    const SmFloat t = std::modf(frac, &ipart);
+    const SmInt a = static_cast<SmInt>(ipart);
+    if (a < 0) {
+      break;
     }
-    const SmInt g = GcdSInt(a, b);
-    a /= g;
-    const SmInt bReduced = b / g;
-    const SmFloat approx = static_cast<SmFloat>(a) / static_cast<SmFloat>(bReduced);
+    if (p1 > 0 && a > (kIntMax - p0) / p1) {
+      break;
+    }
+    if (q1 > 0 && a > (kIntMax - q0) / q1) {
+      break;
+    }
+    const SmInt p = a * p1 + p0;
+    const SmInt q = a * q1 + q0;
+    if (q <= 0 || q > kMaxB) {
+      break;
+    }
+    const SmFloat approx = static_cast<SmFloat>(p) / static_cast<SmFloat>(q);
     const SmFloat err = std::fabs(fAbs - approx);
     if (err < bestErr) {
       bestErr = err;
-      bestA = a;
-      bestB = bReduced;
+      bestA = p;
+      bestB = q;
+      if (err <= tol) {
+        break;
+      }
     }
+    if (!(t > 0) || t <= kExactIntFloatEps) {
+      break;
+    }
+    frac = static_cast<SmFloat>(1) / t;
+    p0 = p1;
+    p1 = p;
+    q0 = q1;
+    q1 = q;
   }
-  if (bestA < 1 || bestB < 1) {
+  if (bestA < 1 || bestB < 1 || bestErr > tol) {
     return false;
   }
-  const SmFloat scale = std::max(static_cast<SmFloat>(1), fAbs);
-  if (bestErr > kExactIntFloatEps * scale) {
-    return false;
-  }
-  outNum = bestA;
-  outDen = bestB;
+  const SmInt g = gcdSmInt(bestA, bestB);
+  outNum = bestA / g;
+  outDen = bestB / g;
   return true;
 }
 
@@ -2236,7 +2380,7 @@ using smartmath_internal::ScalarKind;
 using smartmath_internal::ValueKind;
 
 // value * 2^shiftCount: exact SmInt when it fits, otherwise a float (same as the SmUInt overflow path).
-EvalValue makeScalarShiftLeftSInt(SmInt value, unsigned int shiftCount) {
+EvalValue makeScalarShiftLeftSmInt(SmInt value, unsigned int shiftCount) {
   const SmInt lo = bitwiseShiftRightDefined(kIntMin, shiftCount);
   const SmInt hi = bitwiseShiftRightDefined(kIntMax, shiftCount);
   if (value < lo || value > hi) {
@@ -2248,16 +2392,16 @@ EvalValue makeScalarShiftLeftSInt(SmInt value, unsigned int shiftCount) {
 EvalValue scalarFromScalarValue(const EvalValue::ScalarValue& sv) {
   EvalValue out = makeScalar(sv.scalar);
   out.scalarValue.scalarKind = sv.scalarKind;
-  out.scalarValue.setExactSIntValid(sv.hasExactSInt());
-  out.scalarValue.exactSInt = sv.exactSInt;
-  out.scalarValue.setExactUIntValid(sv.hasExactUInt());
+  out.scalarValue.setExactSmIntValid(sv.hasExactSmInt());
+  out.scalarValue.exactInt = sv.exactInt;
+  out.scalarValue.setExactSmUIntValid(sv.hasExactSmUInt());
   out.scalarValue.exactUInt = sv.exactUInt;
-  out.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  out.scalarValue.setDecScientificSmIntBoundHigh(sv.hasDecScientificSmIntBoundHigh());
   out.scalarValue.imag = sv.imag;
-  out.scalarValue.imagExactSInt = sv.imagExactSInt;
+  out.scalarValue.imagExactInt = sv.imagExactInt;
   out.scalarValue.imagExactUInt = sv.imagExactUInt;
-  out.scalarValue.setImagExactSIntValid(sv.hasImagExactSInt());
-  out.scalarValue.setImagExactUIntValid(sv.hasImagExactUInt());
+  out.scalarValue.setImagExactSmIntValid(sv.hasImagExactSmInt());
+  out.scalarValue.setImagExactSmUIntValid(sv.hasImagExactSmUInt());
   out.scalarValue.setRenderRational(sv.hasRenderRational());
   out.scalarValue.setImagRenderRational(sv.hasImagRenderRational());
 #if SMARTMATH_FACTORINT
@@ -2272,35 +2416,35 @@ EvalValue scalarFromArrayAt(const EvalValue& arrV, std::size_t idx) {
 
 void scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
   switch (sv.scalarKind) {
-    case ScalarKind::SInt:
-      sv.setExactSIntValid(true);
-      if (sv.exactSInt >= 0) {
-        sv.setExactUIntValid(true);
-        sv.exactUInt = static_cast<SmUInt>(sv.exactSInt);
+    case ScalarKind::SmInt:
+      sv.setExactSmIntValid(true);
+      if (sv.exactInt >= 0) {
+        sv.setExactSmUIntValid(true);
+        sv.exactUInt = static_cast<SmUInt>(sv.exactInt);
       } else if (sv.exactUInt != 0u) {
-        sv.setExactUIntValid(true);
+        sv.setExactSmUIntValid(true);
       } else {
-        sv.setExactUIntValid(false);
+        sv.setExactSmUIntValid(false);
         sv.exactUInt = 0;
       }
       break;
-    case ScalarKind::UInt:
-      sv.setExactUIntValid(true);
+    case ScalarKind::SmUInt:
+      sv.setExactSmUIntValid(true);
       if (sv.exactUInt <= static_cast<SmUInt>(kIntMax)) {
-        sv.setExactSIntValid(true);
-        sv.exactSInt = static_cast<SmInt>(sv.exactUInt);
+        sv.setExactSmIntValid(true);
+        sv.exactInt = static_cast<SmInt>(sv.exactUInt);
       } else {
-        sv.setExactSIntValid(false);
-        sv.exactSInt = 0;
+        sv.setExactSmIntValid(false);
+        sv.exactInt = 0;
       }
       break;
     default:
       if (sv.hasRenderRational()) {
-        sv.setExactSIntValid(true);
-        sv.setExactUIntValid(true);
+        sv.setExactSmIntValid(true);
+        sv.setExactSmUIntValid(true);
       } else {
-        sv.setExactSIntValid(false);
-        sv.setExactUIntValid(false);
+        sv.setExactSmIntValid(false);
+        sv.setExactSmUIntValid(false);
       }
       break;
   }
@@ -2308,23 +2452,23 @@ void scalarRepairExactMetadata(EvalValue::ScalarValue& sv) {
 #if SMARTMATH_FACTORINT
   if (!sv.hasRenderIntPower()) {
 #endif
-    if (!sv.hasImagExactSInt() && sv.imagExactSInt != 0) {
+    if (!sv.hasImagExactSmInt() && sv.imagExactInt != 0) {
       SmInt tIm = 0;
-      if (tryExtractExactSIntFromFloatStrict(sv.imag, tIm) && tIm == sv.imagExactSInt) {
-        sv.setImagExactSIntValid(true);
-        if (sv.imagExactSInt >= 0) {
-          sv.setImagExactUIntValid(true);
-          sv.imagExactUInt = static_cast<SmUInt>(sv.imagExactSInt);
+      if (tryExtractExactSmIntFromFloatStrict(sv.imag, tIm) && tIm == sv.imagExactInt) {
+        sv.setImagExactSmIntValid(true);
+        if (sv.imagExactInt >= 0) {
+          sv.setImagExactSmUIntValid(true);
+          sv.imagExactUInt = static_cast<SmUInt>(sv.imagExactInt);
         }
       }
-    } else if (!sv.hasImagExactUInt() && sv.imagExactUInt != 0u) {
+    } else if (!sv.hasImagExactSmUInt() && sv.imagExactUInt != 0u) {
       SmInt tIm = 0;
-      if (tryExtractExactSIntFromFloatStrict(sv.imag, tIm) &&
+      if (tryExtractExactSmIntFromFloatStrict(sv.imag, tIm) &&
           static_cast<SmUInt>(tIm) == sv.imagExactUInt) {
-        sv.setImagExactUIntValid(true);
+        sv.setImagExactSmUIntValid(true);
         if (sv.imagExactUInt <= static_cast<SmUInt>(kIntMax)) {
-          sv.setImagExactSIntValid(true);
-          sv.imagExactSInt = static_cast<SmInt>(sv.imagExactUInt);
+          sv.setImagExactSmIntValid(true);
+          sv.imagExactInt = static_cast<SmInt>(sv.imagExactUInt);
         }
       }
     }
@@ -2344,18 +2488,18 @@ SmFloat scalarNumericReal(const EvalValue::ScalarValue& s) {
     if (sv.exactUInt == 0u) {
       return sv.scalar;
     }
-    return static_cast<SmFloat>(sv.exactSInt) / static_cast<SmFloat>(sv.exactUInt);
+    return static_cast<SmFloat>(sv.exactInt) / static_cast<SmFloat>(sv.exactUInt);
   }
-  if (sv.hasExactSInt()) {
-    return static_cast<SmFloat>(sv.exactSInt);
+  if (sv.hasExactSmInt()) {
+    return static_cast<SmFloat>(sv.exactInt);
   }
-  if (sv.scalarKind == ScalarKind::SInt) {
-    return static_cast<SmFloat>(sv.exactSInt);
+  if (sv.scalarKind == ScalarKind::SmInt) {
+    return static_cast<SmFloat>(sv.exactInt);
   }
-  if (sv.hasExactUInt()) {
+  if (sv.hasExactSmUInt()) {
     return static_cast<SmFloat>(sv.exactUInt);
   }
-  if (sv.scalarKind == ScalarKind::UInt) {
+  if (sv.scalarKind == ScalarKind::SmUInt) {
     return static_cast<SmFloat>(sv.exactUInt);
   }
   return sv.scalar;
@@ -2364,13 +2508,13 @@ SmFloat scalarNumericReal(const EvalValue::ScalarValue& s) {
 #if SMARTMATH_COMPLEX_NUMBERS
 bool imagExactMetadataMatchesFloat(const EvalValue::ScalarValue& sv) {
   SmInt t = 0;
-  if (!tryExtractExactSIntFromFloatStrict(sv.imag, t)) {
+  if (!tryExtractExactSmIntFromFloatStrict(sv.imag, t)) {
     return false;
   }
-  if (sv.hasImagExactSIntMetadata() && t == sv.imagExactSInt) {
+  if (sv.hasImagExactSmIntMetadata() && t == sv.imagExactInt) {
     return true;
   }
-  if (sv.hasImagExactUIntMetadata() && static_cast<SmUInt>(t) == sv.imagExactUInt) {
+  if (sv.hasImagExactSmUIntMetadata() && static_cast<SmUInt>(t) == sv.imagExactUInt) {
     return true;
   }
   return false;
@@ -2386,17 +2530,17 @@ SmFloat scalarNumericImag(const EvalValue::ScalarValue& s) {
     if (sv.imagExactUInt == 0u) {
       return sv.imag;
     }
-    return static_cast<SmFloat>(sv.imagExactSInt) / static_cast<SmFloat>(sv.imagExactUInt);
+    return static_cast<SmFloat>(sv.imagExactInt) / static_cast<SmFloat>(sv.imagExactUInt);
   }
-  if (sv.hasImagExactSInt() || sv.hasImagExactUInt()) {
+  if (sv.hasImagExactSmInt() || sv.hasImagExactSmUInt()) {
     if (!imagExactMetadataMatchesFloat(sv)) {
       return sv.imag;
     }
   }
-  if (sv.hasImagExactSInt()) {
-    return static_cast<SmFloat>(sv.imagExactSInt);
+  if (sv.hasImagExactSmInt()) {
+    return static_cast<SmFloat>(sv.imagExactInt);
   }
-  if (sv.hasImagExactUInt()) {
+  if (sv.hasImagExactSmUInt()) {
     return static_cast<SmFloat>(sv.imagExactUInt);
   }
   return sv.imag;
@@ -2406,7 +2550,7 @@ bool scalarHasNonzeroImaginaryPart(const EvalValue::ScalarValue& s) {
   if (s.imag != 0.0) {
     return true;
   }
-  return s.hasImagExactSInt() && s.imagExactSInt != 0;
+  return s.hasImagExactSmInt() && s.imagExactInt != 0;
 }
 
 bool evalValueHasNonzeroImaginary(const EvalValue& v) {
@@ -2445,9 +2589,9 @@ bool isTruthy(const EvalValue& v) {
   return std::fabs(re) > 0.0 || std::fabs(im) > 0.0;
 }
 
-bool isPureFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
-  if (a.scalarKind != ScalarKind::FloatingPoint || b.scalarKind != ScalarKind::FloatingPoint ||
-      a.hasExactSInt() || a.hasExactUInt() || b.hasExactSInt() || b.hasExactUInt()) {
+bool isPureSmFloatingScalarPair(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b) {
+  if (a.scalarKind != ScalarKind::SmFloatingPoint || b.scalarKind != ScalarKind::SmFloatingPoint ||
+      a.hasExactSmInt() || a.hasExactSmUInt() || b.hasExactSmInt() || b.hasExactSmUInt()) {
     return false;
   }
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -2511,23 +2655,6 @@ std::size_t forEachCallArgScalarValues(const std::vector<EvalValue>& args, Visit
   return count;
 }
 
-template <typename Visitor>
-std::size_t forEachFlattenedEvalValue(const std::vector<EvalValue>& args, Visitor&& visit) {
-  std::size_t count = 0;
-  for (const auto& a : args) {
-    if (a.kind == ValueKind::Scalar) {
-      visit(a);
-      ++count;
-    } else {
-      for (const auto& item : a.arr) {
-        visit(scalarFromScalarValue(item));
-        ++count;
-      }
-    }
-  }
-  return count;
-}
-
 std::size_t countFlattenedScalars(const std::vector<EvalValue>& args) {
   return forEachCallArgScalarValues(args, [](const EvalValue::ScalarValue&) {});
 }
@@ -2539,39 +2666,56 @@ bool flattenArgs(const std::vector<EvalValue>& args, std::vector<SmFloat>& out) 
   return !out.empty();
 }
 
-bool flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out) {
+// Flattens argc values starting at args without copying them into a temporary vector first.
+bool flattenArgsToScalars(const EvalValue* args, std::size_t argc, std::vector<EvalValue>& out) {
   out.clear();
-  out.reserve(forEachFlattenedEvalValue(args, [](const EvalValue&) {}));
-  forEachFlattenedEvalValue(args, [&](const EvalValue& ev) { out.emplace_back(ev); });
+  std::size_t total = 0;
+  for (std::size_t i = 0; i < argc; ++i) {
+    total += (args[i].kind == ValueKind::Scalar) ? 1u : args[i].arr.size();
+  }
+  out.reserve(total);
+  for (std::size_t i = 0; i < argc; ++i) {
+    if (args[i].kind == ValueKind::Scalar) {
+      out.emplace_back(args[i]);
+    } else {
+      for (const auto& item : args[i].arr) {
+        out.emplace_back(scalarFromScalarValue(item));
+      }
+    }
+  }
   return !out.empty();
 }
 
-bool TryApplyExactUIntBinaryScalarOp(
+bool flattenArgsToScalars(const std::vector<EvalValue>& args, std::vector<EvalValue>& out) {
+  return flattenArgsToScalars(args.data(), args.size(), out);
+}
+
+bool tryApplyExactSmUIntBinaryScalarOp(
     char op,
     SmUInt lu,
     SmUInt ru,
     EvalValue& outS) {
   if (op == '+') {
     SmUInt outU = 0;
-    if (tryAddUIntChecked(lu, ru, outU)) {
-      outS = makeScalarUInt(outU);
+    if (tryAddSmUIntChecked(lu, ru, outU)) {
+      outS = makeScalarSmUInt(outU);
       return true;
     }
   } else if (op == '-') {
     if (lu >= ru) {
-      outS = makeScalarUInt(lu - ru);
+      outS = makeScalarSmUInt(lu - ru);
       return true;
     }
   } else if (op == '*') {
     SmUInt outU = 0;
-    if (tryMulUIntChecked(lu, ru, outU)) {
-      outS = makeScalarUInt(outU);
+    if (tryMulSmUIntChecked(lu, ru, outU)) {
+      outS = makeScalarSmUInt(outU);
       return true;
     }
   } else if (op == '/') {
     SmUInt quoU = 0;
-    if (tryQuotExactUInt(lu, ru, quoU)) {
-      outS = makeScalarUInt(quoU);
+    if (tryQuotExactSmUInt(lu, ru, quoU)) {
+      outS = makeScalarSmUInt(quoU);
       return true;
     }
   }
@@ -2945,9 +3089,6 @@ bool getBuiltinArity(BuiltinFunctionId id, uint8_t& minArgs, uint8_t& maxArgs) {
     return true;
   }
   const auto& row = kBuiltinMeta[static_cast<std::size_t>(id)];
-  if (row.minArgs == kBuiltinMetaArityUnset) {
-    return false;
-  }
   minArgs = row.minArgs;
   maxArgs = row.maxArgs;
   return true;
@@ -2963,7 +3104,7 @@ bool tryApplyExactIntegerDivisionFromQuotient(
   }
   SmUInt aU = 0;
   SmUInt bU = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(leftS, aU) && tryGetExactNonNegativeUIntFromScalar(rightS, bU)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(leftS, aU) && tryGetExactNonNegativeSmUIntFromScalar(rightS, bU)) {
     if (bU == 0u) {
       return false;
     }
@@ -2976,16 +3117,16 @@ bool tryApplyExactIntegerDivisionFromQuotient(
       return false;
     }
     SmUInt prodU = 0;
-    if (!tryMulUIntChecked(qU, bU, prodU) || prodU != aU) {
+    if (!tryMulSmUIntChecked(qU, bU, prodU) || prodU != aU) {
       return false;
     }
-    outV = makeScalarUInt(qU);
+    outV = makeScalarSmUInt(qU);
     return true;
   }
   SmInt aI = 0;
   SmInt bI = 0;
-  if (tryGetExactSignedIntNoUIntWrapFromScalar(leftS, aI) &&
-      tryGetExactSignedIntNoUIntWrapFromScalar(rightS, bI)) {
+  if (tryGetExactSignedIntNoSmUIntWrapFromScalar(leftS, aI) &&
+      tryGetExactSignedIntNoSmUIntWrapFromScalar(rightS, bI)) {
     if (bI == 0) {
       return false;
     }
@@ -2998,7 +3139,7 @@ bool tryApplyExactIntegerDivisionFromQuotient(
       return false;
     }
     SmInt prodI = 0;
-    if (!checkedMulLL(qI, bI, prodI) || prodI != aI) {
+    if (!tryMulSmIntChecked(qI, bI, prodI) || prodI != aI) {
       return false;
     }
     outV = makeScalarInt(qI);
@@ -3006,15 +3147,15 @@ bool tryApplyExactIntegerDivisionFromQuotient(
   }
 
   SmUInt intU = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
-    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, false, 0LL, intU, rightS.scalar, r,
+  if (tryGetExactNonNegativeSmUIntFromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
+    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, false, 0, intU, rightS.scalar, r,
                                              outV)) {
       return true;
     }
   }
 
   SmInt intI = 0;
-  if (tryGetExactSignedIntNoUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
+  if (tryGetExactSignedIntNoSmUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
     if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Signed, false, intI, 0u, rightS.scalar, r, outV)) {
       return true;
     }
@@ -3032,22 +3173,22 @@ bool tryApplyExactIntegerMultiplicationFromProduct(
     return false;
   }
   SmUInt intU = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
-    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, true, 0LL, intU, rightS.scalar, r, outV)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(leftS, intU) && !scalarHasExactIntegerPayload(rightS)) {
+    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, true, 0, intU, rightS.scalar, r, outV)) {
       return true;
     }
-  } else if (tryGetExactNonNegativeUIntFromScalar(rightS, intU) && !scalarHasExactIntegerPayload(leftS)) {
-    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, true, 0LL, intU, leftS.scalar, r, outV)) {
+  } else if (tryGetExactNonNegativeSmUIntFromScalar(rightS, intU) && !scalarHasExactIntegerPayload(leftS)) {
+    if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Unsigned, true, 0, intU, leftS.scalar, r, outV)) {
       return true;
     }
   }
 
   SmInt intI = 0;
-  if (tryGetExactSignedIntNoUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
+  if (tryGetExactSignedIntNoSmUIntWrapFromScalar(leftS, intI) && !scalarHasExactIntegerPayload(rightS)) {
     if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Signed, true, intI, 0u, rightS.scalar, r, outV)) {
       return true;
     }
-  } else if (tryGetExactSignedIntNoUIntWrapFromScalar(rightS, intI) && !scalarHasExactIntegerPayload(leftS)) {
+  } else if (tryGetExactSignedIntNoSmUIntWrapFromScalar(rightS, intI) && !scalarHasExactIntegerPayload(leftS)) {
     if (tryApplyExactIntFloatOpFromFloatSide(ScalarExactKind::Signed, true, intI, 0u, leftS.scalar, r, outV)) {
       return true;
     }
@@ -3063,21 +3204,21 @@ int tryApplyGcdLcmScalars(
     EvalValue& outV) {
   SmUInt aU = 0;
   SmUInt bU = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(a, aU) && tryGetExactNonNegativeUIntFromScalar(b, bU)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(a, aU) && tryGetExactNonNegativeSmUIntFromScalar(b, bU)) {
     if (aU == 0u && bU == 0u) {
       return 2;
     }
     if (!doLcm) {
-      outV = makeScalarUInt(gcdUInt(aU, bU));
+      outV = makeScalarSmUInt(gcdSmUInt(aU, bU));
       return 0;
     }
     SmUInt lU = 0;
-    if (!tryLcmUInt(aU, bU, lU)) {
-      const SmUInt g = gcdUInt(aU, bU);
+    if (!tryLcmSmUInt(aU, bU, lU)) {
+      const SmUInt g = gcdSmUInt(aU, bU);
       outV = makeScalar(static_cast<SmFloat>(aU / g) * static_cast<SmFloat>(bU));
       return 0;
     }
-    outV = makeScalarUInt(lU);
+    outV = makeScalarSmUInt(lU);
     return 0;
   }
   bool aNeg = false;
@@ -3089,16 +3230,16 @@ int tryApplyGcdLcmScalars(
     return 2;
   }
   if (!doLcm) {
-    outV = makeScalarUIntPreferInt(gcdUInt(aU, bU));
+    outV = makeScalarSmUIntPreferInt(gcdSmUInt(aU, bU));
     return 0;
   }
   SmUInt lU = 0;
-  if (!tryLcmUInt(aU, bU, lU)) {
-    const SmUInt g = gcdUInt(aU, bU);
+  if (!tryLcmSmUInt(aU, bU, lU)) {
+    const SmUInt g = gcdSmUInt(aU, bU);
     outV = makeScalar(static_cast<SmFloat>(aU / g) * static_cast<SmFloat>(bU));
     return 0;
   }
-  outV = makeScalarUIntPreferInt(lU);
+  outV = makeScalarSmUIntPreferInt(lU);
   return 0;
 }
 
@@ -3255,9 +3396,8 @@ void ddMulExactDekker(SmFloat a, SmFloat b, SmFloat& hi, SmFloat& lo) {
   if (a == 0 || b == 0 || !std::isfinite(a) || !std::isfinite(b) || !std::isfinite(hi)) {
     return;
   }
-  const SmFloat splitFactor = smartmath::pow2Float((smartmath::kFloatMantDigits + 1) / 2) + static_cast<SmFloat>(1);
-  const SmFloat ca = splitFactor * a;
-  const SmFloat cb = splitFactor * b;
+  const SmFloat ca = smartmath::kVeltkampSplitFactor * a;
+  const SmFloat cb = smartmath::kVeltkampSplitFactor * b;
   if (!std::isfinite(ca) || !std::isfinite(cb)) {
     return;
   }
@@ -3399,9 +3539,9 @@ bool tryApplyNcrNprScalar(
   }
   if (!nNeg) {
     SmUInt exact = 0;
-    if (doPerm ? tryComputeNprUInt(nU, rU, exact) : tryComputeNcrUInt(nU, rU, exact)) {
+    if (doPerm ? tryComputeNprSmUInt(nU, rU, exact) : tryComputeNcrSmUInt(nU, rU, exact)) {
       status = 0;
-      outS = makeScalarUIntPreferInt(exact);
+      outS = makeScalarSmUIntPreferInt(exact);
       return true;
     }
     status = 0;
@@ -3423,7 +3563,7 @@ bool tryApplyNcrNprScalar(
       SmInt term = -static_cast<SmInt>(nU);
       bool exact = true;
       for (SmUInt i = 0; i < rU; ++i) {
-        if (!tryMulSIntChecked(acc, term, acc)) {
+        if (!tryMulSmIntChecked(acc, term, acc)) {
           exact = false;
           break;
         }
@@ -3449,10 +3589,10 @@ bool tryApplyNcrNprScalar(
   if (rU <= kUIntMax - nU) {
     const SmUInt top = nU + rU - 1u;
     SmUInt comb = 0;
-    if (tryComputeNcrUInt(top, rU, comb)) {
+    if (tryComputeNcrSmUInt(top, rU, comb)) {
       status = 0;
       if ((rU & 1u) == 0u) {
-        outS = makeScalarUIntPreferInt(comb);
+        outS = makeScalarSmUIntPreferInt(comb);
       } else if (comb <= static_cast<SmUInt>(kIntMax)) {
         outS = makeScalarInt(-static_cast<SmInt>(comb));
       } else {
@@ -3489,12 +3629,12 @@ bool tryApplyModScalars(
     const EvalValue::ScalarValue& aS,
     const EvalValue::ScalarValue& bS,
     EvalValue& outS) {
-  if (aS.hasExactUInt() && bS.hasExactUInt() && (!aS.hasExactSInt() || !bS.hasExactSInt())) {
+  if (aS.hasExactSmUInt() && bS.hasExactSmUInt() && (!aS.hasExactSmInt() || !bS.hasExactSmInt())) {
     if (bS.exactUInt == 0u) {
       ctx.failCall(CallErrorId::Numeric, fnName);
       return false;
     }
-    outS = makeScalarUInt(aS.exactUInt % bS.exactUInt);
+    outS = makeScalarSmUInt(aS.exactUInt % bS.exactUInt);
     return true;
   }
   bool aNeg = false;
@@ -3699,13 +3839,13 @@ bool tryPowVerifyRootExactValue(SmInt valueInt, SmInt rootCand, SmInt rootDeg) {
   }
   if (rootCand >= 0 && valueInt >= 0) {
     SmUInt reconU = 0;
-    if (!tryPowUIntChecked(static_cast<SmUInt>(rootCand), static_cast<SmUInt>(rootDeg), reconU)) {
+    if (!tryPowSmUIntChecked(static_cast<SmUInt>(rootCand), static_cast<SmUInt>(rootDeg), reconU)) {
       return false;
     }
     return static_cast<SmInt>(reconU) == valueInt;
   }
   SmInt reconI = 0;
-  if (!tryPowSIntChecked(rootCand, rootDeg, reconI)) {
+  if (!tryPowSmIntChecked(rootCand, rootDeg, reconI)) {
     return false;
   }
   return reconI == valueInt;
@@ -3729,9 +3869,9 @@ SmUInt estimateRangeItemCount(SmInt startV, SmInt stopV, SmInt stepV) {
     }
     uLo = static_cast<SmUInt>(stopV);
     uHi = static_cast<SmUInt>(startV);
-    uStep = 0ull - static_cast<SmUInt>(stepV);
+    uStep = 0u - static_cast<SmUInt>(stepV);
   }
-  return (uHi - uLo - 1ull) / uStep + 1ull;
+  return (uHi - uLo - 1u) / uStep + 1u;
 }
 
 int netRoundParenDepthBetween(const char* lo, const char* hiExclusive) {
@@ -3885,8 +4025,22 @@ const char* scanDecimalNumericLiteralEnd(const char* p) {
   return anyDigit ? q : p;
 }
 
-SmFloat MedianFromFloatFlatInPlace(std::vector<SmFloat>& flat) {
+// Midpoint of lower <= upper without overflow: opposite signs cannot overflow when added, same signs use the half distance.
+SmFloat floatMidpoint(SmFloat lower, SmFloat upper) {
+  if ((lower < 0) != (upper < 0)) {
+    return (lower + upper) / static_cast<SmFloat>(2);
+  }
+  return lower + (upper - lower) / static_cast<SmFloat>(2);
+}
+
+// A NaN makes the comparison order undefined (nth_element would be UB), and the median of a NaN-containing set is NaN.
+SmFloat medianFromFloatFlatInPlace(std::vector<SmFloat>& flat) {
   const std::size_t n = flat.size();
+  for (const SmFloat v : flat) {
+    if (std::isnan(v)) {
+      return v;
+    }
+  }
   const std::size_t mid = n / 2U;
   std::nth_element(flat.begin(), flat.begin() + static_cast<std::ptrdiff_t>(mid), flat.end());
   const SmFloat upper = flat[mid];
@@ -3894,7 +4048,7 @@ SmFloat MedianFromFloatFlatInPlace(std::vector<SmFloat>& flat) {
     return upper;
   }
   const SmFloat lower = *std::max_element(flat.begin(), flat.begin() + static_cast<std::ptrdiff_t>(mid));
-  return (lower + upper) / 2.0;
+  return floatMidpoint(lower, upper);
 }
 
 inline SmFloat ratioApproxAbsNumerator(SmFloat v, SmInt p, SmUInt q) {
@@ -3978,10 +4132,10 @@ struct RatioRationalSearch {
 
 bool tryExactPower10Rational(SmFloat v, RatioRationalSearch& search) {
   for (int k = 1; k <= RATIO_MAX_POWER10_EXP; ++k) {
-    const SmUInt denPow = pow10UInt(k);
+    const SmUInt denPow = pow10SmUInt(k);
     const SmFloat scaled = v * static_cast<SmFloat>(denPow);
-    const SmInt n = smartmath::roundFloatToSInt(scaled);
-    if (n == 0) {
+    SmInt n = 0;
+    if (!tryRoundFloatToSmInt(scaled, n) || n == 0) {
       continue;
     }
     SmFloat scaleErr = RATIO_APPROX_EPS * std::fabs(scaled);
@@ -3992,7 +4146,7 @@ bool tryExactPower10Rational(SmFloat v, RatioRationalSearch& search) {
       continue;
     }
     const SmInt denPowLong = static_cast<SmInt>(denPow);
-    const SmInt g = GcdSInt(n, denPowLong);
+    const SmInt g = gcdSmInt(n, denPowLong);
     const SmInt candNum = n / g;
     const SmUInt candDen = static_cast<SmUInt>(denPowLong / g);
     if (candDen == 0) {
@@ -4066,7 +4220,7 @@ bool tryApproximateRational(SmFloat x, SmInt& num, SmUInt& den) {
     den = 1;
     return true;
   }
-  const SmInt g = GcdSInt(search.bestP, static_cast<SmInt>(search.bestQ));
+  const SmInt g = gcdSmInt(search.bestP, static_cast<SmInt>(search.bestQ));
   num = search.bestP / g;
   den = static_cast<SmUInt>(static_cast<SmInt>(search.bestQ) / g);
   if (neg) {
@@ -4226,7 +4380,7 @@ bool complexUnaryTrigCartesian(BuiltinFunctionId id, SmFloat ar, SmFloat ai, SmF
           break;
         }
       }
-      if (std::isfinite(ar) && std::isfinite(ai) && magnitudeAtLeast(ar, ai, 1e8)) {
+      if (std::isfinite(ar) && std::isfinite(ai) && magnitudeAtLeast(ar, ai, kAcoshLogMin)) {
         lnOfTwice(ar, ai, outR, outI);
         break;
       }
@@ -4260,7 +4414,7 @@ bool complexUnaryTrigCartesian(BuiltinFunctionId id, SmFloat ar, SmFloat ai, SmF
         outI = -sgn * ah;
         break;
       }
-      if (std::isfinite(ar) && std::isfinite(ai) && magnitudeAtLeast(ar, ai, kHypotDirectMax)) {
+      if (std::isfinite(ar) && std::isfinite(ai) && magnitudeAtLeast(ar, ai, kLargeMagnitudeMin)) {
         const bool neg = ar < 0.0;
         const SmFloat br = neg ? -ar : ar;
         const SmFloat bi = neg ? -ai : ai;
@@ -4333,7 +4487,7 @@ bool nearlyInt(SmFloat v, SmInt& out) {
   if (std::fabs(v - r) > kTolLost3) {
     return false;
   }
-  if (!isFloatInSIntRange(r)) {
+  if (!isFloatInSmIntRange(r)) {
     return false;
   }
   out = static_cast<SmInt>(r);
@@ -4353,15 +4507,15 @@ bool tryGetExactSignedIntFromScalarPolicy(
   }
 #endif
   EvalValue::ScalarValue s = sIn;
-  if (policy == ExactSignedIntPolicy::NoUIntWrapWithRepairAndStorageKind) {
+  if (policy == ExactSignedIntPolicy::NoSmUIntWrapWithRepairAndStorageKind) {
     scalarRepairExactMetadata(s);
   }
-  if (s.hasExactSInt()) {
-    outI = s.exactSInt;
+  if (s.hasExactSmInt()) {
+    outI = s.exactInt;
     return true;
   }
-  if (s.hasExactUInt()) {
-    if (policy == ExactSignedIntPolicy::AllowUIntBitReinterpret) {
+  if (s.hasExactSmUInt()) {
+    if (policy == ExactSignedIntPolicy::AllowSmUIntBitReinterpret) {
       static_assert(sizeof(SmInt) == sizeof(SmUInt), "SmInt/SmUInt size mismatch");
       SmUInt bits = s.exactUInt;
       std::memcpy(&outI, &bits, sizeof(bits));
@@ -4373,12 +4527,12 @@ bool tryGetExactSignedIntFromScalarPolicy(
     }
     return false;
   }
-  if (policy == ExactSignedIntPolicy::NoUIntWrapWithRepairAndStorageKind) {
-    if (s.scalarKind == ScalarKind::SInt) {
-      outI = s.exactSInt;
+  if (policy == ExactSignedIntPolicy::NoSmUIntWrapWithRepairAndStorageKind) {
+    if (s.scalarKind == ScalarKind::SmInt) {
+      outI = s.exactInt;
       return true;
     }
-    if (s.scalarKind == ScalarKind::UInt &&
+    if (s.scalarKind == ScalarKind::SmUInt &&
         s.exactUInt <= static_cast<SmUInt>(kIntMax)) {
       outI = static_cast<SmInt>(s.exactUInt);
       return true;
@@ -4388,12 +4542,12 @@ bool tryGetExactSignedIntFromScalarPolicy(
 }
 
 #if SMARTMATH_COMPLEX_NUMBERS
-bool tryGetExactImagSIntStrict(const EvalValue::ScalarValue& s, SmInt& out) {
-  if (s.hasImagExactSInt()) {
-    out = s.imagExactSInt;
+bool tryGetExactImagSmIntStrict(const EvalValue::ScalarValue& s, SmInt& out) {
+  if (s.hasImagExactSmInt()) {
+    out = s.imagExactInt;
     return true;
   }
-  return tryExtractExactSIntFromFloatStrict(s.imag, out);
+  return tryExtractExactSmIntFromFloatStrict(s.imag, out);
 }
 #endif
 
@@ -4401,11 +4555,11 @@ bool scalarHasExactIntegerPayload(const EvalValue::ScalarValue& sv) {
   if (sv.scalarKind == ScalarKind::Time) {
     return false;
   }
-  return sv.hasExactSInt() || sv.hasExactUInt() || sv.scalarKind == ScalarKind::SInt ||
-         sv.scalarKind == ScalarKind::UInt;
+  return sv.hasExactSmInt() || sv.hasExactSmUInt() || sv.scalarKind == ScalarKind::SmInt ||
+         sv.scalarKind == ScalarKind::SmUInt;
 }
 
-bool TryMulExactSIntSquare(SmInt i, SmInt& outSq) {
+bool tryMulExactSmIntSquare(SmInt i, SmInt& outSq) {
   SmUInt u = 0;
   if (i >= 0) {
     u = static_cast<SmUInt>(i);
@@ -4415,7 +4569,7 @@ bool TryMulExactSIntSquare(SmInt i, SmInt& outSq) {
     u = static_cast<SmUInt>(-i);
   }
   SmUInt sqU = 0;
-  if (!tryMulUIntChecked(u, u, sqU) ||
+  if (!tryMulSmUIntChecked(u, u, sqU) ||
       sqU > static_cast<SmUInt>(kIntMax)) {
     return false;
   }
@@ -4423,9 +4577,9 @@ bool TryMulExactSIntSquare(SmInt i, SmInt& outSq) {
   return true;
 }
 
-bool TryGetExactSignedIntNoUIntWrapScalarStrict(const EvalValue::ScalarValue& s, SmInt& outI) {
+bool tryGetExactSignedIntNoSmUIntWrapScalarStrict(const EvalValue::ScalarValue& s, SmInt& outI) {
   return tryGetExactSignedIntFromScalarPolicy(
-      s, outI, ExactSignedIntPolicy::NoUIntWrapWithRepairAndStorageKind);
+      s, outI, ExactSignedIntPolicy::NoSmUIntWrapWithRepairAndStorageKind);
 }
 
 ArrayIndexIntKind classifyArrayIndexInt(const EvalValue::ScalarValue& sIn, SmInt& outI) {
@@ -4436,11 +4590,11 @@ ArrayIndexIntKind classifyArrayIndexInt(const EvalValue::ScalarValue& sIn, SmInt
 #endif
   EvalValue::ScalarValue s = sIn;
   scalarRepairExactMetadata(s);
-  if (s.scalarKind == ScalarKind::SInt) {
-    outI = s.exactSInt;
+  if (s.scalarKind == ScalarKind::SmInt) {
+    outI = s.exactInt;
     return ArrayIndexIntKind::Ok;
   }
-  if (s.scalarKind == ScalarKind::UInt) {
+  if (s.scalarKind == ScalarKind::SmUInt) {
     if (s.exactUInt > static_cast<SmUInt>(kIntMax)) {
       return ArrayIndexIntKind::OutOfSignedRange;
     }
@@ -4467,14 +4621,14 @@ void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV) {
     return;
   }
   SmUInt inpU = 0;
-  if (!tryGetExactNonNegativeUIntFromScalar(s, inpU)) {
+  if (!tryGetExactNonNegativeSmUIntFromScalar(s, inpU)) {
     outV = makeScalar(r);
     return;
   }
   const SmUInt n = static_cast<SmUInt>(std::round(r));
   SmUInt sq = 0;
-  if (tryMulUIntChecked(n, n, sq) && sq == inpU) {
-    outV = makeScalarUIntPreferInt(n);
+  if (tryMulSmUIntChecked(n, n, sq) && sq == inpU) {
+    outV = makeScalarSmUIntPreferInt(n);
   } else {
     outV = makeScalar(r);
   }
@@ -4487,18 +4641,18 @@ bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV) {
     return false;
   }
   SmInt i = 0;
-  if (TryGetExactSignedIntNoUIntWrapScalarStrict(s, i)) {
+  if (tryGetExactSignedIntNoSmUIntWrapScalarStrict(s, i)) {
     SmInt sq = 0;
-    if (TryMulExactSIntSquare(i, sq)) {
+    if (tryMulExactSmIntSquare(i, sq)) {
       outV = makeScalarInt(sq);
       return true;
     }
   } else {
     SmUInt u = 0;
-    if (tryGetExactNonNegativeUIntFromScalar(s, u)) {
+    if (tryGetExactNonNegativeSmUIntFromScalar(s, u)) {
       SmUInt sqU = 0;
-      if (tryMulUIntChecked(u, u, sqU)) {
-        outV = makeScalarUIntPreferInt(sqU);
+      if (tryMulSmUIntChecked(u, u, sqU)) {
+        outV = makeScalarSmUIntPreferInt(sqU);
         return true;
       }
     }
@@ -4519,12 +4673,12 @@ bool tryApplyHypotExactScalars(
   }
   SmInt la = 0;
   SmInt lb = 0;
-  if (TryGetExactSignedIntNoUIntWrapScalarStrict(l, la) &&
-      TryGetExactSignedIntNoUIntWrapScalarStrict(r, lb)) {
+  if (tryGetExactSignedIntNoSmUIntWrapScalarStrict(l, la) &&
+      tryGetExactSignedIntNoSmUIntWrapScalarStrict(r, lb)) {
     SmInt aa = 0;
     SmInt bb = 0;
     SmInt sumSq = 0;
-    if (TryMulExactSIntSquare(la, aa) && TryMulExactSIntSquare(lb, bb) && checkedAddLL(aa, bb, sumSq)) {
+    if (tryMulExactSmIntSquare(la, aa) && tryMulExactSmIntSquare(lb, bb) && tryAddSmIntChecked(aa, bb, sumSq)) {
       outV = makeScalar(std::sqrt(static_cast<SmFloat>(sumSq)));
       return true;
     }
@@ -4532,12 +4686,12 @@ bool tryApplyHypotExactScalars(
   }
   SmUInt ua = 0;
   SmUInt ub = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(l, ua) && tryGetExactNonNegativeUIntFromScalar(r, ub)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(l, ua) && tryGetExactNonNegativeSmUIntFromScalar(r, ub)) {
     SmUInt aaU = 0;
     SmUInt bbU = 0;
     SmUInt sumSqU = 0;
-    if (tryMulUIntChecked(ua, ua, aaU) && tryMulUIntChecked(ub, ub, bbU) &&
-        tryAddUIntChecked(aaU, bbU, sumSqU)) {
+    if (tryMulSmUIntChecked(ua, ua, aaU) && tryMulSmUIntChecked(ub, ub, bbU) &&
+        tryAddSmUIntChecked(aaU, bbU, sumSqU)) {
       outV = makeScalar(std::sqrt(static_cast<SmFloat>(sumSqU)));
       return true;
     }
@@ -4587,28 +4741,28 @@ bool tryApplyPowExactScalarsByKind(
     SmUInt rU = 0;
     if (fractionalPowerIsOddUnitRoot(p, nRoot)) {
       if (isSigned) {
-        if (!tryRoundFloatToSInt(r, rInt)) {
+        if (!tryRoundFloatToSmInt(r, rInt)) {
           return false;
         }
         if (rInt >= 0 && valueSigned >= 0) {
           SmUInt reconU = 0;
-          if (tryPowUIntChecked(static_cast<SmUInt>(rInt), static_cast<SmUInt>(nRoot), reconU) &&
+          if (tryPowSmUIntChecked(static_cast<SmUInt>(rInt), static_cast<SmUInt>(nRoot), reconU) &&
               reconU == static_cast<SmUInt>(valueSigned)) {
             outV = makeScalarInt(rInt);
             return true;
           }
         } else {
           SmInt reconI = 0;
-          if (tryPowSIntChecked(rInt, nRoot, reconI) && reconI == valueSigned) {
+          if (tryPowSmIntChecked(rInt, nRoot, reconI) && reconI == valueSigned) {
             outV = makeScalarInt(rInt);
             return true;
           }
         }
       } else {
         SmUInt sq = 0;
-        if (tryRoundFloatToUInt(r, rU) &&
-            tryPowUIntChecked(rU, static_cast<SmUInt>(nRoot), sq) && sq == valueUnsigned) {
-          outV = makeScalarUIntPreferInt(rU);
+        if (tryRoundFloatToSmUInt(r, rU) &&
+            tryPowSmUIntChecked(rU, static_cast<SmUInt>(nRoot), sq) && sq == valueUnsigned) {
+          outV = makeScalarSmUIntPreferInt(rU);
           return true;
         }
       }
@@ -4620,16 +4774,16 @@ bool tryApplyPowExactScalarsByKind(
     if (isSigned) {
       SmInt rInt = 0;
       SmInt recon = 0;
-      if (tryRoundFloatToSInt(r, rInt) && tryPowSIntChecked(valueSigned, nExp, recon) && recon == rInt) {
+      if (tryRoundFloatToSmInt(r, rInt) && tryPowSmIntChecked(valueSigned, nExp, recon) && recon == rInt) {
         outV = makeScalarInt(rInt);
         return true;
       }
     } else {
       SmUInt powResult = 0;
       SmUInt recon = 0;
-      if (tryRoundFloatToUInt(r, powResult) &&
-          tryPowUIntChecked(valueUnsigned, static_cast<SmUInt>(nExp), recon) && recon == powResult) {
-        outV = makeScalarUIntPreferInt(powResult);
+      if (tryRoundFloatToSmUInt(r, powResult) &&
+          tryPowSmUIntChecked(valueUnsigned, static_cast<SmUInt>(nExp), recon) && recon == powResult) {
+        outV = makeScalarSmUIntPreferInt(powResult);
         return true;
       }
     }
@@ -4653,12 +4807,12 @@ bool tryRecoverLargeSignedOddRoot(SmInt valueInt, SmFloat p, EvalValue& outV, bo
     return false;
   }
   decided = true;
-  const SmFloat magD = isMin ? kFloatSIntBound : static_cast<SmFloat>(mag);
+  const SmFloat magD = isMin ? kFloatSmIntBound : static_cast<SmFloat>(mag);
   const SmFloat rootMag = std::pow(magD, p);
   SmUInt rU = 0;
   SmUInt recon = 0;
-  if (!std::isfinite(rootMag) || rootMag < 0.0 || !tryRoundFloatToUInt(rootMag, rU) ||
-      !tryPowUIntChecked(rU, static_cast<SmUInt>(nRoot), recon) || recon != mag) {
+  if (!std::isfinite(rootMag) || rootMag < 0.0 || !tryRoundFloatToSmUInt(rootMag, rU) ||
+      !tryPowSmUIntChecked(rU, static_cast<SmUInt>(nRoot), recon) || recon != mag) {
     return false;
   }
   if (neg) {
@@ -4668,7 +4822,7 @@ bool tryRecoverLargeSignedOddRoot(SmInt valueInt, SmFloat p, EvalValue& outV, bo
       outV = makeScalar(-static_cast<SmFloat>(rU));
     }
   } else {
-    outV = makeScalarUIntPreferInt(rU);
+    outV = makeScalarSmUIntPreferInt(rU);
   }
   return true;
 }
@@ -4686,7 +4840,7 @@ bool tryApplyPowExactScalars(
     return false;
   }
   SmInt valueInt = 0;
-  if (TryGetExactSignedIntNoUIntWrapScalarStrict(leftS, valueInt)) {
+  if (tryGetExactSignedIntNoSmUIntWrapScalarStrict(leftS, valueInt)) {
     bool oddRootDecided = false;
     if (tryRecoverLargeSignedOddRoot(valueInt, rightS.scalar, outV, oddRootDecided)) {
       return true;
@@ -4706,9 +4860,9 @@ bool tryApplyPowExactScalars(
         ScalarExactKind::Signed, valueInt, 0u, leftS, rightS, outV);
   }
   SmUInt inpU = 0;
-  if (tryGetExactNonNegativeUIntFromScalar(leftS, inpU)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(leftS, inpU)) {
     return tryApplyPowExactScalarsByKind(
-        ScalarExactKind::Unsigned, 0LL, inpU, leftS, rightS, outV);
+        ScalarExactKind::Unsigned, 0, inpU, leftS, rightS, outV);
   }
   return false;
 }
@@ -4728,7 +4882,7 @@ bool tryApplyRealScalarPowNegFractional(
     return false;
   }
   SmInt valueInt = 0;
-  if (TryGetExactSignedIntNoUIntWrapScalarStrict(leftS, valueInt)) {
+  if (tryGetExactSignedIntNoSmUIntWrapScalarStrict(leftS, valueInt)) {
     if (valueInt != kIntMin) {
       SmFloat realR = 0.0;
       if (tryPowFloatGuess(valueInt, leftS.scalar, p, realR)) {
@@ -4777,9 +4931,9 @@ bool tryRefinePowPrincipalToExactScalarResult(
     return false;
   }
   SmInt valueInt = 0;
-  const bool hasSigned = TryGetExactSignedIntNoUIntWrapScalarStrict(leftS, valueInt);
+  const bool hasSigned = tryGetExactSignedIntNoSmUIntWrapScalarStrict(leftS, valueInt);
   SmUInt inpU = 0;
-  const bool hasUInt = tryGetExactNonNegativeUIntFromScalar(leftS, inpU);
+  const bool hasUInt = tryGetExactNonNegativeSmUIntFromScalar(leftS, inpU);
 
   if (p > 0.0 && p < 1.0) {
     SmInt nRoot = 0;
@@ -4790,7 +4944,10 @@ bool tryRefinePowPrincipalToExactScalarResult(
       if (std::fabs(powR) > kEps) {
         return false;
       }
-      const SmInt rootCand = static_cast<SmInt>(std::round(powI));
+      SmInt rootCand = 0;
+      if (!tryRoundFloatToSmInt(powI, rootCand)) {
+        return false;
+      }
       SmInt verifyBase = valueInt;
       if (nRoot == 2 && valueInt != kIntMin) {
         verifyBase = -valueInt;
@@ -4807,7 +4964,10 @@ bool tryRefinePowPrincipalToExactScalarResult(
       if (std::fabs(powI) > kEps) {
         return false;
       }
-      const SmInt rootCand = static_cast<SmInt>(std::round(powR));
+      SmInt rootCand = 0;
+      if (!tryRoundFloatToSmInt(powR, rootCand)) {
+        return false;
+      }
       if (!tryPowVerifyRootExactValue(valueInt, rootCand, nRoot)) {
         return false;
       }
@@ -4818,12 +4978,15 @@ bool tryRefinePowPrincipalToExactScalarResult(
       if (std::fabs(powI) > kEps) {
         return false;
       }
-      const SmUInt rootCand = static_cast<SmUInt>(std::round(powR));
-      SmUInt recon = 0;
-      if (!tryPowUIntChecked(rootCand, static_cast<SmUInt>(nRoot), recon) || recon != inpU) {
+      SmUInt rootCand = 0;
+      if (!tryRoundFloatToSmUInt(powR, rootCand)) {
         return false;
       }
-      outV = makeScalarUIntPreferInt(rootCand);
+      SmUInt recon = 0;
+      if (!tryPowSmUIntChecked(rootCand, static_cast<SmUInt>(nRoot), recon) || recon != inpU) {
+        return false;
+      }
+      outV = makeScalarSmUIntPreferInt(rootCand);
       return true;
     }
     return false;
@@ -4837,12 +5000,12 @@ bool tryRefinePowPrincipalToExactScalarResult(
       return false;
     }
     SmInt powResult = 0;
-    if (!tryRoundFloatToSInt(powR, powResult)) {
+    if (!tryRoundFloatToSmInt(powR, powResult)) {
       return false;
     }
     if (hasSigned) {
       SmInt recon = 0;
-      if (!tryPowSIntChecked(valueInt, nExp, recon) || recon != powResult) {
+      if (!tryPowSmIntChecked(valueInt, nExp, recon) || recon != powResult) {
         return false;
       }
       outV = makeScalarInt(powResult);
@@ -4850,7 +5013,7 @@ bool tryRefinePowPrincipalToExactScalarResult(
     }
     if (hasUInt) {
       SmUInt recon = 0;
-      if (!tryPowUIntChecked(inpU, static_cast<SmUInt>(nExp), recon) ||
+      if (!tryPowSmUIntChecked(inpU, static_cast<SmUInt>(nExp), recon) ||
           recon != static_cast<SmUInt>(powResult)) {
         return false;
       }
@@ -4858,7 +5021,7 @@ bool tryRefinePowPrincipalToExactScalarResult(
           static_cast<SmUInt>(kIntMax)) {
         outV = makeScalarInt(powResult);
       } else {
-        outV = makeScalarUInt(static_cast<SmUInt>(powResult));
+        outV = makeScalarSmUInt(static_cast<SmUInt>(powResult));
       }
       return true;
     }
@@ -4873,16 +5036,16 @@ bool tryVerifyComplexCartesianSquareExact(
   SmInt ri = 0;
   SmInt sqR = 0;
   SmInt sqI = 0;
-  if (!TryMulExactSIntSquare(rootR, rr) || !TryMulExactSIntSquare(rootI, ii)) {
+  if (!tryMulExactSmIntSquare(rootR, rr) || !tryMulExactSmIntSquare(rootI, ii)) {
     return false;
   }
-  if (!checkedSubLL(rr, ii, sqR)) {
+  if (!trySubSmIntChecked(rr, ii, sqR)) {
     return false;
   }
-  if (!tryMulSIntChecked(rootR, rootI, ri)) {
+  if (!tryMulSmIntChecked(rootR, rootI, ri)) {
     return false;
   }
-  if (!tryAddSIntChecked(ri, ri, sqI)) {
+  if (!tryAddSmIntChecked(ri, ri, sqI)) {
     return false;
   }
   return sqR == expR && sqI == expI;
@@ -4903,11 +5066,14 @@ bool tryRefineSqrtPrincipalToExactComplex(
   }
   SmInt arI = 0;
   SmInt aiI = 0;
-  if (!TryExactCartesianComponentToSInt(reC, arI) || !TryExactCartesianComponentToSInt(imC, aiI)) {
+  if (!tryExactCartesianComponentToSmInt(reC, arI) || !tryExactCartesianComponentToSmInt(imC, aiI)) {
     return false;
   }
-  const SmInt rootRi = static_cast<SmInt>(std::round(sqrtR));
-  const SmInt rootIi = static_cast<SmInt>(std::round(sqrtI));
+  SmInt rootRi = 0;
+  SmInt rootIi = 0;
+  if (!tryRoundFloatToSmInt(sqrtR, rootRi) || !tryRoundFloatToSmInt(sqrtI, rootIi)) {
+    return false;
+  }
   if (!tryVerifyComplexCartesianSquareExact(rootRi, rootIi, arI, aiI)) {
     return false;
   }
@@ -4940,14 +5106,14 @@ EvalValue applySqrtComplexPrincipalUnary(const EvalValue::ScalarValue& inS) {
 
 bool tryGetExactSignedIntFromScalar(const EvalValue::ScalarValue& s, SmInt& outI) {
   return tryGetExactSignedIntFromScalarPolicy(
-      s, outI, ExactSignedIntPolicy::AllowUIntBitReinterpret);
+      s, outI, ExactSignedIntPolicy::AllowSmUIntBitReinterpret);
 }
 
-bool tryGetExactSignedIntNoUIntWrapFromScalar(const EvalValue::ScalarValue& s, SmInt& outI) {
-  return tryGetExactSignedIntFromScalarPolicy(s, outI, ExactSignedIntPolicy::NoUIntWrap);
+bool tryGetExactSignedIntNoSmUIntWrapFromScalar(const EvalValue::ScalarValue& s, SmInt& outI) {
+  return tryGetExactSignedIntFromScalarPolicy(s, outI, ExactSignedIntPolicy::NoSmUIntWrap);
 }
 
-bool tryGetExactNonNegativeUIntFromScalar(const EvalValue::ScalarValue& s, SmUInt& outU) {
+bool tryGetExactNonNegativeSmUIntFromScalar(const EvalValue::ScalarValue& s, SmUInt& outU) {
   if (s.scalarKind == ScalarKind::Time) {
     return false;
   }
@@ -4958,40 +5124,40 @@ bool tryGetExactNonNegativeUIntFromScalar(const EvalValue::ScalarValue& s, SmUIn
 #endif
   EvalValue::ScalarValue sv = s;
   scalarRepairExactMetadata(sv);
-  if (sv.hasExactUInt() || sv.scalarKind == ScalarKind::UInt) {
+  if (sv.hasExactSmUInt() || sv.scalarKind == ScalarKind::SmUInt) {
     outU = sv.exactUInt;
     return true;
   }
-  if (sv.hasExactSInt() && sv.exactSInt >= 0) {
-    outU = static_cast<SmUInt>(sv.exactSInt);
+  if (sv.hasExactSmInt() && sv.exactInt >= 0) {
+    outU = static_cast<SmUInt>(sv.exactInt);
     return true;
   }
-  if (sv.scalarKind == ScalarKind::SInt && sv.exactSInt >= 0) {
-    outU = static_cast<SmUInt>(sv.exactSInt);
+  if (sv.scalarKind == ScalarKind::SmInt && sv.exactInt >= 0) {
+    outU = static_cast<SmUInt>(sv.exactInt);
     return true;
   }
   return false;
 }
 
-bool tryGetBothExactSignedIntNoUIntWrapFromScalars(
+bool tryGetBothExactSignedIntNoSmUIntWrapFromScalars(
     const EvalValue::ScalarValue& a,
     const EvalValue::ScalarValue& b,
     SmInt& outA,
     SmInt& outB) {
-  return tryGetExactSignedIntNoUIntWrapFromScalar(a, outA) &&
-         tryGetExactSignedIntNoUIntWrapFromScalar(b, outB);
+  return tryGetExactSignedIntNoSmUIntWrapFromScalar(a, outA) &&
+         tryGetExactSignedIntNoSmUIntWrapFromScalar(b, outB);
 }
 
-bool tryGetBothExactNonNegativeUIntFromScalars(
+bool tryGetBothExactNonNegativeSmUIntFromScalars(
     const EvalValue::ScalarValue& a,
     const EvalValue::ScalarValue& b,
     SmUInt& outA,
     SmUInt& outB) {
-  return tryGetExactNonNegativeUIntFromScalar(a, outA) &&
-         tryGetExactNonNegativeUIntFromScalar(b, outB);
+  return tryGetExactNonNegativeSmUIntFromScalar(a, outA) &&
+         tryGetExactNonNegativeSmUIntFromScalar(b, outB);
 }
 
-bool tryShiftLeftU64ExactOrMaybe(
+bool tryShiftLeftSmUIntExactOrMaybe(
     SmUInt aU,
     SmUInt bU,
     EvalValue& outV) {
@@ -5000,7 +5166,7 @@ bool tryShiftLeftU64ExactOrMaybe(
     outV = makeScalarMaybeExact(std::ldexp(static_cast<SmFloat>(aU), static_cast<int>(bU)));
     return true;
   }
-  outV = makeScalarUInt(aU << bU);
+  outV = makeScalarSmUInt(aU << bU);
   return true;
 }
 
@@ -5011,11 +5177,11 @@ bool tryGetSignedIntFromScalar(const EvalValue::ScalarValue& s, SmInt& outI) {
   if (tryGetExactSignedIntFromScalar(s, outI)) {
     return true;
   }
-  return tryExtractExactSIntFromFloatStrict(s.scalar, outI);
+  return tryExtractExactSmIntFromFloatStrict(s.scalar, outI);
 }
 
 bool tryGetExactSignMagnitudeFromScalar(const EvalValue::ScalarValue& s, bool& isNeg, SmUInt& mag) {
-  if (tryGetExactNonNegativeUIntFromScalar(s, mag)) {
+  if (tryGetExactNonNegativeSmUIntFromScalar(s, mag)) {
     isNeg = false;
     return true;
   }
@@ -5024,22 +5190,22 @@ bool tryGetExactSignMagnitudeFromScalar(const EvalValue::ScalarValue& s, bool& i
     return false;
   }
   isNeg = i < 0;
-  mag = uintMagnitudeOfSInt(i);
+  mag = uintMagnitudeOfSmInt(i);
   return true;
 }
 
 EvalValue makeScalarFromSignMagnitude(bool isNeg, SmUInt mag) {
   if (isNeg && mag != 0u) {
-    return makeScalarInt(sintFromNegatedMagnitude(mag));
+    return makeScalarInt(smIntFromNegatedMagnitude(mag));
   }
-  return makeScalarUIntPreferInt(mag);
+  return makeScalarSmUIntPreferInt(mag);
 }
 
-bool parseUIntFromFloat(SmFloat v, SmUInt& out) {
+bool parseSmUIntFromFloat(SmFloat v, SmUInt& out) {
   if (!isWithinExactIntFromFloatRange(v) || v < 0.0) {
     return false;
   }
-  if (!isFloatInUIntRange(v)) {
+  if (!isFloatInSmUIntRange(v)) {
     return false;
   }
   const SmUInt u = static_cast<SmUInt>(v);
@@ -5053,18 +5219,18 @@ bool parseUIntFromFloat(SmFloat v, SmUInt& out) {
 EvalValue makeScalar(SmFloat v) {
   EvalValue out;
   out.kind = ValueKind::Scalar;
-  out.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+  out.scalarValue.scalarKind = ScalarKind::SmFloatingPoint;
   out.scalarValue.scalar = v;
-  out.scalarValue.setExactSIntValid(false);
-  out.scalarValue.exactSInt = 0;
-  out.scalarValue.setExactUIntValid(false);
+  out.scalarValue.setExactSmIntValid(false);
+  out.scalarValue.exactInt = 0;
+  out.scalarValue.setExactSmUIntValid(false);
   out.scalarValue.exactUInt = 0;
-  out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.setDecScientificSmIntBoundHigh(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactSInt = 0;
+  out.scalarValue.imagExactInt = 0;
   out.scalarValue.imagExactUInt = 0;
-  out.scalarValue.setImagExactSIntValid(false);
-  out.scalarValue.setImagExactUIntValid(false);
+  out.scalarValue.setImagExactSmIntValid(false);
+  out.scalarValue.setImagExactSmUIntValid(false);
   return out;
 }
 
@@ -5072,30 +5238,30 @@ EvalValue makeScalar(SmFloat v) {
 void scalarClearCartesianRenderExact(EvalValue::ScalarValue& s) {
   s.setRenderRational(false);
   s.setImagRenderRational(false);
-  s.setExactUIntValid(false);
-  s.setImagExactUIntValid(false);
+  s.setExactSmUIntValid(false);
+  s.setImagExactSmUIntValid(false);
 }
 #endif
 
 void scalarClearImaginary(EvalValue::ScalarValue& s) {
   s.imag = 0.0;
-  s.imagExactSInt = 0;
+  s.imagExactInt = 0;
   s.imagExactUInt = 0;
-  s.setImagExactSIntValid(false);
-  s.setImagExactUIntValid(false);
+  s.setImagExactSmIntValid(false);
+  s.setImagExactSmUIntValid(false);
 }
 
 #if SMARTMATH_COMPLEX_NUMBERS
-void ScalarApplyExactSIntPart(EvalValue::ScalarValue& s, bool imagPart, SmInt n) {
+void scalarApplyExactSmIntPart(EvalValue::ScalarValue& s, bool imagPart, SmInt n) {
   if (imagPart) {
-    s.imagExactSInt = n;
-    s.setImagExactSIntValid(true);
-    s.setImagExactUIntValid(false);
+    s.imagExactInt = n;
+    s.setImagExactSmIntValid(true);
+    s.setImagExactSmUIntValid(false);
     s.setImagRenderRational(false);
   } else {
-    s.exactSInt = n;
-    s.setExactSIntValid(true);
-    s.setExactUIntValid(false);
+    s.exactInt = n;
+    s.setExactSmIntValid(true);
+    s.setExactSmUIntValid(false);
     s.setRenderRational(false);
   }
 }
@@ -5105,21 +5271,21 @@ void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, Sm
                                                 SmUInt den) {
   SmInt n = num;
   SmUInt d = den;
-  const SmInt g = GcdSInt(n, static_cast<SmInt>(d));
+  const SmInt g = gcdSmInt(n, static_cast<SmInt>(d));
   if (g > 0) {
     n /= g;
     d = static_cast<SmUInt>(static_cast<SmInt>(d) / g);
   }
 #if SMARTMATH_COMPLEX_NUMBERS
   if (imagPart) {
-    s.imagExactSInt = n;
-    s.setImagExactSIntValid(true);
+    s.imagExactInt = n;
+    s.setImagExactSmIntValid(true);
     if (d == 1u) {
-      s.setImagExactUIntValid(false);
+      s.setImagExactSmUIntValid(false);
       s.setImagRenderRational(false);
     } else {
       s.imagExactUInt = d;
-      s.setImagExactUIntValid(true);
+      s.setImagExactSmUIntValid(true);
       s.setImagRenderRational(true);
     }
     return;
@@ -5127,14 +5293,14 @@ void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, Sm
 #else
   (void)imagPart;
 #endif
-  s.exactSInt = n;
-  s.setExactSIntValid(true);
+  s.exactInt = n;
+  s.setExactSmIntValid(true);
   if (d == 1u) {
-    s.setExactUIntValid(false);
+    s.setExactSmUIntValid(false);
     s.setRenderRational(false);
   } else {
     s.exactUInt = d;
-    s.setExactUIntValid(true);
+    s.setExactSmUIntValid(true);
     s.setRenderRational(true);
   }
 }
@@ -5142,14 +5308,14 @@ void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, Sm
 #if SMARTMATH_COMPLEX_NUMBERS
 EvalValue makeImaginaryUnit() {
   EvalValue out = makeScalarComplexFromFloats(0.0, 1.0);
-  out.scalarValue.scalarKind = ScalarKind::SInt;
-  out.scalarValue.setExactSIntValid(true);
-  out.scalarValue.exactSInt = 0;
-  out.scalarValue.setExactUIntValid(true);
+  out.scalarValue.scalarKind = ScalarKind::SmInt;
+  out.scalarValue.setExactSmIntValid(true);
+  out.scalarValue.exactInt = 0;
+  out.scalarValue.setExactSmUIntValid(true);
   out.scalarValue.exactUInt = 0;
-  out.scalarValue.setImagExactSIntValid(true);
-  out.scalarValue.imagExactSInt = 1;
-  out.scalarValue.setImagExactUIntValid(true);
+  out.scalarValue.setImagExactSmIntValid(true);
+  out.scalarValue.imagExactInt = 1;
+  out.scalarValue.setImagExactSmUIntValid(true);
   out.scalarValue.imagExactUInt = 1u;
   out.scalarValue.scalar = 0.0;
   out.scalarValue.imag = 1.0;
@@ -5167,32 +5333,32 @@ EvalValue makeScalarComplexFromFloats(SmFloat re, SmFloat im) {
   out.scalarValue.setRenderIntPower(false);
 #endif
   out.scalarValue.imag = im;
-  out.scalarValue.setImagExactSIntValid(false);
-  out.scalarValue.setImagExactUIntValid(false);
-  out.scalarValue.imagExactSInt = 0;
+  out.scalarValue.setImagExactSmIntValid(false);
+  out.scalarValue.setImagExactSmUIntValid(false);
+  out.scalarValue.imagExactInt = 0;
   out.scalarValue.imagExactUInt = 0;
   SmInt tri = 0;
   SmInt tii = 0;
-  if (tryExtractExactSIntFromFloatStrict(re, tri)) {
-    out.scalarValue.scalarKind = ScalarKind::SInt;
-    out.scalarValue.setExactSIntValid(true);
-    out.scalarValue.exactSInt = tri;
+  if (tryExtractExactSmIntFromFloatStrict(re, tri)) {
+    out.scalarValue.scalarKind = ScalarKind::SmInt;
+    out.scalarValue.setExactSmIntValid(true);
+    out.scalarValue.exactInt = tri;
     if (tri >= 0) {
-      out.scalarValue.setExactUIntValid(true);
+      out.scalarValue.setExactSmUIntValid(true);
       out.scalarValue.exactUInt = static_cast<SmUInt>(tri);
     } else {
-      out.scalarValue.setExactUIntValid(false);
+      out.scalarValue.setExactSmUIntValid(false);
       out.scalarValue.exactUInt = 0;
     }
   }
-  if (tryExtractExactSIntFromFloatStrict(im, tii)) {
-    out.scalarValue.setImagExactSIntValid(true);
-    out.scalarValue.imagExactSInt = tii;
+  if (tryExtractExactSmIntFromFloatStrict(im, tii)) {
+    out.scalarValue.setImagExactSmIntValid(true);
+    out.scalarValue.imagExactInt = tii;
     if (tii >= 0) {
-      out.scalarValue.setImagExactUIntValid(true);
+      out.scalarValue.setImagExactSmUIntValid(true);
       out.scalarValue.imagExactUInt = static_cast<SmUInt>(tii);
     } else {
-      out.scalarValue.setImagExactUIntValid(false);
+      out.scalarValue.setImagExactSmUIntValid(false);
       out.scalarValue.imagExactUInt = 0;
     }
   }
@@ -5210,7 +5376,7 @@ void exactCartesianComponentClear(ExactCartesianComponent& c) {
   c.uintV = 0;
 }
 
-void ExactCartesianComponentAssignFromSignedInt(ExactCartesianComponent& c, SmInt n) {
+void exactCartesianComponentAssignFromSignedInt(ExactCartesianComponent& c, SmInt n) {
   exactCartesianComponentClear(c);
   c.hasInt = true;
   c.intV = n;
@@ -5218,7 +5384,7 @@ void ExactCartesianComponentAssignFromSignedInt(ExactCartesianComponent& c, SmIn
   c.uintV = static_cast<SmUInt>(n);
 }
 
-void ExactCartesianComponentAssignFromUInt(ExactCartesianComponent& c, SmUInt u) {
+void exactCartesianComponentAssignFromSmUInt(ExactCartesianComponent& c, SmUInt u) {
   exactCartesianComponentClear(c);
   c.hasUInt = true;
   c.uintV = u;
@@ -5232,21 +5398,21 @@ bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesi
   if (sv.hasRenderRational()) {
     return false;
   }
-  if (sv.hasExactSInt()) {
-    ExactCartesianComponentAssignFromSignedInt(c, sv.exactSInt);
-    if (sv.exactSInt < 0 && sv.hasExactUInt()) {
+  if (sv.hasExactSmInt()) {
+    exactCartesianComponentAssignFromSignedInt(c, sv.exactInt);
+    if (sv.exactInt < 0 && sv.hasExactSmUInt()) {
       c.hasUInt = true;
       c.uintV = sv.exactUInt;
     }
     return true;
   }
-  if (sv.hasExactUInt()) {
-    ExactCartesianComponentAssignFromUInt(c, sv.exactUInt);
+  if (sv.hasExactSmUInt()) {
+    exactCartesianComponentAssignFromSmUInt(c, sv.exactUInt);
     return true;
   }
   SmInt t = 0;
-  if (tryExtractExactSIntFromFloatStrict(sv.scalar, t)) {
-    ExactCartesianComponentAssignFromSignedInt(c, t);
+  if (tryExtractExactSmIntFromFloatStrict(sv.scalar, t)) {
+    exactCartesianComponentAssignFromSignedInt(c, t);
     return true;
   }
   exactCartesianComponentClear(c);
@@ -5295,7 +5461,7 @@ void complexCartesianBinary(SmFloat ar, SmFloat ai, SmFloat br, SmFloat bi, char
   }
 }
 
-bool TryExactCartesianComponentToSInt(const ExactCartesianComponent& c, SmInt& outI) {
+bool tryExactCartesianComponentToSmInt(const ExactCartesianComponent& c, SmInt& outI) {
   if (c.hasInt) {
     outI = c.intV;
     return true;
@@ -5319,35 +5485,35 @@ bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue
   if (sv.hasImagRenderRational()) {
     return false;
   }
-  if (sv.hasImagExactSInt()) {
-    if (sv.imagExactSInt == 0 && sv.imag != 0.0) {
+  if (sv.hasImagExactSmInt()) {
+    if (sv.imagExactInt == 0 && sv.imag != 0.0) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(c, sv.imagExactSInt);
-    if (sv.imagExactSInt < 0 && sv.hasImagExactUInt()) {
+    exactCartesianComponentAssignFromSignedInt(c, sv.imagExactInt);
+    if (sv.imagExactInt < 0 && sv.hasImagExactSmUInt()) {
       c.hasUInt = true;
       c.uintV = sv.imagExactUInt;
     }
     return true;
   }
-  if (sv.hasImagExactUInt()) {
+  if (sv.hasImagExactSmUInt()) {
     if (sv.imagExactUInt == 0u && sv.imag != 0.0) {
       return false;
     }
-    ExactCartesianComponentAssignFromUInt(c, sv.imagExactUInt);
+    exactCartesianComponentAssignFromSmUInt(c, sv.imagExactUInt);
     return true;
   }
   if (imagExactMetadataMatchesFloat(sv)) {
-    if (sv.hasImagExactSIntMetadata()) {
-      ExactCartesianComponentAssignFromSignedInt(c, sv.imagExactSInt);
-      if (sv.imagExactSInt < 0 && sv.hasImagExactUIntMetadata()) {
+    if (sv.hasImagExactSmIntMetadata()) {
+      exactCartesianComponentAssignFromSignedInt(c, sv.imagExactInt);
+      if (sv.imagExactInt < 0 && sv.hasImagExactSmUIntMetadata()) {
         c.hasUInt = true;
         c.uintV = sv.imagExactUInt;
       }
       return true;
     }
-    if (sv.hasImagExactUIntMetadata()) {
-      ExactCartesianComponentAssignFromUInt(c, sv.imagExactUInt);
+    if (sv.hasImagExactSmUIntMetadata()) {
+      exactCartesianComponentAssignFromSmUInt(c, sv.imagExactUInt);
       return true;
     }
   }
@@ -5356,11 +5522,11 @@ bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue
     return true;
   }
   SmInt t = 0;
-  if (tryExtractExactSIntFromFloatStrict(sv.imag, t)) {
+  if (tryExtractExactSmIntFromFloatStrict(sv.imag, t)) {
     if (t == 0 && sv.imag != 0.0) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(c, t);
+    exactCartesianComponentAssignFromSignedInt(c, t);
     return true;
   }
   exactCartesianComponentClear(c);
@@ -5375,39 +5541,39 @@ bool tryExtractExactImagComponent(const EvalValue::ScalarValue& sv, ExactCartesi
 void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComponent& c) {
   v.kind = ValueKind::Scalar;
   if (c.hasInt) {
-    v.scalarValue.scalarKind = ScalarKind::SInt;
+    v.scalarValue.scalarKind = ScalarKind::SmInt;
     v.scalarValue.scalar = static_cast<SmFloat>(c.intV);
-    v.scalarValue.setExactSIntValid(true);
-    v.scalarValue.exactSInt = c.intV;
+    v.scalarValue.setExactSmIntValid(true);
+    v.scalarValue.exactInt = c.intV;
     if (c.intV >= 0) {
-      v.scalarValue.setExactUIntValid(true);
+      v.scalarValue.setExactSmUIntValid(true);
       v.scalarValue.exactUInt = static_cast<SmUInt>(c.intV);
     } else if (c.hasUInt) {
-      v.scalarValue.setExactUIntValid(true);
+      v.scalarValue.setExactSmUIntValid(true);
       v.scalarValue.exactUInt = c.uintV;
     } else {
-      v.scalarValue.setExactUIntValid(false);
+      v.scalarValue.setExactSmUIntValid(false);
       v.scalarValue.exactUInt = 0;
     }
   } else if (c.hasUInt) {
-    v.scalarValue.scalarKind = ScalarKind::UInt;
+    v.scalarValue.scalarKind = ScalarKind::SmUInt;
     v.scalarValue.scalar = static_cast<SmFloat>(c.uintV);
-    v.scalarValue.setExactUIntValid(true);
+    v.scalarValue.setExactSmUIntValid(true);
     v.scalarValue.exactUInt = c.uintV;
     if (c.uintV <= static_cast<SmUInt>(kIntMax)) {
-      v.scalarValue.setExactSIntValid(true);
-      v.scalarValue.exactSInt = static_cast<SmInt>(c.uintV);
+      v.scalarValue.setExactSmIntValid(true);
+      v.scalarValue.exactInt = static_cast<SmInt>(c.uintV);
     } else {
-      v.scalarValue.setExactSIntValid(false);
-      v.scalarValue.exactSInt = 0;
+      v.scalarValue.setExactSmIntValid(false);
+      v.scalarValue.exactInt = 0;
     }
   } else {
-    v.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+    v.scalarValue.scalarKind = ScalarKind::SmFloatingPoint;
     v.scalarValue.scalar = 0.0;
-    v.scalarValue.setExactSIntValid(false);
-    v.scalarValue.setExactUIntValid(false);
+    v.scalarValue.setExactSmIntValid(false);
+    v.scalarValue.setExactSmUIntValid(false);
   }
-  v.scalarValue.setDecScientificPow63High(false);
+  v.scalarValue.setDecScientificSmIntBoundHigh(false);
   scalarClearImaginary(v.scalarValue);
 }
 
@@ -5415,26 +5581,26 @@ void setScalarFromExactCartesianComponent(EvalValue& v, const ExactCartesianComp
 void scalarApplyExactImagFromCartesianComponent(EvalValue::ScalarValue& sv,
                                                           const ExactCartesianComponent& c) {
   sv.imag = 0.0;
-  sv.imagExactSInt = 0;
+  sv.imagExactInt = 0;
   sv.imagExactUInt = 0;
-  sv.setImagExactSIntValid(false);
-  sv.setImagExactUIntValid(false);
+  sv.setImagExactSmIntValid(false);
+  sv.setImagExactSmUIntValid(false);
   if (!c.hasInt && !c.hasUInt) {
     return;
   }
   if (c.hasInt) {
-    sv.setImagExactSIntValid(true);
-    sv.imagExactSInt = c.intV;
+    sv.setImagExactSmIntValid(true);
+    sv.imagExactInt = c.intV;
     sv.imag = static_cast<SmFloat>(c.intV);
-    sv.setImagExactUIntValid(true);
+    sv.setImagExactSmUIntValid(true);
     sv.imagExactUInt = c.hasUInt ? c.uintV : static_cast<SmUInt>(c.intV);
   } else {
-    sv.setImagExactUIntValid(true);
+    sv.setImagExactSmUIntValid(true);
     sv.imagExactUInt = c.uintV;
     sv.imag = static_cast<SmFloat>(c.uintV);
     if (c.uintV <= static_cast<SmUInt>(kIntMax)) {
-      sv.setImagExactSIntValid(true);
-      sv.imagExactSInt = static_cast<SmInt>(c.uintV);
+      sv.setImagExactSmIntValid(true);
+      sv.imagExactInt = static_cast<SmInt>(c.uintV);
     }
   }
 }
@@ -5456,21 +5622,21 @@ bool tryApplyExactCartesianBinaryOp(bool isAdd, const ExactCartesianComponent& a
   SmInt ai = 0;
   SmInt bi = 0;
   SmInt oi = 0;
-  if (TryExactCartesianComponentToSInt(a, ai) && TryExactCartesianComponentToSInt(b, bi)) {
+  if (tryExactCartesianComponentToSmInt(a, ai) && tryExactCartesianComponentToSmInt(b, bi)) {
     if (isAdd) {
-      if (!checkedAddLL(ai, bi, oi)) {
+      if (!tryAddSmIntChecked(ai, bi, oi)) {
         return false;
       }
-    } else if (!checkedSubLL(ai, bi, oi)) {
+    } else if (!trySubSmIntChecked(ai, bi, oi)) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(out, oi);
+    exactCartesianComponentAssignFromSignedInt(out, oi);
     return true;
   }
   if (isAdd && a.hasUInt && b.hasUInt) {
     SmUInt ou = 0;
-    if (tryAddUIntChecked(a.uintV, b.uintV, ou)) {
-      ExactCartesianComponentAssignFromUInt(out, ou);
+    if (tryAddSmUIntChecked(a.uintV, b.uintV, ou)) {
+      exactCartesianComponentAssignFromSmUInt(out, ou);
       return true;
     }
   }
@@ -5478,7 +5644,7 @@ bool tryApplyExactCartesianBinaryOp(bool isAdd, const ExactCartesianComponent& a
 }
 #endif
 
-bool TryQuotExactSInt(SmInt num, SmInt den, SmInt& quo) {
+bool tryQuotExactSmInt(SmInt num, SmInt den, SmInt& quo) {
   if (den == 0 || (den == -1 && num == kIntMin)) {
     return false;
   }
@@ -5486,7 +5652,7 @@ bool TryQuotExactSInt(SmInt num, SmInt den, SmInt& quo) {
   return quo * den == num;
 }
 
-bool tryMulUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
+bool tryMulSmUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
   if (b != 0u && a > (kUIntMax / b)) {
     return false;
   }
@@ -5494,16 +5660,16 @@ bool tryMulUIntChecked(SmUInt a, SmUInt b, SmUInt& out) {
   return true;
 }
 
-bool tryPowUIntChecked(SmUInt base, SmUInt exp, SmUInt& out) {
+bool tryPowSmUIntChecked(SmUInt base, SmUInt exp, SmUInt& out) {
   SmUInt r = 1;
   SmUInt b = base;
   SmUInt e = exp;
   while (e > 0u) {
-    if ((e & 1u) != 0u && !tryMulUIntChecked(r, b, r)) {
+    if ((e & 1u) != 0u && !tryMulSmUIntChecked(r, b, r)) {
       return false;
     }
     e >>= 1;
-    if (e > 0u && !tryMulUIntChecked(b, b, b)) {
+    if (e > 0u && !tryMulSmUIntChecked(b, b, b)) {
       return false;
     }
   }
@@ -5581,14 +5747,14 @@ bool verifyExactIntFloatOpCrossMultiply(
     SmInt resultSignedScaled = 0;
     SmInt lhs = 0;
     SmInt rhs = 0;
-    if (!checkedMulLL(resultSigned, signF, resultSignedScaled)) {
+    if (!tryMulSmIntChecked(resultSigned, signF, resultSignedScaled)) {
       return false;
     }
     if (isMultiply) {
-      if (!checkedMulLL(resultSignedScaled, ratB, lhs) || !checkedMulLL(intSigned, ratA, rhs)) {
+      if (!tryMulSmIntChecked(resultSignedScaled, ratB, lhs) || !tryMulSmIntChecked(intSigned, ratA, rhs)) {
         return false;
       }
-    } else if (!checkedMulLL(resultSignedScaled, ratA, lhs) || !checkedMulLL(intSigned, ratB, rhs)) {
+    } else if (!tryMulSmIntChecked(resultSignedScaled, ratA, lhs) || !tryMulSmIntChecked(intSigned, ratB, rhs)) {
       return false;
     }
     return lhs == rhs;
@@ -5596,12 +5762,12 @@ bool verifyExactIntFloatOpCrossMultiply(
   SmUInt lhs = 0;
   SmUInt rhs = 0;
   if (isMultiply) {
-    if (!tryMulUIntChecked(resultUnsigned, static_cast<SmUInt>(ratB), lhs) ||
-        !tryMulUIntChecked(intUnsigned, static_cast<SmUInt>(ratA), rhs)) {
+    if (!tryMulSmUIntChecked(resultUnsigned, static_cast<SmUInt>(ratB), lhs) ||
+        !tryMulSmUIntChecked(intUnsigned, static_cast<SmUInt>(ratA), rhs)) {
       return false;
     }
-  } else if (!tryMulUIntChecked(resultUnsigned, static_cast<SmUInt>(ratA), lhs) ||
-             !tryMulUIntChecked(intUnsigned, static_cast<SmUInt>(ratB), rhs)) {
+  } else if (!tryMulSmUIntChecked(resultUnsigned, static_cast<SmUInt>(ratA), lhs) ||
+             !tryMulSmUIntChecked(intUnsigned, static_cast<SmUInt>(ratB), rhs)) {
     return false;
   }
   return lhs == rhs;
@@ -5655,7 +5821,7 @@ bool tryPromoteExactIntFromFloatOp(
   if (kind == ScalarExactKind::Signed) {
     outV = makeScalarInt(resultSigned);
   } else {
-    outV = makeScalarUInt(resultUnsigned);
+    outV = makeScalarSmUInt(resultUnsigned);
   }
   return true;
 }
@@ -5667,7 +5833,7 @@ bool tryPromoteExactDivisionByFloatDivisorSigned(
 
 bool tryPromoteExactDivisionByFloatDivisorUnsigned(
     SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0LL, intU, f, r, false, outV);
+  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0, intU, f, r, false, outV);
 }
 
 bool tryPromoteExactMultiplicationByFloatFactorSigned(
@@ -5677,7 +5843,7 @@ bool tryPromoteExactMultiplicationByFloatFactorSigned(
 
 bool tryPromoteExactMultiplicationByFloatFactorUnsigned(
     SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0LL, intU, f, r, true, outV);
+  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0, intU, f, r, true, outV);
 }
 
 bool tryApplyExactIntFloatOpFromFloatSide(
@@ -5703,11 +5869,11 @@ bool tryApplyExactIntFloatOpFromFloatSide(
         const SmFloat inv = 1.0 / f;
         const SmFloat invRound = std::round(inv);
         if (invRound > 1.0 &&
-            invRound < kFloatUIntBound &&
+            invRound < kFloatSmUIntBound &&
             std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
           const SmUInt nU = static_cast<SmUInt>(invRound);
           if (nU != 0u && (intUnsigned % nU) == 0u) {
-            outV = makeScalarUInt(intUnsigned / nU);
+            outV = makeScalarSmUInt(intUnsigned / nU);
             return true;
           }
         }
@@ -5718,19 +5884,19 @@ bool tryApplyExactIntFloatOpFromFloatSide(
       const SmFloat inv = 1.0 / f;
       const SmFloat invRound = std::round(inv);
       if (std::fabs(invRound) > 1.0 &&
-          std::fabs(invRound) < kFloatUIntBound &&
+          std::fabs(invRound) < kFloatSmUIntBound &&
           std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
         if (invRound > 0.0) {
           const SmUInt nU = static_cast<SmUInt>(invRound);
           SmUInt qU = 0;
-          if (tryMulUIntChecked(intUnsigned, nU, qU)) {
-            outV = makeScalarUInt(qU);
+          if (tryMulSmUIntChecked(intUnsigned, nU, qU)) {
+            outV = makeScalarSmUInt(qU);
             return true;
           }
         } else if (invRound < 0.0) {
           const SmUInt nU = static_cast<SmUInt>(-invRound);
           SmUInt qU = 0;
-          if (tryMulUIntChecked(intUnsigned, nU, qU) &&
+          if (tryMulSmUIntChecked(intUnsigned, nU, qU) &&
               qU <= static_cast<SmUInt>(kIntMax)) {
             outV = makeScalarInt(-static_cast<SmInt>(qU));
             return true;
@@ -5750,7 +5916,7 @@ bool tryApplyExactIntFloatOpFromFloatSide(
       const SmFloat invAbs = std::fabs(inv);
       const SmFloat invRound = std::round(invAbs);
       if (invRound <= 1.0 ||
-          invRound >= kFloatSIntBound ||
+          invRound >= kFloatSmIntBound ||
           std::fabs(invAbs - invRound) > kEps * std::max(static_cast<SmFloat>(1), invAbs)) {
         return false;
       }
@@ -5775,19 +5941,19 @@ bool tryApplyExactIntFloatOpFromFloatSide(
     const SmFloat inv = 1.0 / f;
     const SmFloat invRound = std::round(inv);
     if (std::fabs(invRound) > 1.0 &&
-        std::fabs(invRound) < kFloatSIntBound &&
+        std::fabs(invRound) < kFloatSmIntBound &&
         std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
       const SmInt nI = static_cast<SmInt>(invRound);
       SmInt qI = 0;
-      if (checkedMulLL(intSigned, nI, qI)) {
+      if (tryMulSmIntChecked(intSigned, nI, qI)) {
         outV = makeScalarInt(qI);
         return true;
       }
       if (intSigned >= 0 && nI > 0) {
         const SmUInt nU = static_cast<SmUInt>(nI);
         SmUInt qU = 0;
-        if (tryMulUIntChecked(static_cast<SmUInt>(intSigned), nU, qU)) {
-          outV = makeScalarUInt(qU);
+        if (tryMulSmUIntChecked(static_cast<SmUInt>(intSigned), nU, qU)) {
+          outV = makeScalarSmUInt(qU);
           return true;
         }
       }
@@ -5843,14 +6009,14 @@ bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
     SmInt p4 = 0;
     SmInt oreI = 0;
     SmInt oimI = 0;
-    if (!TryExactCartesianComponentToSInt(lRe, lar) || !TryExactCartesianComponentToSInt(lIm, lai) ||
-        !TryExactCartesianComponentToSInt(rRe, lbr) || !TryExactCartesianComponentToSInt(rIm, lbi) ||
-        !checkedMulLL(lar, lbr, p1) || !checkedMulLL(lai, lbi, p2) || !checkedMulLL(lar, lbi, p3) ||
-        !checkedMulLL(lai, lbr, p4) || !checkedSubLL(p1, p2, oreI) || !checkedAddLL(p3, p4, oimI)) {
+    if (!tryExactCartesianComponentToSmInt(lRe, lar) || !tryExactCartesianComponentToSmInt(lIm, lai) ||
+        !tryExactCartesianComponentToSmInt(rRe, lbr) || !tryExactCartesianComponentToSmInt(rIm, lbi) ||
+        !tryMulSmIntChecked(lar, lbr, p1) || !tryMulSmIntChecked(lai, lbi, p2) || !tryMulSmIntChecked(lar, lbi, p3) ||
+        !tryMulSmIntChecked(lai, lbr, p4) || !trySubSmIntChecked(p1, p2, oreI) || !tryAddSmIntChecked(p3, p4, oimI)) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(oRe, oreI);
-    ExactCartesianComponentAssignFromSignedInt(oIm, oimI);
+    exactCartesianComponentAssignFromSignedInt(oRe, oreI);
+    exactCartesianComponentAssignFromSignedInt(oIm, oimI);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -5870,17 +6036,17 @@ bool tryApplyExactComplexCartesianBinary(const EvalValue::ScalarValue& leftS,
     SmInt denom = 0;
     SmInt qRe = 0;
     SmInt qIm = 0;
-    if (!TryExactCartesianComponentToSInt(lRe, lar) || !TryExactCartesianComponentToSInt(lIm, lai) ||
-        !TryExactCartesianComponentToSInt(rRe, lbr) || !TryExactCartesianComponentToSInt(rIm, lbi) ||
-        !checkedMulLL(lar, lbr, p1) || !checkedMulLL(lai, lbi, p2) || !checkedAddLL(p1, p2, numRe) ||
-        !checkedMulLL(lbr, lbr, p3) || !checkedMulLL(lbi, lbi, p4) || !checkedAddLL(p3, p4, denom) ||
-        denom == 0 || !checkedMulLL(lai, lbr, p5) || !checkedMulLL(lar, lbi, p6) ||
-        !checkedSubLL(p5, p6, numIm) || !TryQuotExactSInt(numRe, denom, qRe) ||
-        !TryQuotExactSInt(numIm, denom, qIm)) {
+    if (!tryExactCartesianComponentToSmInt(lRe, lar) || !tryExactCartesianComponentToSmInt(lIm, lai) ||
+        !tryExactCartesianComponentToSmInt(rRe, lbr) || !tryExactCartesianComponentToSmInt(rIm, lbi) ||
+        !tryMulSmIntChecked(lar, lbr, p1) || !tryMulSmIntChecked(lai, lbi, p2) || !tryAddSmIntChecked(p1, p2, numRe) ||
+        !tryMulSmIntChecked(lbr, lbr, p3) || !tryMulSmIntChecked(lbi, lbi, p4) || !tryAddSmIntChecked(p3, p4, denom) ||
+        denom == 0 || !tryMulSmIntChecked(lai, lbr, p5) || !tryMulSmIntChecked(lar, lbi, p6) ||
+        !trySubSmIntChecked(p5, p6, numIm) || !tryQuotExactSmInt(numRe, denom, qRe) ||
+        !tryQuotExactSmInt(numIm, denom, qIm)) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(oRe, qRe);
-    ExactCartesianComponentAssignFromSignedInt(oIm, qIm);
+    exactCartesianComponentAssignFromSignedInt(oRe, qRe);
+    exactCartesianComponentAssignFromSignedInt(oIm, qIm);
     setScalarComplexFromExactCartesian(outV, oRe, oIm);
     return true;
   }
@@ -5905,38 +6071,38 @@ void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::Scala
   const EvalValue::ScalarValue mag = magSv;
   outV = makeScalarInt(0);
   if (scalarHasExactIntegerPayload(mag)) {
-    if (mag.hasExactSInt()) {
-      outV.scalarValue.setImagExactSIntValid(true);
-      outV.scalarValue.imagExactSInt = mag.exactSInt;
-      if (mag.exactSInt >= 0) {
-        outV.scalarValue.setImagExactUIntValid(true);
-        outV.scalarValue.imagExactUInt = static_cast<SmUInt>(mag.exactSInt);
+    if (mag.hasExactSmInt()) {
+      outV.scalarValue.setImagExactSmIntValid(true);
+      outV.scalarValue.imagExactInt = mag.exactInt;
+      if (mag.exactInt >= 0) {
+        outV.scalarValue.setImagExactSmUIntValid(true);
+        outV.scalarValue.imagExactUInt = static_cast<SmUInt>(mag.exactInt);
       } else {
-        outV.scalarValue.setImagExactUIntValid(false);
+        outV.scalarValue.setImagExactSmUIntValid(false);
         outV.scalarValue.imagExactUInt = 0;
       }
-      outV.scalarValue.imag = static_cast<SmFloat>(mag.exactSInt);
-    } else if (mag.hasExactUInt()) {
-      outV.scalarValue.setImagExactUIntValid(true);
+      outV.scalarValue.imag = static_cast<SmFloat>(mag.exactInt);
+    } else if (mag.hasExactSmUInt()) {
+      outV.scalarValue.setImagExactSmUIntValid(true);
       outV.scalarValue.imagExactUInt = mag.exactUInt;
       outV.scalarValue.imag = static_cast<SmFloat>(mag.exactUInt);
       if (mag.exactUInt <= static_cast<SmUInt>(kIntMax)) {
-        outV.scalarValue.setImagExactSIntValid(true);
-        outV.scalarValue.imagExactSInt = static_cast<SmInt>(mag.exactUInt);
+        outV.scalarValue.setImagExactSmIntValid(true);
+        outV.scalarValue.imagExactInt = static_cast<SmInt>(mag.exactUInt);
       } else {
-        outV.scalarValue.setImagExactSIntValid(false);
-        outV.scalarValue.imagExactSInt = 0;
+        outV.scalarValue.setImagExactSmIntValid(false);
+        outV.scalarValue.imagExactInt = 0;
       }
     } else {
       outV.scalarValue.imag = mag.scalar;
-      outV.scalarValue.setImagExactSIntValid(false);
-      outV.scalarValue.setImagExactUIntValid(false);
+      outV.scalarValue.setImagExactSmIntValid(false);
+      outV.scalarValue.setImagExactSmUIntValid(false);
     }
   } else {
     outV.scalarValue.imag = mag.scalar;
-    outV.scalarValue.setImagExactSIntValid(false);
-    outV.scalarValue.setImagExactUIntValid(false);
-    outV.scalarValue.imagExactSInt = 0;
+    outV.scalarValue.setImagExactSmIntValid(false);
+    outV.scalarValue.setImagExactSmUIntValid(false);
+    outV.scalarValue.imagExactInt = 0;
     outV.scalarValue.imagExactUInt = 0;
   }
   scalarRepairExactMetadata(outV.scalarValue);
@@ -5944,17 +6110,17 @@ void setPureImaginaryFromMagnitudeScalar(EvalValue& outV, const EvalValue::Scala
 
 bool tryNegateExactCartesianComponent(const ExactCartesianComponent& c, ExactCartesianComponent& outC) {
   SmInt i = 0;
-  if (TryExactCartesianComponentToSInt(c, i)) {
+  if (tryExactCartesianComponentToSmInt(c, i)) {
     if (i == kIntMin) {
       return false;
     }
-    ExactCartesianComponentAssignFromSignedInt(outC, -i);
+    exactCartesianComponentAssignFromSignedInt(outC, -i);
     return true;
   }
   if (c.hasUInt) {
     return false;
   }
-  ExactCartesianComponentAssignFromSignedInt(outC, 0);
+  exactCartesianComponentAssignFromSignedInt(outC, 0);
   return true;
 }
 
@@ -6025,12 +6191,12 @@ bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, Eva
   SmInt qRe = 0;
   SmInt qIm = 0;
   if (!tryExtractExactRealComponent(sumV.scalarValue, lRe) || !tryExtractExactImagComponent(sumV.scalarValue, lIm) ||
-      !TryExactCartesianComponentToSInt(lRe, reI) || !TryExactCartesianComponentToSInt(lIm, imI) ||
-      !TryQuotExactSInt(reI, n, qRe) || !TryQuotExactSInt(imI, n, qIm)) {
+      !tryExactCartesianComponentToSmInt(lRe, reI) || !tryExactCartesianComponentToSmInt(lIm, imI) ||
+      !tryQuotExactSmInt(reI, n, qRe) || !tryQuotExactSmInt(imI, n, qIm)) {
     return false;
   }
-  ExactCartesianComponentAssignFromSignedInt(oRe, qRe);
-  ExactCartesianComponentAssignFromSignedInt(oIm, qIm);
+  exactCartesianComponentAssignFromSignedInt(oRe, qRe);
+  exactCartesianComponentAssignFromSignedInt(oIm, qIm);
   setScalarComplexFromExactCartesian(out, oRe, oIm);
   return true;
 }
@@ -6039,12 +6205,12 @@ bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, Eva
 EvalValue makeScalarMaybeExact(SmFloat v) {
   EvalValue out = makeScalar(v);
   SmInt asInt = 0;
-  if (tryExtractExactSIntFromFloatStrict(v, asInt)) {
-    out.scalarValue.scalarKind = ScalarKind::SInt;
-    out.scalarValue.setExactSIntValid(true);
-    out.scalarValue.exactSInt = asInt;
+  if (tryExtractExactSmIntFromFloatStrict(v, asInt)) {
+    out.scalarValue.scalarKind = ScalarKind::SmInt;
+    out.scalarValue.setExactSmIntValid(true);
+    out.scalarValue.exactInt = asInt;
     if (asInt >= 0) {
-      out.scalarValue.setExactUIntValid(true);
+      out.scalarValue.setExactSmUIntValid(true);
       out.scalarValue.exactUInt = static_cast<SmUInt>(asInt);
     }
   }
@@ -6054,49 +6220,49 @@ EvalValue makeScalarMaybeExact(SmFloat v) {
 EvalValue makeScalarInt(SmInt v) {
   EvalValue out;
   out.kind = ValueKind::Scalar;
-  out.scalarValue.scalarKind = ScalarKind::SInt;
+  out.scalarValue.scalarKind = ScalarKind::SmInt;
   out.scalarValue.scalar = static_cast<SmFloat>(v);
-  out.scalarValue.setExactSIntValid(true);
-  out.scalarValue.exactSInt = v;
-  out.scalarValue.setExactUIntValid(v >= 0);
+  out.scalarValue.setExactSmIntValid(true);
+  out.scalarValue.exactInt = v;
+  out.scalarValue.setExactSmUIntValid(v >= 0);
   out.scalarValue.exactUInt = (v >= 0) ? static_cast<SmUInt>(v) : 0;
-  out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.setDecScientificSmIntBoundHigh(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactSInt = 0;
+  out.scalarValue.imagExactInt = 0;
   out.scalarValue.imagExactUInt = 0;
-  out.scalarValue.setImagExactSIntValid(false);
-  out.scalarValue.setImagExactUIntValid(false);
+  out.scalarValue.setImagExactSmIntValid(false);
+  out.scalarValue.setImagExactSmUIntValid(false);
   return out;
 }
 
-EvalValue makeScalarUInt(SmUInt v) {
+EvalValue makeScalarSmUInt(SmUInt v) {
   EvalValue out;
   out.kind = ValueKind::Scalar;
-  out.scalarValue.scalarKind = ScalarKind::UInt;
+  out.scalarValue.scalarKind = ScalarKind::SmUInt;
   out.scalarValue.scalar = static_cast<SmFloat>(v);
-  out.scalarValue.setExactUIntValid(true);
+  out.scalarValue.setExactSmUIntValid(true);
   out.scalarValue.exactUInt = v;
   if (v <= static_cast<SmUInt>(kIntMax)) {
-    out.scalarValue.setExactSIntValid(true);
-    out.scalarValue.exactSInt = static_cast<SmInt>(v);
+    out.scalarValue.setExactSmIntValid(true);
+    out.scalarValue.exactInt = static_cast<SmInt>(v);
   } else {
-    out.scalarValue.setExactSIntValid(false);
-    out.scalarValue.exactSInt = 0;
+    out.scalarValue.setExactSmIntValid(false);
+    out.scalarValue.exactInt = 0;
   }
-  out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.setDecScientificSmIntBoundHigh(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactSInt = 0;
+  out.scalarValue.imagExactInt = 0;
   out.scalarValue.imagExactUInt = 0;
-  out.scalarValue.setImagExactSIntValid(false);
-  out.scalarValue.setImagExactUIntValid(false);
+  out.scalarValue.setImagExactSmIntValid(false);
+  out.scalarValue.setImagExactSmUIntValid(false);
   return out;
 }
 
-EvalValue makeScalarUIntPreferInt(SmUInt v) {
+EvalValue makeScalarSmUIntPreferInt(SmUInt v) {
   if (v <= static_cast<SmUInt>(kIntMax)) {
     return makeScalarInt(static_cast<SmInt>(v));
   }
-  return makeScalarUInt(v);
+  return makeScalarSmUInt(v);
 }
 
 #if SMARTMATH_TIME_VALUES
@@ -6105,27 +6271,27 @@ EvalValue makeScalarTimeMs(SmInt totalMs) {
   out.kind = ValueKind::Scalar;
   out.scalarValue.scalarKind = ScalarKind::Time;
   out.scalarValue.scalar = static_cast<SmFloat>(totalMs) / 1000.0;
-  out.scalarValue.exactSInt = totalMs;
-  out.scalarValue.setExactSIntValid(false);
-  out.scalarValue.setExactUIntValid(false);
-  out.scalarValue.setDecScientificPow63High(false);
+  out.scalarValue.exactInt = totalMs;
+  out.scalarValue.setExactSmIntValid(false);
+  out.scalarValue.setExactSmUIntValid(false);
+  out.scalarValue.setDecScientificSmIntBoundHigh(false);
   out.scalarValue.imag = 0.0;
-  out.scalarValue.imagExactSInt = 0;
+  out.scalarValue.imagExactInt = 0;
   out.scalarValue.imagExactUInt = 0;
-  out.scalarValue.setImagExactSIntValid(false);
-  out.scalarValue.setImagExactUIntValid(false);
+  out.scalarValue.setImagExactSmIntValid(false);
+  out.scalarValue.setImagExactSmUIntValid(false);
   return out;
 }
 
 SmInt timeTotalMsFromScalarValue(const EvalValue::ScalarValue& s) {
-  return s.exactSInt;
+  return s.exactInt;
 }
 #endif
 
 EvalValue makeArrayFromScalars(const std::vector<EvalValue>& v) {
   EvalValue out;
   out.kind = ValueKind::Array;
-  out.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+  out.scalarValue.scalarKind = ScalarKind::SmFloatingPoint;
   out.arr.resize(v.size());
   for (std::size_t i = 0; i < v.size(); ++i) {
     out.arr[i] = v[i].scalarValue;
@@ -6196,23 +6362,23 @@ EvalValue negateEvalValue(const EvalValue& v) {
     return makeScalarComplexFromFloats(-re, -im);
   }
 #endif
-  if (v.scalarValue.hasDecScientificPow63High()) {
-    const SmFloat p63 = kFloatSIntBound;
+  if (v.scalarValue.hasDecScientificSmIntBoundHigh()) {
+    const SmFloat p63 = kFloatSmIntBound;
     if (v.scalarValue.scalar == p63) {
       return makeScalarInt(kIntMin);
     }
     if (v.scalarValue.scalar == -p63) {
-      return makeScalarUInt(kIntMinMag);
+      return makeScalarSmUInt(kIntMinMag);
     }
   }
-  if (v.scalarValue.hasExactSInt()) {
-    const SmInt x = v.scalarValue.exactSInt;
+  if (v.scalarValue.hasExactSmInt()) {
+    const SmInt x = v.scalarValue.exactInt;
     if (x == kIntMin) {
-      return makeScalarUInt(kIntMinMag);
+      return makeScalarSmUInt(kIntMinMag);
     }
     return makeScalarInt(-x);
   }
-  if (v.scalarValue.hasExactUInt()) {
+  if (v.scalarValue.hasExactSmUInt()) {
     const SmUInt u = v.scalarValue.exactUInt;
     if (u == 0) {
       return makeScalarInt(0);
@@ -6249,20 +6415,20 @@ EvalValue applyAbsScalarValue(const EvalValue::ScalarValue& s) {
   if (std::isnan(x)) {
     return makeScalar(std::numeric_limits<SmFloat>::quiet_NaN());
   }
-  if (s.hasExactUInt() && !s.hasExactSInt()) {
-    return makeScalarUInt(s.exactUInt);
+  if (s.hasExactSmUInt() && !s.hasExactSmInt()) {
+    return makeScalarSmUInt(s.exactUInt);
   }
-  if (s.hasExactSInt()) {
-    if (s.exactSInt >= 0) {
-      return makeScalarInt(s.exactSInt);
+  if (s.hasExactSmInt()) {
+    if (s.exactInt >= 0) {
+      return makeScalarInt(s.exactInt);
     }
-    if (s.exactSInt == kIntMin) {
-      return makeScalarUInt(kIntMinMag);
+    if (s.exactInt == kIntMin) {
+      return makeScalarSmUInt(kIntMinMag);
     }
-    return makeScalarInt(-s.exactSInt);
+    return makeScalarInt(-s.exactInt);
   }
-  if (s.hasExactUInt()) {
-    return makeScalarUInt(s.exactUInt);
+  if (s.hasExactSmUInt()) {
+    return makeScalarSmUInt(s.exactUInt);
   }
   return makeScalarMaybeExact(std::fabs(x));
 }
@@ -6273,24 +6439,24 @@ EvalValue calcRoundingFn(BuiltinFunctionId id, const EvalValue::ScalarValue& s)
   if (!std::isfinite(x))
     return makeScalar(x);
 
-  if (s.hasExactUInt())
-    return makeScalarUInt(s.exactUInt);
+  if (s.hasExactSmUInt())
+    return makeScalarSmUInt(s.exactUInt);
 
-  if (s.hasExactSInt())
-    return makeScalarInt(s.exactSInt);
+  if (s.hasExactSmInt())
+    return makeScalarInt(s.exactInt);
 
   if (x > kMaxExactIntFromFloat || x < -kMaxExactIntFromFloat)
   {
-    const SmFloat p63 = kFloatSIntBound;
+    const SmFloat p63 = kFloatSmIntBound;
     // [-2^63, 2^63): kIntMax is not a double, so do not convert it (clang -Wimplicit-const-int-float-conversion).
     if (x < p63 && x >= -p63)
       return makeScalarInt(static_cast<SmInt>(x));
 
-    const SmFloat p64 = kFloatUIntBound;
+    const SmFloat p64 = kFloatSmUIntBound;
     if (x >= 0.0 && x < p64 && x == std::trunc(x)) {
       const SmUInt u = static_cast<SmUInt>(x);
       if (static_cast<SmFloat>(u) == x)
-        return makeScalarUInt(u);
+        return makeScalarSmUInt(u);
     }
 
     switch (id) {
@@ -6333,11 +6499,11 @@ void scalarSplitCartesianParts(const EvalValue::ScalarValue& sv, SmFloat ar, SmF
   im = EvalValue::ScalarValue{};
   im.scalar = ai;
   scalarClearImaginary(im);
-  if (sv.hasImagExactSInt()) {
-    im.setExactSIntValid(true);
-    im.exactSInt = sv.imagExactSInt;
-    if (sv.hasImagExactUInt()) {
-      im.setExactUIntValid(true);
+  if (sv.hasImagExactSmInt()) {
+    im.setExactSmIntValid(true);
+    im.exactInt = sv.imagExactInt;
+    if (sv.hasImagExactSmUInt()) {
+      im.setExactSmUIntValid(true);
       im.exactUInt = sv.imagExactUInt;
     }
   }
@@ -6358,7 +6524,7 @@ EvalValue calcRoundingFnCartesian(
 #endif
 
 std::string formatRationalParts(SmInt num, SmUInt den) {
-  if (num == 0LL) {
+  if (num == 0) {
     return "0";
   }
   if (den == 1u) {
@@ -6371,7 +6537,7 @@ bool tryFormatRationalScalar(const EvalValue::ScalarValue& sv, std::string& outT
   if (!sv.hasRenderRational()) {
     return false;
   }
-  const SmInt num = sv.exactSInt;
+  const SmInt num = sv.exactInt;
   const SmUInt den = sv.exactUInt;
   if (den == 0u) {
     return false;
@@ -6392,7 +6558,7 @@ bool tryFormatIntPowerScalar(const EvalValue::ScalarValue& sv, std::string& outT
   if (!sv.hasRenderIntPower() || sv.imagExactUInt <= 1u) {
     return false;
   }
-  outText = formatIntPowerParts(sv.imagExactSInt, sv.imagExactUInt);
+  outText = formatIntPowerParts(sv.imagExactInt, sv.imagExactUInt);
   return true;
 }
 #endif
@@ -6402,38 +6568,38 @@ bool tryFormatComplexRationalScalar(const EvalValue::ScalarValue& sv, std::strin
   if (std::isnan(sv.scalar) || std::isnan(sv.imag)) {
     return false;
   }
-  if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactSInt()) {
+  if (!sv.hasRenderRational() && !sv.hasImagRenderRational() && !sv.hasImagExactSmInt()) {
     return false;
   }
   std::string rePart;
   if (sv.hasRenderRational()) {
-    rePart = formatRationalParts(sv.exactSInt, sv.exactUInt);
-  } else if (sv.hasExactSInt()) {
-    if (sv.exactSInt != 0LL) {
-      rePart = smartmath::intToString(sv.exactSInt);
+    rePart = formatRationalParts(sv.exactInt, sv.exactUInt);
+  } else if (sv.hasExactSmInt()) {
+    if (sv.exactInt != 0) {
+      rePart = smartmath::intToString(sv.exactInt);
     }
   } else if (sv.scalar != 0.0) {
     return false;
   }
   std::string imTail;
   if (sv.hasImagRenderRational()) {
-    const std::string rp = formatRationalParts(sv.imagExactSInt, sv.imagExactUInt);
+    const std::string rp = formatRationalParts(sv.imagExactInt, sv.imagExactUInt);
     if (sv.imagExactUInt > 1u) {
       imTail = rp + "*i";
-    } else if (sv.imagExactSInt == 1LL) {
+    } else if (sv.imagExactInt == 1) {
       imTail = STR_I;
-    } else if (sv.imagExactSInt == -1LL) {
+    } else if (sv.imagExactInt == -1) {
       imTail = std::string("-") + STR_I;
     } else {
       imTail = rp + STR_I;
     }
-  } else if (sv.hasImagExactSInt()) {
-    const SmInt ni = sv.imagExactSInt;
-    if (ni == 1LL) {
+  } else if (sv.hasImagExactSmInt()) {
+    const SmInt ni = sv.imagExactInt;
+    if (ni == 1) {
       imTail = STR_I;
-    } else if (ni == -1LL) {
+    } else if (ni == -1) {
       imTail = std::string("-") + STR_I;
-    } else if (ni != 0LL) {
+    } else if (ni != 0) {
       imTail = smartmath::intToString(ni) + STR_I;
     }
   } else if (scalarHasNonzeroImaginaryPart(sv)) {
@@ -6494,33 +6660,33 @@ std::string formatScalar(const EvalValue& v, RenderBase base, bool supportComple
 #endif
   }
   if (base == RenderBase::Dec) {
-    if (v.scalarValue.hasExactSInt()) {
-      return smartmath::intToString(v.scalarValue.exactSInt);
+    if (v.scalarValue.hasExactSmInt()) {
+      return smartmath::intToString(v.scalarValue.exactInt);
     }
-    if (v.scalarValue.hasExactUInt()) {
+    if (v.scalarValue.hasExactSmUInt()) {
       return smartmath::uintToString(v.scalarValue.exactUInt);
     }
-    const SmFloat p63 = kFloatSIntBound;
-    if (v.scalarValue.hasDecScientificPow63High()) {
+    const SmFloat p63 = kFloatSmIntBound;
+    if (v.scalarValue.hasDecScientificSmIntBoundHigh()) {
       if (dval == p63) {
-        return posPow63DecText();
+        return posSmIntBoundDecText();
       }
       if (dval == -p63) {
-        return negPow63DecText();
+        return negSmIntBoundDecText();
       }
     }
     return formatFloatFast(dval);
   }
 
   SmUInt u = 0;
-  if (v.scalarValue.hasExactUInt()) {
+  if (v.scalarValue.hasExactSmUInt()) {
     u = v.scalarValue.exactUInt;
-  } else if (v.scalarValue.hasExactSInt() && v.scalarValue.exactSInt >= 0) {
-    u = static_cast<SmUInt>(v.scalarValue.exactSInt);
-  } else if (v.scalarValue.hasExactSInt() && v.scalarValue.exactSInt < 0) {
-    const SmInt iv = v.scalarValue.exactSInt;
+  } else if (v.scalarValue.hasExactSmInt() && v.scalarValue.exactInt >= 0) {
+    u = static_cast<SmUInt>(v.scalarValue.exactInt);
+  } else if (v.scalarValue.hasExactSmInt() && v.scalarValue.exactInt < 0) {
+    const SmInt iv = v.scalarValue.exactInt;
     return formatSignedMagnitudeForRenderBase(iv, baseCode, v.hasRenderUnsigned());
-  } else if (!parseUIntFromFloat(dval, u)) {
+  } else if (!parseSmUIntFromFloat(dval, u)) {
     return formatScalar(v, RenderBase::Dec, supportComplexNumbers);
   }
 
@@ -6557,13 +6723,13 @@ MathParser::RawResult::CartesianScalar rawCartesianAssignReducedRational(SmInt n
   MathParser::RawResult::CartesianScalar out;
   SmInt n = num;
   SmUInt d = den;
-  const SmInt g = GcdSInt(n, static_cast<SmInt>(d));
+  const SmInt g = gcdSmInt(n, static_cast<SmInt>(d));
   if (g > 0) {
     n /= g;
     d = static_cast<SmUInt>(static_cast<SmInt>(d) / g);
   }
   if (d == 1u) {
-    out.kind = MathParser::RawResult::ScalarKind::SInt;
+    out.kind = MathParser::RawResult::ScalarKind::SmInt;
     out.intValue = n;
   } else {
     out.kind = MathParser::RawResult::ScalarKind::Rational;
@@ -6587,11 +6753,11 @@ std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv, bool supp
   }
   EvalValue tmp = makeScalar(ar);
   tmp.scalarValue.scalarKind = sv.scalarKind;
-  tmp.scalarValue.setExactSIntValid(sv.hasExactSInt());
-  tmp.scalarValue.exactSInt = sv.exactSInt;
-  tmp.scalarValue.setExactUIntValid(sv.hasExactUInt());
+  tmp.scalarValue.setExactSmIntValid(sv.hasExactSmInt());
+  tmp.scalarValue.exactInt = sv.exactInt;
+  tmp.scalarValue.setExactSmUIntValid(sv.hasExactSmUInt());
   tmp.scalarValue.exactUInt = sv.exactUInt;
-  tmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  tmp.scalarValue.setDecScientificSmIntBoundHigh(sv.hasDecScientificSmIntBoundHigh());
   const std::string rePart = formatScalar(tmp, RenderBase::Dec, supportComplexNumbers);
   const SmFloat coeffAbs = std::fabs(ai);
   bool negUnit = false;
@@ -6601,10 +6767,10 @@ std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv, bool supp
   } else if (std::isinf(ai)) {
     tail = (ai < 0.0) ? (std::string("-") + STR_INF + "*" + STR_I)
                         : (std::string(STR_INF) + "*" + STR_I);
-  } else if (sv.hasImagExactSInt()) {
-    const SmInt ii = sv.imagExactSInt;
+  } else if (sv.hasImagExactSmInt()) {
+    const SmInt ii = sv.imagExactInt;
     const SmInt ac = ii >= 0 ? ii : -ii;
-    if (ac == 1LL) {
+    if (ac == 1) {
       tail = STR_I;
       negUnit = ii < 0;
     } else if (ii < 0) {
@@ -6620,7 +6786,7 @@ std::string formatComplexScalarValue(const EvalValue::ScalarValue& sv, bool supp
   } else {
     tail = formatFloatFast(coeffAbs) + STR_I;
   }
-  const bool reZero = (sv.hasExactSInt() && sv.exactSInt == 0) || (!sv.hasExactSInt() && ar == 0.0);
+  const bool reZero = (sv.hasExactSmInt() && sv.exactInt == 0) || (!sv.hasExactSmInt() && ar == 0.0);
   return assembleComplexDecimalText(rePart, tail, negUnit, reZero);
 }
 
@@ -6647,7 +6813,7 @@ std::string formatComplexScalarWithRenderBase(
     return formatComplexScalarValue(sv, supportComplexNumbers);
   }
   SmInt im = 0;
-  if (!tryGetExactImagSIntStrict(sv, im)) {
+  if (!tryGetExactImagSmIntStrict(sv, im)) {
     return formatComplexScalarValue(sv, supportComplexNumbers);
   }
   if (im == kIntMin) {
@@ -6661,12 +6827,12 @@ std::string formatComplexScalarWithRenderBase(
   (void)ai;
   reTmp.scalarValue.scalar = ar;
   reTmp.scalarValue.scalarKind = sv.scalarKind;
-  reTmp.scalarValue.setExactSIntValid(sv.hasExactSInt());
-  reTmp.scalarValue.exactSInt = sv.exactSInt;
+  reTmp.scalarValue.setExactSmIntValid(sv.hasExactSmInt());
+  reTmp.scalarValue.exactInt = sv.exactInt;
   // A negative real part renders as signed magnitude, not via a two's-complement SmUInt mirror.
-  reTmp.scalarValue.setExactUIntValid(sv.hasExactUInt() && !(sv.hasExactSInt() && sv.exactSInt < 0));
+  reTmp.scalarValue.setExactSmUIntValid(sv.hasExactSmUInt() && !(sv.hasExactSmInt() && sv.exactInt < 0));
   reTmp.scalarValue.exactUInt = sv.exactUInt;
-  reTmp.scalarValue.setDecScientificPow63High(sv.hasDecScientificPow63High());
+  reTmp.scalarValue.setDecScientificSmIntBoundHigh(sv.hasDecScientificSmIntBoundHigh());
   scalarClearImaginary(reTmp.scalarValue);
   reTmp.setRenderUnsigned(asUnsigned);
   std::string rePart = formatScalar(reTmp, base, supportComplexNumbers);
@@ -6680,7 +6846,7 @@ std::string formatComplexScalarWithRenderBase(
     absIm = static_cast<SmInt>(-static_cast<SmInt>(im));
   }
   std::string tail;
-  if (absIm == 1LL) {
+  if (absIm == 1) {
     tail = STR_I;
   } else {
     EvalValue imTmp = makeScalarInt(absIm);
@@ -6690,7 +6856,7 @@ std::string formatComplexScalarWithRenderBase(
   }
 
   const bool reZero =
-      (sv.hasExactSInt() && sv.exactSInt == 0) || (!sv.hasExactSInt() && ar == 0.0);
+      (sv.hasExactSmInt() && sv.exactInt == 0) || (!sv.hasExactSmInt() && ar == 0.0);
   if (reZero) {
     return negIm ? (std::string("-") + tail) : tail;
   }
@@ -6708,62 +6874,62 @@ MathParser::RawResult::CartesianScalar toRawCartesianScalar(const EvalValue::Sca
       return out;
     }
 #endif
-    if (v.hasRenderRational() && (v.hasExactUIntMetadata() || v.exactUInt != 0)) {
-      return rawCartesianAssignReducedRational(v.exactSInt, v.exactUInt);
+    if (v.hasRenderRational() && (v.hasExactSmUIntMetadata() || v.exactUInt != 0)) {
+      return rawCartesianAssignReducedRational(v.exactInt, v.exactUInt);
     }
 #if SMARTMATH_FACTORINT
     if (v.hasRenderIntPower() && v.imagExactUInt > 1u) {
       out.kind = MathParser::RawResult::ScalarKind::IntPower;
-      out.rational.numerator = v.imagExactSInt;
+      out.rational.numerator = v.imagExactInt;
       out.rational.denominator = v.imagExactUInt;
       return out;
     }
 #endif
-    if (v.hasExactSInt()) {
-      out.kind = MathParser::RawResult::ScalarKind::SInt;
-      out.intValue = v.exactSInt;
+    if (v.hasExactSmInt()) {
+      out.kind = MathParser::RawResult::ScalarKind::SmInt;
+      out.intValue = v.exactInt;
       return out;
     }
-    if (v.hasExactUInt()) {
-      out.kind = MathParser::RawResult::ScalarKind::UInt;
+    if (v.hasExactSmUInt()) {
+      out.kind = MathParser::RawResult::ScalarKind::SmUInt;
       out.uintValue = v.exactUInt;
       return out;
     }
-    if (v.scalarKind == ScalarKind::SInt) {
-      out.kind = MathParser::RawResult::ScalarKind::SInt;
-      out.intValue = v.exactSInt;
+    if (v.scalarKind == ScalarKind::SmInt) {
+      out.kind = MathParser::RawResult::ScalarKind::SmInt;
+      out.intValue = v.exactInt;
       return out;
     }
-    if (v.scalarKind == ScalarKind::UInt) {
-      out.kind = MathParser::RawResult::ScalarKind::UInt;
+    if (v.scalarKind == ScalarKind::SmUInt) {
+      out.kind = MathParser::RawResult::ScalarKind::SmUInt;
       out.uintValue = v.exactUInt;
       return out;
     }
-    out.kind = MathParser::RawResult::ScalarKind::FloatingPoint;
+    out.kind = MathParser::RawResult::ScalarKind::SmFloatingPoint;
     out.floatingPoint = v.scalar;
     return out;
   }
 
 #if SMARTMATH_COMPLEX_NUMBERS
-  if (v.hasImagRenderRational() && (v.hasImagExactUIntMetadata() || v.imagExactUInt != 0)) {
-    return rawCartesianAssignReducedRational(v.imagExactSInt, v.imagExactUInt);
+  if (v.hasImagRenderRational() && (v.hasImagExactSmUIntMetadata() || v.imagExactUInt != 0)) {
+    return rawCartesianAssignReducedRational(v.imagExactInt, v.imagExactUInt);
   }
-  if (v.hasImagExactSInt()) {
-    out.kind = MathParser::RawResult::ScalarKind::SInt;
-    out.intValue = v.imagExactSInt;
+  if (v.hasImagExactSmInt()) {
+    out.kind = MathParser::RawResult::ScalarKind::SmInt;
+    out.intValue = v.imagExactInt;
     return out;
   }
-  if (v.hasImagExactUInt()) {
+  if (v.hasImagExactSmUInt()) {
     if (v.imagExactUInt <= static_cast<SmUInt>(kIntMax)) {
-      out.kind = MathParser::RawResult::ScalarKind::SInt;
+      out.kind = MathParser::RawResult::ScalarKind::SmInt;
       out.intValue = static_cast<SmInt>(v.imagExactUInt);
     } else {
-      out.kind = MathParser::RawResult::ScalarKind::UInt;
+      out.kind = MathParser::RawResult::ScalarKind::SmUInt;
       out.uintValue = v.imagExactUInt;
     }
     return out;
   }
-  out.kind = MathParser::RawResult::ScalarKind::FloatingPoint;
+  out.kind = MathParser::RawResult::ScalarKind::SmFloatingPoint;
   out.floatingPoint = v.imag;
 #endif
   return out;
@@ -6945,11 +7111,11 @@ MathParser::MathParser() {
   addConst(STR_INF, std::numeric_limits<SmFloat>::infinity());
   addConst(STR_NAN, std::numeric_limits<SmFloat>::quiet_NaN());
 #if SMARTMATH_TIME_VALUES
-  setVariable(STR_MILLISECOND, makeScalarTimeMs(1LL));
-  setVariable(STR_SECOND, makeScalarTimeMs(1000LL));
-  setVariable(STR_MINUTE, makeScalarTimeMs(60000LL));
-  setVariable(STR_HOUR, makeScalarTimeMs(3600000LL));
-  setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
+  setVariable(STR_MILLISECOND, makeScalarTimeMs(1));
+  setVariable(STR_SECOND, makeScalarTimeMs(1000));
+  setVariable(STR_MINUTE, makeScalarTimeMs(60000));
+  setVariable(STR_HOUR, makeScalarTimeMs(3600000));
+  setVariable(STR_DAY, makeScalarTimeMs(86400000));
 #endif
   setVariable(STR_ANS, makeScalarInt(0));
 }
@@ -7546,7 +7712,7 @@ bool MathParser::rejectBinaryBuiltinTimeOperands(
 }
 #endif
 
-bool MathParser::RejectSIntBinaryOperands(
+bool MathParser::rejectSmIntBinaryOperands(
     EvalContext& ctx,
     const EvalValue& left,
     const EvalValue& right,
@@ -7950,11 +8116,11 @@ void MathParser::setSupportTimeValues(bool enabled) {
   }
   supportTimeValues_ = enabled;
   if (enabled) {
-    setVariable(STR_MILLISECOND, makeScalarTimeMs(1LL));
-    setVariable(STR_SECOND, makeScalarTimeMs(1000LL));
-    setVariable(STR_MINUTE, makeScalarTimeMs(60000LL));
-    setVariable(STR_HOUR, makeScalarTimeMs(3600000LL));
-    setVariable(STR_DAY, makeScalarTimeMs(86400000LL));
+    setVariable(STR_MILLISECOND, makeScalarTimeMs(1));
+    setVariable(STR_SECOND, makeScalarTimeMs(1000));
+    setVariable(STR_MINUTE, makeScalarTimeMs(60000));
+    setVariable(STR_HOUR, makeScalarTimeMs(3600000));
+    setVariable(STR_DAY, makeScalarTimeMs(86400000));
   } else {
     variables_.erase(STR_MILLISECOND);
     variables_.erase(STR_SECOND);
@@ -8078,7 +8244,7 @@ bool MathParser::scalarMsForCompare(const EvalValue::ScalarValue& sv, SmInt& out
     return false;
   }
   const SmFloat ms = sv.scalar * 1000.0;
-  if (tryRoundHalfUpFloatToSInt(ms, outMs)) {
+  if (tryRoundHalfUpFloatToSmInt(ms, outMs)) {
     return true;
   }
   // Saturate so ordering against time values (always in range) stays correct.
@@ -8103,6 +8269,73 @@ bool MathParser::rejectBuiltinArgsWithComplexImaginary(
   return false;
 }
 #endif
+
+namespace {
+// Three-way compare of two sign-magnitude integers (zero is never negative).
+int cmpSignMagnitude(bool aNeg, SmUInt aMag, bool bNeg, SmUInt bMag) {
+  if (aMag == 0u) {
+    aNeg = false;
+  }
+  if (bMag == 0u) {
+    bNeg = false;
+  }
+  if (aNeg != bNeg) {
+    return aNeg ? -1 : 1;
+  }
+  const int c = (aMag < bMag) ? -1 : ((aMag > bMag) ? 1 : 0);
+  return aNeg ? -c : c;
+}
+
+// Exact three-way compare of an integer (sign-magnitude) with a float that is not NaN.
+int cmpSignMagnitudeWithFloat(bool neg, SmUInt mag, SmFloat f) {
+  if (mag == 0u) {
+    neg = false;
+  }
+  const SmFloat fa = std::fabs(f);
+  const bool fNeg = (f < 0) && (fa != 0);
+  if (neg != fNeg) {
+    return neg ? -1 : 1;
+  }
+  int c = 0;
+  if (fa >= smartmath::kFloatSmUIntBound) {
+    c = -1;  // |f| exceeds every SmUInt magnitude (this includes infinity)
+  } else {
+    const SmFloat fl = std::floor(fa);
+    const SmUInt u = static_cast<SmUInt>(fl);
+    if (mag < u) {
+      c = -1;
+    } else if (mag > u) {
+      c = 1;
+    } else if (fa > fl) {
+      c = -1;
+    }
+  }
+  return neg ? -c : c;
+}
+
+// Real three-way compare, neither operand NaN. SmFloat is exact only below 2^mantissa; at or above it the exact
+// SmInt/SmUInt metadata decides, so 9007199254740993 > 9007199254740992 and uintmax - 1 < uintmax.
+int cmpRealScalars(const smartmath_internal::EvalValue::ScalarValue& sa, const smartmath_internal::EvalValue::ScalarValue& sb) {
+  if (std::fabs(sa.scalar) >= smartmath::kMaxExactIntFromFloat || std::fabs(sb.scalar) >= smartmath::kMaxExactIntFromFloat) {
+    bool aNeg = false;
+    bool bNeg = false;
+    SmUInt aMag = 0;
+    SmUInt bMag = 0;
+    const bool aExact = tryGetExactSignMagnitudeFromScalar(sa, aNeg, aMag);
+    const bool bExact = tryGetExactSignMagnitudeFromScalar(sb, bNeg, bMag);
+    if (aExact && bExact) {
+      return cmpSignMagnitude(aNeg, aMag, bNeg, bMag);
+    }
+    if (aExact) {
+      return cmpSignMagnitudeWithFloat(aNeg, aMag, sb.scalar);
+    }
+    if (bExact) {
+      return -cmpSignMagnitudeWithFloat(bNeg, bMag, sa.scalar);
+    }
+  }
+  return (sa.scalar < sb.scalar) ? -1 : ((sa.scalar > sb.scalar) ? 1 : 0);
+}
+}  // namespace
 
 bool MathParser::cmpScalarValuesForCompare(
     EvalContext* ctx,
@@ -8201,13 +8434,12 @@ bool MathParser::cmpScalarValuesForCompare(
       }
     }
   }
-  if (sa.scalar < sb.scalar) {
-    cmpOut = -1;
-  } else if (sa.scalar > sb.scalar) {
-    cmpOut = 1;
-  } else {
+  if (std::isnan(sa.scalar) || std::isnan(sb.scalar)) {
+    // Unordered operands keep the plain float result (0); comparison operators test for NaN before calling this.
     cmpOut = 0;
+    return true;
   }
+  cmpOut = cmpRealScalars(sa, sb);
   return true;
 }
 
@@ -8322,13 +8554,13 @@ bool MathParser::tryApplyTimeBinaryScalars(
   SmInt rms = 0;
   if (lt) {
     lms = timeTotalMsFromScalarValue(lv);
-  } else if (!tryRoundHalfUpFloatToSInt(lv.scalar * 1000.0, lms)) {
+  } else if (!tryRoundHalfUpFloatToSmInt(lv.scalar * 1000.0, lms)) {
     ctx.fail(ParseErrorId::IncompatibleOperands);
     return true;
   }
   if (rt) {
     rms = timeTotalMsFromScalarValue(rv);
-  } else if (!tryRoundHalfUpFloatToSInt(rv.scalar * 1000.0, rms)) {
+  } else if (!tryRoundHalfUpFloatToSmInt(rv.scalar * 1000.0, rms)) {
     ctx.fail(ParseErrorId::IncompatibleOperands);
     return true;
   }
@@ -8362,7 +8594,7 @@ bool MathParser::tryApplyTimeBinaryScalars(
       return true;
     }
     SmInt o = 0;
-    if (!tryRoundHalfUpFloatToSInt(static_cast<SmFloat>(baseMs) * mult, o)) {
+    if (!tryRoundHalfUpFloatToSmInt(static_cast<SmFloat>(baseMs) * mult, o)) {
       ctx.fail(ParseErrorId::IncompatibleOperands);
       return true;
     }
@@ -8389,7 +8621,7 @@ bool MathParser::tryApplyTimeBinaryScalars(
     }
     const SmFloat td = (static_cast<SmFloat>(lms) / 1000.0) / rv.scalar;
     SmInt o = 0;
-    if (!tryRoundHalfUpFloatToSInt(td * 1000.0, o)) {
+    if (!tryRoundHalfUpFloatToSmInt(td * 1000.0, o)) {
       ctx.fail(ParseErrorId::IncompatibleOperands);
       return true;
     }
@@ -8401,7 +8633,7 @@ bool MathParser::tryApplyTimeBinaryScalars(
 }
 #endif
 
-inline bool tryApplyCheckedAddSubMulOrSignedUIntPromote(
+inline bool tryApplyCheckedAddSubMulOrSignedSmUIntPromote(
     char op,
     SmInt li,
     SmInt ri,
@@ -8411,9 +8643,9 @@ inline bool tryApplyCheckedAddSubMulOrSignedUIntPromote(
   }
   SmInt outI = 0;
   const bool okInt =
-      (op == '*') ? checkedMulLL(li, ri, outI) :
-      (op == '+') ? checkedAddLL(li, ri, outI) :
-                    checkedSubLL(li, ri, outI);
+      (op == '*') ? tryMulSmIntChecked(li, ri, outI) :
+      (op == '+') ? tryAddSmIntChecked(li, ri, outI) :
+                    trySubSmIntChecked(li, ri, outI);
   if (okInt) {
     outS = makeScalarInt(outI);
     return true;
@@ -8423,14 +8655,14 @@ inline bool tryApplyCheckedAddSubMulOrSignedUIntPromote(
     const SmUInt ru = static_cast<SmUInt>(ri);
     if (op == '+') {
       SmUInt outU = 0;
-      if (tryAddUIntChecked(lu, ru, outU)) {
-        outS = makeScalarUInt(outU);
+      if (tryAddSmUIntChecked(lu, ru, outU)) {
+        outS = makeScalarSmUInt(outU);
         return true;
       }
     } else if (op == '*') {
       SmUInt outU = 0;
-      if (tryMulUIntChecked(lu, ru, outU)) {
-        outS = makeScalarUInt(outU);
+      if (tryMulSmUIntChecked(lu, ru, outU)) {
+        outS = makeScalarSmUInt(outU);
         return true;
       }
     }
@@ -8438,30 +8670,30 @@ inline bool tryApplyCheckedAddSubMulOrSignedUIntPromote(
   return false;
 }
 
-inline bool tryApplyUIntAddOrMul(char op, SmUInt lu, SmUInt ru, EvalValue& outS) {
+inline bool tryApplySmUIntAddOrMul(char op, SmUInt lu, SmUInt ru, EvalValue& outS) {
   if (op != '+' && op != '*') {
     return false;
   }
   SmUInt outU = 0;
-  const bool ok = (op == '+') ? tryAddUIntChecked(lu, ru, outU) : tryMulUIntChecked(lu, ru, outU);
+  const bool ok = (op == '+') ? tryAddSmUIntChecked(lu, ru, outU) : tryMulSmUIntChecked(lu, ru, outU);
   if (!ok) {
     return false;
   }
-  outS = makeScalarUInt(outU);
+  outS = makeScalarSmUInt(outU);
   return true;
 }
 
-inline bool tryApplyExactNonNegUIntAddOrMul(
+inline bool tryApplyExactNonNegSmUIntAddOrMul(
     char op,
     const EvalValue::ScalarValue& lv,
     const EvalValue::ScalarValue& rv,
     EvalValue& outS) {
   SmUInt lu = 0;
   SmUInt ru = 0;
-  if (!tryGetBothExactNonNegativeUIntFromScalars(lv, rv, lu, ru)) {
+  if (!tryGetBothExactNonNegativeSmUIntFromScalars(lv, rv, lu, ru)) {
     return false;
   }
-  return tryApplyUIntAddOrMul(op, lu, ru, outS);
+  return tryApplySmUIntAddOrMul(op, lu, ru, outS);
 }
 
 bool MathParser::tryCombineBinaryScalars(
@@ -8498,7 +8730,7 @@ bool MathParser::tryCombineBinaryScalars(
     }
   }
 #endif
-    if (isPureFloatingScalarPair(lv, rv)) {
+    if (isPureSmFloatingScalarPair(lv, rv)) {
       SmFloat outD = 0.0;
       if (!applyBinary(lv.scalar, rv.scalar, op, outD)) {
         return false;
@@ -8507,34 +8739,34 @@ bool MathParser::tryCombineBinaryScalars(
       return true;
     }
 
-    if (lv.hasExactUInt() && rv.hasExactUInt()
-        && (!lv.hasExactSInt() || !rv.hasExactSInt())) {
-      if (TryApplyExactUIntBinaryScalarOp(op, lv.exactUInt, rv.exactUInt, outS)) {
+    if (lv.hasExactSmUInt() && rv.hasExactSmUInt()
+        && (!lv.hasExactSmInt() || !rv.hasExactSmInt())) {
+      if (tryApplyExactSmUIntBinaryScalarOp(op, lv.exactUInt, rv.exactUInt, outS)) {
         return true;
       }
     }
 
     SmInt li = 0;
     SmInt ri = 0;
-    const bool leftExactSInt = tryGetExactSignedIntNoUIntWrapFromScalar(lv, li);
-    const bool rightExactSInt = tryGetExactSignedIntNoUIntWrapFromScalar(rv, ri);
+    const bool leftExactInt = tryGetExactSignedIntNoSmUIntWrapFromScalar(lv, li);
+    const bool rightExactInt = tryGetExactSignedIntNoSmUIntWrapFromScalar(rv, ri);
     SmUInt lu = 0;
     SmUInt ru = 0;
-    if (op == '^' && tryGetBothExactNonNegativeUIntFromScalars(lv, rv, lu, ru)) {
+    if (op == '^' && tryGetBothExactNonNegativeSmUIntFromScalars(lv, rv, lu, ru)) {
       SmUInt outU = 0;
-      if (tryPowUIntChecked(lu, ru, outU)) {
-        outS = makeScalarUInt(outU);
+      if (tryPowSmUIntChecked(lu, ru, outU)) {
+        outS = makeScalarSmUInt(outU);
         return true;
       }
     }
-    if (op == '^' && leftExactSInt && li < 0 && tryGetExactNonNegativeUIntFromScalar(rv, ru)) {
+    if (op == '^' && leftExactInt && li < 0 && tryGetExactNonNegativeSmUIntFromScalar(rv, ru)) {
       const SmUInt baseMag = (li == kIntMin)
         ? kIntMinMag
         : static_cast<SmUInt>(-li);
       SmUInt powMag = 0;
-      if (tryPowUIntChecked(baseMag, ru, powMag)) {
+      if (tryPowSmUIntChecked(baseMag, ru, powMag)) {
         if ((ru & 1u) == 0u) {
-          outS = makeScalarUInt(powMag);
+          outS = makeScalarSmUInt(powMag);
           return true;
         }
         if (powMag <= kIntMinMag) {
@@ -8545,48 +8777,48 @@ bool MathParser::tryCombineBinaryScalars(
         }
       }
     }
-    if (leftExactSInt && rightExactSInt) {
-      if (op == '-' && li == kIntMin && ri == 1LL) {
-        outS = makeScalar(-kFloatSIntBound); outS.scalarValue.setDecScientificPow63High(true);
+    if (leftExactInt && rightExactInt) {
+      if (op == '-' && li == kIntMin && ri == 1) {
+        outS = makeScalar(-kFloatSmIntBound); outS.scalarValue.setDecScientificSmIntBoundHigh(true);
         return true;
       }
-      if (tryApplyCheckedAddSubMulOrSignedUIntPromote(op, li, ri, outS)) {
+      if (tryApplyCheckedAddSubMulOrSignedSmUIntPromote(op, li, ri, outS)) {
         return true;
       }
       SmInt outI = 0;
-      if (op == '^' && tryPowSIntChecked(li, ri, outI)) {
+      if (op == '^' && tryPowSmIntChecked(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
-      if (op == '/' && TryQuotExactSInt(li, ri, outI)) {
+      if (op == '/' && tryQuotExactSmInt(li, ri, outI)) {
         outS = makeScalarInt(outI);
         return true;
       }
       if (op == '/' && ri == -1 && li == kIntMin) {
-        outS = makeScalarUInt(kIntMinMag);
+        outS = makeScalarSmUInt(kIntMinMag);
         return true;
       }
     }
 
-    if (tryApplyExactNonNegUIntAddOrMul(op, lv, rv, outS)) {
+    if (tryApplyExactNonNegSmUIntAddOrMul(op, lv, rv, outS)) {
       return true;
     }
     if (op == '/') {
       lu = 0;
       ru = 0;
-      if (tryGetBothExactNonNegativeUIntFromScalars(lv, rv, lu, ru) &&
-          TryApplyExactUIntBinaryScalarOp(op, lu, ru, outS)) {
+      if (tryGetBothExactNonNegativeSmUIntFromScalars(lv, rv, lu, ru) &&
+          tryApplyExactSmUIntBinaryScalarOp(op, lu, ru, outS)) {
         return true;
       }
     }
-    if (op == '+' && lv.hasExactSInt() && lv.exactSInt == kIntMax && !rv.hasExactSInt() &&
-        !rv.hasExactUInt() && std::fabs(rv.scalar - 0.5) < kTolLost3) {
-      outS = makeScalar(kFloatSIntBound); outS.scalarValue.setDecScientificPow63High(true);
+    if (op == '+' && lv.hasExactSmInt() && lv.exactInt == kIntMax && !rv.hasExactSmInt() &&
+        !rv.hasExactSmUInt() && std::fabs(rv.scalar - 0.5) < kTolLost3) {
+      outS = makeScalar(kFloatSmIntBound); outS.scalarValue.setDecScientificSmIntBoundHigh(true);
       return true;
     }
-    if (op == '+' && rv.hasExactSInt() && rv.exactSInt == kIntMax && !lv.hasExactSInt() &&
-        !lv.hasExactUInt() && std::fabs(lv.scalar - 0.5) < kTolLost3) {
-      outS = makeScalar(kFloatSIntBound); outS.scalarValue.setDecScientificPow63High(true);
+    if (op == '+' && rv.hasExactSmInt() && rv.exactInt == kIntMax && !lv.hasExactSmInt() &&
+        !lv.hasExactSmUInt() && std::fabs(lv.scalar - 0.5) < kTolLost3) {
+      outS = makeScalar(kFloatSmIntBound); outS.scalarValue.setDecScientificSmIntBoundHigh(true);
       return true;
     }
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -8963,7 +9195,8 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
     const std::vector<std::string>& paramNames,
     const std::string& bodyExpr,
     std::vector<EvalValue>&& args,
-    const std::unordered_map<std::string, EvalValue>* parentScopedVars) {
+    const std::unordered_map<std::string, EvalValue>* parentScopedVars,
+    LambdaProgramCache* cache) {
   static const std::string kLambda = "lambda";
   if (args.size() != paramNames.size()) {
     ctx.failCall(CallErrorId::ExactCount, kLambda, paramNames.size());
@@ -8980,6 +9213,10 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   }
   for (std::size_t i = 0; i < paramNames.size(); ++i) {
     localVars[paramNames[i]] = std::move(args[i]);
+  }
+
+  if (cache != nullptr && cache->ready) {
+    return runBoundProgram(ctx, cache->program, &localVars, true);
   }
 
   const std::string trimmedBody = trim(bodyExpr);
@@ -9000,6 +9237,11 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
   std::vector<AstStatement> compiledBody;
   if (!tryCompileExprToProgram(trimmedBody, ctx, nullptr, nullptr, true, &boundNames, compiledBody)) {
     return makeScalar(0);
+  }
+  if (cache != nullptr) {
+    cache->program = std::move(compiledBody);
+    cache->ready = true;
+    return runBoundProgram(ctx, cache->program, &localVars, true);
   }
   return runBoundProgram(ctx, compiledBody, &localVars, true);
 }
@@ -9147,6 +9389,7 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
   SmInt totalMs = 0;
   int lastUnitRank = -1;
   int comps = 0;
+  const char* lastUnitStart = ctx.p;
   while (true) {
     if (*ctx.p < '0' || *ctx.p > '9') {
       break;
@@ -9165,6 +9408,7 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
       ++ctx.p;
     }
     skipSpaces(ctx.p);
+    lastUnitStart = ctx.p;
     int ur = -1;
     SmInt fac = 0;
     if (ctx.p[0] == 'm' && ctx.p[1] == 's') {
@@ -9245,8 +9489,15 @@ bool MathParser::tryParseCompactSuffixTimeLiteral(EvalContext& ctx, EvalValue& o
     const bool kwOk = peekKeywordNoConsume(ctx.p, STR_AND) || peekKeywordNoConsume(ctx.p, STR_OR) ||
         peekKeywordNoConsume(ctx.p, STR_NOT);
     if (!kwOk) {
+      // A spelled-out unit constant (1day, 2 hour) keeps the specific hint. Any other word (2 sin(1), 2 min(1,2))
+      // is not a time literal: rewind so the generic parser reports it.
+      const bool unitWord = peekKeywordNoConsume(lastUnitStart, STR_SECOND) ||
+          peekKeywordNoConsume(lastUnitStart, STR_MINUTE) || peekKeywordNoConsume(lastUnitStart, STR_HOUR) ||
+          peekKeywordNoConsume(lastUnitStart, STR_DAY);
       ctx.p = pSave;
-      ctx.fail(STR_TIME_COMPACT_INVALID_SUFFIX);
+      if (unitWord) {
+        ctx.fail(STR_TIME_COMPACT_INVALID_SUFFIX);
+      }
       return false;
     }
   }
@@ -9280,13 +9531,13 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
       radix = 8U;
     }
     if (radix != 0U) {
-      if (!tryParsePrefixedUIntLiteral(ctx.p, px, radix, parsedEnd, parsedUInt)) {
+      if (!tryParsePrefixedSmUIntLiteral(ctx.p, px, radix, parsedEnd, parsedUInt)) {
         ctx.failPrefixedLiteral(px);
         return nullptr;
       }
       ctx.p = parsedEnd;
       if (parsedUInt > static_cast<SmUInt>(kIntMax)) {
-        return finishNumericLiteral(emitNumericLiteral(makeScalarUInt(parsedUInt)));
+        return finishNumericLiteral(emitNumericLiteral(makeScalarSmUInt(parsedUInt)));
       }
       return finishNumericLiteral(emitNumericLiteral(makeScalarInt(static_cast<SmInt>(parsedUInt))));
     }
@@ -9340,7 +9591,7 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
 
   if (tryParseInputNumberAsInteger(numStart, numEnd, parsedUInt)) {
     ctx.p = numEnd;
-    return finishNumericLiteral(emitNumericLiteral(makeScalarUIntPreferInt(parsedUInt)));
+    return finishNumericLiteral(emitNumericLiteral(makeScalarSmUIntPreferInt(parsedUInt)));
   }
 
   char* end = nullptr;
@@ -9961,7 +10212,8 @@ bool MathParser::tryCompileSingleExpressionProgram(EvalContext& ctx, std::vector
   }
   skipSpaces(ctx.p);
   if (!ctx.parseError && *ctx.p != '\0') {
-    ctx.fail(ParseErrorId::UnexpectedInput);
+    // Match Basic statement leftover (PARSE_ERR_UNEXPECTED_TOKEN): "2 sin(1)", "2b", etc.
+    ctx.fail(ParseErrorId::UnexpectedToken);
     return false;
   }
   return !ctx.parseError && !out.empty();
@@ -10129,7 +10381,7 @@ MathParser::EvalValue MathParser::evalUnaryExpr(
     return negateEvalValue(v);
   }
   if (e.unaryOp == 'N') {
-    return makeScalarInt(isTruthy(v) ? 0LL : 1LL);
+    return makeScalarInt(isTruthy(v) ? 0 : 1);
   }
   if (e.unaryOp == '~') {
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -10138,7 +10390,7 @@ MathParser::EvalValue MathParser::evalUnaryExpr(
       return makeScalar(0);
     }
 #endif
-    return evalSIntBinaryOp(ctx, v, makeScalarInt(-1), Expr::BinaryOp::BitXor);
+    return evalSmIntBinaryOp(ctx, v, makeScalarInt(-1), Expr::BinaryOp::BitXor);
   }
 
   ctx.fail(ParseErrorId::InternalUnaryOp);
@@ -10197,9 +10449,9 @@ MathParser::EvalValue MathParser::evalMappedBinaryOp(
   return makeScalar(0);
 }
 
-enum class ExactUIntBitwiseGate {
-  OnlyWhenNotBothExactSInt,
-  WheneverBothExactUInt
+enum class ExactSmUIntBitwiseGate {
+  OnlyWhenNotBothExactSmInt,
+  WheneverBothExactSmUInt
 };
 
 inline bool applyIntBitwiseOrModulo(
@@ -10207,15 +10459,15 @@ inline bool applyIntBitwiseOrModulo(
     Expr::BinaryOp op,
     const EvalValue::ScalarValue& lv,
     const EvalValue::ScalarValue& rv,
-    ExactUIntBitwiseGate gate,
+    ExactSmUIntBitwiseGate gate,
     bool reportIntegerOperandError,
     EvalValue& outS) {
   const bool isModulo = (op == Expr::BinaryOp::Modulo);
   if (op == Expr::BinaryOp::ShiftLeft) {
     SmUInt aU = 0;
     SmUInt bU = 0;
-    if (tryGetBothExactNonNegativeUIntFromScalars(lv, rv, aU, bU)) {
-      if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
+    if (tryGetBothExactNonNegativeSmUIntFromScalars(lv, rv, aU, bU)) {
+      if (!tryShiftLeftSmUIntExactOrMaybe(aU, bU, outS)) {
         ctx.fail(ParseErrorId::IncompatibleOperands);
         return false;
       }
@@ -10224,9 +10476,9 @@ inline bool applyIntBitwiseOrModulo(
   }
 
   const bool uintGateOpen =
-      (gate == ExactUIntBitwiseGate::WheneverBothExactUInt) ||
-      (!lv.hasExactSInt() || !rv.hasExactSInt());
-  if (lv.hasExactUInt() && rv.hasExactUInt() && uintGateOpen) {
+      (gate == ExactSmUIntBitwiseGate::WheneverBothExactSmUInt) ||
+      (!lv.hasExactSmInt() || !rv.hasExactSmInt());
+  if (lv.hasExactSmUInt() && rv.hasExactSmUInt() && uintGateOpen) {
     const SmUInt aU = lv.exactUInt;
     const SmUInt bU = rv.exactUInt;
     if (isModulo) {
@@ -10234,7 +10486,7 @@ inline bool applyIntBitwiseOrModulo(
         ctx.fail(ParseErrorId::IncompatibleOperands);
         return false;
       }
-      outS = makeScalarUInt(aU % bU);
+      outS = makeScalarSmUInt(aU % bU);
       return true;
     }
     if ((op == Expr::BinaryOp::ShiftLeft || op == Expr::BinaryOp::ShiftRight) && bU > static_cast<SmUInt>(kMaxShift)) {
@@ -10242,26 +10494,26 @@ inline bool applyIntBitwiseOrModulo(
       return false;
     }
     if (op == Expr::BinaryOp::ShiftLeft) {
-      if (!tryShiftLeftU64ExactOrMaybe(aU, bU, outS)) {
+      if (!tryShiftLeftSmUIntExactOrMaybe(aU, bU, outS)) {
         ctx.fail(ParseErrorId::IncompatibleOperands);
         return false;
       }
       return true;
     }
     if (op == Expr::BinaryOp::ShiftRight) {
-      outS = makeScalarUInt(aU >> bU);
+      outS = makeScalarSmUInt(aU >> bU);
       return true;
     }
     if (op == Expr::BinaryOp::BitAnd) {
-      outS = makeScalarUInt(aU & bU);
+      outS = makeScalarSmUInt(aU & bU);
       return true;
     }
     if (op == Expr::BinaryOp::BitOr) {
-      outS = makeScalarUInt(aU | bU);
+      outS = makeScalarSmUInt(aU | bU);
       return true;
     }
     if (op == Expr::BinaryOp::BitXor) {
-      outS = makeScalarUInt(aU ^ bU);
+      outS = makeScalarSmUInt(aU ^ bU);
       return true;
     }
   }
@@ -10294,7 +10546,7 @@ inline bool applyIntBitwiseOrModulo(
     return false;
   }
   if (op == Expr::BinaryOp::ShiftLeft) {
-    outS = makeScalarShiftLeftSInt(a, static_cast<unsigned int>(b));
+    outS = makeScalarShiftLeftSmInt(a, static_cast<unsigned int>(b));
     return true;
   }
   const SmInt out = (op == Expr::BinaryOp::BitAnd) ? (a & b) :
@@ -10305,13 +10557,13 @@ inline bool applyIntBitwiseOrModulo(
   return true;
 }
 
-MathParser::EvalValue MathParser::evalSIntBinaryOp(
+MathParser::EvalValue MathParser::evalSmIntBinaryOp(
     EvalContext& ctx,
     const EvalValue& left,
     const EvalValue& right,
     Expr::BinaryOp op) const {
   const bool isModulo = (op == Expr::BinaryOp::Modulo);
-  if (RejectSIntBinaryOperands(ctx, left, right, isModulo)) {
+  if (rejectSmIntBinaryOperands(ctx, left, right, isModulo)) {
     return makeScalar(0);
   }
   const auto setIntegerOperandError = [&]() {
@@ -10320,7 +10572,7 @@ MathParser::EvalValue MathParser::evalSIntBinaryOp(
   };
   const auto applyOp = [&](const EvalValue::ScalarValue& lv, const EvalValue::ScalarValue& rv, EvalValue& outS) -> bool {
     return applyIntBitwiseOrModulo(
-        ctx, op, lv, rv, ExactUIntBitwiseGate::WheneverBothExactUInt, false, outS);
+        ctx, op, lv, rv, ExactSmUIntBitwiseGate::WheneverBothExactSmUInt, false, outS);
   };
   if (left.kind == ValueKind::Array && right.kind == ValueKind::Array && left.arr.size() != right.arr.size()) {
     ctx.fail(ParseErrorId::IncompatibleOperands);
@@ -10338,9 +10590,9 @@ MathParser::EvalValue MathParser::evalSIntBinaryOp(
 namespace {
 
 void scalarMarkInexactFloat(EvalValue::ScalarValue& sv) {
-  sv.setExactSIntValid(false);
-  sv.setExactUIntValid(false);
-  sv.scalarKind = ScalarKind::FloatingPoint;
+  sv.setExactSmIntValid(false);
+  sv.setExactSmUIntValid(false);
+  sv.scalarKind = ScalarKind::SmFloatingPoint;
 }
 
 bool tryApplyPostfixPercent(EvalContext& ctx, EvalValue& v, bool supportTimeValues, bool supportComplexNumbers) {
@@ -10434,9 +10686,9 @@ MathParser::EvalValue MathParser::evalExprScalar(
       if (ctx.parseError) return r;
       switch (e.binaryOp) {
         case Expr::BinaryOp::LogicalOr:
-          return makeScalarInt((isTruthy(l) || isTruthy(r)) ? 1LL : 0LL);
+          return makeScalarInt((isTruthy(l) || isTruthy(r)) ? 1 : 0);
         case Expr::BinaryOp::LogicalAnd:
-          return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1LL : 0LL);
+          return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1 : 0);
         case Expr::BinaryOp::Modulo:
         case Expr::BinaryOp::BitAnd:
         case Expr::BinaryOp::BitOr:
@@ -10453,7 +10705,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
           EvalValue outS;
           if (!applyIntBitwiseOrModulo(
                   ctx, e.binaryOp, l.scalarValue, r.scalarValue,
-                  ExactUIntBitwiseGate::OnlyWhenNotBothExactSInt, true, outS)) {
+                  ExactSmUIntBitwiseGate::OnlyWhenNotBothExactSmInt, true, outS)) {
             return makeScalar(0);
           }
           return outS;
@@ -10521,17 +10773,17 @@ MathParser::EvalValue MathParser::evalExprScalar(
                               (e.binaryOp == Expr::BinaryOp::Add) ? '+' : '-';
             SmInt li = 0;
             SmInt ri = 0;
-            if (tryGetBothExactSignedIntNoUIntWrapFromScalars(l.scalarValue, r.scalarValue, li, ri)) {
+            if (tryGetBothExactSignedIntNoSmUIntWrapFromScalars(l.scalarValue, r.scalarValue, li, ri)) {
               EvalValue exactOut;
-              if (tryApplyCheckedAddSubMulOrSignedUIntPromote(opCh, li, ri, exactOut)) {
+              if (tryApplyCheckedAddSubMulOrSignedSmUIntPromote(opCh, li, ri, exactOut)) {
                 return exactOut;
               }
             }
             SmUInt lu = 0;
             SmUInt ru = 0;
-            if (tryGetBothExactNonNegativeUIntFromScalars(l.scalarValue, r.scalarValue, lu, ru)) {
+            if (tryGetBothExactNonNegativeSmUIntFromScalars(l.scalarValue, r.scalarValue, lu, ru)) {
               EvalValue exactOut;
-              if (tryApplyUIntAddOrMul(opCh, lu, ru, exactOut)) {
+              if (tryApplySmUIntAddOrMul(opCh, lu, ru, exactOut)) {
                 return exactOut;
               }
             }
@@ -10624,7 +10876,7 @@ MathParser::EvalValue MathParser::evalIsInstance(
   }
   const bool match = valueIsInstanceOfType(
       value, e.elements[1]->name, getSupportComplexNumbers(), getSupportTimeValues());
-  return makeScalarInt(match ? 1LL : 0LL);
+  return makeScalarInt(match ? 1 : 0);
 }
 
 MathParser::EvalValue MathParser::evalIif(
@@ -10699,8 +10951,6 @@ MathParser::EvalValue MathParser::evalExpr(
           if (a.arr.empty()) {
             continue;
           }
-          const std::size_t oldSize = flatVals.size();
-          flatVals.reserve(oldSize + a.arr.size());
           for (const auto& item : a.arr) {
             flatVals.emplace_back(scalarFromScalarValue(item));
           }
@@ -10747,8 +10997,33 @@ MathParser::EvalValue MathParser::evalExpr(
       return evalFunctionCall(ctx, e.name, std::move(args), e.builtinFunctionId, scopedVars);
     }
     case Expr::Tag::Index: {
-      EvalValue base = evalExpr(*e.left, ctx, scopedVars);
-      if (ctx.parseError) return base;
+      // A plain variable base is read in place; copying the whole array per a[i] made loops over arrays O(n^2).
+      const EvalValue* basePtr = nullptr;
+      if (e.left->tag == Expr::Tag::Variable) {
+        if (scopedVars != nullptr) {
+          const auto it = scopedVars->find(e.left->name);
+          if (it != scopedVars->end()) {
+            basePtr = &it->second;
+          }
+        }
+        if (basePtr == nullptr) {
+          if (e.left->boundVariable != nullptr) {
+            basePtr = e.left->boundVariable;
+          } else {
+            const auto it = variables_.find(e.left->name);
+            if (it != variables_.end()) {
+              basePtr = &it->second;
+            }
+          }
+        }
+      }
+      EvalValue baseStore;
+      if (basePtr == nullptr) {
+        baseStore = evalExpr(*e.left, ctx, scopedVars);
+        if (ctx.parseError) return baseStore;
+        basePtr = &baseStore;
+      }
+      const EvalValue& base = *basePtr;
       EvalValue idxv = evalExpr(*e.right, ctx, scopedVars);
       if (ctx.parseError) return idxv;
       if (idxv.kind != ValueKind::Scalar) {
@@ -10799,7 +11074,7 @@ MathParser::EvalValue MathParser::evalExpr(
       }
       EvalValue sliced;
       sliced.kind = ValueKind::Array;
-      sliced.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+      sliced.scalarValue.scalarKind = ScalarKind::SmFloatingPoint;
       sliced.arr.resize(static_cast<std::size_t>(outCount));
       SmInt cur = normStart;
       for (SmInt i = 0; i < outCount; ++i) {
@@ -10830,7 +11105,7 @@ MathParser::EvalValue MathParser::evalExpr(
         if (evalStatus != BinaryEvalStatus::Ok) {
           return (evalStatus == BinaryEvalStatus::LeftError) ? l : r;
         }
-        return makeScalarInt((isTruthy(l) || isTruthy(r)) ? 1LL : 0LL);
+        return makeScalarInt((isTruthy(l) || isTruthy(r)) ? 1 : 0);
       }
       if (e.binaryOp == Expr::BinaryOp::LogicalAnd) {
         EvalValue l = makeScalar(0), r = makeScalar(0);
@@ -10838,7 +11113,7 @@ MathParser::EvalValue MathParser::evalExpr(
         if (evalStatus != BinaryEvalStatus::Ok) {
           return (evalStatus == BinaryEvalStatus::LeftError) ? l : r;
         }
-        return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1LL : 0LL);
+        return makeScalarInt((isTruthy(l) && isTruthy(r)) ? 1 : 0);
       }
       if (e.binaryOp == Expr::BinaryOp::Modulo || e.binaryOp == Expr::BinaryOp::BitAnd ||
           e.binaryOp == Expr::BinaryOp::BitOr || e.binaryOp == Expr::BinaryOp::BitXor ||
@@ -10847,7 +11122,7 @@ MathParser::EvalValue MathParser::evalExpr(
         if (evalBinaryOperands(l, r) != BinaryEvalStatus::Ok) {
           return makeScalar(0);
         }
-        return evalSIntBinaryOp(ctx, l, r, e.binaryOp);
+        return evalSmIntBinaryOp(ctx, l, r, e.binaryOp);
       }
       if (isComparisonBinaryOp(e.binaryOp)) {
         EvalValue l = evalExpr(*e.left, ctx, scopedVars);
@@ -11090,7 +11365,7 @@ bool MathParser::tryEvalElementAssign(EvalContext& ctx, const AstStatement& st, 
     const std::size_t oldLen = slot.arr.size();
     EvalValue updated;
     updated.kind = ValueKind::Array;
-    updated.scalarValue.scalarKind = ScalarKind::FloatingPoint;
+    updated.scalarValue.scalarKind = ScalarKind::SmFloatingPoint;
     updated.arr.reserve(oldLen - 1 + rhs.arr.size());
     updated.arr.insert(updated.arr.end(), slot.arr.begin(), slot.arr.begin() + static_cast<std::ptrdiff_t>(at));
     updated.arr.insert(updated.arr.end(), rhs.arr.begin(), rhs.arr.end());
@@ -11210,7 +11485,7 @@ bool MathParser::validateIntegerRepresentableArgs(
     if (!std::isfinite(s.scalar)) {
       return allowNonFiniteForFormat;
     }
-    if (!(s.hasExactSInt() || s.hasExactUInt())) {
+    if (!(s.hasExactSmInt() || s.hasExactSmUInt())) {
       SmInt signedV = 0;
       if (!tryGetSignedIntFromScalar(s, signedV)) {
         ctx.failCall(CallErrorId::IntegerValues, fnName);
@@ -11230,11 +11505,11 @@ bool MathParser::validateIntegerRepresentableArgs(
         }
         return true;
       }
-      if (s.hasImagExactSInt()) {
+      if (s.hasImagExactSmInt()) {
         return true;
       }
       SmInt tmp = 0;
-      if (!tryExtractExactSIntFromFloatStrict(ai, tmp)) {
+      if (!tryExtractExactSmIntFromFloatStrict(ai, tmp)) {
         ctx.failCall(CallErrorId::IntegerValues, fnName);
         return false;
       }
@@ -11364,7 +11639,7 @@ MathParser::EvalValue MathParser::builtinRepeat(
 
   const std::size_t blockSize = vals.size();
   SmUInt estimated = 0;
-  if (!tryMulUIntChecked(static_cast<SmUInt>(blockSize), static_cast<SmUInt>(n), estimated)) {
+  if (!tryMulSmUIntChecked(static_cast<SmUInt>(blockSize), static_cast<SmUInt>(n), estimated)) {
     ctx.failCall(CallErrorId::TooManyValues, fnName);
     return makeScalar(0);
   }
@@ -11427,7 +11702,7 @@ MathParser::EvalValue MathParser::builtinRange(
   }
 
   const SmUInt estimated = estimateRangeItemCount(startV, stopV, stepV);
-  if (estimated == 0ull) {
+  if (estimated == 0u) {
     return makeArrayFromScalars({});
   }
   if (!acceptProducedItemCount(ctx, fnName, estimated)) {
@@ -11485,6 +11760,81 @@ bool tryFoldExactSumMinMax(
     return false;
   }
   out = isSum ? make(acc) : make(mm);
+  return true;
+}
+
+// Neumaier compensated step for sum/avg; the compensation is only applied when finite so Inf/NaN follow the plain sum.
+inline void neumaierAccumulate(SmFloat& sum, SmFloat& comp, SmFloat v) {
+  const SmFloat t = sum + v;
+  if (std::fabs(sum) >= std::fabs(v)) {
+    comp += (sum - t) + v;
+  } else {
+    comp += (v - t) + sum;
+  }
+  sum = t;
+}
+
+inline SmFloat neumaierResult(SmFloat sum, SmFloat comp) {
+  return (comp != 0.0 && std::isfinite(comp)) ? (sum + comp) : sum;
+}
+
+// avg/mean of an exact integer sum: 1 = exact quotient in outExact, 2 = float quotient in outFloat, 0 = not exact.
+int tryExactAvgFromIntegerSum(
+    const EvalValue::ScalarValue& sumS, std::size_t n, EvalValue& outExact, SmFloat& outFloat) {
+  bool isNeg = false;
+  SmUInt mag = 0;
+  if (n == 0U || !tryGetExactSignMagnitudeFromScalar(sumS, isNeg, mag)) {
+    return 0;
+  }
+  const SmUInt d = static_cast<SmUInt>(n);
+  if ((mag % d) == 0U) {
+    outExact = makeScalarFromSignMagnitude(isNeg, mag / d);
+    return 1;
+  }
+  const SmFloat f = static_cast<SmFloat>(mag) / static_cast<SmFloat>(d);
+  outFloat = isNeg ? -f : f;
+  return 2;
+}
+
+// Middle of two exact integers lo <= hi (sign-magnitude, overflow-free): exact when the difference is even, else x.5 as float.
+bool tryExactIntegerMidpoint(
+    const EvalValue::ScalarValue& lo,
+    const EvalValue::ScalarValue& hi,
+    EvalValue& outExact,
+    SmFloat& outFloat,
+    bool& isExact) {
+  bool loNeg = false;
+  bool hiNeg = false;
+  SmUInt loMag = 0;
+  SmUInt hiMag = 0;
+  if (!tryGetExactSignMagnitudeFromScalar(lo, loNeg, loMag) || !tryGetExactSignMagnitudeFromScalar(hi, hiNeg, hiMag)) {
+    return false;
+  }
+  bool midNeg = false;
+  SmUInt midMag = 0;
+  SmUInt diff = 0;
+  if (loNeg == hiNeg) {
+    const SmUInt nearMag = loNeg ? hiMag : loMag;
+    const SmUInt farMag = loNeg ? loMag : hiMag;
+    midNeg = loNeg;
+    diff = farMag - nearMag;
+    midMag = nearMag + diff / 2U;
+  } else if (hiMag >= loMag) {
+    diff = hiMag - loMag;
+    midMag = diff / 2U;
+  } else {
+    midNeg = true;
+    diff = loMag - hiMag;
+    midMag = diff / 2U;
+  }
+  if ((diff & 1U) != 0U) {
+    const SmFloat f = static_cast<SmFloat>(midMag) + 0.5;
+    outFloat = midNeg ? -f : f;
+    isExact = false;
+  } else {
+    outExact = makeScalarFromSignMagnitude(midNeg, midMag);
+    isExact = true;
+  }
   return true;
 }
 
@@ -11587,7 +11937,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
       ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
       return makeScalar(0);
     }
-    return makeScalarTimeMs(roundHalfUpFloatToSInt(MedianFromFloatFlatInPlace(flatMs)));
+    return makeScalarTimeMs(roundHalfUpFloatToSmInt(medianFromFloatFlatInPlace(flatMs)));
   }
 
   SmInt accMs = 0;
@@ -11634,7 +11984,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
   }
   if (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean) {
     const SmFloat avgD = static_cast<SmFloat>(accMs) / static_cast<SmFloat>(itemCount);
-    return makeScalarTimeMs(roundHalfUpFloatToSInt(avgD));
+    return makeScalarTimeMs(roundHalfUpFloatToSmInt(avgD));
   }
   return makeScalarTimeMs(accMs);
   }
@@ -11652,16 +12002,17 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
     if (args.size() == 1 && args[0].kind == ValueKind::Scalar) {
       return args[0];
     }
-    if (id == BuiltinFunctionId::Sum || id == BuiltinFunctionId::Product || id == BuiltinFunctionId::Min ||
-        id == BuiltinFunctionId::Max) {
+    const bool isAvg = (id == BuiltinFunctionId::Avg || id == BuiltinFunctionId::Mean);
+    const BuiltinFunctionId foldId = isAvg ? BuiltinFunctionId::Sum : id;
+    {
       bool allNnU = true;
       bool allSwI = true;
       bool anyNonInteger = false;
       const auto classify = [&](const EvalValue::ScalarValue& s) {
         SmUInt u = 0;
         SmInt i = 0;
-        const bool nnU = tryGetExactNonNegativeUIntFromScalar(s, u);
-        const bool swI = tryGetExactSignedIntNoUIntWrapFromScalar(s, i);
+        const bool nnU = tryGetExactNonNegativeSmUIntFromScalar(s, u);
+        const bool swI = tryGetExactSignedIntNoSmUIntWrapFromScalar(s, i);
         if (!nnU && !swI) {
           anyNonInteger = true;
           return;
@@ -11687,9 +12038,9 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
             return;
           }
           SmUInt termMag = 0;
-          if (!tryGetExactNonNegativeUIntFromScalar(s, termMag)) {
+          if (!tryGetExactNonNegativeSmUIntFromScalar(s, termMag)) {
             SmInt termI = 0;
-            if (!tryGetExactSignedIntNoUIntWrapFromScalar(s, termI)) {
+            if (!tryGetExactSignedIntNoSmUIntWrapFromScalar(s, termI)) {
               ok = false;
               return;
             }
@@ -11703,7 +12054,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
             }
           }
           SmUInt next = 0;
-          if (!tryMulUIntChecked(productMag, termMag, next)) {
+          if (!tryMulSmUIntChecked(productMag, termMag, next)) {
             ok = false;
             return;
           }
@@ -11717,36 +12068,58 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
                 : makeScalarInt(-static_cast<SmInt>(productMag));
             }
           } else {
-            return makeScalarUInt(productMag);
+            return makeScalarSmUInt(productMag);
           }
         }
       } else if (!anyNonInteger && allNnU) {
         EvalValue folded;
         if (tryFoldExactSumMinMax<SmUInt>(
-                id, args,
+                foldId, args,
                 [](const EvalValue::ScalarValue& s, SmUInt& u) {
-                  return tryGetExactNonNegativeUIntFromScalar(s, u);
+                  return tryGetExactNonNegativeSmUIntFromScalar(s, u);
                 },
                 [](SmUInt a, SmUInt b, SmUInt& o) {
-                  return tryAddUIntChecked(a, b, o);
+                  return tryAddSmUIntChecked(a, b, o);
                 },
-                [](SmUInt u) { return makeScalarUInt(u); },
+                [](SmUInt u) { return makeScalarSmUInt(u); },
                 folded)) {
-          return folded;
+          if (!isAvg) {
+            return folded;
+          }
+          EvalValue avgExact;
+          SmFloat avgFloat = 0.0;
+          const int avgKind = tryExactAvgFromIntegerSum(folded.scalarValue, nn, avgExact, avgFloat);
+          if (avgKind == 1) {
+            return avgExact;
+          }
+          if (avgKind == 2) {
+            return makeScalarMaybeExact(avgFloat);
+          }
         }
       } else if (!anyNonInteger && allSwI) {
         EvalValue folded;
         if (tryFoldExactSumMinMax<SmInt>(
-                id, args,
+                foldId, args,
                 [](const EvalValue::ScalarValue& s, SmInt& i) {
-                  return tryGetExactSignedIntNoUIntWrapFromScalar(s, i);
+                  return tryGetExactSignedIntNoSmUIntWrapFromScalar(s, i);
                 },
                 [](SmInt a, SmInt b, SmInt& o) {
-                  return tryAddSIntChecked(a, b, o);
+                  return tryAddSmIntChecked(a, b, o);
                 },
                 [](SmInt i) { return makeScalarInt(i); },
                 folded)) {
-          return folded;
+          if (!isAvg) {
+            return folded;
+          }
+          EvalValue avgExact;
+          SmFloat avgFloat = 0.0;
+          const int avgKind = tryExactAvgFromIntegerSum(folded.scalarValue, nn, avgExact, avgFloat);
+          if (avgKind == 1) {
+            return avgExact;
+          }
+          if (avgKind == 2) {
+            return makeScalarMaybeExact(avgFloat);
+          }
         }
       }
     }
@@ -11756,7 +12129,7 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         if (sv.hasRenderRational()) {
           return false;
         }
-        return sv.hasExactSInt() || sv.hasExactUInt();
+        return sv.hasExactSmInt() || sv.hasExactSmUInt();
       };
       const auto shouldReplace = [&](SmFloat v, SmFloat winnerV, bool hasWinner) {
         if (!hasWinner) {
@@ -11815,7 +12188,9 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
       n = forEachArgScalar([&](SmFloat v) { acc *= v; });
     } else {
       acc = 0.0;
-      n = forEachArgScalar([&](SmFloat v) { acc += v; });
+      SmFloat comp = 0.0;
+      n = forEachArgScalar([&](SmFloat v) { neumaierAccumulate(acc, comp, v); });
+      acc = neumaierResult(acc, comp);
     }
 
     if (n == 0) {
@@ -11844,7 +12219,45 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
         return makeScalar(0);
       }
-      return makeScalar(MedianFromFloatFlatInPlace(flat));
+      bool hasLargeMag = false;
+      for (const SmFloat f : flat) {
+        if (std::fabs(f) >= kMaxExactIntFromFloat) {
+          hasLargeMag = true;
+          break;
+        }
+      }
+      if (hasLargeMag) {
+        // Some item is at or beyond the exact-float range: sort exactly when every item is an exact integer.
+        std::vector<EvalValue::ScalarValue> vals;
+        bool allExact = true;
+        forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
+          bool neg = false;
+          SmUInt mag = 0;
+          if (!tryGetExactSignMagnitudeFromScalar(s, neg, mag)) {
+            allExact = false;
+          }
+          vals.push_back(s);
+        });
+        if (allExact && !vals.empty()) {
+          std::sort(
+              vals.begin(), vals.end(), [this](const EvalValue::ScalarValue& lhs, const EvalValue::ScalarValue& rhs) {
+                int cmp = 0;
+                cmpScalarValuesForCompare(nullptr, lhs, rhs, cmp, CmpScalarIncompatiblePolicy::SortLess);
+                return cmp < 0;
+              });
+          const std::size_t hiIdx = vals.size() / 2U;
+          if ((vals.size() % 2U) == 1U) {
+            return scalarFromScalarValue(vals[hiIdx]);
+          }
+          EvalValue midExact;
+          SmFloat midFloat = 0.0;
+          bool midIsExact = false;
+          if (tryExactIntegerMidpoint(vals[hiIdx - 1U], vals[hiIdx], midExact, midFloat, midIsExact)) {
+            return midIsExact ? midExact : makeScalar(midFloat);
+          }
+        }
+      }
+      return makeScalar(medianFromFloatFlatInPlace(flat));
     }
     case BuiltinFunctionId::Variance:
     case BuiltinFunctionId::Stddev: {
@@ -12038,7 +12451,7 @@ bool MathParser::tryEvalComparisonOp(
     const EvalValue::ScalarValue& lsv = refAt(a, i);
     const EvalValue::ScalarValue& rsv = refAt(b, i);
     if (scalarPairHasUnorderedNan(lsv, rsv, supportComplex)) {
-      out = makeScalarInt(evalComparisonTruthWhenUnorderedNan(op) ? 1LL : 0LL);
+      out = makeScalarInt(evalComparisonTruthWhenUnorderedNan(op) ? 1 : 0);
       return true;
     }
     int c = 0;
@@ -12050,7 +12463,7 @@ bool MathParser::tryEvalComparisonOp(
       return false;
     }
     if (c != 0) {
-      out = makeScalarInt(evalComparisonByOp(op, c) ? 1LL : 0LL);
+      out = makeScalarInt(evalComparisonByOp(op, c) ? 1 : 0);
       return true;
     }
   }
@@ -12062,7 +12475,7 @@ bool MathParser::tryEvalComparisonOp(
   } else {
     cmp = 0;
   }
-  out = makeScalarInt(evalComparisonByOp(op, cmp) ? 1LL : 0LL);
+  out = makeScalarInt(evalComparisonByOp(op, cmp) ? 1 : 0);
   return true;
 }
 
@@ -12078,27 +12491,27 @@ bool MathParser::sortbyStableSortIndicesFromKeys(
   if (count <= 1) {
     return true;
   }
-  for (int i = 1; i < count; ++i) {
-    int j = i;
-    while (j > 0) {
-      int cmp = 0;
-      if (!tryLexicographicCompareEvalValues(
-              ctx,
-              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j)])],
-              sortKeys[static_cast<std::size_t>(orderIdx[static_cast<std::size_t>(j - 1)])],
-              cmp,
-              CmpScalarIncompatiblePolicy::SortLess)) {
-        return false;
-      }
-      if (cmp < 0) {
-        const int t = orderIdx[static_cast<std::size_t>(j)];
-        orderIdx[static_cast<std::size_t>(j)] = orderIdx[static_cast<std::size_t>(j - 1)];
-        orderIdx[static_cast<std::size_t>(j - 1)] = t;
-        --j;
-      } else {
-        break;
-      }
+  // Stable merge sort over the index array (O(n log n) comparisons; the old insertion sort was O(n^2)). A failed
+  // comparison (keys that cannot be ordered) stops the sort and reports false; the first failure keeps its error.
+  bool compareFailed = false;
+  std::stable_sort(orderIdx.begin(), orderIdx.end(), [&](int lhs, int rhs) {
+    if (compareFailed) {
+      return false;
     }
+    int cmp = 0;
+    if (!tryLexicographicCompareEvalValues(
+            ctx,
+            sortKeys[static_cast<std::size_t>(lhs)],
+            sortKeys[static_cast<std::size_t>(rhs)],
+            cmp,
+            CmpScalarIncompatiblePolicy::SortLess)) {
+      compareFailed = true;
+      return false;
+    }
+    return cmp < 0;
+  });
+  if (compareFailed) {
+    return false;
   }
   return true;
 }
@@ -12153,8 +12566,8 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
       return true;
     }
     scalarClearCartesianRenderExact(outV.scalarValue);
-    if (sv.hasImagExactSInt() && imagExactMetadataMatchesFloat(sv)) {
-      ScalarApplyExactSIntPart(outV.scalarValue, true, sv.imagExactSInt);
+    if (sv.hasImagExactSmInt() && imagExactMetadataMatchesFloat(sv)) {
+      scalarApplyExactSmIntPart(outV.scalarValue, true, sv.imagExactInt);
     } else if (std::fabs(ai) >= RATIO_APPROX_EPS * aiScale && std::fabs(ai) <= kMaxExactIntFromFloat) {
       if (!tryApproximateRational(ai, numI, denI)) {
         ctx.parseError = true;
@@ -12162,16 +12575,16 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
       }
       scalarApplyReducedRationalPart(outV.scalarValue, true, numI, denI);
     }
-    if (tryExtractExactRealComponent(sv, reC) && TryExactCartesianComponentToSInt(reC, numR)) {
-      ScalarApplyExactSIntPart(outV.scalarValue, false, numR);
+    if (tryExtractExactRealComponent(sv, reC) && tryExactCartesianComponentToSmInt(reC, numR)) {
+      scalarApplyExactSmIntPart(outV.scalarValue, false, numR);
     } else if (std::fabs(ar) >= RATIO_APPROX_EPS * arScale && std::fabs(ar) <= kMaxExactIntFromFloat) {
       if (!tryApproximateRational(ar, numR, denR)) {
         ctx.parseError = true;
         return false;
       }
       scalarApplyReducedRationalPart(outV.scalarValue, false, numR, denR);
-    } else if (sv.hasExactSInt()) {
-      ScalarApplyExactSIntPart(outV.scalarValue, false, sv.exactSInt);
+    } else if (sv.hasExactSmInt()) {
+      scalarApplyExactSmIntPart(outV.scalarValue, false, sv.exactInt);
     }
     return true;
   }
@@ -12181,12 +12594,12 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     return true;
   }
 #endif
-  if (sv.hasExactSInt()) {
-    outV = makeScalarInt(sv.exactSInt);
+  if (sv.hasExactSmInt()) {
+    outV = makeScalarInt(sv.exactInt);
     return true;
   }
-  if (sv.hasExactUInt()) {
-    outV = makeScalarUInt(sv.exactUInt);
+  if (sv.hasExactSmUInt()) {
+    outV = makeScalarSmUInt(sv.exactUInt);
     return true;
   }
   SmFloat arScale0 = std::fabs(ar);
@@ -12198,7 +12611,7 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     return true;
   }
   SmInt nearInt = 0;
-  if (tryExtractExactSIntFromFloatStrict(ar, nearInt)) {
+  if (tryExtractExactSmIntFromFloatStrict(ar, nearInt)) {
     outV = makeScalarInt(nearInt);
     return true;
   }
@@ -12226,7 +12639,7 @@ MathParser::EvalValue MathParser::builtinRatio(
     const std::vector<EvalValue>& args) const {
   EvalContext sub;
   std::vector<EvalValue> flat;
-  if (!flattenArgsToScalars({args[0]}, flat)) {
+  if (!flattenArgsToScalars(&args[0], 1, flat)) {
     if (!args.empty() && args[0].kind == ValueKind::Array) {
       return makeArrayFromScalars({});
     }
@@ -12263,15 +12676,35 @@ MathParser::EvalValue MathParser::invokeUnaryFunctionOnElement(
     const std::string& funcName,
     const EvalValue::ScalarValue& elem,
     const std::unordered_map<std::string, EvalValue>* scopedVars,
-    const char* expectsUnaryFunction) {
+    const char* expectsUnaryFunction,
+    LambdaProgramCache* cache) {
   std::vector<EvalValue> args;
   args.push_back(scalarFromScalarValue(elem));
   BuiltinFunctionId fnId = BuiltinFunctionId::Count;
-  if (!tryGetBuiltinFunctionId(toLower(funcName), fnId)) {
+  bool isBuiltin = false;
+  bool isRestricted = false;
+  if (cache != nullptr && cache->refResolved) {
+    isBuiltin = cache->refIsBuiltin;
+    fnId = cache->refFnId;
+    isRestricted = cache->refIsRestricted;
+  } else {
+    isBuiltin = tryGetBuiltinFunctionId(toLower(funcName), fnId);
+    if (isBuiltin) {
+      const BuiltinCategory cat = getBuiltinCategory(fnId);
+      isRestricted =
+          (cat == BuiltinCategory::Sortby || cat == BuiltinCategory::Ratio || cat == BuiltinCategory::Filter);
+    }
+    if (cache != nullptr) {
+      cache->refResolved = true;
+      cache->refIsBuiltin = isBuiltin;
+      cache->refFnId = fnId;
+      cache->refIsRestricted = isRestricted;
+    }
+  }
+  if (!isBuiltin) {
     return evalUserFunctionCall(ctx, funcName, args, scopedVars);
   }
-  const BuiltinCategory cat = getBuiltinCategory(fnId);
-  if (cat == BuiltinCategory::Sortby || cat == BuiltinCategory::Ratio || cat == BuiltinCategory::Filter) {
+  if (isRestricted) {
     ctx.fail(expectsUnaryFunction);
     return makeScalar(0);
   }
@@ -12315,7 +12748,7 @@ bool MathParser::prepareUnaryCallableScalars(
     }
   }
   std::vector<EvalValue> flat;
-  if (!flattenArgsToScalars({dataArg}, flat)) {
+  if (!flattenArgsToScalars(&dataArg, 1, flat)) {
     if (dataArg.kind == ValueKind::Array) {
       emptyArray = true;
       return false;
@@ -12337,18 +12770,21 @@ MathParser::EvalValue MathParser::evalUnaryCallableOnScalar(
     bool isLambda,
     const EvalValue::ScalarValue& elem,
     const std::unordered_map<std::string, EvalValue>* scopedVars,
-    const char* expectsUnaryFunction) {
+    const char* expectsUnaryFunction,
+    LambdaProgramCache* lambdaCache) {
 #if SMARTMATH_LAMBDA_FUNCTIONS
   if (isLambda) {
     std::vector<EvalValue> lamArgs;
     lamArgs.push_back(scalarFromScalarValue(elem));
     return evalInlineLambdaCall(
-        ctx, fnArg.lambdaParams, fnArg.lambdaBody, std::move(lamArgs), scopedVars);
+        ctx, fnArg.lambdaParams, fnArg.lambdaBody, std::move(lamArgs), scopedVars, lambdaCache);
   }
 #else
   (void)isLambda;
+  (void)lambdaCache;
 #endif
-  return invokeUnaryFunctionOnElement(ctx, fnArg.funcRefName, elem, scopedVars, expectsUnaryFunction);
+  return invokeUnaryFunctionOnElement(
+      ctx, fnArg.funcRefName, elem, scopedVars, expectsUnaryFunction, lambdaCache);
 }
 
 MathParser::EvalValue MathParser::builtinSortby(
@@ -12370,9 +12806,10 @@ MathParser::EvalValue MathParser::builtinSortby(
   }
   std::vector<EvalValue> keys;
   keys.reserve(vals.size());
+  LambdaProgramCache lambdaCache;
   for (std::size_t i = 0; i < vals.size(); ++i) {
     const EvalValue keyV = evalUnaryCallableOnScalar(
-        ctx, args[1], isLambda, vals[i], scopedVars, STR_SORTBY_EXPECTS_UNARY_FUNCTION);
+        ctx, args[1], isLambda, vals[i], scopedVars, STR_SORTBY_EXPECTS_UNARY_FUNCTION, &lambdaCache);
     if (ctx.parseError) {
       return makeScalar(0);
     }
@@ -12504,9 +12941,10 @@ MathParser::EvalValue MathParser::builtinFilter(
   }
   std::vector<EvalValue> kept;
   kept.reserve(vals.size());
+  LambdaProgramCache lambdaCache;
   for (const auto& elem : vals) {
     const EvalValue predV = evalUnaryCallableOnScalar(
-        ctx, args[1], isLambda, elem, scopedVars, STR_FILTER_EXPECTS_UNARY_FUNCTION);
+        ctx, args[1], isLambda, elem, scopedVars, STR_FILTER_EXPECTS_UNARY_FUNCTION, &lambdaCache);
     if (ctx.parseError) {
       return makeScalar(0);
     }
@@ -12537,6 +12975,14 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       scalarLoadCartesian(ev.scalarValue, re, im);
       return std::isnan(re) || std::isnan(im);
     };
+    auto isTimeScalar = [&](const EvalValue::ScalarValue& s) {
+#if SMARTMATH_TIME_VALUES
+      return scalarValueIsTime(s);
+#else
+      (void)s;
+      return false;
+#endif
+    };
 #if SMARTMATH_COMPLEX_NUMBERS
     bool useComplexDedup = false;
     if (getSupportComplexNumbers()) {
@@ -12548,6 +12994,21 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       }
     }
     if (useComplexDedup) {
+      // Equal values have equal float parts, so only candidates that share the (re, im) hash bucket are compared.
+      struct CartesianKey {
+        SmFloat re;
+        SmFloat im;
+        bool operator==(const CartesianKey& o) const { return re == o.re && im == o.im; }
+      };
+      struct CartesianKeyHash {
+        std::size_t operator()(const CartesianKey& k) const {
+          const std::size_t h1 = std::hash<SmFloat>()(k.re);
+          const std::size_t h2 = std::hash<SmFloat>()(k.im);
+          return h1 ^ (h2 + static_cast<std::size_t>(0x9e3779b9u) + (h1 << 6) + (h1 >> 2));
+        }
+      };
+      std::unordered_map<CartesianKey, std::vector<std::size_t>, CartesianKeyHash> buckets;
+      buckets.reserve(values.size() * 2 + 1);
       std::vector<EvalValue> out;
       out.reserve(values.size());
       for (const auto& ev : values) {
@@ -12558,13 +13019,19 @@ MathParser::EvalValue MathParser::builtinSortFamily(
           }
           continue;
         }
+        SmFloat re = 0.0;
+        SmFloat im = 0.0;
+        scalarLoadCartesian(ev.scalarValue, re, im);
+        // Signed zero parts compare equal, so they must share a bucket.
+        const CartesianKey key{(re == 0.0) ? 0.0 : re, (im == 0.0) ? 0.0 : im};
+        std::vector<std::size_t>& bucket = buckets[key];
         bool seen = false;
-        for (const auto& prev : out) {
+        for (const std::size_t prevIdx : bucket) {
           int cmpDup = 0;
           if (cmpScalarValuesForCompare(
                   nullptr,
                   ev.scalarValue,
-                  prev.scalarValue,
+                  out[prevIdx].scalarValue,
                   cmpDup,
                   CmpScalarIncompatiblePolicy::SortUniqueReturnOne) &&
               cmpDup == 0) {
@@ -12573,6 +13040,7 @@ MathParser::EvalValue MathParser::builtinSortFamily(
           }
         }
         if (!seen) {
+          bucket.push_back(out.size());
           out.push_back(ev);
         }
       }
@@ -12597,6 +13065,20 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       const SmFloat key = (v == 0.0) ? 0.0 : v;
       if (seen.insert(key).second) {
         values[writePos++] = values[readPos];
+      } else if (std::fabs(key) >= smartmath::kMaxExactIntFromFloat && !isTimeScalar(values[readPos].scalarValue)) {
+        // Distinct exact integers above 2^mantissa can share one float key: keep this one unless an equal element was kept.
+        bool duplicate = false;
+        for (std::size_t k = 0; k < writePos && !duplicate; ++k) {
+          int cmpDup = 0;
+          duplicate = values[k].scalarValue.scalar == key &&
+                      !isTimeScalar(values[k].scalarValue) &&
+                      cmpScalarValuesForCompare(nullptr, values[readPos].scalarValue, values[k].scalarValue, cmpDup,
+                                                CmpScalarIncompatiblePolicy::SortUniqueReturnOne) &&
+                      cmpDup == 0;
+        }
+        if (!duplicate) {
+          values[writePos++] = values[readPos];
+        }
       }
     }
     values.resize(writePos);
@@ -12642,13 +13124,25 @@ MathParser::EvalValue MathParser::builtinSortFamily(
     }
     copyArrayScalars(a, out);
   };
+  // Stable like Python's sorted(): equal values (1 and 1.0, 0 and -0) keep their input order. Sorting an index
+  // array moves size_t instead of whole EvalValue objects.
   const auto sortScalarsInPlace = [this](std::vector<EvalValue>& values) {
-    std::sort(values.begin(), values.end(), [this](const EvalValue& lhs, const EvalValue& rhs) {
+    std::vector<std::size_t> order(values.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+      order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [this, &values](std::size_t lhs, std::size_t rhs) {
       int cmp = 0;
       cmpScalarValuesForCompare(
-          nullptr, lhs.scalarValue, rhs.scalarValue, cmp, CmpScalarIncompatiblePolicy::SortLess);
+          nullptr, values[lhs].scalarValue, values[rhs].scalarValue, cmp, CmpScalarIncompatiblePolicy::SortLess);
       return cmp < 0;
     });
+    std::vector<EvalValue> sorted;
+    sorted.reserve(values.size());
+    for (const std::size_t idx : order) {
+      sorted.emplace_back(std::move(values[idx]));
+    }
+    values = std::move(sorted);
   };
   if (args.size() == 1) {
     const EvalValue& a = args[0];
@@ -12874,7 +13368,7 @@ MathParser::EvalValue MathParser::builtinFactorial(
       if (scalarHasNonzeroImaginaryPart(s)) {
         return false;
       }
-      if (s.hasExactSInt() && s.exactSInt < 0) {
+      if (s.hasExactSmInt() && s.exactInt < 0) {
         return true;
       }
       SmInt n = 0;
@@ -12999,7 +13493,7 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
       // if the complex value is stored in a "render rational" imag form,
       // `imag(z)` must return that component (not a snapped/rounded float 0).
       if (sv.hasImagRenderRational()) {
-        const SmInt num = sv.imagExactSInt;
+        const SmInt num = sv.imagExactInt;
         const SmUInt den = sv.imagExactUInt;
         if (den == 0u) {
           out = makeScalar(0.0);
@@ -13009,9 +13503,9 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
         if (den == 1u) {
           ExactCartesianComponent cIm{};
           if (num < 0) {
-            ExactCartesianComponentAssignFromSignedInt(cIm, num);
+            exactCartesianComponentAssignFromSignedInt(cIm, num);
           } else {
-            ExactCartesianComponentAssignFromSignedInt(cIm, num);
+            exactCartesianComponentAssignFromSignedInt(cIm, num);
           }
           setScalarFromExactCartesianComponent(out, cIm);
           return true;
@@ -13024,15 +13518,15 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
 
       // Prefer correct "exact imag" when it's nonzero; otherwise, use the
       // floating component loaded from the scalar (used by complex formatting).
-      if (sv.hasImagExactSInt() && sv.imagExactSInt != 0LL) {
+      if (sv.hasImagExactSmInt() && sv.imagExactInt != 0) {
         ExactCartesianComponent cIm{};
-        ExactCartesianComponentAssignFromSignedInt(cIm, sv.imagExactSInt);
+        exactCartesianComponentAssignFromSignedInt(cIm, sv.imagExactInt);
         setScalarFromExactCartesianComponent(out, cIm);
         return true;
       }
-      if (sv.hasImagExactUInt() && sv.imagExactUInt != 0u) {
+      if (sv.hasImagExactSmUInt() && sv.imagExactUInt != 0u) {
         ExactCartesianComponent cIm{};
-        ExactCartesianComponentAssignFromUInt(cIm, sv.imagExactUInt);
+        exactCartesianComponentAssignFromSmUInt(cIm, sv.imagExactUInt);
         setScalarFromExactCartesianComponent(out, cIm);
         return true;
       }
@@ -13128,6 +13622,10 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
       }
       return true;
     case BuiltinFunctionId::Sign: {
+      // A real operand keeps the real sign (exact int; sign(nan) is nan, sign(+-inf) is +-1).
+      if (!scalarHasNonzeroImaginaryPart(sv)) {
+        return false;
+      }
       const SmFloat mag = calcHypotBasic(ar, ai);
       if (mag == 0.0 || !std::isfinite(mag) || !std::isfinite(ar) || !std::isfinite(ai)) {
         out = makeScalarComplexFromFloats(0.0, 0.0);
@@ -13139,14 +13637,14 @@ bool MathParser::tryUnaryComplexBuiltinSupport(
     case BuiltinFunctionId::Fact: {
       if (ai == 0.0 && !scalarHasNonzeroImaginaryPart(sv)) {
         SmInt n = 0;
-        const bool exactNeg = sv.hasExactSInt() && sv.exactSInt < 0;
+        const bool exactNeg = sv.hasExactSmInt() && sv.exactInt < 0;
         if (exactNeg || (nearlyInt(sv.scalar, n) && n < 0)) {
           return false;
         }
-        if (sv.hasExactSInt()) {
-          n = sv.exactSInt;
+        if (sv.hasExactSmInt()) {
+          n = sv.exactInt;
         }
-        if ((sv.hasExactSInt() || nearlyInt(sv.scalar, n)) && n >= 0) {
+        if ((sv.hasExactSmInt() || nearlyInt(sv.scalar, n)) && n >= 0) {
           if (n <= kMaxFactorialArg) {
             out = makeScalarInt(factorialInt(static_cast<int>(n)));
             return true;
@@ -13424,7 +13922,7 @@ MathParser::EvalValue MathParser::applyUnaryBuiltin(
         return makeScalar(std::acosh(x));
       }
       if (id == BuiltinFunctionId::Asinh) {
-        if (std::fabs(x) > kHypotDirectMax && std::isfinite(x)) {
+        if (std::fabs(x) > kLargeMagnitudeMin && std::isfinite(x)) {
           return makeScalar(std::copysign(std::log(std::fabs(x)) + std::log(2.0), x));
         }
         return makeScalar(std::asinh(x));
@@ -13452,13 +13950,16 @@ MathParser::EvalValue MathParser::applyUnaryBuiltin(
     case UnaryScalarKind::Abs:
       return applyAbsScalarValue(sv);
     case UnaryScalarKind::Sign:
-      if (sv.hasExactSInt()) {
-        return makeScalarInt((sv.exactSInt > 0) ? 1LL : ((sv.exactSInt < 0) ? -1LL : 0LL));
+      if (std::isnan(x)) {
+        return makeScalar(x);
       }
-      if (sv.hasExactUInt()) {
-        return makeScalarInt((sv.exactUInt == 0u) ? 0LL : 1LL);
+      if (sv.hasExactSmInt()) {
+        return makeScalarInt((sv.exactInt > 0) ? 1 : ((sv.exactInt < 0) ? -1 : 0));
       }
-      return makeScalarInt((x > 0.0) ? 1LL : ((x < 0.0) ? -1LL : 0LL));
+      if (sv.hasExactSmUInt()) {
+        return makeScalarInt((sv.exactUInt == 0u) ? 0 : 1);
+      }
+      return makeScalarInt((x > 0.0) ? 1 : ((x < 0.0) ? -1 : 0));
     case UnaryScalarKind::Deg:
       return makeScalarMaybeExact(x * 180.0 / kPi);
     case UnaryScalarKind::Rad:
@@ -13722,7 +14223,9 @@ bool MathParser::compile(const std::string& mathExpression) {
   }
   skipSpaces(ctx.p);
   if (!ctx.parseError && *ctx.p != '\0') {
-    ctx.fail(ParseErrorId::UnexpectedInput);
+    // Match Basic statement leftover (PARSE_ERR_UNEXPECTED_TOKEN): "2 sin(1)", "2b", etc.
+    // UDF/lambda body leftovers still use UnexpectedInput via the body helpers.
+    ctx.fail(ParseErrorId::UnexpectedToken);
   }
   if (ctx.parseError) {
     lastError_ = ctx.errorText;
