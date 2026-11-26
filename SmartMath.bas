@@ -16,16 +16,6 @@ dim shared nOldHScrollPos as Integer = -1
 dim shared nLastNavSelStart as Integer = -1
 dim shared nLastNavSelEnd as Integer = -1
 
-dim shared g_nDecimals as Integer = -1
-dim shared g_crResultColor as COLORREF = &H008000
-dim shared g_bUseThousandsSeparator as BOOL = FALSE
-dim shared g_bSupportComplexNumbers as BOOL = FALSE
-dim shared g_bShowErrors as BOOL = TRUE
-dim shared g_bSyntaxHighlight as BOOL = TRUE
-dim shared g_bLogParsedLines as BOOL = FALSE
-dim shared g_sDecimalSeparator as String
-dim shared g_sThousandsSeparator as String
-dim shared g_sArrayOutputSeparator as String
 dim shared hSmartMathMenu as HMENU = 0
 dim shared hSubMenuDecimals as HMENU = 0
 dim shared hSubMenuColor as HMENU = 0
@@ -356,7 +346,7 @@ private sub SetSmartMathDocActiveState(byval hWndEdit as HWND, byval bActive as 
 
   if bActive then
     EnsureActiveLineOptionApplied(FindCurrentFrameItem())
-    if bApplyTheme andalso (g_bSyntaxHighlight = TRUE) then
+    if (bApplyTheme <> FALSE) andalso Config_GetSyntaxHighlight() then
       TryApplySmartMathCoderTheme()
     end if
     dim bVisible as BOOL
@@ -709,7 +699,7 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
   bIsError = FALSE
   if IsLikelyCodeLine(sLine) then exit sub
 
-  if g_bLogParsedLines then
+  if Config_GetLogParsedLines() then
     const MAX_LOG_LINE_LEN as Integer = 220
     dim logLine as String = sLine
     if len(logLine) > MAX_LOG_LINE_LEN then
@@ -726,20 +716,20 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
 
   if Parser_TryEvaluateExRaw(sLine, raw) then
     sRes = FormatRawEvaluationResult(raw)
-    if g_bLogParsedLines then
+    if Config_GetLogParsedLines() then
       LogInfo_InputAndResult(sLine, sRes, raw)
     end if
   else
     dim sErr as String = Parser_GetLastError()
     if len(sErr) > 0 then
-      if g_bShowErrors = TRUE orelse Parser_IsFunctionHintError(sErr) then
+      if Config_GetShowErrors() orelse Parser_IsFunctionHintError(sErr) then
         sRes = SMARTMATH_ERROR_PREFIX & sErr
         bIsError = TRUE
       end if
     end if
   end if
 
-  if g_bLogParsedLines then
+  if Config_GetLogParsedLines() then
     if lineIdx >= 0 then
       LogInfo("parse-line end [" & ltrim(str(lineIdx)) & "]")
     else
@@ -855,7 +845,7 @@ private sub EnsureRenderCache(byval hWnd as HWND)
   g_cacheLineCount = nLineCount
 
   Parser_ClearVariables()
-  Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
+  Parser_SetSupportComplexNumbers(Config_GetSupportComplexNumbers())
   for i = 0 to nLineCount - 1
     if i > nEvalLast then
       if i < oldCount then
@@ -1301,7 +1291,7 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
         if bIsError then
           SetTextColor(hDC, &H0000FF)
         else
-          SetTextColor(hDC, g_crResultColor)
+          SetTextColor(hDC, Config_GetResultColor())
         end if
         dim drawX as Integer = rcClient.right - sz.cx - SMARTMATH_RESULT_RIGHT_MARGIN
         dim drawY as Integer = lineRect.top + ((lineRect.bottom - lineRect.top) - sz.cy) \ 2
@@ -1460,7 +1450,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       return 0
 
     elseif nCmd = IDM_DECIMAL_BASE then
-      g_nDecimals = -1
+      Config_SetDecimalPlaces(-1)
       InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
@@ -1472,7 +1462,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       return 0
 
     elseif nCmd > IDM_DECIMAL_BASE andalso nCmd <= IDM_DECIMAL_BASE + 1 + SMARTMATH_DECIMALS_MAX then
-      g_nDecimals = nCmd - IDM_DECIMAL_BASE - 1
+      Config_SetDecimalPlaces(nCmd - IDM_DECIMAL_BASE - 1)
       InvalidateRenderCache()
       SaveSettings()
       UpdateMenuChecks()
@@ -1485,12 +1475,12 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 
     elseif nCmd >= IDM_COLOR_BASE andalso nCmd < IDM_COLOR_BASE + MAX_COLORS then
       select case nCmd
-        case IDM_COLOR_GREEN:  g_crResultColor = &H008000
-        case IDM_COLOR_BLUE:   g_crResultColor = &HFF0000
-        case IDM_COLOR_RED:    g_crResultColor = &H0000FF
-        case IDM_COLOR_YELLOW: g_crResultColor = &H00FFFF
-        case IDM_COLOR_WHITE:  g_crResultColor = &HFFFFFF
-        case IDM_COLOR_BLACK:  g_crResultColor = &H000000
+        case IDM_COLOR_GREEN:  Config_SetResultColor(&H008000)
+        case IDM_COLOR_BLUE:   Config_SetResultColor(&HFF0000)
+        case IDM_COLOR_RED:    Config_SetResultColor(&H0000FF)
+        case IDM_COLOR_YELLOW: Config_SetResultColor(&H00FFFF)
+        case IDM_COLOR_WHITE:  Config_SetResultColor(&HFFFFFF)
+        case IDM_COLOR_BLACK:  Config_SetResultColor(&H000000)
       end select
       SaveSettings()
       UpdateMenuChecks()
@@ -1502,28 +1492,28 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
     elseif nCmd = IDM_THOUSANDS_SEPARATOR orelse nCmd = IDM_COMPLEX_NUMBERS orelse _
            nCmd = IDM_SHOW_ERRORS orelse nCmd = IDM_SYNTAX_HIGHLIGHT then
       if nCmd = IDM_THOUSANDS_SEPARATOR then
-        if g_bUseThousandsSeparator then
-          g_bUseThousandsSeparator = FALSE
+        if Config_GetUseThousandsSep() then
+          Config_SetUseThousandsSep(FALSE)
         else
-          g_bUseThousandsSeparator = TRUE
+          Config_SetUseThousandsSep(TRUE)
         end if
       elseif nCmd = IDM_COMPLEX_NUMBERS then
-        if g_bSupportComplexNumbers then
-          g_bSupportComplexNumbers = FALSE
+        if Config_GetSupportComplexNumbers() then
+          Config_SetSupportComplexNumbers(FALSE)
         else
-          g_bSupportComplexNumbers = TRUE
+          Config_SetSupportComplexNumbers(TRUE)
         end if
       elseif nCmd = IDM_SHOW_ERRORS then
-        if g_bShowErrors then
-          g_bShowErrors = FALSE
+        if Config_GetShowErrors() then
+          Config_SetShowErrors(FALSE)
         else
-          g_bShowErrors = TRUE
+          Config_SetShowErrors(TRUE)
         end if
       elseif nCmd = IDM_SYNTAX_HIGHLIGHT then
-        if g_bSyntaxHighlight then
-          g_bSyntaxHighlight = FALSE
+        if Config_GetSyntaxHighlight() then
+          Config_SetSyntaxHighlight(FALSE)
         else
-          g_bSyntaxHighlight = TRUE
+          Config_SetSyntaxHighlight(TRUE)
         end if
       end if
 
@@ -1532,7 +1522,7 @@ function MainGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
       UpdateMenuChecks()
       if g_hWndEdit then
         dim bVis as BOOL
-        if nCmd = IDM_SYNTAX_HIGHLIGHT andalso g_bSyntaxHighlight = TRUE then
+        if nCmd = IDM_SYNTAX_HIGHLIGHT andalso Config_GetSyntaxHighlight() then
           if g_bSmartMathDocActive then TryApplySmartMathCoderTheme()
         end if
         UpdateInternalState(g_hWndEdit, bVis)
@@ -1968,6 +1958,7 @@ sub ToggleSmartMath alias "ToggleSmartMath" (byval pd as PLUGINDATA ptr) export
     g_documentationFilePath &= WStr("\AkelFiles\Docs\SmartMath-Eng.md")
 
     LoadSettings()
+    Parser_SetSupportComplexNumbers(Config_GetSupportComplexNumbers())
 
     g_bShuttingDown = FALSE
     InvalidateRenderCache()

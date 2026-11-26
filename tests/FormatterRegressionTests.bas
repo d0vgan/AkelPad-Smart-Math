@@ -19,14 +19,14 @@ private const FMT_INF as String = "Inf"
 private const FMT_NEGINF as String = "-Inf"
 
 private sub ApplySeparatorDefaults()
-  g_sDecimalSeparator = SMARTMATH_DECIMAL_SEPARATOR_DEFAULT
-  g_sThousandsSeparator = SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT
-  g_sArrayOutputSeparator = SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT
+  Config_SetDecimalSep(SMARTMATH_DECIMAL_SEPARATOR_DEFAULT)
+  Config_SetThousandsSep(SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT)
+  Config_SetArrayOutputSep(SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT)
 end sub
 
 private sub FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
   ResetSmartMathFormatLocaleCache()
 end sub
@@ -138,18 +138,18 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
 
   '' Auto decimals, no thousands — integer elements, custom array separator
   FormatterTestSetup()
-  g_sArrayOutputSeparator = ";"
+  Config_SetArrayOutputSep(";")
   dim rawFast as RawResult
   dim intsFast(0 to 1) as SmInt = {10, 20}
   FormatterTestSetRawSmIntArray rawFast, intsFast()
   dim rFast as String = FormatTestRawArray(rawFast)
   AssertEq("arr/fast/semicolon elem sep", rFast, SMARTMATH_RESULT_PREFIX & "(10; 20)", failCount)
 
-  '' Fixed decimals, dot decimal, comma as g_sArrayOutputSeparator (e.g. (12.345, 1.444, 7.890))
-  g_nDecimals = 3
-  g_bUseThousandsSeparator = FALSE
-  g_sDecimalSeparator = "."
-  g_sArrayOutputSeparator = ","
+  '' Fixed decimals, dot decimal, comma as array output sep (e.g. (12.345, 1.444, 7.890))
+  Config_SetDecimalPlaces(3)
+  Config_SetUseThousandsSep(FALSE)
+  Config_SetDecimalSep(".")
+  Config_SetArrayOutputSep(",")
   '' Use values that keep a non-zero fractional part after rounding/trim (avoids all-integer tuple).
   dim rawDot as RawResult
   dim floatsDot(0 to 2) as SmFloat = {12.345, 1.444, 7.890}
@@ -161,11 +161,11 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
   AssertTrue("arr/fixed/dot-dec/first elt uses ascii dot", InStr(1, rDot, "12.345") > 0, failCount)
 
   '' Thousands + comma decimal + comma array sep: (1'024,333, 2'048,666, 4'096,999) style
-  g_nDecimals = 3
-  g_bUseThousandsSeparator = TRUE
-  g_sThousandsSeparator = "'"
-  g_sDecimalSeparator = ","
-  g_sArrayOutputSeparator = ","
+  Config_SetDecimalPlaces(3)
+  Config_SetUseThousandsSep(TRUE)
+  Config_SetThousandsSep("'")
+  Config_SetDecimalSep(",")
+  Config_SetArrayOutputSep(",")
   dim rawThou as RawResult
   dim floatsThou(0 to 2) as SmFloat = {1024.333, 2048.666, 4096.999}
   FormatterTestSetRawFloatArray rawThou, floatsThou()
@@ -179,7 +179,7 @@ private sub RunArrayDisplayTests(byref failCount as Integer)
   AssertTrue("arr/thou-comma/elt boundary", InStr(1, rThou, ",333, 2'048") > 0, failCount)
 
   '' Alternate array separator with same numeric styling
-  g_sArrayOutputSeparator = "|"
+  Config_SetArrayOutputSep("|")
   dim rawPipe as RawResult
   dim floatsPipe(0 to 1) as SmFloat = {1024.333, 2048.666}
   FormatterTestSetRawFloatArray rawPipe, floatsPipe()
@@ -201,11 +201,10 @@ private sub RunLocaleBlock(byval lcid as DWORD, byref label as String, byref fai
   ResetSmartMathFormatLocaleCache()
   print !"-- Locale block: "; label; !" (thread dec sep=["; ThreadLocaleDecimalA(); !"])"
 
-  g_nDecimals = 2
-  g_bUseThousandsSeparator = TRUE
-  g_sDecimalSeparator = ","
-  g_sThousandsSeparator = "'"
-
+  Config_SetDecimalPlaces(2)
+  Config_SetUseThousandsSep(TRUE)
+  Config_SetDecimalSep(",")
+  Config_SetThousandsSep("'")
   dim r73 as String = FormatResult(73.5)
   AssertNoSubstr(label & !"/73.5 no mangled thou", r73, "7'3", failCount)
 
@@ -244,12 +243,11 @@ private sub RunSeparatorMatrix(byref failCount as Integer)
         dim ach as String = arrayChars(ai)
         if dch <> tch then
           FormatterTestSetup()
-          g_nDecimals = 2
-          g_bUseThousandsSeparator = TRUE
-          g_sDecimalSeparator = dch
-          g_sThousandsSeparator = tch
-          g_sArrayOutputSeparator = ach
-
+          Config_SetDecimalPlaces(2)
+          Config_SetUseThousandsSep(TRUE)
+          Config_SetDecimalSep(dch)
+          Config_SetThousandsSep(tch)
+          Config_SetArrayOutputSep(ach)
           dim tag as String = !"dec=" & dch & !"/thou=" & tch & !"/arr=" & ach
           dim r as String = FormatResult(8888.25)
           AssertTrue(tag & !"/len", Len(r) > Len(SMARTMATH_RESULT_PREFIX), failCount)
@@ -295,23 +293,23 @@ AssertEq("parser finite", FormatNonFiniteDisplayFromParserScalar("3.14"), "", fa
 AssertTrue("auto decimals has prefix", Left(FormatResult(73.5), Len(SMARTMATH_RESULT_PREFIX)) = SMARTMATH_RESULT_PREFIX, failures)
 
 '' --- Fixed decimals, no thousands ---
-g_nDecimals = 2
+Config_SetDecimalPlaces(2)
 dim rNorm as String = FormatResult(73.5)
 AssertTrue("fixed73 no empty", Len(rNorm) > Len(SMARTMATH_RESULT_PREFIX), failures)
 AssertNoSubstr("fixed73 no apostrophe glitch", rNorm, "7'3", failures)
 
 '' --- Thousands grouping shape ---
 FormatterTestSetup()
-g_nDecimals = 1
-g_bUseThousandsSeparator = TRUE
-g_sThousandsSeparator = "'"
+Config_SetDecimalPlaces(1)
+Config_SetUseThousandsSep(TRUE)
+Config_SetThousandsSep("'")
 dim rBig as String = FormatResult(12345.6)
 AssertTrue("thousands near 12k", InStr(1, rBig, "'") > 0, failures)
 
 '' --- Scientific normalization lowercase e ---
 FormatterTestSetup()
-g_nDecimals = 3
-g_bUseThousandsSeparator = FALSE
+Config_SetDecimalPlaces(3)
+Config_SetUseThousandsSep(FALSE)
 dim rSci as String = FormatResult(0.0000012)
 AssertTrue("sci uses e", InStr(1, LCase(rSci), "e") > 0, failures)
 
@@ -343,16 +341,16 @@ private sub RunWidthGenericFormatTests(byref failCount as Integer)
   digits = WgDecPow2(SM_FLOAT_MANT_DIGITS - 1)
   grouped = GroupThousandsText(digits, "'")
   FormatterTestSetup()
-  g_bUseThousandsSeparator = TRUE
-  g_sThousandsSeparator = "'"
+  Config_SetUseThousandsSep(TRUE)
+  Config_SetThousandsSep("'")
   RawResultClear(r)
   r.kind = RRK_SCALAR
   FormatterTestInitRawScalarFloat r.scalar, v
   AssertEq("width raw float integer-like shows .0", FormatRawResultForDisplay(r), SMARTMATH_RESULT_PREFIX & grouped & ".0", failCount)
 
   FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
   RawResultClear(r)
   r.kind = RRK_SCALAR
@@ -440,8 +438,8 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
 
 #ifdef SM_BASELINE_WIDTHS  '' 64-bit / binary64 text; width-generic equivalents: RunWidthGenericFormatTests
   FormatterTestSetup()
-  g_bUseThousandsSeparator = TRUE
-  g_sThousandsSeparator = "'"
+  Config_SetUseThousandsSep(TRUE)
+  Config_SetThousandsSep("'")
   RawResultClear(r)
   r.kind = RRK_SCALAR
   FormatterTestInitRawScalarFloat r.scalar, 2147483647.0
@@ -456,8 +454,8 @@ private sub RunRawResultFormatTests(byref failCount as Integer)
 
 #ifdef SM_BASELINE_WIDTHS
   FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
   '' Python format(4285714285714285.5, '.16g') is 4285714285714286; auto mode appends .0.
   AssertEq("raw float hidden fraction shows .0", FormatResult(4285714285714285.5), SMARTMATH_RESULT_PREFIX & "4285714285714286.0", failCount)
@@ -565,8 +563,8 @@ private sub RunFactorintFormatterTests(byref failCount as Integer)
   Parser_ClearVariables()
   Parser_SetSupportComplexNumbers(FALSE)
   FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
 
   const FACTORINT_FMT_CASE_COUNT as Integer = 28
@@ -679,8 +677,8 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
   Parser_ClearVariables()
   Parser_SetSupportComplexNumbers(TRUE)
   FormatterTestSetup()
-  g_nDecimals = 2
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(2)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
 
   dim raw as RawResult
@@ -1057,7 +1055,7 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
 
   '' Regression guard: float raw export must not be used for these magnitudes (shows sci at 2 decimals).
   FormatterTestSetup()
-  g_nDecimals = 2
+  Config_SetDecimalPlaces(2)
   RawResultClear(raw)
   raw.kind = RRK_SCALAR
   raw.scalar.kind = RSK_COMPLEX
@@ -1074,9 +1072,9 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
   Parser_ClearVariables()
   Parser_SetSupportComplexNumbers(TRUE)
   FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = TRUE
-  g_sThousandsSeparator = "'"
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(TRUE)
+  Config_SetThousandsSep("'")
   ApplySeparatorDefaults()
 
   dim cxLitIni as String = "0x7FFFFFFFFFFFFFFF-0x7FFFFFFFFFFFFFFFi"
@@ -1122,8 +1120,8 @@ private sub RunParserFormatterIntegrationTests(byref failCount as Integer)
 
   '' sqrt(2**70) and sqrt(-2**70): operand is float (2^70 > i64); sqrt uses float unless verified exact int.
   FormatterTestSetup()
-  g_nDecimals = -1
-  g_bUseThousandsSeparator = FALSE
+  Config_SetDecimalPlaces(-1)
+  Config_SetUseThousandsSep(FALSE)
   ApplySeparatorDefaults()
   dim sqrtPosFmt as String, sqrtNegFmt as String
   if FormatterTryEvaluateAndFormat("sqrt(2**70)", sqrtPosFmt, raw) = FALSE then

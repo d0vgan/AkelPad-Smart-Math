@@ -77,16 +77,6 @@ extern nOldFirstLine as Integer
 extern nOldCaretLine as Integer
 extern nOldMargin as Integer
 
-extern g_nDecimals as Integer
-extern g_crResultColor as COLORREF
-extern g_bUseThousandsSeparator as BOOL
-extern g_bSupportComplexNumbers as BOOL
-extern g_bShowErrors as BOOL
-extern g_bSyntaxHighlight as BOOL
-extern g_bLogParsedLines as BOOL
-extern g_sDecimalSeparator as String
-extern g_sThousandsSeparator as String
-extern g_sArrayOutputSeparator as String
 extern hSmartMathMenu as HMENU
 extern hSubMenuDecimals as HMENU
 extern hSubMenuColor as HMENU
@@ -102,6 +92,27 @@ declare sub LoadSettings()
 declare sub SaveSettings()
 declare function LoadSettings_ActiveFrames(wszActiveFrameFiles() as UShort) as Integer
 declare sub SaveSettings_ActiveFrames(wszActiveFrameFiles() as UShort, byval nLen as Integer)
+
+declare sub Config_SetDecimalPlaces(byval p as Integer)
+declare function Config_GetDecimalPlaces() as Integer
+declare sub Config_SetUseThousandsSep(byval enabled as Boolean)
+declare function Config_GetUseThousandsSep() as Boolean
+declare sub Config_SetSupportComplexNumbers(byval enabled as Boolean)
+declare function Config_GetSupportComplexNumbers() as Boolean
+declare sub Config_SetShowErrors(byval enabled as Boolean)
+declare function Config_GetShowErrors() as Boolean
+declare sub Config_SetSyntaxHighlight(byval enabled as Boolean)
+declare function Config_GetSyntaxHighlight() as Boolean
+declare sub Config_SetDecimalSep(byref s as String)
+declare function Config_GetDecimalSep() as String
+declare sub Config_SetThousandsSep(byref s as String)
+declare function Config_GetThousandsSep() as String
+declare sub Config_SetArrayOutputSep(byref s as String)
+declare function Config_GetArrayOutputSep() as String
+declare sub Config_SetResultColor(byval c as COLORREF)
+declare function Config_GetResultColor() as COLORREF
+declare sub Config_SetLogParsedLines(byval enabled as Boolean)
+declare function Config_GetLogParsedLines() as Boolean
 declare function FormatResult(byval d as SmFloat) as String
 declare function FormatNonFiniteDisplayFromParserScalar(byref s as String) as String
 declare function FormatRawResultForDisplay(byref r as RawResult) as String

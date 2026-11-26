@@ -6,20 +6,20 @@
 sub UpdateMenuChecks()
   if hSubMenuDecimals <> 0 then
     dim stAuto as UINT
-    if g_nDecimals = -1 then stAuto = MF_CHECKED else stAuto = MF_UNCHECKED
+    if Config_GetDecimalPlaces() = -1 then stAuto = MF_CHECKED else stAuto = MF_UNCHECKED
     CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE, MF_BYCOMMAND or stAuto)
 
     dim i as Integer
     for i = 0 to SMARTMATH_DECIMALS_MAX
       dim st as UINT
-      if g_nDecimals = i then st = MF_CHECKED else st = MF_UNCHECKED
+      if Config_GetDecimalPlaces() = i then st = MF_CHECKED else st = MF_UNCHECKED
       CheckMenuItem(hSubMenuDecimals, IDM_DECIMAL_BASE + 1 + i, MF_BYCOMMAND or st)
     next i
   end if
 
   if hSubMenuColor <> 0 then
     dim idCheck as Integer = -1
-    select case g_crResultColor
+    select case Config_GetResultColor()
       case &H008000: idCheck = IDM_COLOR_GREEN
       case &HFF0000: idCheck = IDM_COLOR_BLUE
       case &H0000FF: idCheck = IDM_COLOR_RED
@@ -39,17 +39,17 @@ sub UpdateMenuChecks()
   if hSmartMathMenu <> 0 then
     dim stChecked as UINT
 
-    if g_bUseThousandsSeparator then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
+    if Config_GetUseThousandsSep() then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_THOUSANDS_SEPARATOR, MF_BYCOMMAND or stChecked)
 
-    if g_bSupportComplexNumbers then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
-    Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
+    if Config_GetSupportComplexNumbers() then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
+    Parser_SetSupportComplexNumbers(Config_GetSupportComplexNumbers())
     CheckMenuItem(hSmartMathMenu, IDM_COMPLEX_NUMBERS, MF_BYCOMMAND or stChecked)
 
-    if g_bShowErrors then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
+    if Config_GetShowErrors() then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_SHOW_ERRORS, MF_BYCOMMAND or stChecked)
 
-    if g_bSyntaxHighlight then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
+    if Config_GetSyntaxHighlight() then stChecked = MF_CHECKED else stChecked = MF_UNCHECKED
     CheckMenuItem(hSmartMathMenu, IDM_SYNTAX_HIGHLIGHT, MF_BYCOMMAND or stChecked)
   end if
 end sub

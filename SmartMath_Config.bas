@@ -1,6 +1,102 @@
 #include once "SmartMath_Globals.bi"
 
 ' -----------------------------------------------------------------------------
+'  Live settings storage + Config_Get / Config_Set (NPP-aligned names)
+' -----------------------------------------------------------------------------
+dim shared storedDecimalPlaces as Integer = -1
+dim shared storedResultColor as COLORREF = &H008000
+dim shared storedUseThousandsSep as Boolean = FALSE
+dim shared storedSupportComplexNumbers as Boolean = FALSE
+dim shared storedShowErrors as Boolean = TRUE
+dim shared storedSyntaxHighlight as Boolean = TRUE
+dim shared storedLogParsedLines as Boolean = FALSE
+dim shared storedDecimalSep as String
+dim shared storedThousandsSep as String
+dim shared storedArrayOutputSep as String
+
+sub Config_SetDecimalPlaces(byval p as Integer)
+  if (p = -1) orelse (p >= 0 andalso p <= SMARTMATH_DECIMALS_MAX) then
+    storedDecimalPlaces = p
+  end if
+end sub
+
+function Config_GetDecimalPlaces() as Integer
+  return storedDecimalPlaces
+end function
+
+sub Config_SetUseThousandsSep(byval enabled as Boolean)
+  storedUseThousandsSep = enabled
+end sub
+
+function Config_GetUseThousandsSep() as Boolean
+  return storedUseThousandsSep
+end function
+
+sub Config_SetSupportComplexNumbers(byval enabled as Boolean)
+  storedSupportComplexNumbers = enabled
+end sub
+
+function Config_GetSupportComplexNumbers() as Boolean
+  return storedSupportComplexNumbers
+end function
+
+sub Config_SetShowErrors(byval enabled as Boolean)
+  storedShowErrors = enabled
+end sub
+
+function Config_GetShowErrors() as Boolean
+  return storedShowErrors
+end function
+
+sub Config_SetSyntaxHighlight(byval enabled as Boolean)
+  storedSyntaxHighlight = enabled
+end sub
+
+function Config_GetSyntaxHighlight() as Boolean
+  return storedSyntaxHighlight
+end function
+
+sub Config_SetDecimalSep(byref s as String)
+  storedDecimalSep = s
+end sub
+
+function Config_GetDecimalSep() as String
+  return storedDecimalSep
+end function
+
+sub Config_SetThousandsSep(byref s as String)
+  storedThousandsSep = s
+end sub
+
+function Config_GetThousandsSep() as String
+  return storedThousandsSep
+end function
+
+sub Config_SetArrayOutputSep(byref s as String)
+  storedArrayOutputSep = s
+end sub
+
+function Config_GetArrayOutputSep() as String
+  return storedArrayOutputSep
+end function
+
+sub Config_SetResultColor(byval c as COLORREF)
+  storedResultColor = c
+end sub
+
+function Config_GetResultColor() as COLORREF
+  return storedResultColor
+end function
+
+sub Config_SetLogParsedLines(byval enabled as Boolean)
+  storedLogParsedLines = enabled
+end sub
+
+function Config_GetLogParsedLines() as Boolean
+  return storedLogParsedLines
+end function
+
+' -----------------------------------------------------------------------------
 '  Settings Loading & Saving
 ' -----------------------------------------------------------------------------
 #define SMARTMATH_OPTIONS_PLUGIN_NAME             WStr("SmartMath")
@@ -19,24 +115,24 @@ const SMARTMATH_OPT_STR_MAX_CHARS = 32
 const SMARTMATH_ACTIVE_FRAME_FILE_SEPARATOR as UShort = 10 '' LF
 
 type SMARTMATH_SETTINGS_CACHE
-  isInitialized as BOOL
-  hasDecimals as BOOL
-  hasColor as BOOL
-  hasThousandsSeparator as BOOL
-  hasComplexNumbers as BOOL
-  hasShowErrors as BOOL
-  hasSyntaxHighlight as BOOL
-  hasLogParsedLines as BOOL
-  hasDecimalSeparator as BOOL
-  hasThousandsSeparatorChar as BOOL
-  hasArrayOutputSeparator as BOOL
+  isInitialized as Boolean
+  hasDecimals as Boolean
+  hasColor as Boolean
+  hasThousandsSeparator as Boolean
+  hasComplexNumbers as Boolean
+  hasShowErrors as Boolean
+  hasSyntaxHighlight as Boolean
+  hasLogParsedLines as Boolean
+  hasDecimalSeparator as Boolean
+  hasThousandsSeparatorChar as Boolean
+  hasArrayOutputSeparator as Boolean
   nDecimals as Integer
   crResultColor as COLORREF
-  bUseThousandsSeparator as BOOL
-  bSupportComplexNumbers as BOOL
-  bShowErrors as BOOL
-  bSyntaxHighlight as BOOL
-  bLogParsedLines as BOOL
+  bUseThousandsSeparator as Boolean
+  bSupportComplexNumbers as Boolean
+  bShowErrors as Boolean
+  bSyntaxHighlight as Boolean
+  bLogParsedLines as Boolean
   sDecimalSeparator as String
   sThousandsSeparator as String
   sArrayOutputSeparator as String
@@ -60,22 +156,22 @@ private sub ResetSettingsCacheReadState()
   g_settingsCache.hasArrayOutputSeparator = FALSE
 end sub
 
-private sub CacheSetInt(byref hasValue as BOOL, byref cacheValue as Integer, byval value as Integer)
+private sub CacheSetInt(byref hasValue as Boolean, byref cacheValue as Integer, byval value as Integer)
   hasValue = TRUE
   cacheValue = value
 end sub
 
-private sub CacheSetDword(byref hasValue as BOOL, byref cacheValue as DWORD, byval value as DWORD)
+private sub CacheSetDword(byref hasValue as Boolean, byref cacheValue as DWORD, byval value as DWORD)
   hasValue = TRUE
   cacheValue = value
 end sub
 
-private sub CacheSetBool(byref hasValue as BOOL, byref cacheValue as BOOL, byval value as BOOL)
+private sub CacheSetBool(byref hasValue as Boolean, byref cacheValue as Boolean, byval value as Boolean)
   hasValue = TRUE
   cacheValue = value
 end sub
 
-private sub CacheSetString(byref hasValue as BOOL, byref cacheValue as String, byval value as String)
+private sub CacheSetString(byref hasValue as Boolean, byref cacheValue as String, byval value as String)
   hasValue = TRUE
   cacheValue = value
 end sub
@@ -192,7 +288,7 @@ private function CacheMatchesActiveFrameFiles(wszActiveFrameFiles() as UShort, b
 end function
 
 private sub EnsureSettingsCacheInitialized()
-  if g_settingsCache.isInitialized = FALSE then
+  if not g_settingsCache.isInitialized then
     ResetSettingsCacheReadState()
   end if
 end sub
@@ -259,7 +355,7 @@ private sub LoadIniSingleCharString( _
   byref optionName as WString, _
   byref defaultPlain as String, _
   byref target as String, _
-  byref hasFlag as BOOL, _
+  byref hasFlag as Boolean, _
   byref cacheStr as String _
 )
   dim sLocal as WString * SMARTMATH_OPT_STR_MAX_CHARS
@@ -272,16 +368,16 @@ end sub
 
 sub LoadSettings()
   ' default values before reading the options
-  g_nDecimals = -1
-  g_crResultColor = &H008000 ' Green
-  g_bUseThousandsSeparator = FALSE
-  g_bSupportComplexNumbers = FALSE
-  g_bShowErrors = TRUE
-  g_bSyntaxHighlight = TRUE
-  g_bLogParsedLines = FALSE
-  g_sDecimalSeparator = SMARTMATH_DECIMAL_SEPARATOR_DEFAULT
-  g_sThousandsSeparator = SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT
-  g_sArrayOutputSeparator = SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT
+  storedDecimalPlaces = -1
+  storedResultColor = &H008000 ' Green
+  storedUseThousandsSep = FALSE
+  storedSupportComplexNumbers = FALSE
+  storedShowErrors = TRUE
+  storedSyntaxHighlight = TRUE
+  storedLogParsedLines = FALSE
+  storedDecimalSep = SMARTMATH_DECIMAL_SEPARATOR_DEFAULT
+  storedThousandsSep = SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT
+  storedArrayOutputSep = SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT
 
   EnsureSettingsCacheInitialized()
   ResetSettingsCacheReadState()
@@ -291,81 +387,67 @@ sub LoadSettings()
   if g_hMainWnd = 0 then exit sub ' nothing to do
 
   dim hOptions as HANDLE = cast(HANDLE, SendMessage(g_hMainWnd, AKD_BEGINOPTIONSW, POB_READ, cast(LPARAM, strptr(SMARTMATH_OPTIONS_PLUGIN_NAME))))
-  ' OutputDebugString("[SmartMath] hOptions=" & hOptions)
   if hOptions = 0 then exit sub ' can not read options
 
   dim iVal as Integer
 
   if readIntW(hOptions, SMARTMATH_OPT_DECIMALS, iVal) > 0 then
     if (iVal = -1) orelse (iVal >= 0 andalso iVal <= SMARTMATH_DECIMALS_MAX) then
-      g_nDecimals = iVal
-      CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
+      storedDecimalPlaces = iVal
+      CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, storedDecimalPlaces)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_COLOR, iVal) > 0 then
     if iVal >= 0 andalso iVal <= &HFFFFFF then
-      g_crResultColor = cast(COLORREF, culng(iVal))
-      CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
+      storedResultColor = cast(COLORREF, culng(iVal))
+      CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, storedResultColor)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, iVal) > 0 then
     if iVal >= 0 then
-      g_bUseThousandsSeparator = (iVal <> 0)
-      CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
+      storedUseThousandsSep = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, storedUseThousandsSep)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_COMPLEX_NUMBERS, iVal) > 0 then
     if iVal >= 0 then
-      g_bSupportComplexNumbers = (iVal <> 0)
-      CacheSetBool(g_settingsCache.hasComplexNumbers, g_settingsCache.bSupportComplexNumbers, g_bSupportComplexNumbers)
+      storedSupportComplexNumbers = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasComplexNumbers, g_settingsCache.bSupportComplexNumbers, storedSupportComplexNumbers)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_SHOW_ERRORS, iVal) > 0 then
     if iVal >= 0 then
-      g_bShowErrors = (iVal <> 0)
-      CacheSetBool(g_settingsCache.hasShowErrors, g_settingsCache.bShowErrors, g_bShowErrors)
+      storedShowErrors = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasShowErrors, g_settingsCache.bShowErrors, storedShowErrors)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_SYNTAX_HIGHLIGHT, iVal) > 0 then
     if iVal >= 0 then
-      g_bSyntaxHighlight = (iVal <> 0)
-      CacheSetBool(g_settingsCache.hasSyntaxHighlight, g_settingsCache.bSyntaxHighlight, g_bSyntaxHighlight)
+      storedSyntaxHighlight = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasSyntaxHighlight, g_settingsCache.bSyntaxHighlight, storedSyntaxHighlight)
     end if
   end if
 
   if readIntW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, iVal) > 0 then
     if iVal >= 0 then
-      g_bLogParsedLines = (iVal <> 0)
-      CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
+      storedLogParsedLines = (iVal <> 0)
+      CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, storedLogParsedLines)
     end if
   end if
 
   LoadIniSingleCharString(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, SMARTMATH_DECIMAL_SEPARATOR_DEFAULT, _
-    g_sDecimalSeparator, g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator)
+    storedDecimalSep, g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator)
   LoadIniSingleCharString(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, SMARTMATH_THOUSANDS_SEPARATOR_DEFAULT, _
-    g_sThousandsSeparator, g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator)
+    storedThousandsSep, g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator)
   LoadIniSingleCharString(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, SMARTMATH_ARRAY_OUTPUT_SEPARATOR_DEFAULT, _
-    g_sArrayOutputSeparator, g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator)
-
-  ' OutputDebugString("[SmartMath] LoadSettings: g_nDecimals=" & g_nDecimals)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_crResultColor=" & g_crResultColor)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_bUseThousandsSeparator=" & g_bUseThousandsSeparator)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_bSupportComplexNumbers=" & g_bSupportComplexNumbers)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_bShowErrors=" & g_bShowErrors)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_bSyntaxHighlight=" & g_bSyntaxHighlight)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_bLogParsedLines=" & g_bLogParsedLines)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_sDecimalSeparator=" & g_sDecimalSeparator)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_sThousandsSeparator=" & g_sThousandsSeparator)
-  ' OutputDebugString("[SmartMath] LoadSettings: g_sArrayOutputSeparator=" & g_sArrayOutputSeparator)
+    storedArrayOutputSep, g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator)
 
   SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0) ' be sure to close the options handle
-
-  Parser_SetSupportComplexNumbers(g_bSupportComplexNumbers)
 
   g_settingsCache.isInitialized = TRUE
 end sub
@@ -375,42 +457,27 @@ sub SaveSettings()
 
   if g_hMainWnd = 0 then exit sub ' nothing to do
 
-  dim shouldSaveDecimals as BOOL = (g_settingsCache.hasDecimals = FALSE) orElse (g_settingsCache.nDecimals <> g_nDecimals)
-  dim shouldSaveColor as BOOL = (g_settingsCache.hasColor = FALSE) orElse (g_settingsCache.crResultColor <> g_crResultColor)
-  dim shouldSaveThousandsFlag as BOOL = (g_settingsCache.hasThousandsSeparator = FALSE) orElse (g_settingsCache.bUseThousandsSeparator <> g_bUseThousandsSeparator)
-  dim shouldSaveComplexNumbersFlag as BOOL = (g_settingsCache.hasComplexNumbers = FALSE) orElse (g_settingsCache.bSupportComplexNumbers <> g_bSupportComplexNumbers)
-  dim shouldSaveShowErrorsFlag as BOOL = (g_settingsCache.hasShowErrors = FALSE) orElse (g_settingsCache.bShowErrors <> g_bShowErrors)
-  dim shouldSaveSyntaxHighlightFlag as BOOL = (g_settingsCache.hasSyntaxHighlight = FALSE) orElse (g_settingsCache.bSyntaxHighlight <> g_bSyntaxHighlight)
-  dim shouldSaveLogFlag as BOOL = (g_settingsCache.hasLogParsedLines = FALSE) orElse (g_settingsCache.bLogParsedLines <> g_bLogParsedLines)
-  dim shouldSaveDecimalSep as BOOL = (g_settingsCache.hasDecimalSeparator = FALSE) orElse (g_settingsCache.sDecimalSeparator <> g_sDecimalSeparator)
-  dim shouldSaveThousandsSep as BOOL = (g_settingsCache.hasThousandsSeparatorChar = FALSE) orElse (g_settingsCache.sThousandsSeparator <> g_sThousandsSeparator)
-  dim shouldSaveArraySep as BOOL = (g_settingsCache.hasArrayOutputSeparator = FALSE) orElse (g_settingsCache.sArrayOutputSeparator <> g_sArrayOutputSeparator)
+  dim shouldSaveDecimals as Boolean = (not g_settingsCache.hasDecimals) orElse (g_settingsCache.nDecimals <> storedDecimalPlaces)
+  dim shouldSaveColor as Boolean = (not g_settingsCache.hasColor) orElse (g_settingsCache.crResultColor <> storedResultColor)
+  dim shouldSaveThousandsFlag as Boolean = (not g_settingsCache.hasThousandsSeparator) orElse (g_settingsCache.bUseThousandsSeparator <> storedUseThousandsSep)
+  dim shouldSaveComplexNumbersFlag as Boolean = (not g_settingsCache.hasComplexNumbers) orElse (g_settingsCache.bSupportComplexNumbers <> storedSupportComplexNumbers)
+  dim shouldSaveShowErrorsFlag as Boolean = (not g_settingsCache.hasShowErrors) orElse (g_settingsCache.bShowErrors <> storedShowErrors)
+  dim shouldSaveSyntaxHighlightFlag as Boolean = (not g_settingsCache.hasSyntaxHighlight) orElse (g_settingsCache.bSyntaxHighlight <> storedSyntaxHighlight)
+  dim shouldSaveLogFlag as Boolean = (not g_settingsCache.hasLogParsedLines) orElse (g_settingsCache.bLogParsedLines <> storedLogParsedLines)
+  dim shouldSaveDecimalSep as Boolean = (not g_settingsCache.hasDecimalSeparator) orElse (g_settingsCache.sDecimalSeparator <> storedDecimalSep)
+  dim shouldSaveThousandsSep as Boolean = (not g_settingsCache.hasThousandsSeparatorChar) orElse (g_settingsCache.sThousandsSeparator <> storedThousandsSep)
+  dim shouldSaveArraySep as Boolean = (not g_settingsCache.hasArrayOutputSeparator) orElse (g_settingsCache.sArrayOutputSeparator <> storedArrayOutputSep)
 
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveDecimals=" & shouldSaveDecimals)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveColor=" & shouldSaveColor)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveThousandsFlag=" & shouldSaveThousandsFlag)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveComplexNumbersFlag=" & shouldSaveComplexNumbersFlag)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveShowErrorsFlag=" & shouldSaveShowErrorsFlag)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveSyntaxHighlightFlag=" & shouldSaveSyntaxHighlightFlag)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveLogFlag=" & shouldSaveLogFlag)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveDecimalSep=" & shouldSaveDecimalSep)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveThousandsSep=" & shouldSaveThousandsSep)
-  ' OutputDebugString("[SmartMath] SaveSettings: shouldSaveArraySep=" & shouldSaveArraySep)
-
-  ' OutputDebugString("[SmartMath] SaveSettings: cache: hasDecimalSeparator=" & g_settingsCache.hasDecimalSeparator & " sDecimalSeparator=" & g_settingsCache.sDecimalSeparator)
-  ' OutputDebugString("[SmartMath] SaveSettings: cache: hasThousandsSeparatorChar=" & g_settingsCache.hasThousandsSeparatorChar & " sThousandsSeparator=" & g_settingsCache.sThousandsSeparator)
-  ' OutputDebugString("[SmartMath] SaveSettings: cache: hasArrayOutputSeparator=" & g_settingsCache.hasArrayOutputSeparator & " sArrayOutputSeparator=" & g_settingsCache.sArrayOutputSeparator)
-
-  if (shouldSaveDecimals = FALSE) _
-     andalso (shouldSaveColor = FALSE) _
-     andalso (shouldSaveThousandsFlag = FALSE) _
-     andalso (shouldSaveComplexNumbersFlag = FALSE) _
-     andalso (shouldSaveShowErrorsFlag = FALSE) _
-     andalso (shouldSaveSyntaxHighlightFlag = FALSE) _
-     andalso (shouldSaveLogFlag = FALSE) _
-     andalso (shouldSaveDecimalSep = FALSE) _
-     andalso (shouldSaveThousandsSep = FALSE) _
-     andalso (shouldSaveArraySep = FALSE) then
+  if (not shouldSaveDecimals) _
+     andalso (not shouldSaveColor) _
+     andalso (not shouldSaveThousandsFlag) _
+     andalso (not shouldSaveComplexNumbersFlag) _
+     andalso (not shouldSaveShowErrorsFlag) _
+     andalso (not shouldSaveSyntaxHighlightFlag) _
+     andalso (not shouldSaveLogFlag) _
+     andalso (not shouldSaveDecimalSep) _
+     andalso (not shouldSaveThousandsSep) _
+     andalso (not shouldSaveArraySep) then
     exit sub ' nothing to save
   end if
 
@@ -419,56 +486,56 @@ sub SaveSettings()
   dim sVal as WString * SMARTMATH_OPT_STR_MAX_CHARS
 
   if shouldSaveDecimals then
-    writeIntW(hOptions, SMARTMATH_OPT_DECIMALS, g_nDecimals)
-    CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, g_nDecimals)
+    writeIntW(hOptions, SMARTMATH_OPT_DECIMALS, storedDecimalPlaces)
+    CacheSetInt(g_settingsCache.hasDecimals, g_settingsCache.nDecimals, storedDecimalPlaces)
   end if
 
   if shouldSaveColor then
-    writeIntW(hOptions, SMARTMATH_OPT_COLOR, CInt(clngint(culng(g_crResultColor))))
-    CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, g_crResultColor)
+    writeIntW(hOptions, SMARTMATH_OPT_COLOR, CInt(clngint(culng(storedResultColor))))
+    CacheSetDword(g_settingsCache.hasColor, g_settingsCache.crResultColor, storedResultColor)
   end if
 
   if shouldSaveThousandsFlag then
-    writeIntW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, IIf(g_bUseThousandsSeparator, 1, 0))
-    CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, g_bUseThousandsSeparator)
+    writeIntW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR, IIf(storedUseThousandsSep, 1, 0))
+    CacheSetBool(g_settingsCache.hasThousandsSeparator, g_settingsCache.bUseThousandsSeparator, storedUseThousandsSep)
   end if
 
   if shouldSaveComplexNumbersFlag then
-    writeIntW(hOptions, SMARTMATH_OPT_COMPLEX_NUMBERS, IIf(g_bSupportComplexNumbers, 1, 0))
-    CacheSetBool(g_settingsCache.hasComplexNumbers, g_settingsCache.bSupportComplexNumbers, g_bSupportComplexNumbers)
+    writeIntW(hOptions, SMARTMATH_OPT_COMPLEX_NUMBERS, IIf(storedSupportComplexNumbers, 1, 0))
+    CacheSetBool(g_settingsCache.hasComplexNumbers, g_settingsCache.bSupportComplexNumbers, storedSupportComplexNumbers)
   end if
 
   if shouldSaveShowErrorsFlag then
-    writeIntW(hOptions, SMARTMATH_OPT_SHOW_ERRORS, IIf(g_bShowErrors, 1, 0))
-    CacheSetBool(g_settingsCache.hasShowErrors, g_settingsCache.bShowErrors, g_bShowErrors)
+    writeIntW(hOptions, SMARTMATH_OPT_SHOW_ERRORS, IIf(storedShowErrors, 1, 0))
+    CacheSetBool(g_settingsCache.hasShowErrors, g_settingsCache.bShowErrors, storedShowErrors)
   end if
 
   if shouldSaveSyntaxHighlightFlag then
-    writeIntW(hOptions, SMARTMATH_OPT_SYNTAX_HIGHLIGHT, IIf(g_bSyntaxHighlight, 1, 0))
-    CacheSetBool(g_settingsCache.hasSyntaxHighlight, g_settingsCache.bSyntaxHighlight, g_bSyntaxHighlight)
+    writeIntW(hOptions, SMARTMATH_OPT_SYNTAX_HIGHLIGHT, IIf(storedSyntaxHighlight, 1, 0))
+    CacheSetBool(g_settingsCache.hasSyntaxHighlight, g_settingsCache.bSyntaxHighlight, storedSyntaxHighlight)
   end if
 
   if shouldSaveLogFlag then
-    writeIntW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, IIf(g_bLogParsedLines, 1, 0))
-    CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, g_bLogParsedLines)
+    writeIntW(hOptions, SMARTMATH_OPT_LOG_PARSED_LINES, IIf(storedLogParsedLines, 1, 0))
+    CacheSetBool(g_settingsCache.hasLogParsedLines, g_settingsCache.bLogParsedLines, storedLogParsedLines)
   end if
 
   if shouldSaveDecimalSep then
-    sVal = WStr(g_sDecimalSeparator)
+    sVal = WStr(storedDecimalSep)
     writeStringW(hOptions, SMARTMATH_OPT_DECIMAL_SEPARATOR_CHAR, sVal)
-    CacheSetString(g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator, g_sDecimalSeparator)
+    CacheSetString(g_settingsCache.hasDecimalSeparator, g_settingsCache.sDecimalSeparator, storedDecimalSep)
   end if
 
   if shouldSaveThousandsSep then
-    sVal = WStr(g_sThousandsSeparator)
+    sVal = WStr(storedThousandsSep)
     writeStringW(hOptions, SMARTMATH_OPT_THOUSANDS_SEPARATOR_CHAR, sVal)
-    CacheSetString(g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator, g_sThousandsSeparator)
+    CacheSetString(g_settingsCache.hasThousandsSeparatorChar, g_settingsCache.sThousandsSeparator, storedThousandsSep)
   end if
 
   if shouldSaveArraySep then
-    sVal = WStr(g_sArrayOutputSeparator)
+    sVal = WStr(storedArrayOutputSep)
     writeStringW(hOptions, SMARTMATH_OPT_ARRAY_OUTPUT_SEPARATOR_CHAR, sVal)
-    CacheSetString(g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator, g_sArrayOutputSeparator)
+    CacheSetString(g_settingsCache.hasArrayOutputSeparator, g_settingsCache.sArrayOutputSeparator, storedArrayOutputSep)
   end if
 
   SendMessage(g_hMainWnd, AKD_ENDOPTIONS, cast(WPARAM, hOptions), 0) ' be sure to close the options handle

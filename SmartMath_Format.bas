@@ -216,7 +216,7 @@ end sub
 '' Normalize thread and user LOCALE_SDECIMAL so SetThreadLocale tests and mixed-locale hosts agree.
 '' The runtime stores it as a single C char in the output, so multi-byte LOCALE_SDECIMAL values
 '' may appear only as their first byte in s; normalize both the full string and that byte.
-'' Downstream logic assumes a single ASCII "." in the mantissa before g_sDecimalSeparator.
+'' Downstream logic assumes a single ASCII "." in the mantissa before DecimalSep.
 private function FormatWithAsciiDecimal(byval d as SmFloat, byref fmtExpr as String) as String
   dim s as String = Format(d, fmtExpr)
   dim threadDec as String
@@ -228,9 +228,9 @@ private function FormatWithAsciiDecimal(byval d as SmFloat, byref fmtExpr as Str
 end function
 
 '' Str() uses ASCII "."; FormatWithAsciiDecimal ensures "." after locale-aware Format().
-'' ini may set g_sDecimalSeparator to ",". Detect either.
+'' ini may set DecimalSep to ",". Detect either.
 private function PositionOfNumericDecimal(byref s as String) as Integer
-  dim p as Integer = InStr(1, s, g_sDecimalSeparator)
+  dim p as Integer = InStr(1, s, Config_GetDecimalSep())
   if p > 0 then return p
   return InStr(1, s, ".")
 end function
@@ -245,7 +245,7 @@ private function TrimTrailingFractionZeros(byref s as String) as String
   wend
   if n = 0 then return ""
   dim lastCh as String = Mid(s, n, 1)
-  if lastCh = g_sDecimalSeparator orelse lastCh = "," orelse lastCh = "." then
+  if lastCh = Config_GetDecimalSep() orelse lastCh = "," orelse lastCh = "." then
     n -= 1
   end if
   dim slen as Integer = Len(s)
@@ -311,7 +311,7 @@ private function FormatNumericValue(byval d as SmFloat) as String
   if nfCls <> SM_NF_NONE then return NonFiniteTextFromClass(nfCls)
   if d = 0.0 then d = 0.0 '' positive zero (Str/Format(-0.0) may yield "-0")
 
-  if g_nDecimals < 0 then
+  if Config_GetDecimalPlaces() < 0 then
     sRes = LTrim(Str(d))
     eScanPos = IndexOfExponentLetter(sRes)
     '' Above 2^53 a bare integer is not an exact int. Keep the same scientific form as other auto floats.
@@ -326,20 +326,20 @@ private function FormatNumericValue(byval d as SmFloat) as String
     dim ad as SmFloat = Abs(d)
 
     if ad > 0 then
-      dim leadingZeroDigits as Integer = g_nDecimals \ 2
+      dim leadingZeroDigits as Integer = Config_GetDecimalPlaces() \ 2
       if leadingZeroDigits > 0 then
         if ad < 1.0 / Pow10Cached(leadingZeroDigits) then useScientific = TRUE
       end if
 
       ' Note: the Formatter must not treat integer-valued floats specially (no "is int-like" exemption);
       ' instead, rely on the parser to preserve exact integers.
-      if ad >= Pow10Cached(g_nDecimals + 6) then useScientific = TRUE
+      if ad >= Pow10Cached(Config_GetDecimalPlaces() + 6) then useScientific = TRUE
     end if
 
     if useScientific then
-      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(TRUE, g_nDecimals))
+      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(TRUE, Config_GetDecimalPlaces()))
     else
-      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(FALSE, g_nDecimals))
+      sRes = FormatWithAsciiDecimal(d, MaskFormatCached(FALSE, Config_GetDecimalPlaces()))
     end if
 
     eScanPos = IndexOfExponentLetter(sRes)
@@ -360,7 +360,7 @@ private function FormatNumericValue(byval d as SmFloat) as String
 end function
 
 function AddThousandsSeparator(byref sRes as String) as String
-  if g_bUseThousandsSeparator then
+  if Config_GetUseThousandsSep() then
     dim oldEPos as Integer = IndexOfExponentLetter(sRes)
     dim expPart2 as String = ""
     if oldEPos > 0 then
@@ -369,7 +369,7 @@ function AddThousandsSeparator(byref sRes as String) as String
     end if
 
     dim decPos as Integer = PositionOfNumericDecimal(sRes)
-    dim localThouSep as String = g_sThousandsSeparator
+    dim localThouSep as String = Config_GetThousandsSep()
 
     dim intPart as String
     dim decPart as String
@@ -377,8 +377,8 @@ function AddThousandsSeparator(byref sRes as String) as String
     if decPos > 0 then
       intPart = Left(sRes, decPos - 1)
       decPart = Mid(sRes, decPos)
-      if Left(decPart, 1) = "." andalso g_sDecimalSeparator <> "." then
-        decPart = g_sDecimalSeparator & Mid(decPart, 2)
+      if Left(decPart, 1) = "." andalso Config_GetDecimalSep() <> "." then
+        decPart = Config_GetDecimalSep() & Mid(decPart, 2)
       end if
     else
       intPart = sRes
@@ -409,7 +409,10 @@ private function ScanNumericStringChars(byval wantExponent as Boolean, byval wan
   if n = 0 then return FALSE
   dim p as ZString ptr = strptr(s)
   dim decSepCh as UByte = 0
-  if wantFracSep andalso Len(g_sDecimalSeparator) > 0 then decSepCh = strptr(g_sDecimalSeparator)[0]
+  if wantFracSep then
+    dim decimalSep as String = Config_GetDecimalSep()
+    if Len(decimalSep) > 0 then decSepCh = strptr(decimalSep)[0]
+  end if
   dim i as Integer = 0
   while i < n
     dim c as UByte = p[i]
@@ -438,7 +441,7 @@ private function FormatRawSmFloatingValue(byval d as SmFloat) as String
   if Len(nf) > 0 then return nf
   dim s as String = FormatNumericValue(d)
   if ContainsDecimalSepOrExponent(s) = FALSE then
-    s &= g_sDecimalSeparator & SM_STR_EXPLICIT_FLOAT_FRAC_DIGIT
+    s &= Config_GetDecimalSep() & SM_STR_EXPLICIT_FLOAT_FRAC_DIGIT
   end if
   return s
 end function
@@ -558,7 +561,7 @@ private function FormatRawArrayBody(byref r as RawResult) as String
   dim outText as String = "("
   dim i as Integer
   for i = 0 to ubound(r.arr)
-    if i > 0 then outText &= g_sArrayOutputSeparator & " "
+    if i > 0 then outText &= Config_GetArrayOutputSep() & " "
     outText &= FormatRawScalarForDisplayContext(r.arr(i))
   next i
   outText &= ")"
