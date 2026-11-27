@@ -1292,7 +1292,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                    why = p.getError();
                    return false;
                  }
-                 if (p.getResult() != "1000000000001") {
+                 if (p.getResult() != "1000000000001.0") {
                    why = "got " + p.getResult();
                    return false;
                  }
@@ -1387,7 +1387,7 @@ std::vector<TestCase> buildEdgeIntFloatCases() {
                    why = "expected double path to round differently from exact ll";
                    return false;
                  }
-                 if (pD.getResult() != "9007199254740992" || pI.getResult() != "9007199254740993") {
+                 if (pD.getResult() != "9007199254740992.0" || pI.getResult() != "9007199254740993") {
                    why = "double " + pD.getResult() + " vs ll " + pI.getResult();
                    return false;
                  }
@@ -2877,6 +2877,7 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "-300000000*((5/2)+1e-12)", "-750000000.0003", why)) return false;
                 if (!expectEval(p, "(2**51-8)*(5/2)", "5629499534213100", why)) return false;
                 if (!expectEval(p, "(2**51-8)*((5/2)+1e-12)", "5629499534215352", why)) return false;
+                if (!expectEval(p, "isinstance((2**51-8)*((5/2)+1e-12), int)", "0", why)) return false;
                 if (!expectEval(p, "-(2**50-1)*2", "-2251799813685246", why)) return false;
                 if (!expectEval(p, "-(2**50-1)*(2.0001)", "-2251912403675930", why)) return false;
                 p.parseAndEvaluate("7/3");
@@ -3545,7 +3546,15 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEvalErrorContains(
                         p, "sortby((1:30,1:00),x:polar+2)", "unknown variable: polar", why))
                   return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1:30,1:00),x:polar+2)", "at col 22", why))
+                  return false;
 #endif
+                if (!expectEvalErrorContains(p, "sortby((1,2,3),x:x:x)", "at col 19", why))
+                  return false;
+                if (!expectEvalErrorContains(
+                        p, "sortby((1,2,3),x:polar+2)", "at col 18", why))
+                  return false;
                 MathParser pf;
                 pf.parseAndEvaluate("h(x)=x+1; h+2");
                 if (pf.getError().find("unknown variable: h") == std::string::npos) {
@@ -3572,6 +3581,11 @@ std::vector<TestCase> buildRegressionCases() {
   t.push_back({"regression/bare function hint at expression end", [](std::string& why) {
                 MathParser p;
                 if (!expectEvalErrorContains(p, "1+sin", "function: sin(angle)", why)) return false;
+                p.parseAndEvaluate("1+sin");
+                if (p.getError().find(" at col ") != std::string::npos) {
+                  why = "function hint must not include at-col location, got: " + p.getError();
+                  return false;
+                }
                 if (!expectEvalErrorContains(p, "1+sum", "function: sum(...)", why)) return false;
                 if (!expectEvalErrorContains(p, "(1+2)/sum", "function: sum(...)", why)) return false;
                 if (!expectEvalErrorContains(p, "1+sin(", "function: sin(angle)", why)) return false;
@@ -3675,11 +3689,11 @@ std::vector<TestCase> buildRegressionCases() {
                     "recursive function call",
                     why);
               }});
-  t.push_back({"regression/128 UDF chain within max evaluation depth", [](std::string& why) {
+  t.push_back({"regression/64 UDF chain within max evaluation depth", [](std::string& why) {
                 MathParser p;
                 std::string expr;
-                for (int i = 1; i <= 128; ++i) {
-                  if (i < 128) {
+                for (int i = 1; i <= 64; ++i) {
+                  if (i < 64) {
                     expr += "f" + std::to_string(i) + "(x)=f" + std::to_string(i + 1) + "(x); ";
                   } else {
                     expr += "f" + std::to_string(i) + "(x)=x; ";
@@ -3688,19 +3702,33 @@ std::vector<TestCase> buildRegressionCases() {
                 expr += "f1(1)";
                 return expectEval(p, expr, "1", why);
               }});
-  t.push_back({"regression/129 UDF chain hits max evaluation depth", [](std::string& why) {
+  t.push_back({"regression/65 UDF chain hits max evaluation depth", [](std::string& why) {
                 MathParser p;
                 std::string expr;
-                for (int i = 1; i <= 129; ++i) {
-                  if (i < 129) {
+                for (int i = 1; i <= 65; ++i) {
+                  if (i < 65) {
                     expr += "f" + std::to_string(i) + "(x)=f" + std::to_string(i + 1) + "(x); ";
                   } else {
                     expr += "f" + std::to_string(i) + "(x)=x; ";
                   }
                 }
                 expr += "f1(1)";
-                return expectEvalErrorContains(p, expr, "max evaluation depth reached", why);
+                return expectEvalErrorContains(p, expr, "max evaluation depth reached (64): f65", why);
               }});
+  t.push_back({"regression/long UDF cycle hits max evaluation depth before native stack overflow",
+               [](std::string& why) {
+                 MathParser p;
+                 std::string expr;
+                 auto fname = [](int n) -> std::string {
+                   return (n < 10) ? ("f0" + std::to_string(n)) : ("f" + std::to_string(n));
+                 };
+                 // f00..f77 -> f78 -> f19 -> f20.. creates a cycle past the 64-frame soft limit.
+                 for (int i = 0; i < 78; ++i) {
+                   expr += fname(i) + "(x)=" + fname(i + 1) + "(x); ";
+                 }
+                 expr += "f78(x)=f19(x); f19(x)=f20(x); f00(1)";
+                 return expectEvalErrorContains(p, expr, "max evaluation depth reached (64):", why);
+               }});
 #if SMARTMATH_LAMBDA_FUNCTIONS
   t.push_back({"regression/10 nested sortby lambdas within max evaluation depth", [](std::string& why) {
                 MathParser p;
@@ -3715,18 +3743,25 @@ std::vector<TestCase> buildRegressionCases() {
                 }
                 return expectEval(p, expr, "(1)", why);
               }});
-  t.push_back({"regression/129 nested sortby lambdas hit max evaluation depth", [](std::string& why) {
+  t.push_back({"regression/65 nested sortby lambdas hit max evaluation depth", [](std::string& why) {
                 MathParser p;
                 p.setSupportLambdaFunctions(true);
                 std::string expr;
-                for (int i = 0; i < 129; ++i) {
+                for (int i = 0; i < 65; ++i) {
                   expr += "sortby((1), x:";
                 }
                 expr += "x";
-                for (int i = 0; i < 129; ++i) {
+                for (int i = 0; i < 65; ++i) {
                   expr += ")";
                 }
-                return expectEvalErrorContains(p, expr, "max evaluation depth reached", why);
+                // Eval overflow names lambda; parse-nest overflow adds at-col snippet. Either is OK.
+                if (!expectEvalErrorContains(p, expr, "max evaluation depth reached (64)", why)) return false;
+                const std::string err = p.getError();
+                if (err.find(": lambda") == std::string::npos && err.find(" at col ") == std::string::npos) {
+                  why = "expected ': lambda' or ' at col ' in: " + err;
+                  return false;
+                }
+                return true;
               }});
 #endif
   t.push_back({"regression/unique single-array variable keeps order", [](std::string& why) {
@@ -3834,6 +3869,71 @@ std::vector<TestCase> buildRegressionCases() {
                 if (!expectEval(p, "-(-9223372036854775808)+1-9223372036854775808", "1", why)) return false;
                 return expectEval(p, "h(x)=-x; h(-9223372036854775808)+1-9223372036854775808", "1", why);
               }});
+  t.push_back({"audit/exact-int Bound H promote hypot median aggregates trig 2^55", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"(-9223372036854775808)*(-1)", "9223372036854775808"},
+                    {"uhex((-9223372036854775808)*(-1))", "0x8000000000000000"},
+                    {"(-2)*(-(2**62))", "9223372036854775808"},
+                    {"(-9223372036854775808)/(-1)", "9223372036854775808"},
+                    {"isinstance(hypot(3,4), int)", "1"},
+                    {"hex(hypot(3,4))", "0x5"},
+                    {"isinstance(hypot(5,0), int)", "1"},
+                    {"isinstance(hypot(2**55,0), int)", "1"},
+                    {"hex(hypot(2**55,0))", "0x80000000000000"},
+                    {"isinstance(median(1,3,5), int)", "1"},
+                    {"isinstance(median(1,3), int)", "1"},
+                    {"median(1,2)", "1.5"},
+                    {"isinstance(1.5+1.5, int)", "1"},
+                    {"isinstance(exp(0), int)", "1"},
+                    {"isinstance(ln(1), int)", "1"},
+                    {"isinstance(sin(0), int)", "1"},
+                    {"isinstance(cos(0), int)", "1"},
+                    {"0-(-9223372036854775808)", "9223372036854775808"},
+                    {"uhex(0-(-9223372036854775808))", "0x8000000000000000"},
+                    {"isinstance(0-(-9223372036854775808), int)", "1"},
+                    {"(2**55+4)-(2**55+2)", "2"},
+                    {"hex((2**55+4)-(2**55+2))", "0x2"},
+                    {"isinstance((2**55+4)-(2**55+2), int)", "1"},
+                    {"hex((2**55+4) | (2**55+2))", "0x80000000000006"},
+                    {"isinstance(hypot(3037000499,0), int)", "1"},
+                    {"median(1,3,5)", "3"},
+                    {"isinstance((2**51-8)*((5/2)+1e-12), int)", "0"},
+                    {"isinstance(1.0, int)", "1"},
+                    {"isinstance(67108863.0, int)", "1"},
+                    {"isinstance(67108864.0, int)", "1"},
+                    {"isinstance(sum(1.5,1.5), int)", "1"},
+                    {"isinstance(sum(1,2), int)", "1"},
+                    {"isinstance(product(1.5,2), int)", "1"},
+                    {"isinstance(avg(1,2), int)", "0"},
+                    {"isinstance(pow(2**62,1/2), int)", "1"},
+                    {"pow(2**62,1/2)", "2147483648"},
+                    {"isinstance(pow((2**32-1)**2,1/2), int)", "1"},
+                    {"pow((2**32-1)**2,1/2)", "4294967295"},
+                    {"isinstance(0.123e4, int)", "1"},
+                    {"0.123e4", "1230"},
+                    {"isinstance(1.0e2, int)", "1"},
+                    {"isinstance(1.5, int)", "0"},
+                    {"isinstance(pow(2**63,1), int)", "1"},
+                    {"pow(2**63,1)", "9223372036854775808"},
+                    {"isinstance(pow(2**63,1/2), int)", "0"},
+                    {"uhex(pow(2**63,1))", "0x8000000000000000"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#if SMARTMATH_COMPLEX_NUMBERS
+  t.push_back({"audit/complex sqr keeps exact Cartesian parts", [](std::string& why) {
+                MathParser p;
+                p.setSupportComplexNumbers(true);
+                if (!expectEval(p, "isinstance(real(sqr(3+4i)), int)", "1", why)) return false;
+                if (!expectEval(p, "isinstance(imag(sqr(3+4i)), int)", "1", why)) return false;
+                if (!expectEval(p, "real(sqr(3+4i))", "-7", why)) return false;
+                return expectEval(p, "imag(sqr(3+4i))", "24", why);
+              }});
+#endif
   t.push_back({"stage2/exact integer compare above 2^53", [](std::string& why) {
                 MathParser p;
                 static const char* const kRows[][2] = {
@@ -3848,12 +3948,55 @@ std::vector<TestCase> buildRegressionCases() {
                     {"sort(9007199254740993, 9007199254740992)", "(9007199254740992, 9007199254740993)"},
                     {"unique(9007199254740993, 9007199254740992)", "(9007199254740993, 9007199254740992)"},
                     {"unique(9007199254740993, 9007199254740993, 9007199254740992)", "(9007199254740993, 9007199254740992)"},
+                    {"unique(9007199254740993, 9007199254740992, 9007199254740993)", "(9007199254740993, 9007199254740992)"},
+                    {"clamp(9007199254740993, 0, 9007199254740992)", "9007199254740992"},
+                    {"min(9007199254740993, 9007199254740992)", "9007199254740992"},
+                    {"max(9007199254740992, 9007199254740993)", "9007199254740993"},
+                    {"min(1.5, 9007199254740993)", "1.5"},
+                    // 2^55 has binary64 ulp 8; +2/+4/+5 stay distinct only via exact-int metadata.
+                    {"2**55 + 4 == 2**55 + 2", "0"},
+                    {"unique(98765432109899976, 98765432109899975)",
+                     "(98765432109899976, 98765432109899975)"},
+                    {"unique(2**55 + 2, 2**55 + 4)", "(36028797018963970, 36028797018963972)"},
+                    {"sort(2**55 + 4, 2**55 + 2)", "(36028797018963970, 36028797018963972)"},
+                    {"clamp(2**55 + 0, 2**55 + 2, 2**55 + 5)", "36028797018963970"},
+                    {"clamp(2**55 + 4, 2**55 + 2, 2**55 + 5)", "36028797018963972"},
+                    {"clamp(2**55 + 8, 2**55 + 2, 2**55 + 5)", "36028797018963973"},
                 };
                 for (const auto& row : kRows) {
                   if (!expectEval(p, row[0], row[1], why)) return false;
                 }
                 return true;
               }});
+#if SMARTMATH_LAMBDA_FUNCTIONS
+  t.push_back({"stage2/exact int sortby/filter above 2^55 (lambda)", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"sortby((2**55 + 4, 2**55 + 2), x: x)", "(36028797018963970, 36028797018963972)"},
+                    {"filter((2**55 + 4, 2**55 + 2), x: x==2**55)", "()"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#endif
+#if SMARTMATH_TIME_VALUES
+  t.push_back({"stage2/time vs NaN uses unified unordered / sort-first rules", [](std::string& why) {
+                MathParser p;
+                static const char* const kRows[][2] = {
+                    {"0:00 == nan", "0"},
+                    {"0:00 != nan", "1"},
+                    {"0:30 == nan", "0"},
+                    // Named UDF so this runs with lambdas compiled out.
+                    {"f(x)=x; sortby(flat(0:00, nan), f)", "(nan, 00:00)"},
+                };
+                for (const auto& row : kRows) {
+                  if (!expectEval(p, row[0], row[1], why)) return false;
+                }
+                return true;
+              }});
+#endif
   t.push_back({"stage2/exact avg and median of large integers", [](std::string& why) {
                 MathParser p;
                 static const char* const kRows[][2] = {
@@ -3945,10 +4088,10 @@ std::vector<TestCase> buildRegressionCases() {
                     {"cos(1.5707963268) < 0", "1"},
                     {"tan(1.5707963268) < -100000000000", "1"},
                     {"sin(pi)", "0"},
-                    {"cos(pi)", "-1.0"},
-                    {"cos(2*pi)", "1.0"},
-                    {"cos(1e12*pi)", "1.0"},
-                    {"cos(-pi)", "-1.0"},
+                    {"cos(pi)", "-1"},
+                    {"cos(2*pi)", "1"},
+                    {"cos(1e12*pi)", "1"},
+                    {"cos(-pi)", "-1"},
                     {"cos(3.14) != -1", "1"},
                     {"abs(cos(3.14) + 1) > 1e-9", "1"},
                     {"sin(2**52) != 0", "1"},
@@ -4659,7 +4802,7 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "1<<64", "incompatible operands"} ,
     {ParityBasicCase::Kind::ErrorContains, "1>>-1", "incompatible operands"} ,
     {ParityBasicCase::Kind::ErrorContains, "5%0", "incompatible operands"} ,
-    {ParityBasicCase::Kind::ErrorContains, "1+", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "1+", "at col 3"} ,
     {ParityBasicCase::Kind::ErrorContains, "pow()", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "pow(2,3,4)", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "log()", "expects 2 argument(s)"} ,
@@ -5425,6 +5568,10 @@ static const ParityBasicCase kParityBasicFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "flampow(a)=filter(a, t: pow(t))", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "iif(1, 0, filter((1), t: pow(t)))", "expects 2 argument(s)"} ,
     {ParityBasicCase::Kind::ErrorContains, "flamsort(a)=sortby(a, t: 1+)", "unexpected token"} ,
+    {ParityBasicCase::Kind::ErrorContains, "sortby((1,2,3),x:x:x)", "at col 19"} ,
+#if SMARTMATH_TIME_VALUES
+    {ParityBasicCase::Kind::ErrorContains, "sortby((1:30,1:00),x:polar+2)", "at col 22"} ,
+#endif
     {ParityBasicCase::Kind::Expected, "fiifabs=x:iif(x>0, x, -x); fiifabs(-4)", "4"} ,
     {ParityBasicCase::Kind::Expected, "fiifabs=x:iif(x>0, x, -x); fiifabs(4)", "4"} ,
     {ParityBasicCase::Kind::Expected, "fiifquiet=x:iif(1, x, (1,2)[9]); fiifquiet(5)", "5"} ,
@@ -5564,6 +5711,11 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::Expected, "second + 5", "00:06"} ,
     {ParityBasicCase::Kind::Expected, "minute - second", "00:59"} ,
     {ParityBasicCase::Kind::Expected, "1:00 == 0:60", "1"} ,
+    {ParityBasicCase::Kind::Expected, "0:00 == nan", "0"} ,
+    {ParityBasicCase::Kind::Expected, "0:00 != nan", "1"} ,
+#if SMARTMATH_LAMBDA_FUNCTIONS
+    {ParityBasicCase::Kind::Expected, "sortby(flat(0:00, nan), x: x)", "(nan, 00:00)"} ,
+#endif
     {ParityBasicCase::Kind::Expected, "0:30 > 20", "1"} ,
     {ParityBasicCase::Kind::Expected, "milliseconds(minute + 30*second)", "90000"} ,
     {ParityBasicCase::Kind::Expected, "seconds(2:00)", "120"} ,
@@ -5659,7 +5811,7 @@ static const ParityBasicCase kParityTimeFromSmokeCases[] = {
     {ParityBasicCase::Kind::ErrorContains, "1:00 + 1e16", "incompatible operands"} ,
     {ParityBasicCase::Kind::ErrorContains, "1:00 * 1e300", "incompatible operands"} ,
     {ParityBasicCase::Kind::Expected, "1:00 < 1e300", "1"} ,
-    {ParityBasicCase::Kind::ErrorContains, "1:00 < inf", "incompatible operands"} ,
+    {ParityBasicCase::Kind::Expected, "1:00 < inf", "1"} ,
     {ParityBasicCase::Kind::Expected, "b=(2,3); b[0]**b[1]", "8"} ,
     {ParityBasicCase::Kind::Expected, "b=(2,3); -b[0]**b[1]", "-8"} ,
     {ParityBasicCase::Kind::Expected, "b=(2,3); 2**b[1]", "8"} ,
@@ -6784,12 +6936,12 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"(-5)**(1/3)", "-1.709975946676697"},
                      {"64**(1/3)", "4"},
                      {"pow(-27,1/3)", "-3"},
-                     {"pow(2**64,1/2)", "4294967296"},
+                     {"pow(2**64,1/2)", "4294967296.0"},
                      {"(-8)**(1/3)", "-2"},
                     {"pow(-1-0i,1/2)", "i"},
                      {"sqrt(81)", "9"},
                      {"sqrt(3+4*i)", "2+i"},
-                     {"pow(2**64,1/2)", "4294967296"},
+                     {"pow(2**64,1/2)", "4294967296.0"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);
@@ -6895,6 +7047,12 @@ std::vector<TestCase> buildComplexNumberSupportOptionCases() {
                      {"prod(Inf+Inf*i, 0)", "nan"},
                      {"prod(Inf+Inf*i, -2)", "-inf-inf*i"},
                      {"(Inf+Inf*i)**2", "nan"},
+                     {"9007199254740993i == 9007199254740992i", "0"},
+                     {"unique(9007199254740993i, 9007199254740992i)",
+                      "(9007199254740993i, 9007199254740992i)"},
+                     // Named UDF so this runs with lambdas compiled out.
+                     {"f(x)=x; sortby((9007199254740993i, 9007199254740992i), f)",
+                      "(9007199254740992i, 9007199254740993i)"},
                  };
                  for (const auto& row : kRows) {
                    p.parseAndEvaluate(row.expr);

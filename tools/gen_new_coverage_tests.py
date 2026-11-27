@@ -142,7 +142,7 @@ def write_float_magnitude() -> None:
 
 
 def naninf_cases() -> list[tuple[str, str, Optional[str], Optional[str]]]:
-    """(name, expr, expected, err_contains) — literals instead of const x."""
+    """(name, expr, expected, err_contains) - literals instead of const x."""
     t: list[tuple[str, str, Optional[str], Optional[str]]] = [
         ("naninf/quiet NaN dec identity", "nan+0", "nan", None),
         ("naninf/+inf dec identity", "inf+0", "inf", None),
@@ -238,7 +238,7 @@ def naninf_cases() -> list[tuple[str, str, Optional[str], Optional[str]]]:
         ("naninf/round accepts -nan", "round(-nan)", "nan", None),
         ("naninf/trunc accepts nan", "trunc(nan)", "nan", None),
     ]
-    # Second sort batch inside one C++ case — separate rows for Basic
+    # Second sort batch inside one C++ case - separate rows for Basic
     t.append(
         (
             "naninf/sort -5 nan 3 -inf inf 0",
@@ -339,7 +339,7 @@ def write_smoke_parity_append() -> None:
     append_bas = ROOT / "tools" / "smoke_parity_append_generated.bas"
     append_cpp = ROOT / "tools" / "smoke_parity_append_generated.cpp.inc"
     with append_bas.open("w", encoding="utf-8", newline="\n") as f:
-        f.write("' AUTO-GENERATED append rows for main tests() — indices assigned in SmokeTest.\n")
+        f.write("' AUTO-GENERATED append rows for main tests() - indices assigned in SmokeTest.\n")
         f.write(f"const SMOKE_APPEND_COUNT = {len(rows)}\n")
         f.write("dim shared smokeAppendExpr(1 to SMOKE_APPEND_COUNT) as String\n")
         f.write("dim shared smokeAppendExpected(1 to SMOKE_APPEND_COUNT) as String\n")

@@ -633,14 +633,14 @@ private sub RunTrigAngleReductionTests()
   dim exactOneExpr(1 to 8) as String
   dim exactOneExpect(1 to 8) as String
   '' Angle reduction returns the float 1, not an exact int, so the display keeps ".0".
-  exactOneExpr(1) = "tan(pi/4)": exactOneExpect(1) = "1.0"
-  exactOneExpr(2) = "tan(3*pi/4)": exactOneExpect(2) = "-1.0"
-  exactOneExpr(3) = "tan(-pi/4)": exactOneExpect(3) = "-1.0"
-  exactOneExpr(4) = "tan(-3*pi/4)": exactOneExpect(4) = "1.0"
-  exactOneExpr(5) = "cos(pi)": exactOneExpect(5) = "-1.0"
-  exactOneExpr(6) = "cos(2*pi)": exactOneExpect(6) = "1.0"
-  exactOneExpr(7) = "cos(1e12*pi)": exactOneExpect(7) = "1.0"
-  exactOneExpr(8) = "cos(-pi)": exactOneExpect(8) = "-1.0"
+  exactOneExpr(1) = "tan(pi/4)": exactOneExpect(1) = "1"
+  exactOneExpr(2) = "tan(3*pi/4)": exactOneExpect(2) = "-1"
+  exactOneExpr(3) = "tan(-pi/4)": exactOneExpect(3) = "-1"
+  exactOneExpr(4) = "tan(-3*pi/4)": exactOneExpect(4) = "1"
+  exactOneExpr(5) = "cos(pi)": exactOneExpect(5) = "-1"
+  exactOneExpr(6) = "cos(2*pi)": exactOneExpect(6) = "1"
+  exactOneExpr(7) = "cos(1e12*pi)": exactOneExpect(7) = "1"
+  exactOneExpr(8) = "cos(-pi)": exactOneExpect(8) = "-1"
   dim ti as Integer
   dim mag as SmFloat
   for ti = 1 to 12
@@ -1175,7 +1175,7 @@ private sub RunComplexNumberSupportOptionTests()
   powCases(12) = "(-5)**(1/3)": powExpect(12) = "-1.709975946676697" ' odd real root, not principal complex
   powCases(13) = "64**(1/3)": powExpect(13) = "4"
   powCases(14) = "pow(-27,1/3)": powExpect(14) = "-3"
-  powCases(15) = "pow(2**64,1/2)": powExpect(15) = "4294967296"
+  powCases(15) = "pow(2**64,1/2)": powExpect(15) = "4294967296.0" ' Bound H: 2**64 not SmUInt; float sqrt not promoted (|v|>=2^26)
   powCases(16) = "(-8)**(1/3)": powExpect(16) = "-2"
   powCases(17) = "pow(-1-0i,1/2)": powExpect(17) = "i"
   powCases(18) = "(1+i)**1e19": powExpect(18) = "nan" ' overflow, phase unknowable: not 1 (SmCInt of a huge exponent wrapped)
@@ -1184,7 +1184,7 @@ private sub RunComplexNumberSupportOptionTests()
   dim sqrtExpect(1 to 3) as String
   sqrtCases(1) = "sqrt(81)": sqrtExpect(1) = "9"
   sqrtCases(2) = "sqrt(3+4i)": sqrtExpect(2) = "2+i"
-  sqrtCases(3) = "pow(2**64,1/2)": sqrtExpect(3) = "4294967296"
+  sqrtCases(3) = "pow(2**64,1/2)": sqrtExpect(3) = "4294967296.0" ' Bound H: same as powCases(15)
   dim swi as Integer
   for swi = 1 to 3
     if Parser_TryEvaluateEx(sqrtCases(swi), r, rt, ia) = FALSE orelse rt <> sqrtExpect(swi) then
@@ -1450,8 +1450,8 @@ private sub RunComplexNumberSupportOptionTests()
   next xi
 
   ' Aggregation/array utilities with complex operands (allowed vs rejected builtins).
-  dim cxAggOk(1 to 41) as String
-  dim cxAggExpect(1 to 41) as String
+  dim cxAggOk(1 to 44) as String
+  dim cxAggExpect(1 to 44) as String
   cxAggOk(1) = "sum(1+2i, 3)": cxAggExpect(1) = "4+2i"
   cxAggOk(2) = "sum((1+2i, 3+4i))": cxAggExpect(2) = "4+6i"
   cxAggOk(3) = "prod(1+i, 2)": cxAggExpect(3) = "2+2i"
@@ -1493,9 +1493,12 @@ private sub RunComplexNumberSupportOptionTests()
   cxAggOk(39) = "prod(Inf+Inf*i, 0)": cxAggExpect(39) = "nan" ' IEEE; both parts NaN
   cxAggOk(40) = "prod(Inf+Inf*i, -2)": cxAggExpect(40) = "-inf-inf*i" ' pure-real factor scales each part; Python's (nan+nanj) is a spurious Inf*0
   cxAggOk(41) = "(Inf+Inf*i)**2": cxAggExpect(41) = "nan" ' Inf*Inf - Inf*Inf
+  cxAggOk(42) = "9007199254740993i == 9007199254740992i": cxAggExpect(42) = "0" ' exact imag compare above 2^53
+  cxAggOk(43) = "unique(9007199254740993i, 9007199254740992i)": cxAggExpect(43) = "(9007199254740993i, 9007199254740992i)"
+  cxAggOk(44) = "sortby((9007199254740993i, 9007199254740992i), x: x)": cxAggExpect(44) = "(9007199254740992i, 9007199254740993i)"
 
   dim agi as Integer
-  for agi = 1 to 41
+  for agi = 1 to 44
     if Parser_TryEvaluateEx(cxAggOk(agi), r, rt, ia) = FALSE orelse rt <> cxAggExpect(agi) then
       print "[complex-opt] FAIL: """ & cxAggOk(agi) & """ -> """ & rt & """ err=" & Parser_GetLastError()
       subFail += 1
@@ -2118,6 +2121,34 @@ private sub RunComplexNumberSupportOptionTests()
     print "[complex-opt] PASS: isinstance(ratio(0.5+0.25i), int) -> 0"
     subPass += 1
   end if
+  if Parser_TryEvaluateEx("isinstance(real(sqr(3+4i)), int)", r, rt, ia) = FALSE orelse rt <> "1" then
+    print "[complex-opt] FAIL: isinstance(real(sqr(3+4i)), int) -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: isinstance(real(sqr(3+4i)), int) -> 1"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("isinstance(imag(sqr(3+4i)), int)", r, rt, ia) = FALSE orelse rt <> "1" then
+    print "[complex-opt] FAIL: isinstance(imag(sqr(3+4i)), int) -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: isinstance(imag(sqr(3+4i)), int) -> 1"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("real(sqr(3+4i))", r, rt, ia) = FALSE orelse rt <> "-7" then
+    print "[complex-opt] FAIL: real(sqr(3+4i)) -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: real(sqr(3+4i)) -> -7"
+    subPass += 1
+  end if
+  if Parser_TryEvaluateEx("imag(sqr(3+4i))", r, rt, ia) = FALSE orelse rt <> "24" then
+    print "[complex-opt] FAIL: imag(sqr(3+4i)) -> """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[complex-opt] PASS: imag(sqr(3+4i)) -> 24"
+    subPass += 1
+  end if
 
   Parser_SetSupportComplexNumbers(FALSE)
   if Parser_GetSupportComplexNumbers() <> FALSE then
@@ -2660,8 +2691,8 @@ private sub RunMinMaxPreserveWinnerTests()
   dim rt as String
   dim ia as Boolean
 
-  dim okExprs(1 to 18) as String
-  dim okNeed(1 to 18) as String
+  dim okExprs(1 to 20) as String
+  dim okNeed(1 to 20) as String
   okExprs(1) = "max(1,2**54,2)": okNeed(1) = "18014398509481984"
   okExprs(2) = "max(1.1,2**54,2)": okNeed(2) = "18014398509481984"
   okExprs(3) = "max(2**54,1.1,2)": okNeed(3) = "18014398509481984"
@@ -2680,8 +2711,10 @@ private sub RunMinMaxPreserveWinnerTests()
   okExprs(16) = "max(nan,1,2)": okNeed(16) = "2"
   okExprs(17) = "min(nan,nan)": okNeed(17) = "nan"
   okExprs(18) = "max(nan,nan,nan)": okNeed(18) = "nan"
+  okExprs(19) = "min(9007199254740993, 9007199254740992)": okNeed(19) = "9007199254740992"
+  okExprs(20) = "max(9007199254740992, 1.5)": okNeed(20) = "9007199254740992"
   dim mi as Integer
-  for mi = 1 to 18
+  for mi = 1 to 20
     if Parser_TryEvaluateEx(okExprs(mi), r, rt, ia) = FALSE then
       print "[minmax-winner] FAIL: """ & okExprs(mi) & """ -> " & Parser_GetLastError()
       subFail += 1
@@ -2706,15 +2739,16 @@ private sub RunClampPreserveIntegerMetadataTests()
   dim rt as String
   dim ia as Boolean
 
-  dim okExprs(1 to 5) as String
-  dim okNeed(1 to 5) as String
+  dim okExprs(1 to 6) as String
+  dim okNeed(1 to 6) as String
   okExprs(1) = "clamp((0,1,2,3),1,2)": okNeed(1) = "(1, 1, 2, 2)"
   okExprs(2) = "clamp(0,1,2)": okNeed(2) = "1"
   okExprs(3) = "clamp(3,1,2)": okNeed(3) = "2"
   okExprs(4) = "clamp(1,1,2)": okNeed(4) = "1"
   okExprs(5) = "clamp(1.5,1,2)": okNeed(5) = "1.5"
+  okExprs(6) = "clamp(9007199254740993, 0, 9007199254740992)": okNeed(6) = "9007199254740992"
   dim ci as Integer
-  for ci = 1 to 5
+  for ci = 1 to 6
     if Parser_TryEvaluateEx(okExprs(ci), r, rt, ia) = FALSE then
       print "[clamp-int] FAIL: """ & okExprs(ci) & """ -> " & Parser_GetLastError()
       subFail += 1
@@ -2935,13 +2969,14 @@ private sub RunExactIntegerMultiplicationTests()
     subPass += 1
   end if
 
+  '' Near-miss / Bound-H: integer-looking float products must not stamp exact metadata.
   dim noExprs(1 to 6) as String
   noExprs(1) = "100*((5/2)+1e-12)"
   noExprs(2) = "-50*((5/2)+1e-9)"
   noExprs(3) = "700000000*((5/2)+1e-12)"
   noExprs(4) = "-300000000*((5/2)+1e-12)"
-  noExprs(5) = "(2**51-8)*((5/2)+1e-12)"
-  noExprs(6) = "-(2**50-1)*(2.0001)"
+  noExprs(5) = "-(2**50-1)*(2.0001)"
+  noExprs(6) = "(2**51-8)*((5/2)+1e-12)"
   dim raw as RawResult
   dim ni as Integer
   for ni = 1 to 6
@@ -3306,7 +3341,7 @@ private sub RunLambdaFunctionsSupportOptionTests()
   print ""
 end sub
 
-'' Bound-body nesting limit (128), mirrored from C++ kMaxEvalDepth.
+'' Bound-body nesting limit (64), mirrored from C++ kMaxEvalDepth.
 private function BuildUdfChainExpr(byval depth as Integer, byval callInnermost as Boolean) as String
   dim expr as String = ""
   dim i as Integer
@@ -3343,9 +3378,10 @@ private sub RunMaxEvaluationDepthTests()
   dim r as SmFloat
   dim rt as String
   dim ia as Boolean
-  '' Basic EvaluateBoundBody frames are heavy; keep success nests well under BOUND_EVAL_DEPTH_MAX.
-  '' The reject cases still use depth 129 so the shared 128 limit is what fires (same as C++).
+  '' Limit is 64 (shared with C++). Real 64-frame nests are safe on Basic; 65 must error.
   const OK_DEPTH as Integer = 40
+  const LIMIT_DEPTH as Integer = 64
+  const OVER_DEPTH as Integer = 65
 
   dim okChain as String = BuildUdfChainExpr(OK_DEPTH, TRUE)
   if Parser_TryEvaluateEx(okChain, r, rt, ia) = FALSE orelse rt <> "1" then
@@ -3354,6 +3390,32 @@ private sub RunMaxEvaluationDepthTests()
   else
     print "[max-depth] PASS: " & str(OK_DEPTH) & " distinct UDF chain succeeds"
     subPass += 1
+  end if
+  Parser_ClearVariables()
+
+  dim limitChain as String = BuildUdfChainExpr(LIMIT_DEPTH, TRUE)
+  if Parser_TryEvaluateEx(limitChain, r, rt, ia) = FALSE orelse rt <> "1" then
+    print "[max-depth] FAIL: " & str(LIMIT_DEPTH) & " UDF chain expected 1, got """ & rt & """ err=" & Parser_GetLastError()
+    subFail += 1
+  else
+    print "[max-depth] PASS: " & str(LIMIT_DEPTH) & " distinct UDF chain succeeds"
+    subPass += 1
+  end if
+  Parser_ClearVariables()
+
+  dim overChain as String = BuildUdfChainExpr(OVER_DEPTH, TRUE)
+  if Parser_TryEvaluateEx(overChain, r, rt, ia) then
+    print "[max-depth] FAIL: " & str(OVER_DEPTH) & " UDF chain expected max evaluation depth, got """ & rt & """"
+    subFail += 1
+  else
+    dim errOver as String = lcase(Parser_GetLastError())
+    if instr(errOver, "max evaluation depth reached (64): f65") > 0 then
+      print "[max-depth] PASS: " & str(OVER_DEPTH) & " UDF chain -> " & Parser_GetLastError()
+      subPass += 1
+    else
+      print "[max-depth] FAIL: " & str(OVER_DEPTH) & " UDF chain expected max evaluation depth reached (64): f65, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
   end if
   Parser_ClearVariables()
 
@@ -3369,36 +3431,37 @@ private sub RunMaxEvaluationDepthTests()
     print "[max-depth] PASS: " & str(OK_DEPTH) & " nested sortby lambdas succeed"
     subPass += 1
   end if
+  Parser_ClearVariables()
 
-  '' Seed depth to the limit without 129 recursive frames (Basic stack cannot host them).
-  smBoundEvalDepthSeed = 128
+  '' Seed depth to the limit without OVER_DEPTH recursive frames (extra safety on thin stacks).
+  smBoundEvalDepthSeed = LIMIT_DEPTH
   if Parser_TryEvaluateEx("f(x)=x; f(1)", r, rt, ia) then
-    print "[max-depth] FAIL: seeded depth 128 UDF call expected max evaluation depth, got """ & rt & """"
+    print "[max-depth] FAIL: seeded depth " & str(LIMIT_DEPTH) & " UDF call expected max evaluation depth, got """ & rt & """"
     subFail += 1
   else
     dim errSeed as String = lcase(Parser_GetLastError())
-    if instr(errSeed, "max evaluation depth reached") > 0 then
-      print "[max-depth] PASS: seeded depth 128 UDF call -> max evaluation depth reached"
+    if instr(errSeed, "max evaluation depth reached (64): f") > 0 then
+      print "[max-depth] PASS: seeded depth " & str(LIMIT_DEPTH) & " UDF call -> " & Parser_GetLastError()
       subPass += 1
     else
-      print "[max-depth] FAIL: seeded depth 128 UDF call expected max evaluation depth, got """ & Parser_GetLastError() & """"
+      print "[max-depth] FAIL: seeded depth " & str(LIMIT_DEPTH) & " UDF call expected max evaluation depth reached (64): f, got """ & Parser_GetLastError() & """"
       subFail += 1
     end if
   end if
   smBoundEvalDepthSeed = 0
   Parser_ClearVariables()
 
-  smBoundEvalDepthSeed = 128
+  smBoundEvalDepthSeed = LIMIT_DEPTH
   if Parser_TryEvaluateEx("sortby((1), x:x)", r, rt, ia) then
-    print "[max-depth] FAIL: seeded depth 128 sortby lambda expected max evaluation depth, got """ & rt & """"
+    print "[max-depth] FAIL: seeded depth " & str(LIMIT_DEPTH) & " sortby lambda expected max evaluation depth, got """ & rt & """"
     subFail += 1
   else
     dim errLam as String = lcase(Parser_GetLastError())
-    if instr(errLam, "max evaluation depth reached") > 0 then
-      print "[max-depth] PASS: seeded depth 128 sortby lambda -> max evaluation depth reached"
+    if instr(errLam, "max evaluation depth reached (64): lambda") > 0 then
+      print "[max-depth] PASS: seeded depth " & str(LIMIT_DEPTH) & " sortby lambda -> " & Parser_GetLastError()
       subPass += 1
     else
-      print "[max-depth] FAIL: seeded depth 128 sortby lambda expected max evaluation depth, got """ & Parser_GetLastError() & """"
+      print "[max-depth] FAIL: seeded depth " & str(LIMIT_DEPTH) & " sortby lambda expected max evaluation depth reached (64): lambda, got """ & Parser_GetLastError() & """"
       subFail += 1
     end if
   end if
@@ -3414,6 +3477,28 @@ private sub RunMaxEvaluationDepthTests()
       subPass += 1
     else
       print "[max-depth] FAIL: mutual recursion expected recursive function call, got """ & Parser_GetLastError() & """"
+      subFail += 1
+    end if
+  end if
+  Parser_ClearVariables()
+
+  '' Long cycle past the soft limit must error (not crash), typically via max depth.
+  dim longCycle as String = ""
+  dim ci as Integer
+  for ci = 0 to 77
+    longCycle &= "f" & right("0" & str(ci), 2) & "(x)=f" & right("0" & str(ci + 1), 2) & "(x); "
+  next ci
+  longCycle &= "f78(x)=f19(x); f19(x)=f20(x); f00(1)"
+  if Parser_TryEvaluateEx(longCycle, r, rt, ia) then
+    print "[max-depth] FAIL: long UDF cycle expected error, got """ & rt & """"
+    subFail += 1
+  else
+    dim errCycle as String = lcase(Parser_GetLastError())
+    if instr(errCycle, "max evaluation depth reached") > 0 orelse instr(errCycle, "recursive function call") > 0 then
+      print "[max-depth] PASS: long UDF cycle -> " & Parser_GetLastError()
+      subPass += 1
+    else
+      print "[max-depth] FAIL: long UDF cycle expected max-depth or recursive, got """ & Parser_GetLastError() & """"
       subFail += 1
     end if
   end if
@@ -3810,7 +3895,7 @@ end sub
 
 sub Main()
 #ifdef SM_BASELINE_WIDTHS
-  dim tests(1 to 2056) as SmokeCase
+  dim tests(1 to 2120) as SmokeCase
   ' Inline tag legend:
   ' [spec] = intended language behavior (primary contract)
   ' [regression-lock] = current behavior intentionally locked for compatibility
@@ -3957,7 +4042,7 @@ sub Main()
   tests(124).expr = "1<<64":            tests(124).expectedErrContains = "incompatible operands" ' [edge]
   tests(125).expr = "1>>-1":            tests(125).expectedErrContains = "incompatible operands" ' [edge]
   tests(126).expr = "5%0":              tests(126).expectedErrContains = "incompatible operands" ' [edge]
-  tests(127).expr = "1+":               tests(127).expectedErrContains = "unexpected token" ' [syntax]
+  tests(127).expr = "1+":               tests(127).expectedErrContains = "at col 3" ' [syntax] root at-col
   tests(128).expr = "pow()":            tests(128).expectedErrContains = "expects 2 argument(s)" ' [arity]
   tests(129).expr = "pow(2,3,4)":       tests(129).expectedErrContains = "expects 2 argument(s)" ' [arity]
   tests(130).expr = "log()":            tests(130).expectedErrContains = "expects 2 argument(s)" ' [arity]
@@ -5146,7 +5231,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1279).expr = "-300000000*(5/2)": tests(1279).expected = "-750000000" ' [exact-int] abs(f)>1 large negative N
   tests(1280).expr = "-300000000*((5/2)+1e-12)": tests(1280).expected = "-750000000.0003" ' [exact-int] near-integer product stays float
   tests(1281).expr = "(2**51-8)*(5/2)": tests(1281).expected = "5629499534213100" ' [exact-int] abs(f)>1 near 2^53
-  tests(1282).expr = "(2**51-8)*((5/2)+1e-12)": tests(1282).expected = "5629499534215352" ' [exact-int] near-integer product stays float
+  tests(1282).expr = "(2**51-8)*((5/2)+1e-12)": tests(1282).expected = "5629499534215352" ' [exact-int] Bound H: integer-looking product stays float (no exact metadata)
   tests(1283).expr = "-(2**50-1)*2": tests(1283).expected = "-2251799813685246" ' [exact-int] abs(f)>1 negative N
   tests(1284).expr = "-(2**50-1)*(2.0001)": tests(1284).expected = "-2251912403675931" ' [exact-int] near-integer product stays float
   tests(1285).expr = "6/(10,20,30)": tests(1285).expected = "(0.6, 0.3, 0.2)" ' array division
@@ -5170,7 +5255,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1303).expr = "sortby((1,2,3),x:x": tests(1303).expectedErrContains = "missing closing parenthesis" ' [sortby] inline lambda key at EOF
   tests(1304).expr = "sortby((1,2,3),x:x+sin": tests(1304).expectedErrContains = "missing closing parenthesis" ' [sortby] lambda body at EOF
   tests(1305).expr = "sortby((1,2,3),x:x+sin(": tests(1305).expectedErrContains = "missing closing parenthesis" ' [sortby] lambda body with open paren at EOF
-  tests(1306).expr = "sortby((1,2,3),x:": tests(1306).expectedErrContains = "function body is empty" ' [sortby] empty lambda body at EOF
+  tests(1306).expr = "sortby((1,2,3),x:": tests(1306).expectedErrContains = "at col 18" ' [sortby] empty lambda body at EOF root at-col
   tests(1307).expr = "sortby((1,2,3),x:x+sin)": tests(1307).expectedErrContains = "unknown variable: sin" ' [sortby] lambda body tail eval
   tests(1308).expr = "sortby((1,2,3),x:x:x)": tests(1308).expectedErrContains = "at col 19" ' [sortby] lambda body error column
   tests(1309).expr = "sortby((1:30,1:00),x:polar+2)": tests(1309).expectedErrContains = "at col 22" ' [sortby] lambda body unknown ident column
@@ -5343,7 +5428,7 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(1464).expr = "1:00 + 1e16": tests(1464).expectedErrContains = "incompatible operands" ' [time] ms overflow
   tests(1465).expr = "1:00 * 1e300": tests(1465).expectedErrContains = "incompatible operands" ' [time] ms overflow
   tests(1466).expr = "1:00 < 1e300": tests(1466).expected = "1" ' [time] compare saturates
-  tests(1467).expr = "1:00 < inf": tests(1467).expectedErrContains = "incompatible operands" ' [time] non-finite compare
+  tests(1467).expr = "1:00 < inf": tests(1467).expected = "1" ' [spec] time vs +-inf uses shared compare (Inf saturates to SmInt bound)
 
   ' === failed assignment must not store the variable ===
   tests(1468).expr = "failasgvar=failasgunknown+1": tests(1468).expectedErrContains = "unknown variable: failasgunknown" ' [assign] unknown rhs
@@ -5946,6 +6031,72 @@ tests(134).expr = "atan2((1,2),3)":   tests(134).expected = "(0.3217505543966422
   tests(2054).expr = "filter(range(0,10), x: x%3==0)": tests(2054).expected = "(0, 3, 6, 9)" ' [spec] stage3 behavior-preserving rewrites
   tests(2055).expr = "factorint(1000000007*1000000009)": tests(2055).expected = "(1000000007, 1000000009)" ' [spec] stage3 behavior-preserving rewrites
   tests(2056).expr = "factorint(2*3*5*1000000007)": tests(2056).expected = "(2, 3, 5, 1000000007)" ' [spec] stage3 behavior-preserving rewrites
+  tests(2057).expr = "0:00 == nan": tests(2057).expected = "0" ' [spec] time vs NaN is unordered (not equal to 0:00)
+  tests(2058).expr = "0:00 != nan": tests(2058).expected = "1" ' [spec]
+  tests(2059).expr = "0:30 == nan": tests(2059).expected = "0" ' [spec]
+  tests(2060).expr = "sortby(flat(0:00, nan), x: x)": tests(2060).expected = "(nan, 00:00)" ' [spec] NaN-first with times
+  tests(2061).expr = "clamp(9007199254740993, 0, 9007199254740992)": tests(2061).expected = "9007199254740992" ' [spec] exact-int clamp bounds
+  tests(2062).expr = "min(9007199254740993, 9007199254740992)": tests(2062).expected = "9007199254740992" ' [spec] exact-int min
+  tests(2063).expr = "max(9007199254740992, 9007199254740993)": tests(2063).expected = "9007199254740993" ' [spec] exact-int max
+  tests(2064).expr = "min(1.5, 9007199254740993)": tests(2064).expected = "1.5" ' [spec] mixed float/exact min via shared compare
+  tests(2065).expr = "unique(9007199254740993, 9007199254740992, 9007199254740993)": tests(2065).expected = "(9007199254740993, 9007199254740992)" ' [spec] exact-int unique hash+eq
+  '' 2^55 has binary64 ulp 8; +2/+4/+5 stay distinct only via exact-int metadata (Python int arithmetic).
+  tests(2066).expr = "2**55 + 4 == 2**55 + 2": tests(2066).expected = "0" ' [spec]
+  tests(2067).expr = "unique(98765432109899976, 98765432109899975)": tests(2067).expected = "(98765432109899976, 98765432109899975)" ' [spec]
+  tests(2068).expr = "unique(2**55 + 2, 2**55 + 4)": tests(2068).expected = "(36028797018963970, 36028797018963972)" ' [spec]
+  tests(2069).expr = "sort(2**55 + 4, 2**55 + 2)": tests(2069).expected = "(36028797018963970, 36028797018963972)" ' [spec]
+  tests(2070).expr = "sortby((2**55 + 4, 2**55 + 2), x: x)": tests(2070).expected = "(36028797018963970, 36028797018963972)" ' [spec] lambda on by default
+  tests(2071).expr = "filter((2**55 + 4, 2**55 + 2), x: x==2**55)": tests(2071).expected = "()" ' [spec] neither equals 2^55
+  tests(2072).expr = "clamp(2**55 + 0, 2**55 + 2, 2**55 + 5)": tests(2072).expected = "36028797018963970" ' [spec] below min
+  tests(2073).expr = "clamp(2**55 + 4, 2**55 + 2, 2**55 + 5)": tests(2073).expected = "36028797018963972" ' [spec] in range
+  tests(2074).expr = "clamp(2**55 + 8, 2**55 + 2, 2**55 + 5)": tests(2074).expected = "36028797018963973" ' [spec] above max
+  '' Exact-int audit + Bound H: provenance preserve; float ops/aggregates promote only |v|<2^26.
+  tests(2075).expr = "(-9223372036854775808)*(-1)": tests(2075).expected = "9223372036854775808" ' [spec] INT_MIN*(-1) -> SmUInt
+  tests(2076).expr = "uhex((-9223372036854775808)*(-1))": tests(2076).expected = "0x8000000000000000" ' [spec]
+  tests(2077).expr = "(-2)*(-(2**62))": tests(2077).expected = "9223372036854775808" ' [spec] neg*neg -> 2^63
+  tests(2078).expr = "(-9223372036854775808)/(-1)": tests(2078).expected = "9223372036854775808" ' [spec] nearby div path unchanged
+  tests(2079).expr = "isinstance(hypot(3,4), int)": tests(2079).expected = "1" ' [spec] perfect-square hypot
+  tests(2080).expr = "hex(hypot(3,4))": tests(2080).expected = "0x5" ' [spec]
+  tests(2081).expr = "isinstance(hypot(5,0), int)": tests(2081).expected = "1" ' [spec] zero-leg hypot
+  tests(2082).expr = "isinstance(hypot(2**55,0), int)": tests(2082).expected = "1" ' [spec] large zero-leg
+  tests(2083).expr = "hex(hypot(2**55,0))": tests(2083).expected = "0x80000000000000" ' [spec]
+  tests(2084).expr = "isinstance(median(1,3,5), int)": tests(2084).expected = "1" ' [spec] all-exact odd median
+  tests(2085).expr = "isinstance(median(1,3), int)": tests(2085).expected = "1" ' [spec] all-exact even integer midpoint
+  tests(2086).expr = "median(1,2)": tests(2086).expected = "1.5" ' [spec] even non-integer midpoint stays float
+  tests(2087).expr = "isinstance(1.5+1.5, int)": tests(2087).expected = "1" ' [spec] Bound H: small float + may promote
+  tests(2088).expr = "isinstance(exp(0), int)": tests(2088).expected = "1" ' [spec]
+  tests(2089).expr = "isinstance(ln(1), int)": tests(2089).expected = "1" ' [spec]
+  tests(2090).expr = "isinstance(sin(0), int)": tests(2090).expected = "1" ' [spec] trig snap stamps SmInt
+  tests(2091).expr = "isinstance(cos(0), int)": tests(2091).expected = "1" ' [spec]
+  tests(2092).expr = "0-(-9223372036854775808)": tests(2092).expected = "9223372036854775808" ' [spec] binary sub -> SmUInt
+  tests(2093).expr = "uhex(0-(-9223372036854775808))": tests(2093).expected = "0x8000000000000000" ' [spec]
+  tests(2094).expr = "isinstance(0-(-9223372036854775808), int)": tests(2094).expected = "1" ' [spec]
+  tests(2095).expr = "(2**55+4)-(2**55+2)": tests(2095).expected = "2" ' [spec] 2^55 arithmetic lock
+  tests(2096).expr = "hex((2**55+4)-(2**55+2))": tests(2096).expected = "0x2" ' [spec]
+  tests(2097).expr = "isinstance((2**55+4)-(2**55+2), int)": tests(2097).expected = "1" ' [spec]
+  tests(2098).expr = "hex((2**55+4) | (2**55+2))": tests(2098).expected = "0x80000000000006" ' [spec] bitwise above 2^53
+  tests(2099).expr = "isinstance(hypot(3037000499,0), int)": tests(2099).expected = "1" ' [spec]
+  tests(2100).expr = "median(1,3,5)": tests(2100).expected = "3" ' [spec]
+  tests(2101).expr = "isinstance((2**51-8)*((5/2)+1e-12), int)": tests(2101).expected = "0" ' [spec] Bound H: large false-exact product stays float
+  tests(2102).expr = "isinstance(1.0, int)": tests(2102).expected = "1" ' [spec] digit-exact literal (frac zeros)
+  tests(2103).expr = "isinstance(67108863.0, int)": tests(2103).expected = "1" ' [spec] digit-exact literal, full range
+  tests(2104).expr = "isinstance(67108864.0, int)": tests(2104).expected = "1" ' [spec] digit-exact literal, not Bound H
+  tests(2105).expr = "isinstance(sum(1.5,1.5), int)": tests(2105).expected = "1" ' [spec] float aggregate MaybeExact matches 1.5+1.5
+  tests(2106).expr = "isinstance(sum(1,2), int)": tests(2106).expected = "1" ' [spec] all-exact sum fold
+  tests(2107).expr = "isinstance(product(1.5,2), int)": tests(2107).expected = "1" ' [spec] float product MaybeExact under H
+  tests(2108).expr = "isinstance(avg(1,2), int)": tests(2108).expected = "0" ' [spec] avg -> 1.5 stays float under H
+  tests(2109).expr = "isinstance(pow(2**62,1/2), int)": tests(2109).expected = "1" ' [spec] exact SmInt base above 2^53 -> SmUInt reconstruct
+  tests(2110).expr = "pow(2**62,1/2)": tests(2110).expected = "2147483648" ' [spec]
+  tests(2111).expr = "isinstance(pow((2**32-1)**2,1/2), int)": tests(2111).expected = "1" ' [spec] largest SmUInt perfect square
+  tests(2112).expr = "pow((2**32-1)**2,1/2)": tests(2112).expected = "4294967295" ' [spec]
+  tests(2113).expr = "isinstance(0.123e4, int)": tests(2113).expected = "1" ' [spec] digit-exact via exponent
+  tests(2114).expr = "0.123e4": tests(2114).expected = "1230" ' [spec]
+  tests(2115).expr = "isinstance(1.0e2, int)": tests(2115).expected = "1" ' [spec] NNN.0eMMM
+  tests(2116).expr = "isinstance(1.5, int)": tests(2116).expected = "0" ' [spec] non-zero written fraction stays float
+  tests(2117).expr = "isinstance(pow(2**63,1), int)": tests(2117).expected = "1" ' [spec] unsigned int-exp result > INT_MAX
+  tests(2118).expr = "pow(2**63,1)": tests(2118).expected = "9223372036854775808" ' [spec]
+  tests(2119).expr = "isinstance(pow(2**63,1/2), int)": tests(2119).expected = "0" ' [spec] non-perfect large uint root stays float
+  tests(2120).expr = "uhex(pow(2**63,1))": tests(2120).expected = "0x8000000000000000" ' [spec]
 
   dim uniqueTotal as Integer
   dim duplicateTotal as Integer

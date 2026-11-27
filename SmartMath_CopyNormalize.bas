@@ -26,7 +26,7 @@ private function StripThousandsFromCopyToken(byref t as String) as String
   return r
 end function
 
-'' Margin uses array output sep & " " between elements; split on that so decimal commas stay intact.
+'' Display uses ArrayOutputSep & " " between elements; split on that so decimal commas stay intact.
 private function SplitCopyArrayInner(byref inner as String, elems() as String) as Integer
   erase elems
   dim s as String = inner
@@ -72,7 +72,7 @@ private function SplitCopyArrayInner(byref inner as String, elems() as String) a
   return partCount + 1
 end function
 
-'' Clipboard: ASCII "." decimals (parser-friendly). Strip thousands sep only when
+'' Clipboard: ASCII "." decimals (parser-friendly). Strip ThousandsSep only when
 '' UseThousandsSep is true; honor DecimalSep; if decimal is "." but a comma
 '' remains in the mantissa (locale/display mismatch), normalize those commas too.
 private function ElemToCanonicalCopy(byref seg as String) as String

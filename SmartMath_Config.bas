@@ -326,7 +326,7 @@ private sub writeStringW( _
   SendMessage(g_hMainWnd, AKD_OPTIONW, cast(WPARAM, hOptions), cast(LPARAM, @poW))
 end sub
 
-'' Integer options are stored as strings. No validation here — apply limits at each call site.
+'' Integer options are stored as strings. No validation here - apply limits at each call site.
 private function readIntW( _
   byval hOptions as HANDLE, _
   byref optionName as WString, _

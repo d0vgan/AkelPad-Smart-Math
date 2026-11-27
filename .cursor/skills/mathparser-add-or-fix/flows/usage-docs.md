@@ -26,7 +26,7 @@ Keep `AkelFiles/Docs/SmartMath-Eng.md` in sync with `USAGE_AND_SYNTAX.md` whenev
 ## Shared style
 
 - Scan the nearest headings, bullets, and examples first; match structure, terms, list depth, and example shape (`expr` -> `result` vs inline prose).
-- Prefer ASCII in new/changed lines: `-` for dashes, `->` for results, straight quotes, unless extending an existing non-ASCII paragraph in place.
+- **ASCII only (Required):** `USAGE_AND_SYNTAX.md` and `AkelFiles/Docs/SmartMath-Eng.md` must not contain Unicode. Use ASCII in every new or changed line (`-` for dashes, `->` for results, straight quotes, `*` / `<=` / `sqrt` instead of math symbols). If newly generated or edited text in either file contains Unicode, replace each character with an ASCII equivalent before finishing the edit. Keep both files in sync after that replacement.
 - One author voice: no one-off style for a single symbol.
 - Example results use the parser's display format (3-digit exponents, e.g. `1e+020`) and must be verified against a reference (smoke-tests flow), not copied from parser output.
 - Typo pass on changed lines (watch split words like `implemen ted`).

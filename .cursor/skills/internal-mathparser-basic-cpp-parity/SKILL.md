@@ -40,10 +40,11 @@ Do not "fix" these unless the user asks, and do not write shared tests that requ
 
 - Unknown-name errors: C++ lowercases identifiers and lists every unknown name in the input; Basic keeps case and stops at the first.
 - Float formatting: prefer the shortest round-trip decimal (often 15 significant digits, else 16 — numeric-behavior "Float display digits"). C++ prints correctly rounded `%.16g`; Basic uses FreeBASIC `str()`, which can differ on exact decimal ties (`1e15+0.5`: Basic `1000000000000001.0`, C++ `1000000000000000.0`). Both append `.0` when that general form has no fraction and no exponent, and both use scientific form for a non-exact value with magnitude above `2^53`. The plugin auto formatter uses the same rule and then strips leading zeros in the exponent (`9.907919180215092e+15`).
-- `±2^63` results (accepted within the test tolerance; do not write exact-string tests that require them to match):
+- `±2^63` **display-only** float results (accepted within the test tolerance; do not write exact-string tests that require them to match):
   - `-9223372036854775808-1` and `9223372036854775807+0.5`: C++ displays `±9.223372036854778e+018` (deliberate `DecScientificSmIntBoundHigh` display rule, not `%.16g`); Basic displays `±9.223372036854776e+018` (its `decScientificSmIntBoundHigh` property is never set). The two are adjacent doubles.
-  - `0-(-9223372036854775808)`: both return the float `9.223372036854776e+018`; Python gives the exact integer.
+  - Exact SmUInt `9223372036854775808` (e.g. `-(-INT_MIN)`, `0-(-INT_MIN)`, `INT_MIN*(-1)`) is **not** a known difference — both parsers keep exact metadata and print every digit.
 - Complex `ln`/`log` real part is `log(hypot(re, im))`, which can be one ulp from Python near `|z| = 1` (`log(1+i,2)` → `0.5000000000000001+...`, Python `0.5+...`). This is allowed floating-point inaccuracy: the tests expect the Python value with tolerant comparison.
+- Error location text: both attach `at col N:  snippet|...` for root-cursor parse failures and remapped `sortby`/`filter` lambda body errors. Signature hints (`function: …`, `user-defined function: …`) stay bare with no location. C++ does not emit Basic's optional `line 1, ` (`Parser_ShowErrorLine`). Exact leftover columns on some UDF-definition junk cases may still differ (for example `bad1(x)=x)`).
 
 Empty-array results follow `.cursor/skills/mathparser-add-or-fix/flows/empty-array-policy.md`. A Basic/C++ mismatch with that policy is a defect, not an entry in this list.
 

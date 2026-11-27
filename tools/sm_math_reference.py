@@ -12,7 +12,7 @@ Number = Union[int, float, complex]
 
 EPS = 2.2204460492503131e-16
 
-# Duration model (ms) — aligned with tools/verify_smoke_expected_vs_python.py
+# Duration model (ms) - aligned with tools/verify_smoke_expected_vs_python.py
 _MS = 1
 _SECOND_MS = 1000
 _MINUTE_MS = 60 * _SECOND_MS

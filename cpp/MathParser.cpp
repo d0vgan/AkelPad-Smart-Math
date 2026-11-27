@@ -4,8 +4,14 @@
 using smartmath_internal::gcdSmUInt;
 using smartmath_internal::isWithinExactIntFromFloatRange;
 using smartmath_internal::tryExtractExactSmIntFromFloatStrict;
+using smartmath_internal::tryExtractExactSmIntFromFloatForPromote;
 using smartmath_internal::makeArrayFromScalars;
 using smartmath_internal::makeInlineLambdaValue;
+using smartmath_internal::applyUnaryBodyRemapFailure;
+using smartmath_internal::pointParseCursorAtName;
+using smartmath_internal::remapParseErrorToUnaryFuncColumn;
+using smartmath_internal::stripErrorLocationSuffix;
+using smartmath_internal::unaryBodyErrorColumn;
 using smartmath_internal::makeScalar;
 using smartmath_internal::makeScalarInt;
 using smartmath_internal::makeScalarMaybeExact;
@@ -46,11 +52,11 @@ using smartmath_internal::getExactRoundedIntFromFloatResult;
 using smartmath_internal::verifyExactIntFloatOpResidue;
 using smartmath_internal::verifyExactIntFloatOpCrossMultiply;
 using smartmath_internal::tryPromoteExactIntFromFloatOp;
-using smartmath_internal::tryPromoteExactDivisionByFloatDivisorSigned;
-using smartmath_internal::tryPromoteExactDivisionByFloatDivisorUnsigned;
-using smartmath_internal::tryPromoteExactMultiplicationByFloatFactorSigned;
-using smartmath_internal::tryPromoteExactMultiplicationByFloatFactorUnsigned;
+using smartmath_internal::tryNearIntReciprocal;
 using smartmath_internal::tryApplyExactIntFloatOpFromFloatSide;
+using smartmath_internal::finishExactUIntSqrtOf;
+using smartmath_internal::tryRestoreExactUnsignedNthRoot;
+using smartmath_internal::tryRestoreExactUnsignedIntPow;
 using smartmath_internal::scalarApplyReducedRationalPart;
 using smartmath_internal::applySqrtScalarValue;
 using smartmath_internal::tryApplySqrExactScalar;
@@ -166,11 +172,18 @@ constexpr SmFloat kQuarterPi = kPi / 4.0;
 constexpr SmFloat kSqrtTwoPi = static_cast<SmFloat>(2.506628274631000502415765284811L);  // sqrt(2*pi)
 constexpr SmFloat kInvLn10 = static_cast<SmFloat>(0.43429448190325182046017448968723710L);  // 1 / ln(10)
 constexpr SmFloat kTrigMaxAbsRadians = kMaxExactIntFromFloat;  // 2^mantissa (2^53 for binary64)
-constexpr int kMaxEvalDepth = 128;
+// Bound-body nesting (UDF + lambda) and parse-nest cap. Mirrored in Basic as
+// BOUND_EVAL_DEPTH_MAX / UDF_CALL_STACK_MAX. Kept below FreeBASIC/AkelPad
+// native stack capacity so deep chains error instead of crashing the host.
+constexpr int kMaxEvalDepth = 64;
 constexpr std::uint8_t kBuiltinArityUnbounded = 255;
 
 using smartmath_internal::BuiltinFunctionId;
 using smartmath_internal::UnaryScalarKind;
+
+// Defined later in this TU; used by clamp / unique hash before the definition site.
+int cmpRealScalars(const smartmath_internal::EvalValue::ScalarValue& sa,
+                   const smartmath_internal::EvalValue::ScalarValue& sb);
 
 const smartmath_internal::BuiltinMetaRow kBuiltinMeta[] = {
     { BF::NonCalculating, 0, 0, BHK::EmptyPar, BC::Rand },  // Rand
@@ -2385,7 +2398,7 @@ EvalValue makeScalarShiftLeftSmInt(SmInt value, unsigned int shiftCount) {
   const SmInt lo = bitwiseShiftRightDefined(kIntMin, shiftCount);
   const SmInt hi = bitwiseShiftRightDefined(kIntMax, shiftCount);
   if (value < lo || value > hi) {
-    return makeScalarMaybeExact(std::ldexp(static_cast<SmFloat>(value), static_cast<int>(shiftCount)));
+    return makeScalar(std::ldexp(static_cast<SmFloat>(value), static_cast<int>(shiftCount)));
   }
   return makeScalarInt(bitwiseShiftLeftDefined(value, shiftCount));
 }
@@ -2767,15 +2780,15 @@ EvalValue::ScalarValue clampScalarValue(
     return s;
   }
 
-  if (!std::isnan(minS) && v <= minS) {
+  if (!std::isnan(minS) && cmpRealScalars(s, minSv) <= 0) {
     return minSv;
   }
 
-  if (!std::isnan(maxS) && v > maxS) {
+  if (!std::isnan(maxS) && cmpRealScalars(s, maxSv) > 0) {
     return maxSv;
   }
 
-  if (std::isnan(maxS) && !std::isnan(minS) && v > minS) {
+  if (std::isnan(maxS) && !std::isnan(minS) && cmpRealScalars(s, minSv) > 0) {
     return makeScalar(std::numeric_limits<SmFloat>::quiet_NaN()).scalarValue;
   }
 
@@ -3862,7 +3875,7 @@ bool tryPowVerifyRootExactValue(SmInt valueInt, SmInt rootCand, SmInt rootDeg) {
     if (!tryPowSmUIntChecked(static_cast<SmUInt>(rootCand), static_cast<SmUInt>(rootDeg), reconU)) {
       return false;
     }
-    return static_cast<SmInt>(reconU) == valueInt;
+    return reconU == static_cast<SmUInt>(valueInt);
   }
   SmInt reconI = 0;
   if (!tryPowSmIntChecked(rootCand, rootDeg, reconI)) {
@@ -4628,6 +4641,17 @@ bool tryGetArrayIndexIntFromScalarValue(const EvalValue::ScalarValue& sIn, SmInt
   return classifyArrayIndexInt(sIn, outI) == ArrayIndexIntKind::Ok;
 }
 
+void finishExactUIntSqrtOf(SmUInt radicandU, EvalValue& outV) {
+  const SmFloat r = std::sqrt(static_cast<SmFloat>(radicandU));
+  SmUInt n = 0;
+  SmUInt sq = 0;
+  if (tryRoundFloatToSmUInt(r, n) && tryMulSmUIntChecked(n, n, sq) && sq == radicandU) {
+    outV = makeScalarSmUIntPreferInt(n);
+  } else {
+    outV = makeScalar(r);
+  }
+}
+
 void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV) {
   EvalValue::ScalarValue s = sv;
   scalarRepairExactMetadata(s);
@@ -4645,13 +4669,7 @@ void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV) {
     outV = makeScalar(r);
     return;
   }
-  const SmUInt n = static_cast<SmUInt>(std::round(r));
-  SmUInt sq = 0;
-  if (tryMulSmUIntChecked(n, n, sq) && sq == inpU) {
-    outV = makeScalarSmUIntPreferInt(n);
-  } else {
-    outV = makeScalar(r);
-  }
+  finishExactUIntSqrtOf(inpU, outV);
 }
 
 bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV) {
@@ -4680,6 +4698,10 @@ bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV) {
   return false;
 }
 
+static void finishHypotFromExactSumSqU(SmUInt sumSqU, EvalValue& outV) {
+  finishExactUIntSqrtOf(sumSqU, outV);
+}
+
 bool tryApplyHypotExactScalars(
     const EvalValue::ScalarValue& leftS,
     const EvalValue::ScalarValue& rightS,
@@ -4695,11 +4717,23 @@ bool tryApplyHypotExactScalars(
   SmInt lb = 0;
   if (tryGetExactSignedIntNoSmUIntWrapScalarStrict(l, la) &&
       tryGetExactSignedIntNoSmUIntWrapScalarStrict(r, lb)) {
+    // Zero leg: |other| with metadata (avoids square overflow for large exact ints).
+    if (la == 0) {
+      outV = makeScalarSmUIntPreferInt(uintMagnitudeOfSmInt(lb));
+      return true;
+    }
+    if (lb == 0) {
+      outV = makeScalarSmUIntPreferInt(uintMagnitudeOfSmInt(la));
+      return true;
+    }
     SmInt aa = 0;
     SmInt bb = 0;
     SmInt sumSq = 0;
     if (tryMulExactSmIntSquare(la, aa) && tryMulExactSmIntSquare(lb, bb) && tryAddSmIntChecked(aa, bb, sumSq)) {
-      outV = makeScalar(std::sqrt(static_cast<SmFloat>(sumSq)));
+      if (sumSq < 0) {
+        return false;
+      }
+      finishHypotFromExactSumSqU(static_cast<SmUInt>(sumSq), outV);
       return true;
     }
     return false;
@@ -4707,16 +4741,48 @@ bool tryApplyHypotExactScalars(
   SmUInt ua = 0;
   SmUInt ub = 0;
   if (tryGetExactNonNegativeSmUIntFromScalar(l, ua) && tryGetExactNonNegativeSmUIntFromScalar(r, ub)) {
+    if (ua == 0u) {
+      outV = makeScalarSmUIntPreferInt(ub);
+      return true;
+    }
+    if (ub == 0u) {
+      outV = makeScalarSmUIntPreferInt(ua);
+      return true;
+    }
     SmUInt aaU = 0;
     SmUInt bbU = 0;
     SmUInt sumSqU = 0;
     if (tryMulSmUIntChecked(ua, ua, aaU) && tryMulSmUIntChecked(ub, ub, bbU) &&
         tryAddSmUIntChecked(aaU, bbU, sumSqU)) {
-      outV = makeScalar(std::sqrt(static_cast<SmFloat>(sumSqU)));
+      finishHypotFromExactSumSqU(sumSqU, outV);
       return true;
     }
   }
   return false;
+}
+
+bool tryRestoreExactUnsignedNthRoot(
+    SmUInt baseU, SmFloat rootGuess, SmInt nRoot, EvalValue& outV) {
+  SmUInt n = 0;
+  SmUInt sq = 0;
+  if (!tryRoundFloatToSmUInt(rootGuess, n) ||
+      !tryPowSmUIntChecked(n, static_cast<SmUInt>(nRoot), sq) || sq != baseU) {
+    return false;
+  }
+  outV = makeScalarSmUIntPreferInt(n);
+  return true;
+}
+
+bool tryRestoreExactUnsignedIntPow(
+    SmUInt baseU, SmFloat resultGuess, SmInt nExp, EvalValue& outV) {
+  SmUInt powResult = 0;
+  SmUInt recon = 0;
+  if (!tryRoundFloatToSmUInt(resultGuess, powResult) ||
+      !tryPowSmUIntChecked(baseU, static_cast<SmUInt>(nExp), recon) || recon != powResult) {
+    return false;
+  }
+  outV = makeScalarSmUIntPreferInt(powResult);
+  return true;
 }
 
 bool tryApplyPowExactScalarsByKind(
@@ -4758,33 +4824,17 @@ bool tryApplyPowExactScalarsByKind(
   if (p > 0.0 && p < 1.0) {
     SmInt nRoot = 0;
     SmInt rInt = 0;
-    SmUInt rU = 0;
-    if (fractionalPowerIsOddUnitRoot(p, nRoot)) {
+    if (fractionalPowerResolveRootDegree(p, nRoot)) {
       if (isSigned) {
         if (!tryRoundFloatToSmInt(r, rInt)) {
           return false;
         }
-        if (rInt >= 0 && valueSigned >= 0) {
-          SmUInt reconU = 0;
-          if (tryPowSmUIntChecked(static_cast<SmUInt>(rInt), static_cast<SmUInt>(nRoot), reconU) &&
-              reconU == static_cast<SmUInt>(valueSigned)) {
-            outV = makeScalarInt(rInt);
-            return true;
-          }
-        } else {
-          SmInt reconI = 0;
-          if (tryPowSmIntChecked(rInt, nRoot, reconI) && reconI == valueSigned) {
-            outV = makeScalarInt(rInt);
-            return true;
-          }
-        }
-      } else {
-        SmUInt sq = 0;
-        if (tryRoundFloatToSmUInt(r, rU) &&
-            tryPowSmUIntChecked(rU, static_cast<SmUInt>(nRoot), sq) && sq == valueUnsigned) {
-          outV = makeScalarSmUIntPreferInt(rU);
+        if (tryPowVerifyRootExactValue(valueSigned, rInt, nRoot)) {
+          outV = makeScalarInt(rInt);
           return true;
         }
+      } else if (tryRestoreExactUnsignedNthRoot(valueUnsigned, r, nRoot, outV)) {
+        return true;
       }
     }
     return false;
@@ -4798,14 +4848,8 @@ bool tryApplyPowExactScalarsByKind(
         outV = makeScalarInt(rInt);
         return true;
       }
-    } else {
-      SmUInt powResult = 0;
-      SmUInt recon = 0;
-      if (tryRoundFloatToSmUInt(r, powResult) &&
-          tryPowSmUIntChecked(valueUnsigned, static_cast<SmUInt>(nExp), recon) && recon == powResult) {
-        outV = makeScalarSmUIntPreferInt(powResult);
-        return true;
-      }
+    } else if (tryRestoreExactUnsignedIntPow(valueUnsigned, r, nExp, outV)) {
+      return true;
     }
   }
   return false;
@@ -4868,16 +4912,16 @@ bool tryApplyPowExactScalars(
     if (oddRootDecided) {
       return false;
     }
-    if (valueInt == kIntMin) {
-      return false;
+    // Signed path only when |base| is exact in SmFloat (mantissa-limited). Larger exact
+    // nonnegative bases fall through to the SmUInt reconstruct path (Basic parity).
+    if (valueInt != kIntMin) {
+      const SmUInt mag = (valueInt >= 0) ? static_cast<SmUInt>(valueInt)
+                                                : static_cast<SmUInt>(-valueInt);
+      if (smartmath::isMagBelowExactFloatLimit(mag)) {
+        return tryApplyPowExactScalarsByKind(
+            ScalarExactKind::Signed, valueInt, 0u, leftS, rightS, outV);
+      }
     }
-    const SmUInt mag = (valueInt >= 0) ? static_cast<SmUInt>(valueInt)
-                                              : static_cast<SmUInt>(-valueInt);
-    if (!smartmath::isMagBelowExactFloatLimit(mag)) {
-      return false;
-    }
-    return tryApplyPowExactScalarsByKind(
-        ScalarExactKind::Signed, valueInt, 0u, leftS, rightS, outV);
   }
   SmUInt inpU = 0;
   if (tryGetExactNonNegativeSmUIntFromScalar(leftS, inpU)) {
@@ -4998,16 +5042,7 @@ bool tryRefinePowPrincipalToExactScalarResult(
       if (std::fabs(powI) > kEps) {
         return false;
       }
-      SmUInt rootCand = 0;
-      if (!tryRoundFloatToSmUInt(powR, rootCand)) {
-        return false;
-      }
-      SmUInt recon = 0;
-      if (!tryPowSmUIntChecked(rootCand, static_cast<SmUInt>(nRoot), recon) || recon != inpU) {
-        return false;
-      }
-      outV = makeScalarSmUIntPreferInt(rootCand);
-      return true;
+      return tryRestoreExactUnsignedNthRoot(inpU, powR, nRoot, outV);
     }
     return false;
   }
@@ -5019,11 +5054,11 @@ bool tryRefinePowPrincipalToExactScalarResult(
     if (std::fabs(powI) > kEps) {
       return false;
     }
-    SmInt powResult = 0;
-    if (!tryRoundFloatToSmInt(powR, powResult)) {
-      return false;
-    }
     if (hasSigned) {
+      SmInt powResult = 0;
+      if (!tryRoundFloatToSmInt(powR, powResult)) {
+        return false;
+      }
       SmInt recon = 0;
       if (!tryPowSmIntChecked(valueInt, nExp, recon) || recon != powResult) {
         return false;
@@ -5032,18 +5067,7 @@ bool tryRefinePowPrincipalToExactScalarResult(
       return true;
     }
     if (hasUInt) {
-      SmUInt recon = 0;
-      if (!tryPowSmUIntChecked(inpU, static_cast<SmUInt>(nExp), recon) ||
-          recon != static_cast<SmUInt>(powResult)) {
-        return false;
-      }
-      if (static_cast<SmUInt>(powResult) <=
-          static_cast<SmUInt>(kIntMax)) {
-        outV = makeScalarInt(powResult);
-      } else {
-        outV = makeScalarSmUInt(static_cast<SmUInt>(powResult));
-      }
-      return true;
+      return tryRestoreExactUnsignedIntPow(inpU, powR, nExp, outV);
     }
   }
   return false;
@@ -5183,7 +5207,7 @@ bool tryShiftLeftSmUIntExactOrMaybe(
     EvalValue& outV) {
   if (bU > static_cast<SmUInt>(kMaxShift)) return false;
   if (bU > 0u && aU > (kUIntMax >> bU)) {
-    outV = makeScalarMaybeExact(std::ldexp(static_cast<SmFloat>(aU), static_cast<int>(bU)));
+    outV = makeScalar(std::ldexp(static_cast<SmFloat>(aU), static_cast<int>(bU)));
     return true;
   }
   outV = makeScalarSmUInt(aU << bU);
@@ -5359,7 +5383,7 @@ EvalValue makeScalarComplexFromFloats(SmFloat re, SmFloat im) {
   out.scalarValue.imagExactUInt = 0;
   SmInt tri = 0;
   SmInt tii = 0;
-  if (tryExtractExactSmIntFromFloatStrict(re, tri)) {
+  if (tryExtractExactSmIntFromFloatForPromote(re, tri)) {
     out.scalarValue.scalarKind = ScalarKind::SmInt;
     out.scalarValue.setExactSmIntValid(true);
     out.scalarValue.exactInt = tri;
@@ -5371,7 +5395,7 @@ EvalValue makeScalarComplexFromFloats(SmFloat re, SmFloat im) {
       out.scalarValue.exactUInt = 0;
     }
   }
-  if (tryExtractExactSmIntFromFloatStrict(im, tii)) {
+  if (tryExtractExactSmIntFromFloatForPromote(im, tii)) {
     out.scalarValue.setImagExactSmIntValid(true);
     out.scalarValue.imagExactInt = tii;
     if (tii >= 0) {
@@ -5431,7 +5455,7 @@ bool tryExtractExactRealComponent(const EvalValue::ScalarValue& sv, ExactCartesi
     return true;
   }
   SmInt t = 0;
-  if (tryExtractExactSmIntFromFloatStrict(sv.scalar, t)) {
+  if (tryExtractExactSmIntFromFloatForPromote(sv.scalar, t)) {
     exactCartesianComponentAssignFromSignedInt(c, t);
     return true;
   }
@@ -5542,7 +5566,7 @@ bool tryExtractExactCartesianComponent(bool isImag, const EvalValue::ScalarValue
     return true;
   }
   SmInt t = 0;
-  if (tryExtractExactSmIntFromFloatStrict(sv.imag, t)) {
+  if (tryExtractExactSmIntFromFloatForPromote(sv.imag, t)) {
     if (t == 0 && sv.imag != 0.0) {
       return false;
     }
@@ -5846,24 +5870,20 @@ bool tryPromoteExactIntFromFloatOp(
   return true;
 }
 
-bool tryPromoteExactDivisionByFloatDivisorSigned(
-    SmInt intI, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Signed, intI, 0u, f, r, false, outV);
-}
-
-bool tryPromoteExactDivisionByFloatDivisorUnsigned(
-    SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0, intU, f, r, false, outV);
-}
-
-bool tryPromoteExactMultiplicationByFloatFactorSigned(
-    SmInt intI, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Signed, intI, 0u, f, r, true, outV);
-}
-
-bool tryPromoteExactMultiplicationByFloatFactorUnsigned(
-    SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV) {
-  return tryPromoteExactIntFromFloatOp(ScalarExactKind::Unsigned, 0, intU, f, r, true, outV);
+bool tryNearIntReciprocal(SmFloat floatV, SmFloat bound, bool useAbs, SmFloat& outRounded) {
+  constexpr SmFloat kEps = kTolLost3;
+  const SmFloat inv = 1.0 / floatV;
+  const SmFloat target = useAbs ? std::fabs(inv) : inv;
+  const SmFloat rounded = std::round(target);
+  if (std::fabs(rounded) <= 1.0 || std::fabs(rounded) >= bound) {
+    return false;
+  }
+  if (std::fabs(target - rounded) >
+      kEps * std::max(static_cast<SmFloat>(1), std::fabs(target))) {
+    return false;
+  }
+  outRounded = rounded;
+  return true;
 }
 
 bool tryApplyExactIntFloatOpFromFloatSide(
@@ -5877,8 +5897,8 @@ bool tryApplyExactIntFloatOpFromFloatSide(
   if (!std::isfinite(f) || f == 0.0) {
     return false;
   }
-  constexpr SmFloat kEps = kTolLost3;
   SmInt tmp = 0;
+  SmFloat invRound = 0.0;
 
   if (kind == ScalarExactKind::Unsigned) {
     if (isMultiply) {
@@ -5886,11 +5906,7 @@ bool tryApplyExactIntFloatOpFromFloatSide(
         return false;
       }
       if (f < 1.0 && !nearlyInt(f, tmp)) {
-        const SmFloat inv = 1.0 / f;
-        const SmFloat invRound = std::round(inv);
-        if (invRound > 1.0 &&
-            invRound < kFloatSmUIntBound &&
-            std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
+        if (tryNearIntReciprocal(f, kFloatSmUIntBound, false, invRound) && invRound > 1.0) {
           const SmUInt nU = static_cast<SmUInt>(invRound);
           if (nU != 0u && (intUnsigned % nU) == 0u) {
             outV = makeScalarSmUInt(intUnsigned / nU);
@@ -5898,14 +5914,11 @@ bool tryApplyExactIntFloatOpFromFloatSide(
           }
         }
       }
-      return tryPromoteExactMultiplicationByFloatFactorUnsigned(intUnsigned, f, r, outV);
+      return tryPromoteExactIntFromFloatOp(
+          ScalarExactKind::Unsigned, 0, intUnsigned, f, r, true, outV);
     }
     if (std::fabs(f) < 1.0 && !nearlyInt(f, tmp)) {
-      const SmFloat inv = 1.0 / f;
-      const SmFloat invRound = std::round(inv);
-      if (std::fabs(invRound) > 1.0 &&
-          std::fabs(invRound) < kFloatSmUIntBound &&
-          std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
+      if (tryNearIntReciprocal(f, kFloatSmUIntBound, false, invRound)) {
         if (invRound > 0.0) {
           const SmUInt nU = static_cast<SmUInt>(invRound);
           SmUInt qU = 0;
@@ -5924,7 +5937,8 @@ bool tryApplyExactIntFloatOpFromFloatSide(
         }
       }
     }
-    return tryPromoteExactDivisionByFloatDivisorUnsigned(intUnsigned, f, r, outV);
+    return tryPromoteExactIntFromFloatOp(
+        ScalarExactKind::Unsigned, 0, intUnsigned, f, r, false, outV);
   }
 
   if (isMultiply) {
@@ -5932,12 +5946,7 @@ bool tryApplyExactIntFloatOpFromFloatSide(
       if (nearlyInt(f, tmp)) {
         return false;
       }
-      const SmFloat inv = 1.0 / f;
-      const SmFloat invAbs = std::fabs(inv);
-      const SmFloat invRound = std::round(invAbs);
-      if (invRound <= 1.0 ||
-          invRound >= kFloatSmIntBound ||
-          std::fabs(invAbs - invRound) > kEps * std::max(static_cast<SmFloat>(1), invAbs)) {
+      if (!tryNearIntReciprocal(f, kFloatSmIntBound, true, invRound)) {
         return false;
       }
       const SmInt nI = static_cast<SmInt>(invRound);
@@ -5954,15 +5963,12 @@ bool tryApplyExactIntFloatOpFromFloatSide(
       outV = makeScalarInt(qI);
       return true;
     }
-    return tryPromoteExactMultiplicationByFloatFactorSigned(intSigned, f, r, outV);
+    return tryPromoteExactIntFromFloatOp(
+        ScalarExactKind::Signed, intSigned, 0u, f, r, true, outV);
   }
 
   if (std::fabs(f) < 1.0 && !nearlyInt(f, tmp)) {
-    const SmFloat inv = 1.0 / f;
-    const SmFloat invRound = std::round(inv);
-    if (std::fabs(invRound) > 1.0 &&
-        std::fabs(invRound) < kFloatSmIntBound &&
-        std::fabs(inv - invRound) <= kEps * std::max(static_cast<SmFloat>(1), std::fabs(inv))) {
+    if (tryNearIntReciprocal(f, kFloatSmIntBound, false, invRound)) {
       const SmInt nI = static_cast<SmInt>(invRound);
       SmInt qI = 0;
       if (tryMulSmIntChecked(intSigned, nI, qI)) {
@@ -5979,7 +5985,8 @@ bool tryApplyExactIntFloatOpFromFloatSide(
       }
     }
   }
-  return tryPromoteExactDivisionByFloatDivisorSigned(intSigned, f, r, outV);
+  return tryPromoteExactIntFromFloatOp(
+      ScalarExactKind::Signed, intSigned, 0u, f, r, false, outV);
 }
 
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -6225,7 +6232,7 @@ bool tryAvgExactComplexFromSum(const EvalValue& sumV, std::size_t itemCount, Eva
 EvalValue makeScalarMaybeExact(SmFloat v) {
   EvalValue out = makeScalar(v);
   SmInt asInt = 0;
-  if (tryExtractExactSmIntFromFloatStrict(v, asInt)) {
+  if (tryExtractExactSmIntFromFloatForPromote(v, asInt)) {
     out.scalarValue.scalarKind = ScalarKind::SmInt;
     out.scalarValue.setExactSmIntValid(true);
     out.scalarValue.exactInt = asInt;
@@ -6990,15 +6997,218 @@ MathParser::RawResult toRawResult(const EvalValue& v) {
   return out;
 }
 
+std::string stripErrorLocationSuffix(const std::string& errFull) {
+  const std::size_t posAt = errFull.find(" at ");
+  if (posAt != std::string::npos) {
+    return errFull.substr(0, posAt);
+  }
+  return errFull;
+}
+
+std::string buildErrorSnippet(const std::string& exprText, int col) {
+  if (exprText.empty()) {
+    return std::string();
+  }
+  int exprLen = static_cast<int>(exprText.size());
+  if (col < 1) {
+    col = 1;
+  }
+  if (col > exprLen + 1) {
+    col = exprLen + 1;
+  }
+  const int leftSpan = 18;
+  const int rightSpan = 18;
+  int startPos = col - leftSpan;
+  int endPos = col + rightSpan;
+  if (startPos < 1) {
+    startPos = 1;
+  }
+  if (endPos > exprLen) {
+    endPos = exprLen;
+  }
+  if (endPos < startPos) {
+    endPos = startPos;
+  }
+  const std::string snippet = exprText.substr(static_cast<std::size_t>(startPos - 1),
+                                              static_cast<std::size_t>(endPos - startPos + 1));
+  int markerPos = col - startPos + 1;
+  if (markerPos < 1) {
+    markerPos = 1;
+  }
+  if (markerPos > static_cast<int>(snippet.size()) + 1) {
+    markerPos = static_cast<int>(snippet.size()) + 1;
+  }
+  return snippet.substr(0, static_cast<std::size_t>(markerPos - 1)) + '|' +
+         snippet.substr(static_cast<std::size_t>(markerPos - 1));
+}
+
+int EvalContext::currentParseErrorColumn() const {
+  if (sourceExpr.empty() || !p) {
+    return 0;
+  }
+  const char* const base = sourceExpr.c_str();
+  const char* const end = base + sourceExpr.size();
+  if (p < base || p > end) {
+    return 0;
+  }
+  // 1-based index within ``sourceExpr``.
+  return static_cast<int>(p - base) + 1;
+}
+
+bool messageIsFunctionHint(const std::string& msg) {
+  return msg.compare(0, std::char_traits<char>::length(STR_HINT_PREFIX), STR_HINT_PREFIX) == 0 ||
+         msg.compare(0, std::char_traits<char>::length(STR_USER_DEFINED_FUNCTION_COLON),
+                     STR_USER_DEFINED_FUNCTION_COLON) == 0;
+}
+
 void EvalContext::fail(const std::string& msg) {
   if (parseError) {
     return;
   }
   parseError = true;
-  errorText = msg;
+  // Signature hints are not location diagnostics (Basic Parser_IsFunctionHintError).
+  if (messageIsFunctionHint(msg) || messageIsFunctionHint(stripErrorLocationSuffix(msg))) {
+    errorText = stripErrorLocationSuffix(msg);
+    return;
+  }
+  // Already located (e.g. remapped body error, or re-fail of a child context message).
+  if (msg.find(" at ") != std::string::npos) {
+    errorText = msg;
+    return;
+  }
+  // Nested body contexts stay message-only; remap helpers call failAtColumn on the root.
+  if (!isRootInputExpr) {
+    errorText = msg;
+    return;
+  }
+  const int col = currentParseErrorColumn();
+  if (col <= 0 || sourceExpr.empty()) {
+    errorText = msg;
+    return;
+  }
+  errorText = msg + " at col " + std::to_string(col) + ":  " + buildErrorSnippet(sourceExpr, col);
+}
+
+void EvalContext::failAtColumn(const std::string& msg, int col) {
+  if (parseError) {
+    return;
+  }
+  parseError = true;
+  const std::string bare = stripErrorLocationSuffix(msg);
+  if (messageIsFunctionHint(bare) || sourceExpr.empty() || col <= 0) {
+    errorText = bare;
+    return;
+  }
+  errorText = bare + " at col " + std::to_string(col) + ":  " + buildErrorSnippet(sourceExpr, col);
+}
+
+void EvalContext::clearParseErrorForRemap() {
+  parseError = false;
+  errorText.clear();
+}
+
+std::string unaryFunctionFailureMessage(const std::string& innerMsg) {
+  if (innerMsg.empty()) {
+    return STR_INCOMPATIBLE_OPERANDS;
+  }
+  if (innerMsg.find(STR_USER_DEFINED_FUNCTION_COLON) != std::string::npos) {
+    return innerMsg;
+  }
+  if (innerMsg.find(STR_HINT_PREFIX) != std::string::npos) {
+    return innerMsg;
+  }
+  return innerMsg;
+}
+
+int unaryBodyErrorColumn(
+    const int bodyStartCol,
+    const int bodyErrorCol,
+    const std::string& msg,
+    const std::string& rootExpr) {
+  if (bodyStartCol <= 0 || bodyErrorCol <= 0) {
+    return 0;
+  }
+  int col = bodyStartCol + bodyErrorCol - 1;
+  const std::size_t uvPos = msg.find(STR_UNKNOWN_VARIABLE_COLON);
+  if (uvPos != std::string::npos) {
+    std::string uvName = msg.substr(uvPos + std::char_traits<char>::length(STR_UNKNOWN_VARIABLE_COLON));
+    while (!uvName.empty() && std::isspace(static_cast<unsigned char>(uvName.front()))) {
+      uvName.erase(uvName.begin());
+    }
+    while (!uvName.empty() && std::isspace(static_cast<unsigned char>(uvName.back()))) {
+      uvName.pop_back();
+    }
+    if (!uvName.empty() && !rootExpr.empty() && bodyStartCol <= static_cast<int>(rootExpr.size())) {
+      const std::size_t found = rootExpr.find(uvName, static_cast<std::size_t>(bodyStartCol - 1));
+      if (found != std::string::npos) {
+        col = static_cast<int>(found) + 1;
+      }
+    }
+  }
+  return col;
+}
+
+void pointParseCursorAtName(EvalContext& ctx, const std::string& name) {
+  if (ctx.sourceExpr.empty() || name.empty()) {
+    return;
+  }
+  const std::size_t pos = ctx.sourceExpr.find(name);
+  if (pos == std::string::npos) {
+    return;
+  }
+  const char* const base = ctx.sourceExpr.c_str();
+  const char* const at = base + pos;
+  const char* const end = base + ctx.sourceExpr.size();
+  if (at >= base && at <= end) {
+    ctx.p = at;
+  }
+}
+
+void applyUnaryBodyRemapFailure(
+    EvalContext& ctx,
+    const int bodyStartCol,
+    const int bodyErrorCol,
+    const int funcColFallback,
+    const std::string& errFull,
+    const bool clearExisting) {
+  std::string msg = unaryFunctionFailureMessage(stripErrorLocationSuffix(errFull));
+  if (msg.empty()) {
+    msg = STR_FAILED_TO_PARSE_USER_FUNCTION_BODY;
+  }
+  int col = unaryBodyErrorColumn(bodyStartCol, bodyErrorCol, msg, ctx.sourceExpr);
+  if (col <= 0 && funcColFallback > 0) {
+    col = funcColFallback;
+  }
+  if (col <= 0) {
+    // Remap path: keep the existing error text. Compile-time lambda path: still report bare msg.
+    if (!clearExisting) {
+      ctx.fail(msg);
+    }
+    return;
+  }
+  if (clearExisting) {
+    ctx.clearParseErrorForRemap();
+  }
+  ctx.failAtColumn(msg, col);
+}
+
+void remapParseErrorToUnaryFuncColumn(EvalContext& ctx, const EvalValue& keyArg) {
+  const int bodyErr = ctx.unaryLambdaEvalBodyErrorCol;
+  ctx.unaryLambdaEvalBodyErrorCol = 0;
+  applyUnaryBodyRemapFailure(
+      ctx,
+      keyArg.unaryFuncBodyErrorCol,
+      bodyErr,
+      keyArg.unaryFuncErrorCol,
+      ctx.errorText,
+      true);
 }
 
 void EvalContext::fail(ParseErrorId id) {
+  if (id == ParseErrorId::MaxEvaluationDepthReached) {
+    failMaxEvaluationDepth();
+    return;
+  }
   static const char* const texts[static_cast<std::size_t>(ParseErrorId::Count)] = {
       STR_UNEXPECTED_COMMA,
       STR_INDEXING_REQUIRES_AN_ARRAY_VALUE,
@@ -7100,6 +7310,24 @@ void EvalContext::failPrefixedLiteral(char prefixChar) {
 
 void EvalContext::failRecursiveUserFunction(const std::string& fnName) {
   fail(STR_RECURSIVE_USER_FUNCTION_CALL_COLON + fnName);
+}
+
+void EvalContext::failMaxEvaluationDepth() {
+  failMaxEvaluationDepth(std::string());
+}
+
+void EvalContext::failMaxEvaluationDepth(const std::string& detail) {
+  std::string msg = std::string(STR_MAX_EVALUATION_DEPTH_REACHED) + " (" + std::to_string(kMaxEvalDepth) + ")";
+  if (!detail.empty()) {
+    msg += ": ";
+    msg += detail;
+  }
+  fail(msg);
+}
+
+void EvalContext::failMaxEvaluationDepthAtParsePosition() {
+  // ``fail()`` appends ``at col`` when ``p`` lies in ``sourceExpr``.
+  failMaxEvaluationDepth();
 }
 
 void EvalContext::failMissingClosingParenLike() {
@@ -7373,6 +7601,10 @@ bool MathParser::finishSubEvalFromCompiledProgram(EvalContext& parent, EvalConte
     parent.referencedUnresolvedName = true;
   }
   if (!sub.unknownVarsText.empty()) {
+    // No body-local cursor on AST eval; unknown-var remap uses root Instr from body start col.
+    if (parent.unaryLambdaEvalBodyErrorCol <= 0) {
+      parent.unaryLambdaEvalBodyErrorCol = 1;
+    }
     parent.fail(buildUnknownVariableErrorText(sub.unknownVarsText));
     return false;
   }
@@ -7394,23 +7626,27 @@ bool MathParser::tryCompileExprToProgram(
     const std::vector<std::string>* boundBodyParamNames,
     std::vector<AstStatement>& outProgram) {
   EvalContext parseCtx;
-  parseCtx.p = expr.c_str();
   parseCtx.sourceExpr = expr;
+  parseCtx.p = parseCtx.sourceExpr.c_str();
+  parseCtx.isRootInputExpr = false;
   parseCtx.userFunctionCallStack = callStack;
   parseCtx.validatingUserFunctionName = validatingUserFunctionName;
   parseCtx.compilingUserFunctionParams = parentCtx.compilingUserFunctionParams;
   parseCtx.boundBodyParamNames = boundBodyParamNames;
   parseCtx.suppressBareFunctionTailHint = suppressBareFunctionTailHint;
+  parseCtx.parseDepth = parentCtx.parseDepth;
   // Bodies are expressions, same as definition checking. ``name=expr`` stays a comparison.
   skipSpaces(parseCtx.p);
   parseCtx.start = parseCtx.p;
   auto ex = parseExpression(parseCtx);
   if (parseCtx.parseError || !ex) {
+    parentCtx.unaryLambdaEvalBodyErrorCol = parseCtx.currentParseErrorColumn();
     parentCtx.fail(parseCtx.errorText.empty() ? STR_FAILED_TO_PARSE_USER_FUNCTION_BODY : parseCtx.errorText);
     return false;
   }
   skipSpaces(parseCtx.p);
   if (*parseCtx.p != '\0') {
+    parentCtx.unaryLambdaEvalBodyErrorCol = parseCtx.currentParseErrorColumn();
     parentCtx.fail(ParseErrorId::UnexpectedInput);
     return false;
   }
@@ -7536,6 +7772,7 @@ bool MathParser::tryParseSyntaxCheckedExpression(
     std::unique_ptr<Expr>& out) {
   bodyCtx.sourceExpr = source;
   bodyCtx.p = bodyCtx.sourceExpr.c_str();
+  bodyCtx.isRootInputExpr = false;
   skipSpaces(bodyCtx.p);
   bodyCtx.start = bodyCtx.p;
   out = parseExpression(bodyCtx);
@@ -8357,6 +8594,85 @@ int cmpRealScalars(const smartmath_internal::EvalValue::ScalarValue& sa, const s
   }
   return (sa.scalar < sb.scalar) ? -1 : ((sa.scalar > sb.scalar) ? 1 : 0);
 }
+
+bool scalarHasNanForCompare(const smartmath_internal::EvalValue::ScalarValue& s, bool supportComplex) {
+#if SMARTMATH_COMPLEX_NUMBERS
+  if (supportComplex) {
+    SmFloat re = 0.0;
+    SmFloat im = 0.0;
+    scalarLoadCartesian(s, re, im);
+    return std::isnan(re) || std::isnan(im);
+  }
+#else
+  (void)supportComplex;
+#endif
+  return std::isnan(s.scalar);
+}
+
+// Real-part proxy for cmpRealScalars (keeps exact-int/uint metadata; does not invent it from float).
+smartmath_internal::EvalValue::ScalarValue scalarProxyRealPartForCompare(
+    const smartmath_internal::EvalValue::ScalarValue& src) {
+  smartmath_internal::EvalValue::ScalarValue out = makeScalar(src.scalar).scalarValue;
+  if (src.hasExactSmInt()) {
+    out.setExactSmIntValid(true);
+    out.exactInt = src.exactInt;
+    out.scalarKind = ScalarKind::SmInt;
+  }
+  if (src.hasExactSmUInt()) {
+    out.setExactSmUIntValid(true);
+    out.exactUInt = src.exactUInt;
+    if (!src.hasExactSmInt()) {
+      out.scalarKind = ScalarKind::SmUInt;
+    }
+  }
+  return out;
+}
+
+#if SMARTMATH_COMPLEX_NUMBERS
+// Imag-part proxy as a real scalar for cmpRealScalars (maps imagExact* onto exact*).
+smartmath_internal::EvalValue::ScalarValue scalarProxyImagPartForCompare(
+    const smartmath_internal::EvalValue::ScalarValue& src) {
+  smartmath_internal::EvalValue::ScalarValue out = makeScalar(src.imag).scalarValue;
+  if (src.hasImagExactSmInt()) {
+    out.setExactSmIntValid(true);
+    out.exactInt = src.imagExactInt;
+    out.scalarKind = ScalarKind::SmInt;
+  }
+  if (src.hasImagExactSmUInt()) {
+    out.setExactSmUIntValid(true);
+    out.exactUInt = src.imagExactUInt;
+    if (!src.hasImagExactSmInt()) {
+      out.scalarKind = ScalarKind::SmUInt;
+    }
+  }
+  return out;
+}
+
+void cmpComplexScalarsViaRealParts(
+    const smartmath_internal::EvalValue::ScalarValue& sa,
+    const smartmath_internal::EvalValue::ScalarValue& sb,
+    int& cmpOut) {
+  SmFloat ar = 0.0;
+  SmFloat ai = 0.0;
+  SmFloat br = 0.0;
+  SmFloat bi = 0.0;
+  scalarLoadCartesian(sa, ar, ai);
+  scalarLoadCartesian(sb, br, bi);
+  if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
+    cmpOut = 1;
+    return;
+  }
+  const smartmath_internal::EvalValue::ScalarValue aRe = scalarProxyRealPartForCompare(sa);
+  const smartmath_internal::EvalValue::ScalarValue bRe = scalarProxyRealPartForCompare(sb);
+  cmpOut = cmpRealScalars(aRe, bRe);
+  if (cmpOut != 0) {
+    return;
+  }
+  const smartmath_internal::EvalValue::ScalarValue aIm = scalarProxyImagPartForCompare(sa);
+  const smartmath_internal::EvalValue::ScalarValue bIm = scalarProxyImagPartForCompare(sb);
+  cmpOut = cmpRealScalars(aIm, bIm);
+}
+#endif
 }  // namespace
 
 bool MathParser::cmpScalarValuesForCompare(
@@ -8385,6 +8701,28 @@ bool MathParser::cmpScalarValuesForCompare(
 #endif
 #if SMARTMATH_TIME_VALUES
   if (ta || tb) {
+    const bool supportComplex = getSupportComplexNumbers();
+    const bool aNan = !ta && scalarHasNanForCompare(sa, supportComplex);
+    const bool bNan = !tb && scalarHasNanForCompare(sb, supportComplex);
+    if (aNan || bNan) {
+      if (policy == CmpScalarIncompatiblePolicy::SortLess) {
+        if (aNan) {
+          cmpOut = bNan ? 0 : -1;
+        } else {
+          cmpOut = 1;
+        }
+      } else if (policy == CmpScalarIncompatiblePolicy::SortGreater) {
+        if (bNan) {
+          cmpOut = aNan ? 0 : 1;
+        } else {
+          cmpOut = -1;
+        }
+      } else {
+        // Ops / unique: unordered NaN -> cmp 0 (unique short-circuits NaN earlier).
+        cmpOut = (policy == CmpScalarIncompatiblePolicy::SortUniqueReturnOne) ? 1 : 0;
+      }
+      return true;
+    }
     SmInt ams = 0;
     SmInt bms = 0;
     if (ta) {
@@ -8409,27 +8747,7 @@ bool MathParser::cmpScalarValuesForCompare(
 #endif
 #if SMARTMATH_COMPLEX_NUMBERS
   if (ha || hb) {
-    SmFloat ar = 0.0;
-    SmFloat ai = 0.0;
-    SmFloat br = 0.0;
-    SmFloat bi = 0.0;
-    scalarLoadCartesian(sa, ar, ai);
-    scalarLoadCartesian(sb, br, bi);
-    if (std::isnan(ar) || std::isnan(ai) || std::isnan(br) || std::isnan(bi)) {
-      cmpOut = 1;
-      return true;
-    }
-    if (ar < br) {
-      cmpOut = -1;
-    } else if (ar > br) {
-      cmpOut = 1;
-    } else if (ai < bi) {
-      cmpOut = -1;
-    } else if (ai > bi) {
-      cmpOut = 1;
-    } else {
-      cmpOut = 0;
-    }
+    cmpComplexScalarsViaRealParts(sa, sb, cmpOut);
     return true;
   }
 #endif
@@ -8633,7 +8951,7 @@ bool MathParser::tryApplyTimeBinaryScalars(
       ctx.fail(ParseErrorId::IncompatibleOperands);
       return true;
     }
-    outS = makeScalarMaybeExact(ratio);
+    outS = makeScalar(ratio);
     return true;
   }
   if (lt && !rt) {
@@ -8672,21 +8990,41 @@ inline bool tryApplyCheckedAddSubMulOrSignedSmUIntPromote(
     outS = makeScalarInt(outI);
     return true;
   }
-  if (li >= 0 && ri >= 0) {
-    const SmUInt lu = static_cast<SmUInt>(li);
-    const SmUInt ru = static_cast<SmUInt>(ri);
-    if (op == '+') {
-      SmUInt outU = 0;
-      if (tryAddSmUIntChecked(lu, ru, outU)) {
-        outS = makeScalarSmUInt(outU);
+  if (op == '*') {
+    // SmInt mul overflowed: product of magnitudes may still fit SmUInt
+    // (INT_MIN*(-1), neg*neg -> 2^63, and both-nonneg above INT_MAX).
+    SmUInt prodMag = 0;
+    if (!tryMulSmUIntChecked(uintMagnitudeOfSmInt(li), uintMagnitudeOfSmInt(ri), prodMag)) {
+      return false;
+    }
+    const bool negResult = (li < 0) != (ri < 0);
+    if (!negResult) {
+      outS = makeScalarSmUIntPreferInt(prodMag);
+      return true;
+    }
+    // Negative product: only when it still fits SmInt (incl. INT_MIN).
+    if (prodMag <= static_cast<SmUInt>(kIntMax) || prodMag == kIntMinMag) {
+      outS = makeScalarFromSignMagnitude(true, prodMag);
+      return true;
+    }
+    return false;
+  }
+  if (op == '-') {
+    // e.g. 0-INT_MIN / INT_MAX-(-1) -> +2^63 as SmUInt (same spirit as unary -INT_MIN).
+    if (ri < 0 && li >= 0) {
+      SmUInt sumU = 0;
+      if (tryAddSmUIntChecked(static_cast<SmUInt>(li), uintMagnitudeOfSmInt(ri), sumU)) {
+        outS = makeScalarSmUIntPreferInt(sumU);
         return true;
       }
-    } else if (op == '*') {
-      SmUInt outU = 0;
-      if (tryMulSmUIntChecked(lu, ru, outU)) {
-        outS = makeScalarSmUInt(outU);
-        return true;
-      }
+    }
+    return false;
+  }
+  if (li >= 0 && ri >= 0 && op == '+') {
+    SmUInt outU = 0;
+    if (tryAddSmUIntChecked(static_cast<SmUInt>(li), static_cast<SmUInt>(ri), outU)) {
+      outS = makeScalarSmUInt(outU);
+      return true;
     }
   }
   return false;
@@ -8942,7 +9280,7 @@ bool MathParser::parseFunctionDefinition(
     return false;
   }
   skipSpaces(ctx.p);
-  // UDF: name(params)=body — single '=' only; do not treat first '=' of '==' as UDF starter.
+  // UDF: name(params)=body - single '=' only; do not treat first '=' of '==' as UDF starter.
   if (*ctx.p != '=') {
     ctx.p = save;
     return false;
@@ -9065,6 +9403,10 @@ bool MathParser::tryParseLambdaInnerUnwrappedSuffix(
   }
   ++ctx.p;
   skipSpaces(ctx.p);
+  // Mirror Basic: once the unary key column is armed, record where the body text begins.
+  if (ctx.unaryFuncErrorCol > 0) {
+    ctx.unaryFuncBodyErrorCol = ctx.currentParseErrorColumn();
+  }
   return lambdaBodyConsume(ctx, outBody, bodyStop, lambdaArgStart);
 }
 
@@ -9153,21 +9495,39 @@ std::unique_ptr<MathParser::Expr> MathParser::makeUnaryInlineLambdaExpr(
   }
   if (syntaxCheckBody) {
     const std::vector<std::string> boundNames = enclosingParamNamesThen(ctx.boundBodyParamNames, params);
+    const int savedBodyCol = ctx.unaryFuncBodyErrorCol;
+    const int savedFuncCol = ctx.unaryFuncErrorCol;
     EvalContext bodyCtx;
     bodyCtx.suppressBareFunctionTailHint = true;
     bodyCtx.compilingUserFunctionParams = ctx.compilingUserFunctionParams;
     bodyCtx.validatingUserFunctionName = ctx.validatingUserFunctionName;
     bodyCtx.boundBodyParamNames = &boundNames;
+    // Nested lambda syntax-checks use a fresh EvalContext; inherit parseDepth so a chain of
+    // sortby/filter lambdas still hits kMaxEvalDepth instead of overflowing the C stack.
+    bodyCtx.parseDepth = ctx.parseDepth;
     std::unique_ptr<Expr> parsed;
     if (!tryParseSyntaxCheckedExpression(bodyCtx, body, true, parsed)) {
-      ctx.fail(bodyCtx.errorText.empty() ? std::string(STR_FAILED_TO_PARSE_USER_FUNCTION_BODY)
-                                         : bodyCtx.errorText);
+      ctx.unaryFuncBodyErrorCol = savedBodyCol;
+      ctx.unaryFuncErrorCol = savedFuncCol;
+      applyUnaryBodyRemapFailure(
+          ctx,
+          savedBodyCol,
+          bodyCtx.currentParseErrorColumn(),
+          savedFuncCol,
+          bodyCtx.errorText,
+          false);
       return nullptr;
     }
+    ctx.unaryFuncBodyErrorCol = savedBodyCol;
+    ctx.unaryFuncErrorCol = savedFuncCol;
   }
   auto lit = std::make_unique<Expr>();
   lit->tag = Expr::Tag::Literal;
   lit->literalValue = makeInlineLambdaValue(std::move(params), std::move(body));
+  lit->literalValue.unaryFuncErrorCol = ctx.unaryFuncErrorCol;
+  lit->literalValue.unaryFuncBodyErrorCol = ctx.unaryFuncBodyErrorCol;
+  lit->unaryFuncErrorCol = ctx.unaryFuncErrorCol;
+  lit->unaryFuncBodyErrorCol = ctx.unaryFuncBodyErrorCol;
   return lit;
 }
 
@@ -9226,7 +9586,7 @@ MathParser::EvalValue MathParser::evalInlineLambdaCall(
     return makeScalar(0);
   }
   if (ctx.evalDepth >= kMaxEvalDepth) {
-    ctx.fail(ParseErrorId::MaxEvaluationDepthReached);
+    ctx.failMaxEvaluationDepth(kLambda);
     return makeScalar(0);
   }
 
@@ -9624,6 +9984,8 @@ std::unique_ptr<MathParser::Expr> MathParser::parsePrimaryNumericLiteral(EvalCon
     return nullptr;
   }
 
+  // Digit-exact integer forms (1, 1.0, 1.0e2, 0.123e4) - including a written '.' or exponent -
+  // keep full SmUInt/SmInt provenance. Bound H MaybeExact is only for computed float results.
   if (tryParseInputNumberAsInteger(numStart, numEnd, parsedUInt)) {
     ctx.p = numEnd;
     return finishNumericLiteral(emitNumericLiteral(makeScalarSmUIntPreferInt(parsedUInt)));
@@ -10150,6 +10512,18 @@ std::unique_ptr<MathParser::Expr> MathParser::parseOr(EvalContext& ctx) {
 }
 
 std::unique_ptr<MathParser::Expr> MathParser::parseExpression(EvalContext& ctx) {
+  // Cap expression nesting with the same limit as bound-body eval depth so a chain of
+  // nested calls (e.g. sortby lambdas) fails cleanly instead of overflowing the C stack
+  // when frames are large (/Od, /analyze).
+  if (ctx.parseDepth >= kMaxEvalDepth) {
+    ctx.failMaxEvaluationDepthAtParsePosition();
+    return nullptr;
+  }
+  struct ParseDepthGuard {
+    EvalContext& ctx;
+    explicit ParseDepthGuard(EvalContext& c) : ctx(c) { ++ctx.parseDepth; }
+    ~ParseDepthGuard() { --ctx.parseDepth; }
+  } parseDepthGuard(ctx);
   skipSpaces(ctx.p);
   // Statement start is fixed by the statement parser after skipSpaces.
   // A nested expression must not move it, or a bare name before ')' inside an
@@ -10652,17 +11026,21 @@ bool tryApplyPostfixPercent(EvalContext& ctx, EvalValue& v, bool supportTimeValu
   return true;
 }
 
-bool timeComparedWithNonFinite(bool lTime, SmFloat l, bool rTime, SmFloat r) {
-  return (lTime || rTime) && ((!lTime && !std::isfinite(l)) || (!rTime && !std::isfinite(r)));
-}
-
-// IEEE unordered NaN for comparison ops (not sort). Time values skip this check.
+// IEEE unordered NaN for comparison ops (not sort). Pure time vs time is never NaN;
+// time vs a NaN numeric still counts as unordered.
 bool scalarPairHasUnorderedNan(const EvalValue::ScalarValue& a, const EvalValue::ScalarValue& b,
                                bool supportComplex) {
 #if SMARTMATH_TIME_VALUES
-  // Session time flag is enforced by callers; a Time kind still skips NaN unordered.
-  if (a.scalarKind == ScalarKind::Time || b.scalarKind == ScalarKind::Time) {
+  const bool ta = a.scalarKind == ScalarKind::Time;
+  const bool tb = b.scalarKind == ScalarKind::Time;
+  if (ta && tb) {
     return false;
+  }
+  if (ta) {
+    return scalarHasNanForCompare(b, supportComplex);
+  }
+  if (tb) {
+    return scalarHasNanForCompare(a, supportComplex);
   }
 #endif
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -10771,8 +11149,7 @@ MathParser::EvalValue MathParser::evalExprScalar(
             ctx.fail(ParseErrorId::IncompatibleOperands);
             return makeScalar(0);
           }
-          if (((lIm || rIm) && (lTime || rTime)) ||
-              timeComparedWithNonFinite(lTime, l.scalarValue.scalar, rTime, r.scalarValue.scalar)) {
+          if ((lIm || rIm) && (lTime || rTime)) {
             ctx.fail(ParseErrorId::IncompatibleOperands);
             return makeScalar(0);
           }
@@ -10880,6 +11257,7 @@ bool MathParser::checkUnevaluatedCallShapes(EvalContext& ctx, const Expr& e) con
     return true;
   }
   if (uf->params.size() != e.elements.size()) {
+    pointParseCursorAtName(ctx, e.name);
     ctx.failCall(CallErrorId::ExactCount, e.name, uf->params.size());
     return false;
   }
@@ -10954,6 +11332,8 @@ MathParser::EvalValue MathParser::evalExpr(
       EvalValue out;
       out.kind = ValueKind::FunctionRef;
       out.funcRefName = e.name;
+      out.unaryFuncErrorCol = e.unaryFuncErrorCol;
+      out.unaryFuncBodyErrorCol = e.unaryFuncBodyErrorCol;
       return out;
     }
     case Expr::Tag::Unary:
@@ -11192,16 +11572,6 @@ MathParser::EvalValue MathParser::evalExpr(
 #endif
         }
 #endif
-        if (l.kind == ValueKind::Scalar && r.kind == ValueKind::Scalar) {
-#if SMARTMATH_TIME_VALUES
-          const bool lTime = scalarValueIsTime(l.scalarValue);
-          const bool rTime = scalarValueIsTime(r.scalarValue);
-          if (timeComparedWithNonFinite(lTime, l.scalarValue.scalar, rTime, r.scalarValue.scalar)) {
-            ctx.fail(ParseErrorId::IncompatibleOperands);
-            return makeScalar(0);
-          }
-#endif
-        }
         EvalValue cmpOut;
         if (!tryEvalComparisonOp(ctx, e.binaryOp, l, r, cmpOut)) {
           return makeScalar(0);
@@ -11482,16 +11852,19 @@ bool MathParser::validateCallArity(
     const std::size_t argc) const {
   if (minArgs == maxArgs) {
     if (argc != minArgs) {
+      pointParseCursorAtName(ctx, fnName);
       ctx.failCall(CallErrorId::ExactCount, fnName, minArgs);
       return false;
     }
     return true;
   }
   if (argc < minArgs) {
+    pointParseCursorAtName(ctx, fnName);
     ctx.failCall(CallErrorId::AtLeastN, fnName, minArgs);
     return false;
   }
   if (maxArgs != kBuiltinArityUnbounded && argc > maxArgs) {
+    pointParseCursorAtName(ctx, fnName);
     ctx.failCall(CallErrorId::ExactCount, fnName, maxArgs);
     return false;
   }
@@ -12160,12 +12533,6 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         }
         return sv.hasExactSmInt() || sv.hasExactSmUInt();
       };
-      const auto shouldReplace = [&](SmFloat v, SmFloat winnerV, bool hasWinner) {
-        if (!hasWinner) {
-          return true;
-        }
-        return wantMin ? (v < winnerV) : (v > winnerV);
-      };
       const auto shouldPreferOnTie = [&](const EvalValue::ScalarValue& winnerSv,
                                        const EvalValue::ScalarValue& candidateSv) {
         if (!hasExactIntegerMetadata(candidateSv)) {
@@ -12177,7 +12544,6 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         return true;
       };
       EvalValue::ScalarValue winnerSv{};
-      SmFloat winnerV = 0.0;
       bool hasWinner = false;
       bool hasNonNanWinner = false;
       std::size_t itemCount = 0;
@@ -12187,17 +12553,21 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         if (std::isnan(v)) {
           if (!hasNonNanWinner && !hasWinner) {
             winnerSv = s;
-            winnerV = v;
             hasWinner = true;
           }
           return;
         }
-        if (!hasWinner || std::isnan(winnerV) || shouldReplace(v, winnerV, true)) {
+        if (!hasWinner || std::isnan(scalarNumericReal(winnerSv))) {
           winnerSv = s;
-          winnerV = v;
           hasWinner = true;
           hasNonNanWinner = true;
-        } else if (v == winnerV) {
+          return;
+        }
+        const int cmp = cmpRealScalars(s, winnerSv);
+        if ((wantMin && cmp < 0) || (!wantMin && cmp > 0)) {
+          winnerSv = s;
+          hasNonNanWinner = true;
+        } else if (cmp == 0) {
           if (shouldPreferOnTie(winnerSv, s)) {
             winnerSv = s;
           }
@@ -12248,15 +12618,8 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
         ctx.failCall(CallErrorId::AtLeastN, fnName, 1);
         return makeScalar(0);
       }
-      bool hasLargeMag = false;
-      for (const SmFloat f : flat) {
-        if (std::fabs(f) >= kMaxExactIntFromFloat) {
-          hasLargeMag = true;
-          break;
-        }
-      }
-      if (hasLargeMag) {
-        // Some item is at or beyond the exact-float range: sort exactly when every item is an exact integer.
+      // All-exact integers: sort exactly and take the exact middle (not only large-mag cases).
+      {
         std::vector<EvalValue::ScalarValue> vals;
         bool allExact = true;
         forEachArgScalarValue([&](const EvalValue::ScalarValue& s) {
@@ -12282,11 +12645,11 @@ MathParser::EvalValue MathParser::aggregateFoldByMode(
           SmFloat midFloat = 0.0;
           bool midIsExact = false;
           if (tryExactIntegerMidpoint(vals[hiIdx - 1U], vals[hiIdx], midExact, midFloat, midIsExact)) {
-            return midIsExact ? midExact : makeScalar(midFloat);
+            return midIsExact ? midExact : makeScalarMaybeExact(midFloat);
           }
         }
       }
-      return makeScalar(medianFromFloatFlatInPlace(flat));
+      return makeScalarMaybeExact(medianFromFloatFlatInPlace(flat));
     }
     case BuiltinFunctionId::Variance:
     case BuiltinFunctionId::Stddev: {
@@ -12639,10 +13002,12 @@ bool MathParser::tryBuiltinRatioScalar(EvalContext& ctx, const EvalValue::Scalar
     outV = makeScalar(0.0);
     return true;
   }
-  SmInt nearInt = 0;
-  if (tryExtractExactSmIntFromFloatStrict(ar, nearInt)) {
-    outV = makeScalarInt(nearInt);
-    return true;
+  {
+    EvalValue maybeNear = makeScalarMaybeExact(ar);
+    if (maybeNear.scalarValue.hasExactSmInt() || maybeNear.scalarValue.hasExactSmUInt()) {
+      outV = maybeNear;
+      return true;
+    }
   }
   if (std::fabs(ar) > kMaxExactIntFromFloat) {
     outV = makeScalar(ar);
@@ -12834,6 +13199,7 @@ MathParser::EvalValue MathParser::builtinSortby(
     const EvalValue keyV = evalUnaryCallableOnScalar(
         ctx, args[1], isLambda, vals[i], scopedVars, STR_SORTBY_EXPECTS_UNARY_FUNCTION, &lambdaCache);
     if (ctx.parseError) {
+      remapParseErrorToUnaryFuncColumn(ctx, args[1]);
       return makeScalar(0);
     }
     if (keyV.kind == ValueKind::FunctionRef || keyV.kind == ValueKind::InlineLambda ||
@@ -12845,6 +13211,7 @@ MathParser::EvalValue MathParser::builtinSortby(
   }
   std::vector<int> order;
   if (!sortbyStableSortIndicesFromKeys(ctx, keys, order)) {
+    remapParseErrorToUnaryFuncColumn(ctx, args[1]);
     return makeScalar(0);
   }
   std::vector<EvalValue::ScalarValue> sorted(vals.size());
@@ -12898,6 +13265,8 @@ std::unique_ptr<MathParser::Expr> MathParser::parseUnaryFunctionRef(
   auto ref = std::make_unique<Expr>();
   ref->tag = Expr::Tag::FunctionRef;
   ref->name = toLower(nameText);
+  ref->unaryFuncErrorCol = ctx.unaryFuncErrorCol;
+  ref->unaryFuncBodyErrorCol = ctx.unaryFuncBodyErrorCol;
   return ref;
 }
 
@@ -12929,10 +13298,22 @@ bool MathParser::parseUnaryFunctionCallArguments(
     ctx.fail(expectsUnaryFunction);
     return false;
   }
+  ctx.unaryFuncErrorCol = ctx.currentParseErrorColumn();
+  ctx.unaryFuncBodyErrorCol = 0;
   auto keyArg = parseUnaryFunctionArg(ctx, expectsOneFunction, expectsUnaryFunction);
   if (ctx.parseError || !keyArg) {
+    ctx.unaryFuncErrorCol = 0;
+    ctx.unaryFuncBodyErrorCol = 0;
     return false;
   }
+  keyArg->unaryFuncErrorCol = ctx.unaryFuncErrorCol;
+  keyArg->unaryFuncBodyErrorCol = ctx.unaryFuncBodyErrorCol;
+  if (keyArg->tag == Expr::Tag::Literal) {
+    keyArg->literalValue.unaryFuncErrorCol = ctx.unaryFuncErrorCol;
+    keyArg->literalValue.unaryFuncBodyErrorCol = ctx.unaryFuncBodyErrorCol;
+  }
+  ctx.unaryFuncErrorCol = 0;
+  ctx.unaryFuncBodyErrorCol = 0;
   outArgs.push_back(std::move(keyArg));
   skipSpaces(ctx.p);
   if (!tryConsumeCommaArgSeparator(ctx, hasComma)) {
@@ -12969,6 +13350,7 @@ MathParser::EvalValue MathParser::builtinFilter(
     const EvalValue predV = evalUnaryCallableOnScalar(
         ctx, args[1], isLambda, elem, scopedVars, STR_FILTER_EXPECTS_UNARY_FUNCTION, &lambdaCache);
     if (ctx.parseError) {
+      remapParseErrorToUnaryFuncColumn(ctx, args[1]);
       return makeScalar(0);
     }
     if (predV.kind != ValueKind::Scalar && predV.kind != ValueKind::Array) {
@@ -13006,6 +13388,64 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       return false;
 #endif
     };
+    // Bit-pattern hash of SmFloat into SmUInt. Equal widths: identity (same as memcpy).
+    // Mixed widths (e.g. double/uint32): fold successive SmUInt-sized limbs with xor.
+    auto uniqueHashKeyFromFloat = [](SmFloat v) -> SmUInt {
+      if (v == 0.0) {
+        return 0;
+      }
+      unsigned char raw[sizeof(SmFloat)];
+      std::memcpy(raw, &v, sizeof(SmFloat));
+      SmUInt h = 0;
+      for (std::size_t off = 0; off < sizeof(SmFloat); off += sizeof(SmUInt)) {
+        SmUInt chunk = 0;
+        const std::size_t n =
+            (sizeof(SmFloat) - off < sizeof(SmUInt)) ? (sizeof(SmFloat) - off) : sizeof(SmUInt);
+        std::memcpy(&chunk, raw + off, n);
+        h ^= chunk;
+      }
+      return h;
+    };
+    auto uniqueHashKeyFromSignMagnitude = [](bool isNeg, SmUInt mag) -> SmUInt {
+      if (mag == 0u) {
+        return 0;
+      }
+      return isNeg ? (mag ^ static_cast<SmUInt>(0x9e3779b9u)) : mag;
+    };
+    auto uniqueHashKeyMix = [](SmUInt h1, SmUInt h2) -> SmUInt {
+      return h1 ^ (h2 + static_cast<SmUInt>(0x9e3779b9u) + (h1 << 6) + (h1 >> 2));
+    };
+    auto uniqueHashKeyFromRealScalar = [&](const EvalValue::ScalarValue& sv) -> SmUInt {
+      bool isNeg = false;
+      SmUInt mag = 0;
+      if (std::fabs(sv.scalar) >= smartmath::kMaxExactIntFromFloat &&
+          tryGetExactSignMagnitudeFromScalar(sv, isNeg, mag)) {
+        return uniqueHashKeyFromSignMagnitude(isNeg, mag);
+      }
+      return uniqueHashKeyFromFloat(sv.scalar);
+    };
+#if SMARTMATH_COMPLEX_NUMBERS
+    auto uniqueHashKeyFromImagScalar = [&](const EvalValue::ScalarValue& sv) -> SmUInt {
+      return uniqueHashKeyFromRealScalar(scalarProxyImagPartForCompare(sv));
+    };
+#endif
+    auto uniqueHashKeyFromScalarValue = [&](const EvalValue::ScalarValue& sv, bool useComplex) -> SmUInt {
+#if SMARTMATH_COMPLEX_NUMBERS
+      if (useComplex) {
+        return uniqueHashKeyMix(uniqueHashKeyFromRealScalar(sv), uniqueHashKeyFromImagScalar(sv));
+      }
+#else
+      (void)useComplex;
+#endif
+      if (isTimeScalar(sv)) {
+#if SMARTMATH_TIME_VALUES
+        return uniqueHashKeyFromFloat(static_cast<SmFloat>(timeTotalMsFromScalarValue(sv)));
+#else
+        return uniqueHashKeyFromFloat(sv.scalar);
+#endif
+      }
+      return uniqueHashKeyFromRealScalar(sv);
+    };
 #if SMARTMATH_COMPLEX_NUMBERS
     bool useComplexDedup = false;
     if (getSupportComplexNumbers()) {
@@ -13017,17 +13457,15 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       }
     }
     if (useComplexDedup) {
-      // Equal values have equal float parts, so only candidates that share the (re, im) hash bucket are compared.
+      // Exact-int-aware keys; candidates that share a bucket are confirmed with the shared compare.
       struct CartesianKey {
-        SmFloat re;
-        SmFloat im;
+        SmUInt re;
+        SmUInt im;
         bool operator==(const CartesianKey& o) const { return re == o.re && im == o.im; }
       };
       struct CartesianKeyHash {
         std::size_t operator()(const CartesianKey& k) const {
-          const std::size_t h1 = std::hash<SmFloat>()(k.re);
-          const std::size_t h2 = std::hash<SmFloat>()(k.im);
-          return h1 ^ (h2 + static_cast<std::size_t>(0x9e3779b9u) + (h1 << 6) + (h1 >> 2));
+          return static_cast<std::size_t>(k.re ^ (k.im + static_cast<SmUInt>(0x9e3779b9u) + (k.re << 6) + (k.re >> 2)));
         }
       };
       std::unordered_map<CartesianKey, std::vector<std::size_t>, CartesianKeyHash> buckets;
@@ -13042,11 +13480,8 @@ MathParser::EvalValue MathParser::builtinSortFamily(
           }
           continue;
         }
-        SmFloat re = 0.0;
-        SmFloat im = 0.0;
-        scalarLoadCartesian(ev.scalarValue, re, im);
-        // Signed zero parts compare equal, so they must share a bucket.
-        const CartesianKey key{(re == 0.0) ? 0.0 : re, (im == 0.0) ? 0.0 : im};
+        const CartesianKey key{uniqueHashKeyFromRealScalar(ev.scalarValue),
+                               uniqueHashKeyFromImagScalar(ev.scalarValue)};
         std::vector<std::size_t>& bucket = buckets[key];
         bool seen = false;
         for (const std::size_t prevIdx : bucket) {
@@ -13071,40 +13506,47 @@ MathParser::EvalValue MathParser::builtinSortFamily(
       return;
     }
 #endif
-    std::unordered_set<SmFloat> seen;
-    seen.reserve(values.size() * 2 + 1);
-    std::size_t writePos = 0;
-    for (std::size_t readPos = 0; readPos < values.size(); ++readPos) {
-      const SmFloat v = values[readPos].scalarValue.scalar;
-      if (isNanBearing(values[readPos])) {
+    std::unordered_map<SmUInt, std::vector<std::size_t>> buckets;
+    buckets.reserve(values.size() * 2 + 1);
+    std::vector<EvalValue> out;
+    out.reserve(values.size());
+    for (const auto& ev : values) {
+      if (isNanBearing(ev)) {
         // unique keeps one NaN. nan != nan remains false.
         if (!seenNan) {
           seenNan = true;
-          values[writePos++] = values[readPos];
+          out.push_back(ev);
         }
         continue;
       }
-      // Canonicalize signed zero to preserve equality semantics of (0 == -0).
-      const SmFloat key = (v == 0.0) ? 0.0 : v;
-      if (seen.insert(key).second) {
-        values[writePos++] = values[readPos];
-      } else if (std::fabs(key) >= smartmath::kMaxExactIntFromFloat && !isTimeScalar(values[readPos].scalarValue)) {
-        // Distinct exact integers above 2^mantissa can share one float key: keep this one unless an equal element was kept.
-        bool duplicate = false;
-        for (std::size_t k = 0; k < writePos && !duplicate; ++k) {
-          int cmpDup = 0;
-          duplicate = values[k].scalarValue.scalar == key &&
-                      !isTimeScalar(values[k].scalarValue) &&
-                      cmpScalarValuesForCompare(nullptr, values[readPos].scalarValue, values[k].scalarValue, cmpDup,
-                                                CmpScalarIncompatiblePolicy::SortUniqueReturnOne) &&
-                      cmpDup == 0;
+      const SmFloat v = ev.scalarValue.scalar;
+      const SmUInt key = uniqueHashKeyFromScalarValue(ev.scalarValue, false);
+      const bool smallKey = std::fabs(v) < smartmath::kMaxExactIntFromFloat;
+      std::vector<std::size_t>& bucket = buckets[key];
+      bool seen = false;
+      for (const std::size_t prevIdx : bucket) {
+        if (smallKey || isTimeScalar(ev.scalarValue) || isTimeScalar(out[prevIdx].scalarValue)) {
+          seen = true;
+          break;
         }
-        if (!duplicate) {
-          values[writePos++] = values[readPos];
+        int cmpDup = 0;
+        if (cmpScalarValuesForCompare(
+                nullptr,
+                ev.scalarValue,
+                out[prevIdx].scalarValue,
+                cmpDup,
+                CmpScalarIncompatiblePolicy::SortUniqueReturnOne) &&
+            cmpDup == 0) {
+          seen = true;
+          break;
         }
       }
+      if (!seen) {
+        bucket.push_back(out.size());
+        out.push_back(ev);
+      }
     }
-    values.resize(writePos);
+    values = std::move(out);
   };
 
 #if SMARTMATH_COMPLEX_NUMBERS
@@ -13796,6 +14238,9 @@ bool MathParser::applyUnaryComplexMathOverlay(
         return true;
       }
       if (id == BuiltinFunctionId::Sqr) {
+        if (tryApplyExactComplexCartesianBinary(sv, sv, '*', outV)) {
+          return true;
+        }
         outV = makeScalarComplexFromFloats(arCx * arCx - aiCx * aiCx, 2.0 * arCx * aiCx);
         return true;
       }
@@ -13912,18 +14357,21 @@ MathParser::EvalValue MathParser::applyUnaryBuiltin(
 #endif
 
   switch (kUnaryScalarKind[static_cast<std::size_t>(id)]) {
-    case UnaryScalarKind::PrimaryTrig:
+    case UnaryScalarKind::PrimaryTrig: {
       if (!isTrigRadiansInRange(x)) {
         trigOutOfRange = true;
         return makeScalar(0);
       }
-      if (id == BuiltinFunctionId::Sin) {
-        return makeScalar(calcSin(x));
+      const SmFloat tr =
+          (id == BuiltinFunctionId::Sin) ? calcSin(x) :
+          (id == BuiltinFunctionId::Cos) ? calcCos(x) :
+                                          calcTan(x);
+      // Finite snap results 0 / +-1 keep SmInt metadata; unsnapped and +-inf stay float.
+      if (std::isfinite(tr) && (tr == 0.0 || tr == 1.0 || tr == -1.0)) {
+        return makeScalarInt(static_cast<SmInt>(tr));
       }
-      if (id == BuiltinFunctionId::Cos) {
-        return makeScalar(calcCos(x));
-      }
-      return makeScalar(calcTan(x));
+      return makeScalar(tr);
+    }
     case UnaryScalarKind::InverseTrig:
       if (id == BuiltinFunctionId::Asin) {
         return makeScalar(std::asin(x));
@@ -14059,7 +14507,7 @@ MathParser::EvalValue MathParser::evalUserFunctionCall(
     return makeScalar(0);
   }
   if (ctx.evalDepth >= kMaxEvalDepth) {
-    ctx.fail(ParseErrorId::MaxEvaluationDepthReached);
+    ctx.failMaxEvaluationDepth(fnName);
     return makeScalar(0);
   }
 
@@ -14191,24 +14639,20 @@ bool MathParser::prepareCompileParseSource(
   const char* text = mathExpression.data();
   const std::size_t len = mathExpression.size();
   const bool hadLineComment = parseSourceHasLineComment(text, len);
-  if (hadLineComment || parseSourceNeedsTrailingSemicolonStrip(text, len)) {
-    if (hadLineComment) {
-      ownedParseBuffer = stripLineComments(mathExpression);
-    } else {
-      ownedParseBuffer = mathExpression;
-    }
-    strippedTrailingSemicolon = stripTrailingSemicolonsForTopLevelInput(ownedParseBuffer);
-    if (ownedParseBuffer.empty()) {
-      return false;
-    }
-    ctx.sourceExpr = ownedParseBuffer;
-    ctx.p = ownedParseBuffer.c_str();
+  // Always own the parse buffer so ``p`` stays inside ``sourceExpr`` for at-col snippets.
+  if (hadLineComment) {
+    ownedParseBuffer = stripLineComments(mathExpression);
   } else {
-    if (len == 0) {
-      return false;
-    }
-    ctx.p = mathExpression.c_str();
+    ownedParseBuffer = mathExpression;
   }
+  if (hadLineComment || parseSourceNeedsTrailingSemicolonStrip(text, len)) {
+    strippedTrailingSemicolon = stripTrailingSemicolonsForTopLevelInput(ownedParseBuffer);
+  }
+  if (ownedParseBuffer.empty()) {
+    return false;
+  }
+  ctx.sourceExpr = std::move(ownedParseBuffer);
+  ctx.p = ctx.sourceExpr.c_str();
   ctx.start = ctx.p;
   return true;
 }
@@ -14256,6 +14700,7 @@ bool MathParser::compile(const std::string& mathExpression) {
     return false;
   }
   compiled_.program = std::move(program);
+  compiled_.rootSourceExpr = ctx.sourceExpr;
   compiled_.hasAssignments = std::any_of(
       compiled_.program.begin(),
       compiled_.program.end(),
@@ -14288,6 +14733,7 @@ void MathParser::resetCompileState() {
   hasResult_ = false;
   lastError_.clear();
   compiled_.program.clear();
+  compiled_.rootSourceExpr.clear();
   compiled_.ready = false;
   compiled_.scalarOnly = false;
   compiled_.hasAssignments = false;
@@ -14303,6 +14749,7 @@ void MathParser::resetEvaluateState() {
 bool MathParser::prepareEvaluate(EvalContext& ctx) {
   ctx.start = nullptr;
   ctx.p = nullptr;
+  ctx.sourceExpr = compiled_.rootSourceExpr;
   if (!compiled_.ready) {
     lastError_ = STR_NOTHING_COMPILED_SEMICOLON_CALL_COMPILE_PAR;
     return false;
@@ -14356,6 +14803,7 @@ std::string MathParser::addUserFunction(const std::string& mathExpression) {
   }
   ctx.p = ctx.sourceExpr.c_str();
   ctx.start = ctx.p;
+  ctx.isRootInputExpr = true;
 
   std::string fnName;
   std::vector<std::string> fnParams;

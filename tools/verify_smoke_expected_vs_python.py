@@ -14,8 +14,8 @@ switch to a dedicated reference path:
     broadcast lowering as the ``RunComplexNumberSupportOptionTests`` block in
     ``tests/SmokeTest_MathParser.bas``. Table rows are discovered from:
     ``StemCases``/``StemOk`` + ``StemExpect``; ``StemExpr`` + ``StemExpect`` (with
-    ``&`` string concat via ``dim … as String`` constants); ``dim var`` +
-    ``Parser_TryEvaluateEx(var,…) orelse rt <> varExpect``; inline literal probes;
+    ``&`` string concat via ``dim ... as String`` constants); ``dim var`` +
+    ``Parser_TryEvaluateEx(var,...) orelse rt <> varExpect``; inline literal probes;
     and ``*ErrExpr`` error tables. ``hex``/``bin``/``oct``/``uhex``/``uoct``/``ubin``
     are evaluated for reference strings (uppercase ``0x``). User functions,
     ``ratio()``, unsigned display, array indexing, and wide integer ``mod``
@@ -27,8 +27,8 @@ switch to a dedicated reference path:
     integer rules; ``tests(1150)``..``1156`` and ``raw-api/sqrt-non-perfect-square``
     are included. ``hex(sqr(9))`` etc. use the same display builtins as smoke.
   * **Time:** colon literals (MM:SS / HH:MM:SS / DD:HH:MM:SS), named duration
-    constants (``second`` … ``day``), compact suffix forms (``1d2h3m4s5ms``),
-    converters (``milliseconds``, ``seconds``, …), and ``sum`` of durations —
+    constants (``second`` ... ``day``), compact suffix forms (``1d2h3m4s5ms``),
+    converters (``milliseconds``, ``seconds``, ...), and ``sum`` of durations -
     enough to mirror the smoke *expected* strings for the time block.
 
 Float agreement uses the same tolerance as ``ScalarCloseEnough`` in
@@ -64,6 +64,16 @@ Smart-Math rules plain Python does not model:
     ``(name)[index] = value`` and ``name[index] == value`` stay comparisons.
   * ``iif`` evaluates only the chosen branch. ``isinstance(value, type)`` uses a
     bare type name (``int``, ``float``, ``time``, ``complex``, ``array`` / ``list``).
+  * Exact-int metadata (``isinstance(..., int)``): provenance preserves full
+    SmInt/SmUInt range (checked ``+-*/``, verified ``sqrt``/``hypot``/``pow``
+    reconstruct, digit-exact literals, rounding builtins). Float-op results may
+    promote only under Bound H (``|v| < 2**26``) via MaybeExact - e.g.
+    ``1.5+1.5``, ``sum(1.5,1.5)``, named snaps ``exp(0)``/``ln(1)``/``sin(0)``/
+    ``cos`` pi/2 multiples -> exact ``0``/``+-1``. Large verified roots stay exact
+    (``pow(2**62,1/2)``); Bound H does not demote them.
+  * Time vs NaN uses the same unordered NaN policy as reals (``0:00 == nan`` ->
+    ``0``; ``!=`` -> ``1``). Exact complex imag above ``2**53`` stays digit-exact
+    (``9007199254740993i`` <> ``9007199254740992i``).
 
 Sources parsed (in addition to ``tests(N)`` rows):
   * ``tools/neg_band_cases_generated.bas`` (neg/pos real + complex magnitude bands)
@@ -74,7 +84,7 @@ Sources parsed (in addition to ``tests(N)`` rows):
   * ``RunOperatorPrecedenceDocTests`` (``precOk`` / ``precExpect``)
   * ``RunTrigAngleReductionTests`` (magnitude ``|result|`` thresholds + ``exactOne*``)
   * Paired ``*Ok``/``*Expect`` and ``*Expr``/``*Expect`` rows anywhere in smoke source
-  * ``*Err`` / ``errExprs`` error-probe tables in smoke subs (time, complex, arity, …)
+  * ``*Err`` / ``errExprs`` error-probe tables in smoke subs (time, complex, arity, ...)
   * Inline ``Parser_TryEvaluateEx(...) orelse rt <> "..."`` numeric probes in smoke subs
   * All ``Run*Tests`` subs in ``tests/SmokeTest_MathParser.bas`` (paired ``*Ok/*Expect``,
     ``*Cases/*Expect``, ``*Exprs/*Need``, ``*Expr/*Expect`` with ``&`` concat,
@@ -697,6 +707,7 @@ _RE_EXACT_INT_COMPLEX_ADD = re.compile(
 _RE_EXACT_INT_COMPLEX_SUB = re.compile(
     r"(?<![\d./])(-?\d+)\s*-\s*\(\s*(-?\d+)\s*\*\s*1j\s*\)"
 )
+_RE_EXACT_INT_COMPLEX_PURE = re.compile(r"\(\s*(-?\d+)\s*\*\s*1j\s*\)")
 
 
 def exact_int_complex(re: Any, im: Any = 0) -> ExactComplex:
@@ -706,8 +717,8 @@ def exact_int_complex(re: Any, im: Any = 0) -> ExactComplex:
 
 def _lower_exact_int_complex_literals(expr: str) -> str:
     """
-    ``922...+922...*1j`` cannot be evaluated as native Python ``complex`` without
-    rounding int64-sized parts; lower to ``exact_int_complex(re, im)`` instead.
+    Large exact int complexes cannot be native Python ``complex`` without rounding;
+    lower to ``exact_int_complex(re, im)`` (including pure imag ``Ni`` -> ``(N*1j)``).
     """
 
     def repl_sub(m: re.Match) -> str:
@@ -716,8 +727,12 @@ def _lower_exact_int_complex_literals(expr: str) -> str:
     def repl_add(m: re.Match) -> str:
         return f"exact_int_complex({m.group(1)}, {m.group(2)})"
 
+    def repl_pure(m: re.Match) -> str:
+        return f"exact_int_complex(0, {m.group(1)})"
+
     s = _RE_EXACT_INT_COMPLEX_SUB.sub(repl_sub, expr)
-    return _RE_EXACT_INT_COMPLEX_ADD.sub(repl_add, s)
+    s = _RE_EXACT_INT_COMPLEX_ADD.sub(repl_add, s)
+    return _RE_EXACT_INT_COMPLEX_PURE.sub(repl_pure, s)
 
 
 def _preprocess_complex_surface(expr: str) -> str:
@@ -1063,7 +1078,7 @@ def try_parse_smoke_scalar(s: str) -> Optional[float]:
 
 
 def _parse_smoke_imag_coeff(im_s: str) -> Optional[float]:
-    """Imaginary coefficient after ``SplitComplexText`` (``+i``/``-i`` -> ``±1``)."""
+    """Imaginary coefficient after ``SplitComplexText`` (``+i``/``-i`` -> ``+-1``)."""
     t = im_s.strip()
     if not t:
         return 1.0
@@ -1250,15 +1265,15 @@ def is_multiple_of(x: float, x_mult: float) -> bool:
     return residual <= eps
 
 
-def sin_sm(x: float) -> float:
+def sin_sm(x: float) -> Any:
     if x == 0.0:
-        return 0.0
+        return 0
     if math.isfinite(x) and is_multiple_of(x, math.pi):
-        return 0.0
+        return 0
     return math.sin(x)
 
 
-def cos_sm(x: float) -> float:
+def cos_sm(x: float) -> Any:
     """Mirror CalcCos: multiples of pi/2 map to exact 0, +-1 (cos(n*pi) = (-1)^n)."""
     if math.isfinite(x):
         half = math.pi / 2.0
@@ -1270,10 +1285,10 @@ def cos_sm(x: float) -> float:
                 if r < 0:
                     r += 4
                 if r == 0:
-                    return 1.0
+                    return 1
                 if r == 2:
-                    return -1.0
-                return 0.0
+                    return -1
+                return 0
     return math.cos(x)
 
 
@@ -1287,6 +1302,13 @@ def tan_sm(x: float) -> float:
             t = math.tan(x)
             return math.inf if t > 0.0 else -math.inf
     return math.tan(x)
+
+
+def exp_sm(x: Any) -> Any:
+    xf = float(x)
+    if xf == 0.0:
+        return 1
+    return math.exp(xf)
 
 
 def dsl_truth(x: Any) -> bool:
@@ -1327,14 +1349,22 @@ def _cmp_as_seq(v: Any) -> tuple:
 
 
 def _cmp_pair_unordered_nan(a: Any, b: Any) -> bool:
-    """IEEE unordered NaN for compare ops. Time values skip this (parser parity)."""
-    if isinstance(a, Duration) or isinstance(b, Duration):
-        return False
+    """IEEE unordered NaN for compare ops (including time<->NaN)."""
     return _has_nan_component(a) or _has_nan_component(b)
+
+
+def _cmp_exact_complex_components(a: ExactComplex, b: ExactComplex) -> int:
+    if a.real != b.real:
+        return -1 if a.real < b.real else 1
+    if a.imag != b.imag:
+        return -1 if a.imag < b.imag else 1
+    return 0
 
 
 def _cmp_elements(a: Any, b: Any) -> int:
     """Three-way compare of one pair (-1 / 0 / 1). Caller already ruled out unordered NaN."""
+    if isinstance(a, ExactComplex) and isinstance(b, ExactComplex):
+        return _cmp_exact_complex_components(a, b)
     if isinstance(a, Duration) or isinstance(b, Duration):
         if a < b:
             return -1
@@ -1342,7 +1372,7 @@ def _cmp_elements(a: Any, b: Any) -> int:
             return 1
         return 0
     # Exact ints must not go through float close_enough (distinct values above 2^53
-    # round to the same double when str→float, e.g. 2^53+1 vs 2^53).
+    # round to the same double when str->float, e.g. 2^53+1 vs 2^53).
     if _is_plain_int(a) and _is_plain_int(b):
         ai, bi = int(a), int(b)
         if ai == bi:
@@ -1444,6 +1474,55 @@ def fractional_power_is_odd_unit_root(p: float) -> Optional[int]:
     if (n % 2) == 0:
         return None
     return n
+
+
+def fractional_power_resolve_root_degree(p: float) -> Optional[int]:
+    """``1/n`` for odd ``n``, or ``1/2`` (principal sqrt / half-power)."""
+    if p <= 0.0 or p >= 1.0:
+        return None
+    inv = 1.0 / p
+    if inv < 2.0 or inv > 9007199254740992.0:
+        return None
+    n = int(round(inv))
+    if n < 2:
+        return None
+    if abs(p * float(n) - 1.0) > 1e-15:
+        return None
+    if n == 2 or (n % 2) != 0:
+        return n
+    return None
+
+
+# Bound H: promote computed float to exact int only when |v| < 2^26 (coding-standards).
+_BOUND_H = 1 << 26
+
+
+def _maybe_exact_from_float(x: float) -> Any:
+    """MaybeExact: finite integer-valued float with |v| < Bound H -> Python int."""
+    if math.isfinite(x) and x == math.trunc(x) and abs(x) < float(_BOUND_H):
+        return int(x)
+    return x
+
+
+def _try_exact_nonneg_nth_root(base: int, n: int) -> Optional[int]:
+    """Integer ``n``-th root of nonnegative ``base`` when ``root**n == base``."""
+    if base < 0 or n < 2:
+        return None
+    if base == 0 or base == 1:
+        return base
+    if n == 2:
+        root = math.isqrt(base)
+        return root if root * root == base else None
+    # Float assist + integer verify (same shape as parser unsigned ByKind).
+    guess = round(base ** (1.0 / float(n)))
+    if guess < 0:
+        return None
+    if guess**n == base:
+        return int(guess)
+    for cand in (guess - 1, guess + 1):
+        if cand >= 0 and cand**n == base:
+            return int(cand)
+    return None
 
 
 def _real_scalar_mag(v: Any) -> float:
@@ -2427,7 +2506,7 @@ def parse_mirror_table_stems(
     tables: list[tuple[str, Optional[str], str]],
 ) -> list[dict]:
     """
-  Parse generated mirror tables: ``{stem}Expr``, ``{stem}Expect``, ``{stem}IsErr``, …
+  Parse generated mirror tables: ``{stem}Expr``, ``{stem}Expect``, ``{stem}IsErr``, ...
 
   *tables*: list of (stem, ref_mode or None to infer per row, source tag).
   """
@@ -3558,6 +3637,8 @@ def log_ln(x):
         return math.nan
     if xf == 0.0:
         return -math.inf
+    if xf == 1.0:
+        return 0
     return math.log(xf)
 
 
@@ -3639,12 +3720,19 @@ def pow_sm(b, e):
             return bf**ef
         except (OverflowError, ValueError, ZeroDivisionError):
             return complex(math.nan, math.nan)
+    # Verified unsigned/nonneg root reconstruct (provenance; not Bound H).
+    if _is_plain_int(b) and int(b) >= 0 and math.isfinite(ef) and 0.0 < ef < 1.0:
+        n_root = fractional_power_resolve_root_degree(ef)
+        if n_root is not None:
+            root = _try_exact_nonneg_nth_root(int(b), n_root)
+            if root is not None:
+                return root
     try:
         if bf < 0.0 and math.isfinite(bf) and math.isfinite(ef):
             n_root = fractional_power_is_odd_unit_root(ef)
             if n_root is not None:
                 return -(abs(bf) ** ef)
-        return bf**ef
+        return _maybe_exact_from_float(float(bf**ef))
     except OverflowError:
         return _pow_overflow(bf, ef)
     except (ValueError, ZeroDivisionError):
@@ -4004,19 +4092,34 @@ def div_sm_real(a, b):
 def add_sm(a, b):
     if isinstance(a, tuple) or isinstance(b, tuple):
         return _broadcast2(add_sm, a, b)
-    return a + b
+    if _is_plain_int(a) and _is_plain_int(b):
+        return int(a) + int(b)
+    result = a + b
+    if isinstance(result, float):
+        return _maybe_exact_from_float(result)
+    return result
 
 
 def sub_sm(a, b):
     if isinstance(a, tuple) or isinstance(b, tuple):
         return _broadcast2(sub_sm, a, b)
-    return a - b
+    if _is_plain_int(a) and _is_plain_int(b):
+        return int(a) - int(b)
+    result = a - b
+    if isinstance(result, float):
+        return _maybe_exact_from_float(result)
+    return result
 
 
 def mul_sm_real(a, b):
     if isinstance(a, tuple) or isinstance(b, tuple):
         return _broadcast2(mul_sm_real, a, b)
-    return a * b
+    if _is_plain_int(a) and _is_plain_int(b):
+        return int(a) * int(b)
+    result = a * b
+    if isinstance(result, float):
+        return _maybe_exact_from_float(result)
+    return result
 
 
 def _as_bit_int(x: Any) -> int:
@@ -4052,12 +4155,19 @@ def prod_sm(*args):
         flat.append(item.numeric() if isinstance(item, _FactorPower) else item)
     if not flat:
         return tuple()
+    if all(_is_plain_int(item) for item in flat):
+        acc_i = 1
+        for item in flat:
+            acc_i *= int(item)
+        return acc_i
     acc = flat[0]
     for item in flat[1:]:
         if isinstance(acc, (complex, ExactComplex)) or isinstance(item, (complex, ExactComplex)):
             acc = _cmul(acc, item)
         else:
             acc = acc * item
+    if isinstance(acc, float):
+        return _maybe_exact_from_float(acc)
     return acc
 
 
@@ -4387,7 +4497,19 @@ def hypot_sm(a, b):
 
 
 def _hypot_real_scalar(a, b):
-    return math.hypot(float(a), float(b))
+    """Exact-int legs: zero -> |other|; else perfect-square verify like sqrt (provenance)."""
+    if _is_plain_int(a) and _is_plain_int(b):
+        ai, bi = int(a), int(b)
+        if ai == 0:
+            return abs(bi)
+        if bi == 0:
+            return abs(ai)
+        sum_sq = ai * ai + bi * bi
+        root = _try_exact_nonneg_nth_root(sum_sq, 2)
+        if root is not None:
+            return root
+        return _maybe_exact_from_float(math.hypot(float(ai), float(bi)))
+    return _maybe_exact_from_float(math.hypot(float(a), float(b)))
 
 
 def hypot_sm_real(a, b):
@@ -4700,9 +4822,10 @@ def sum_sm(*args):
         return Duration(sum(item.ms for item in flat))
     if all(_is_plain_int(item) for item in flat):
         return sum(int(item) for item in flat)
-    return math.fsum(
+    total = math.fsum(
         float(item.ms if isinstance(item, Duration) else item) for item in flat
     )
+    return _maybe_exact_from_float(total)
 
 
 def random_sm(lo, hi):
@@ -4966,6 +5089,10 @@ def _has_nan_component(v: Any) -> bool:
 def _same_unique(a: Any, b: Any) -> bool:
     if _has_nan_component(a) and _has_nan_component(b):
         return True
+    if isinstance(a, ExactComplex) or isinstance(b, ExactComplex):
+        return dsl_cmp("eq", a, b) == 1
+    if _is_plain_int(a) and _is_plain_int(b):
+        return int(a) == int(b)
     return a == b
 
 
@@ -5117,7 +5244,7 @@ def build_ns(ans: Any) -> dict:
         "asinh": _map_unary_real(math.asinh),
         "acosh": _map_unary_real(_domain_nan(math.acosh)),
         "atanh": atanh_sm,
-        "exp": _map_unary_real(math.exp),
+        "exp": _map_unary_real(exp_sm),
         "sqrt": sqrt_sm_real,
         "sqrt_sm_real": sqrt_sm_real,
         "hex_sm": hex_sm,
@@ -5613,7 +5740,7 @@ def ref_eval(
     e = p
     if mode == "complex":
         e = _preprocess_complex_surface(e)
-        # Tight-``i`` suffixes leave ``0x…`` inside ``(0x…*1j)``; normalize again.
+        # Tight-``i`` suffixes leave ``0x...`` inside ``(0x...*1j)``; normalize again.
         e = _replace_int_literals(e)
         e = _lower_exact_int_complex_literals(e)
         e = _preprocess_complex_dsl(e)

@@ -25,7 +25,7 @@ Read on demand:
 
 | When | Read |
 |---|---|
-| Before first edit | `.cursor/skills/internal-mathparser-protect-workspace/SKILL.md` |
+| Before first edit, and after each successful multi-stage / cluster stage (stage checkpoints) | `.cursor/skills/internal-mathparser-protect-workspace/SKILL.md` |
 | Planning or reviewing behavior, including a defect found during the refactor | `.cursor/skills/mathparser-add-or-fix/flows/raise-concerns.md` |
 | Editing helpers / int metadata / string constants / non-finite handling | `.cursor/skills/mathparser-add-or-fix/flows/coding-standards.md` |
 | Analyzing, verifying, testing, correcting, optimizing, refactoring, or changing a user-defined function or a lambda (either surface, including a shared body or parameter helper) | `.cursor/skills/mathparser-add-or-fix/flows/user-functions-and-lambdas.md` |
@@ -39,7 +39,7 @@ Do not load the full `mathparser-add-or-fix` skill unless the task becomes a fea
 
 ## What to optimize
 
-1. Extract/reuse helpers for duplicate logic (repeated loops, branches, validation, error text); extend existing helpers before adding new ones. User-function and lambda rules already share helpers; extend those, and do not leave a second copy on the other surface (user-functions-and-lambdas flow).
+1. Extract/reuse helpers for duplicate logic (repeated loops, branches, validation, error text); extend existing helpers before adding new ones. User-function and lambda rules already share helpers; extend those, and do not leave a second copy on the other surface (user-functions-and-lambdas flow). Collapse duplicate scalar compare / hash sites into the shared compare helpers (numeric-behavior / coding-standards); keep exact-int metadata through those paths.
 2. Simplify control flow; cut maintenance burden.
 3. Remove dead/unused code only with evidence.
 
@@ -53,6 +53,7 @@ All of it within the hard constraints below.
 - No user-visible error message drift unless explicitly requested.
 - C++: follow cpp-class-design, including its cleanup order (one cluster at a time). Leave Basic's procedure layout as it is.
 - No UB; keep Basic/C++ parity; string constants per coding-standards.
+- Comments in source and tests stay ASCII only (coding-standards / smoke-tests). If an edit introduces Unicode in a comment, replace it with ASCII before finishing.
 - No runtime slowdown: avoid extra allocations/copies on hot paths. Do not replace iterator-style walks with eager flattening unless semantics require it.
 - If the user approved a behavior change on a touched operator/builtin path, apply the coding-standards non-finite rule and lock it with tests.
 
@@ -62,7 +63,7 @@ All of it within the hard constraints below.
 2. Inventory duplicates (impact / risk / testability).
 3. Choose helper strategy (reuse → extend → narrow new helper) per coding-standards and cpp-class-design.
 4. Preserve efficiency: single-pass walks, pre-count + one allocation, scratch-buffer reuse in C++, no extra hot-path temps. For hot-path clusters, record a perf baseline before the first edit and compare after (build-gates "Performance").
-5. Apply one logical cluster at a time. Between clusters, compile the side you touched when practical (build-gates compile, error and warning discipline on a failure or any new warning).
+5. Apply one logical cluster at a time. Between clusters, compile the side you touched when practical (build-gates compile, error and warning discipline on a failure or any new warning). After a cluster succeeds and more clusters remain, take a protect-workspace **stage checkpoint** of the files that cluster completed (importance/completeness — not mid-cluster, not every tiny edit).
 6. Remove dead code only when unused/unreachable/superseded is confirmed; otherwise list it as a candidate.
 7. Mirror and reflect via the parity skill, then run the required build-gates once for the final diff; all of them must pass before completion, with no new compiler warning and a clean C++ analyze gate (build-gates "Warnings").
 

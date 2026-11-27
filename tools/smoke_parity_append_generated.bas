@@ -1,4 +1,4 @@
-' AUTO-GENERATED append rows for main tests() — indices assigned in SmokeTest.
+' AUTO-GENERATED append rows for main tests() - indices assigned in SmokeTest.
 const SMOKE_APPEND_COUNT = 14
 dim shared smokeAppendExpr(1 to SMOKE_APPEND_COUNT) as String
 dim shared smokeAppendExpected(1 to SMOKE_APPEND_COUNT) as String

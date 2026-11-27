@@ -440,7 +440,7 @@ std::uint64_t pollardRhoU64(std::uint64_t n) {
       if (diff == 0u) {
         break;  // the sequence closed on itself: restart with a new (c, y0)
       }
-      // Brent on x64 (batch>1): multiply differences before each gcd. On win32 batch is 1 (mulmod ≫ gcd).
+      // Brent on x64 (batch>1): multiply differences before each gcd. On win32 batch is 1 (mulmod >> gcd).
       prod = mulModU64(prod, diff, n);
       ++sinceGcd;
       if (sinceGcd < kFactorintRhoGcdBatch && iter + 1 < maxIter) {

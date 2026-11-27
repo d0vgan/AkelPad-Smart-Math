@@ -151,6 +151,10 @@ constexpr F baselineOr(double baseline, F derived) {
 
 /// 2^kFloatMantDigits: the largest magnitude at which every integer is exact (2^53 for double).
 constexpr SmFloat kMaxExactIntFromFloat = pow2Float(kFloatMantDigits);
+/// Bound H for float->exact promote (makeScalarMaybeExact): 2^min(|mant/2|, intBits-1). Exclusive |v|.
+constexpr int kExactIntFromFloatOpExp =
+    (kFloatMantDigits / 2 < kIntBits - 1) ? (kFloatMantDigits / 2) : (kIntBits - 1);
+constexpr SmFloat kMaxExactIntFromFloatOp = pow2Float(kExactIntFromFloatOpExp);
 /// Exclusive float bounds: SmInt covers [-kFloatSmIntBound, kFloatSmIntBound), SmUInt covers [0, kFloatSmUIntBound).
 constexpr SmFloat kFloatSmIntBound = pow2Float(kIntBits - 1);
 constexpr SmFloat kFloatSmUIntBound = pow2Float(kIntBits);
@@ -374,6 +378,7 @@ static_assert(!kFloatIsBinary64 || kTolLost2 == 1e-13, "tolerance 1e-13 changed"
 static_assert(!kFloatIsBinary64 || kTolLost3 == 1e-12, "tolerance 1e-12 changed");
 static_assert(!kFloatIsBinary64 || kTolLost6 == 1e-9, "tolerance 1e-9 changed");
 static_assert(!kFloatIsBinary64 || kMaxExactIntFromFloat == 9007199254740992.0, "2^53 changed");
+static_assert(!kFloatIsBinary64 || kMaxExactIntFromFloatOp == 67108864.0, "Bound H 2^26 changed");
 static_assert(!kFloatIsBinary64 || kFloatDisplayDigits == 16, "display digits changed");
 static_assert(!kFloatIsBinary64 || kHypotDirectMax == 1e150, "hypot threshold changed");
 static_assert(!kFloatIsBinary64 || kAcoshLogMin == 1e8, "acosh threshold changed");

@@ -223,6 +223,9 @@ namespace smartmath_internal {
     /** Only when ``kind`` is InlineLambda (anonymous lambdas inside ``sortby``). */
     std::vector<std::string> lambdaParams;
     std::string lambdaBody;
+    /** 1-based root columns for remapping nested unary-lambda / key errors (Basic parity). */
+    int unaryFuncErrorCol = 0;
+    int unaryFuncBodyErrorCol = 0;
     /// When true with hex/oct/bin/dec output, format negative integers as unsigned (two's complement) bit pattern.
     bool hasExpandArgs() const { return (flags & fExpandArgs) != 0; }
     void setExpandArgs(bool v) { flags = v ? (flags | fExpandArgs) : (flags & ~fExpandArgs); }
@@ -283,6 +286,22 @@ namespace smartmath_internal {
 
   inline bool tryExtractExactSmIntFromFloatStrict(SmFloat v, SmInt& out) {
     if (!isWithinExactIntFromFloatRange(v)) {
+      return false;
+    }
+    if (!smartmath::isFloatInSmIntRange(v)) {
+      return false;
+    }
+    const SmInt asInt = static_cast<SmInt>(v);
+    if (v != static_cast<SmFloat>(asInt)) {
+      return false;
+    }
+    out = asInt;
+    return true;
+  }
+
+  // Bound H: promote a computed float to exact int only when |v| < 2^min(|mant/2|, intBits-1).
+  inline bool tryExtractExactSmIntFromFloatForPromote(SmFloat v, SmInt& out) {
+    if (!std::isfinite(v) || std::fabs(v) >= smartmath::kMaxExactIntFromFloatOp) {
       return false;
     }
     if (!smartmath::isFloatInSmIntRange(v)) {
@@ -454,14 +473,7 @@ namespace smartmath_internal {
     SmFloat r,
     bool isMultiply,
     EvalValue& outV);
-  bool tryPromoteExactDivisionByFloatDivisorSigned(
-    SmInt intI, SmFloat f, SmFloat r, EvalValue& outV);
-  bool tryPromoteExactDivisionByFloatDivisorUnsigned(
-    SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV);
-  bool tryPromoteExactMultiplicationByFloatFactorSigned(
-    SmInt intI, SmFloat f, SmFloat r, EvalValue& outV);
-  bool tryPromoteExactMultiplicationByFloatFactorUnsigned(
-    SmUInt intU, SmFloat f, SmFloat r, EvalValue& outV);
+  bool tryNearIntReciprocal(SmFloat floatV, SmFloat bound, bool useAbs, SmFloat& outRounded);
   bool tryApplyExactIntFloatOpFromFloatSide(
     ScalarExactKind kind,
     bool isMultiply,
@@ -472,12 +484,17 @@ namespace smartmath_internal {
     EvalValue& outV);
   void scalarApplyReducedRationalPart(EvalValue::ScalarValue& s, bool imagPart, SmInt num,
                                           SmUInt den);
+  void finishExactUIntSqrtOf(SmUInt radicandU, EvalValue& outV);
   void applySqrtScalarValue(const EvalValue::ScalarValue& sv, EvalValue& outV);
   bool tryApplySqrExactScalar(const EvalValue::ScalarValue& sv, EvalValue& outV);
   bool tryApplyHypotExactScalars(
     const EvalValue::ScalarValue& leftS,
     const EvalValue::ScalarValue& rightS,
     EvalValue& outV);
+  bool tryRestoreExactUnsignedNthRoot(
+    SmUInt baseU, SmFloat rootGuess, SmInt nRoot, EvalValue& outV);
+  bool tryRestoreExactUnsignedIntPow(
+    SmUInt baseU, SmFloat resultGuess, SmInt nExp, EvalValue& outV);
   bool tryApplyPowExactScalars(
     const EvalValue::ScalarValue& leftS,
     const EvalValue::ScalarValue& rightS,
@@ -824,6 +841,9 @@ namespace smartmath_internal {
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
     std::vector<std::unique_ptr<Expr>> elements;
+    /** Copied onto FunctionRef / InlineLambda EvalValues for sortby/filter remap. */
+    int unaryFuncErrorCol = 0;
+    int unaryFuncBodyErrorCol = 0;
   };
 
   struct AstStatement {
@@ -840,9 +860,16 @@ namespace smartmath_internal {
     const char* p = nullptr;
     const char* start = nullptr;
     std::string sourceExpr;
+    /**
+     * When true, ``fail()`` may append ``at col`` (root / top-level input). Nested body
+     * parses set this false so errors stay bare until remapped onto the root (Basic parity).
+     */
+    bool isRootInputExpr = true;
     bool parseError = false;
     std::string errorText;
     int evalDepth = 0;
+    /** Nested ``parseExpression`` depth; capped so deep nests fail before native stack overflow. */
+    int parseDepth = 0;
     /** Nesting depth of ``[...]`` while parsing; suppresses colon-time literals so ``a[1:30]`` is a slice. */
     int arrayIndexBracketDepth = 0;
     /** Collected like FreeBASIC (non-fatal until end of eval). */
@@ -865,20 +892,56 @@ namespace smartmath_internal {
     /** Set while evaluating an inline lambda body (e.g. sortby key). */
     // Path C: set when trailing ';' was stripped. Path B: *p == ';' in trySetMissingFunctionCallError.
     bool suppressBareFunctionTailHint = false;
+    /**
+     * When parsing a unary lambda or named key for sortby/filter: 1-based column of the
+     * key expression body start in the root input (for remapping body-local errors), else 0.
+     */
+    int unaryFuncBodyErrorCol = 0;
+    /** 1-based column of the key argument token itself (fallback remap). */
+    int unaryFuncErrorCol = 0;
+    /** Body-local 1-based column captured when an inline-lambda eval fails (Basic parity). */
+    int unaryLambdaEvalBodyErrorCol = 0;
 
     /// First error wins. Later calls leave the existing text in place.
     void fail(const std::string& msg);
     void fail(ParseErrorId id);
+    void failAtColumn(const std::string& msg, int col);
+    void clearParseErrorForRemap();
     void failCall(CallErrorId id, const std::string& fnName, std::size_t n = 0);
     void failHint(const std::string& hintText);
     void failPrefixedLiteral(char prefixChar);
     void failRecursiveUserFunction(const std::string& fnName);
+    /** ``max evaluation depth reached (N)`` or ``... (N): detail`` (UDF name / ``lambda``). */
+    void failMaxEvaluationDepth();
+    void failMaxEvaluationDepth(const std::string& detail);
+    /** Parse-nest overflow: same as ``failMaxEvaluationDepth()`` then auto ``at col`` from ``p``. */
+    void failMaxEvaluationDepthAtParsePosition();
     void failMissingClosingParenLike();
     void failMissingClosingBracketAfterIndex();
+
+    int currentParseErrorColumn() const;
   };
+
+  std::string stripErrorLocationSuffix(const std::string& errFull);
+  std::string buildErrorSnippet(const std::string& exprText, int col);
+  std::string unaryFunctionFailureMessage(const std::string& innerMsg);
+  int unaryBodyErrorColumn(
+      int bodyStartCol, int bodyErrorCol, const std::string& msg, const std::string& rootExpr);
+  /** Point ``ctx.p`` at the first occurrence of ``name`` in ``ctx.sourceExpr`` (error-path only). */
+  void pointParseCursorAtName(EvalContext& ctx, const std::string& name);
+  void applyUnaryBodyRemapFailure(
+      EvalContext& ctx,
+      int bodyStartCol,
+      int bodyErrorCol,
+      int funcColFallback,
+      const std::string& errFull,
+      bool clearExisting);
+  void remapParseErrorToUnaryFuncColumn(EvalContext& ctx, const EvalValue& keyArg);
 
   struct CompiledProgramState {
     std::vector<AstStatement> program;
+    /** Root input text used for remapping nested body errors during evaluate(). */
+    std::string rootSourceExpr;
     bool ready = false;
     bool scalarOnly = false;
     bool hasAssignments = false;
