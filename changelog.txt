@@ -1,6 +1,7 @@
 SmartMath 1.5
 -------------
 - internal improvements and bug-fixes for edge cases
+- corrected: rendering word-wrapped lines and SpecialChar's symbols
 - corrected: floating-point vs. exact-integer results
 * changed: an empty array result is shown as `()`
 * changed: `a[n] = x` is an assignment (it updates the array `a`)

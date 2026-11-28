@@ -269,6 +269,14 @@ dim shared g_lastDocModeEdit as HWND = 0
 dim shared SMARTMATH_CODER_HIGHLIGHT_FUNC as WString * 32 = WStr("Coder::HighLight")
 dim shared SMARTMATH_CODER_SETTINGS_FUNC as WString * 32 = WStr("Coder::Settings")
 dim shared SMARTMATH_CODER_ALIAS as WString * 32 = WStr(".smartmath")
+dim shared SMARTMATH_SPECIALCHAR_FUNC as WString * 32 = WStr("SpecialChar::Main")
+
+' Cached SpecialChar EOL/wrap marker width past line-end X (0 when SpecialChar off).
+' Remeasured when the edit font or SpecialChar running state changes — not per line.
+dim shared g_eolMarkerReserve as Integer = 0
+dim shared g_eolMarkerReserveFont as HFONT = 0
+dim shared g_eolMarkerReserveScRunning as BOOL = FALSE
+dim shared g_eolMarkerReserveValid as BOOL = FALSE
 
 const DLLA_CODER_SETALIAS = 6
 
@@ -738,6 +746,182 @@ private sub BuildRenderedResultText(byref sLine as String, byref sRes as String,
   end if
 end sub
 
+' AkelEdit word wrap: physical EM_ lines are wrap rows. Old RichEdit: treat as off.
+private function IsWordWrapOn(byval hWnd as HWND) as BOOL
+  if g_bOldRichEdit then return FALSE
+  dim dwWrap as DWORD = cast(DWORD, SendMessage(hWnd, AEM_GETWORDWRAP, 0, 0))
+  if (dwWrap and (AEWW_WORD or AEWW_SYMBOL)) <> 0 then return TRUE
+  return FALSE
+end function
+
+' Soft-wrap group containing physical lineIdx: first..last share one unwrapped line.
+' Pass nLineCount / bWrapOn when the caller already resolved them for the pass.
+private sub GetSoftWrapGroupBoundsEx(byval hWnd as HWND, byval lineIdx as Integer, byref firstIdx as Integer, byref lastIdx as Integer, byval nLineCount as Integer, byval bWrapOn as BOOL)
+  firstIdx = lineIdx
+  lastIdx = lineIdx
+  if lineIdx < 0 then exit sub
+  if bWrapOn = FALSE then exit sub
+  if lineIdx >= nLineCount then exit sub
+
+  dim nUnwrap as Integer = cast(Integer, SendMessage(hWnd, AEM_GETUNWRAPLINE, lineIdx, 0))
+  firstIdx = cast(Integer, SendMessage(hWnd, AEM_GETWRAPLINE, nUnwrap, 0))
+  if firstIdx < 0 then firstIdx = lineIdx
+  if firstIdx >= nLineCount then firstIdx = lineIdx
+
+  lastIdx = firstIdx
+  dim j as Integer
+  for j = firstIdx + 1 to nLineCount - 1
+    if cast(Integer, SendMessage(hWnd, AEM_GETUNWRAPLINE, j, 0)) <> nUnwrap then exit for
+    lastIdx = j
+  next j
+end sub
+
+private sub GetSoftWrapGroupBounds(byval hWnd as HWND, byval lineIdx as Integer, byref firstIdx as Integer, byref lastIdx as Integer)
+  dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
+  GetSoftWrapGroupBoundsEx(hWnd, lineIdx, firstIdx, lastIdx, nLineCount, IsWordWrapOn(hWnd))
+end sub
+
+private sub InvalidateEolMarkerReserve()
+  g_eolMarkerReserveValid = FALSE
+end sub
+
+private function IsSpecialCharRunning() as BOOL
+  if g_hMainWnd = 0 then return FALSE
+  dim pf as PLUGINFUNCTION ptr = cast(PLUGINFUNCTION ptr, SendMessageW(g_hMainWnd, AKD_DLLFINDW, cast(WPARAM, strptr(SMARTMATH_SPECIALCHAR_FUNC)), 0))
+  if pf = 0 orelse pf->bRunning = FALSE then return FALSE
+  return TRUE
+end function
+
+' Pixels to leave after physical line-end X so SpecialChar's "rn"/wrap marker is not
+' erased by the result-gutter FillRect. Cached; call once per paint pass.
+private function EnsureEolMarkerReserve(byval hWnd as HWND, byval hDC as HDC = 0) as Integer
+  dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
+  dim bScRunning as BOOL = IsSpecialCharRunning()
+
+  if g_eolMarkerReserveValid andalso _
+     (hFont = g_eolMarkerReserveFont) andalso _
+     (bScRunning = g_eolMarkerReserveScRunning) then
+    return g_eolMarkerReserve
+  end if
+
+  g_eolMarkerReserveFont = hFont
+  g_eolMarkerReserveScRunning = bScRunning
+  g_eolMarkerReserveValid = TRUE
+
+  if bScRunning = FALSE then
+    g_eolMarkerReserve = 0
+    return 0
+  end if
+
+  dim nReserve as Integer = 0
+  dim bOwnDC as BOOL = FALSE
+  dim hMeasureDC as HDC = hDC
+  if hMeasureDC = 0 then
+    hMeasureDC = GetDC(hWnd)
+    bOwnDC = TRUE
+  end if
+
+  if hMeasureDC <> 0 then
+    dim hOldFont as HFONT
+    if hFont then hOldFont = cast(HFONT, SelectObject(hMeasureDC, hFont))
+    dim szRrn as SIZE
+    dim szEof as SIZE
+    GetTextExtentPoint32(hMeasureDC, strptr("rrn"), 3, @szRrn)
+    GetTextExtentPoint32(hMeasureDC, strptr("eof"), 3, @szEof)
+    nReserve = szRrn.cx
+    if szEof.cx > nReserve then nReserve = szEof.cx
+    ' SpecialChar: badge right ≈ endX + textExtent + 4 (margins + sel fill).
+    nReserve += 4
+    if hFont then SelectObject(hMeasureDC, hOldFont)
+    if bOwnDC then ReleaseDC(hWnd, hMeasureDC)
+  end if
+
+  if not g_bOldRichEdit then
+    dim nAve as Integer = cast(Integer, SendMessage(hWnd, AEM_GETCHARSIZE, AECS_AVEWIDTH, 0))
+    if nAve > nReserve then nReserve = nAve
+  end if
+
+  g_eolMarkerReserve = nReserve
+  return nReserve
+end function
+
+' Pixels after line-end X before the result gutter. SpecialChar reserve already
+' includes its badge width — do not stack SMARTMATH_RESULT_GUTTER_GAP on top.
+private function GetOverlayGutterPad(byval hWnd as HWND, byval hDC as HDC = 0) as Integer
+  dim nReserve as Integer = EnsureEolMarkerReserve(hWnd, hDC)
+  if nReserve > 0 then return nReserve
+  return SMARTMATH_RESULT_GUTTER_GAP
+end function
+
+' Right-aligned result drawX and gutter minDrawX (shared by paint and dblclick hit-test).
+private sub GetResultOverlayDrawX(byval nClientLeft as Integer, byval nClientRight as Integer, byval nLineEndX as Integer, byval nTextWidth as Integer, byval nGutterPad as Integer, byref outDrawX as Integer, byref outMinDrawX as Integer)
+  outDrawX = nClientRight - nTextWidth - SMARTMATH_RESULT_RIGHT_MARGIN
+  outMinDrawX = nLineEndX + nGutterPad
+  if outMinDrawX < nClientLeft then outMinDrawX = nClientLeft
+end sub
+
+' Copy a range of frozen render strings from an old snapshot into g_cachedRenderText.
+private sub CopyCachedRenderRange(byval firstIdx as Integer, byval lastIdx as Integer, byval oldCount as Integer, oldRenderText() as String)
+  dim k as Integer
+  for k = firstIdx to lastIdx
+    if k < oldCount then
+      g_cachedRenderText(k) = oldRenderText(k)
+    else
+      g_cachedRenderText(k) = ""
+    end if
+  next k
+end sub
+
+' Client position just past the last glyph of this physical wrap row (not the next row).
+private function GetPhysicalLineEndClientPos(byval hWnd as HWND, byval lineIdx as Integer, byref outX as Integer, byref outY as Integer) as BOOL
+  outX = -10001
+  outY = -10001
+  if lineIdx < 0 then return FALSE
+
+  dim nLineStart as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
+  if nLineStart < 0 then return FALSE
+  dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineStart, 0)
+
+  if g_bOldRichEdit = FALSE then
+    dim ci as AECHARINDEX
+    if SendMessage(hWnd, AEM_GETLINEINDEX, lineIdx, cast(LPARAM, @ci)) = 0 then return FALSE
+    ci.nCharInLine = nLineLen
+    dim pt as POINT
+    pt.x = 0
+    pt.y = 0
+    SendMessage(hWnd, AEM_POSFROMCHAR, cast(WPARAM, @pt), cast(LPARAM, @ci))
+    outX = pt.x
+    outY = pt.y
+    return TRUE
+  end if
+
+  if nLineLen <= 0 then
+    dim resEmpty as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineStart, 0)
+    outX = cast(short, LoWord(resEmpty))
+    outY = cast(short, HiWord(resEmpty))
+    return TRUE
+  end if
+
+  dim resLast as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineStart + nLineLen - 1, 0)
+  outX = cast(short, LoWord(resLast))
+  outY = cast(short, HiWord(resLast))
+  dim sLine as String = GetLineText(hWnd, lineIdx, nLineLen)
+  if Len(sLine) > 0 then
+    dim hDC as HDC = GetDC(hWnd)
+    if hDC <> 0 then
+      dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
+      dim hOldFont as HFONT
+      if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
+      dim sz as SIZE
+      GetTextExtentPoint32(hDC, strptr(sLine) + (Len(sLine) - 1), 1, @sz)
+      if hFont then SelectObject(hDC, hOldFont)
+      ReleaseDC(hWnd, hDC)
+      outX += sz.cx
+    end if
+  end if
+  return TRUE
+end function
+
 private sub EnsureRenderCache(byval hWnd as HWND)
   dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
   if nLineCount <= 0 then
@@ -761,24 +945,30 @@ private sub EnsureRenderCache(byval hWnd as HWND)
   dim needsFullRebuild as BOOL = (g_cacheReady = FALSE) orelse (nLineCount <> g_cacheLineCount)
   dim firstChanged as Integer = -1
   dim minCount as Integer = IIf(nLineCount < g_cacheLineCount, nLineCount, g_cacheLineCount)
+  dim bWrapOn as BOOL = IsWordWrapOn(hWnd)
 
+  ' One pass: fetch every physical line once; discover firstChanged while scanning.
+  dim scanFrom as Integer = 0
   if needsFullRebuild = FALSE then
-    dim scanFrom as Integer = 0
     if g_cacheDirtyFromLine >= 0 and g_cacheDirtyFromLine < nLineCount then
       scanFrom = g_cacheDirtyFromLine
     end if
+  end if
 
-    dim iScan as Integer
-    for iScan = scanFrom to nLineCount - 1
-      dim nLineIndexScan as Integer = SendMessage(hWnd, EM_LINEINDEX, iScan, 0)
-      dim nLineLenScan as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndexScan, 0)
-      dim sLineScan as String = GetLineText(hWnd, iScan, nLineLenScan)
-      if sLineScan <> g_cachedLineText(iScan) then
-        firstChanged = iScan
-        exit for
+  redim currentLineText(0 to nLineCount - 1) as String
+  dim i as Integer
+  for i = 0 to nLineCount - 1
+    dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
+    dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+    currentLineText(i) = GetLineText(hWnd, i, nLineLen)
+    if needsFullRebuild = FALSE andalso firstChanged < 0 andalso i >= scanFrom then
+      if currentLineText(i) <> g_cachedLineText(i) then
+        firstChanged = i
       end if
-    next iScan
+    end if
+  next i
 
+  if needsFullRebuild = FALSE then
     ' dirty-from-line: results from this line down are untrustworthy even when
     ' line text is unchanged (e.g. after a held-key capped rebuild).
     if g_cacheDirtyFromLine >= 0 then
@@ -803,6 +993,14 @@ private sub EnsureRenderCache(byval hWnd as HWND)
     end if
   end if
 
+  ' Soft-wrap: a change on any wrap row dirties the whole unwrapped line.
+  if firstChanged >= 0 andalso firstChanged < nLineCount then
+    dim fcFirst as Integer = firstChanged
+    dim fcLast as Integer = firstChanged
+    GetSoftWrapGroupBoundsEx(hWnd, firstChanged, fcFirst, fcLast, nLineCount, bWrapOn)
+    firstChanged = fcFirst
+  end if
+
   ' While a content key is held, only re-eval through the edited/caret line so
   ' key-repeat stays responsive. Leave dirty-from-line set for dependents.
   dim nEvalLast as Integer = nLineCount - 1
@@ -813,16 +1011,12 @@ private sub EnsureRenderCache(byval hWnd as HWND)
     if nCaretEval > nEvalLast then nEvalLast = nCaretEval
     if nEvalLast < 0 then nEvalLast = 0
     if nEvalLast >= nLineCount then nEvalLast = nLineCount - 1
+    dim capFirst as Integer = nEvalLast
+    dim capLast as Integer = nEvalLast
+    GetSoftWrapGroupBoundsEx(hWnd, nEvalLast, capFirst, capLast, nLineCount, bWrapOn)
+    nEvalLast = capLast
     bCappedEval = (nEvalLast < nLineCount - 1)
   end if
-
-  redim currentLineText(0 to nLineCount - 1) as String
-  dim i as Integer
-  for i = 0 to nLineCount - 1
-    dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
-    dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
-    currentLineText(i) = GetLineText(hWnd, i, nLineLen)
-  next i
 
   redim oldLineText(0 to 0) as String
   redim oldRenderText(0 to 0) as String
@@ -846,29 +1040,60 @@ private sub EnsureRenderCache(byval hWnd as HWND)
 
   Parser_ClearVariables()
   Parser_SetSupportComplexNumbers(Config_GetSupportComplexNumbers())
-  for i = 0 to nLineCount - 1
-    if i > nEvalLast then
-      if i < oldCount then
-        g_cachedRenderText(i) = oldRenderText(i)
-      else
-        g_cachedRenderText(i) = ""
+
+  ' Evaluate one unwrapped logical line per soft-wrap group; store the result on
+  ' the last physical row only so overlay paint never targets a wrap head.
+  dim iGroup as Integer = 0
+  do while iGroup < nLineCount
+    dim groupFirst as Integer = iGroup
+    dim groupLast as Integer = iGroup
+    GetSoftWrapGroupBoundsEx(hWnd, iGroup, groupFirst, groupLast, nLineCount, bWrapOn)
+
+    if groupFirst > nEvalLast then
+      CopyCachedRenderRange(groupFirst, groupLast, oldCount, oldRenderText())
+      iGroup = groupLast + 1
+      continue do
+    end if
+
+    dim sLogical as String = ""
+    dim k as Integer
+    for k = groupFirst to groupLast
+      sLogical &= g_cachedLineText(k)
+    next k
+
+    dim bGroupUnchanged as BOOL = TRUE
+    if (groupLast >= firstChanged) orelse (g_cacheReady = FALSE) then
+      bGroupUnchanged = FALSE
+    else
+      for k = groupFirst to groupLast
+        if (k >= oldCount) orelse (g_cachedLineText(k) <> oldLineText(k)) then
+          bGroupUnchanged = FALSE
+          exit for
+        end if
+      next k
+    end if
+
+    ' Always evaluate through nEvalLast so assignments/UDFs replay into the
+    ' parser after Parser_ClearVariables. Unchanged groups above firstChanged
+    ' keep frozen display text (and restore ans for volatile pure lines).
+    dim sRes as String = ""
+    dim bIsError as Boolean = FALSE
+    BuildRenderedResultText(sLogical, sRes, bIsError, groupFirst)
+
+    if bGroupUnchanged andalso g_cacheReady then
+      CopyCachedRenderRange(groupFirst, groupLast, oldCount, oldRenderText())
+      if IsVolatilePureExpressionLine(sLogical) then
+        RestoreAnsFromCachedRender(g_cachedRenderText(groupLast))
       end if
     else
-      dim sRes as String = ""
-      dim bIsError as Boolean = FALSE
-      BuildRenderedResultText(g_cachedLineText(i), sRes, bIsError, i)
-
-      if (i < firstChanged) andalso g_cacheReady andalso (i < oldCount) andalso (g_cachedLineText(i) = oldLineText(i)) then
-        g_cachedRenderText(i) = oldRenderText(i)
-        if IsVolatilePureExpressionLine(g_cachedLineText(i)) then
-          ' Keep ans chain consistent with frozen rendered output for volatile pure expressions.
-          RestoreAnsFromCachedRender(g_cachedRenderText(i))
-        end if
-      else
-        g_cachedRenderText(i) = sRes
-      end if
+      for k = groupFirst to groupLast - 1
+        g_cachedRenderText(k) = ""
+      next k
+      g_cachedRenderText(groupLast) = sRes
     end if
-  next i
+
+    iGroup = groupLast + 1
+  loop
 
   g_cacheReady = TRUE
   g_cacheSyncedGeneration = g_cacheDocGeneration
@@ -883,13 +1108,16 @@ end sub
 function BuildLineRenderText(byval hWnd as HWND, byval lineIdx as Integer) as String
   EnsureRenderCache(hWnd)
   if lineIdx < 0 orelse lineIdx >= g_cacheLineCount then return ""
-  return g_cachedRenderText(lineIdx)
+  dim firstIdx as Integer = lineIdx
+  dim lastIdx as Integer = lineIdx
+  GetSoftWrapGroupBounds(hWnd, lineIdx, firstIdx, lastIdx)
+  if lastIdx < 0 orelse lastIdx >= g_cacheLineCount then return ""
+  return g_cachedRenderText(lastIdx)
 end function
 
 function BuildResultTextForLine(byval hWnd as HWND, byval targetLine as Integer) as String
   dim nLineCount as Integer = SendMessage(hWnd, EM_GETLINECOUNT, 0, 0)
   if targetLine < 0 orelse targetLine >= nLineCount then return ""
-  EnsureRenderCache(hWnd)
   return BuildLineRenderText(hWnd, targetLine)
 end function
 
@@ -937,7 +1165,7 @@ sub UpdateInternalState(byval hWnd as HWND, byref bVisible as BOOL)
   end if
 end sub
 
-' Client-area strip for one edit line (full width). Returns FALSE if unknown.
+' Client-area strip for one edit line (full width). Soft-wrap groups span all wrap rows.
 private function GetEditCharHeight(byval hWnd as HWND) as Integer
   dim nCharHeight as Integer = 0
   if not g_bOldRichEdit then
@@ -962,26 +1190,35 @@ private function GetEditLineClientRect(byval hWnd as HWND, byval lineIdx as Inte
   dim rcClient as RECT
   GetClientRect(hWnd, @rcClient)
 
-  dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
-  if nLineIndex < 0 then return FALSE
+  dim firstIdx as Integer = lineIdx
+  dim lastIdx as Integer = lineIdx
+  GetSoftWrapGroupBounds(hWnd, lineIdx, firstIdx, lastIdx)
 
-  dim ptY as Integer = -10001
+  dim nFirstStart as Integer = SendMessage(hWnd, EM_LINEINDEX, firstIdx, 0)
+  if nFirstStart < 0 then return FALSE
+
+  dim ptTopY as Integer = -10001
+  dim ptBotY as Integer = -10001
   if g_bOldRichEdit then
-    dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex, 0)
-    ptY = cast(short, HiWord(res))
+    dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nFirstStart, 0)
+    ptTopY = cast(short, HiWord(res))
   else
     dim pt as POINT
-    SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @pt), nLineIndex)
-    ptY = pt.y
+    SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @pt), nFirstStart)
+    ptTopY = pt.y
   end if
-  if ptY < -10000 then return FALSE
+  if ptTopY < -10000 then return FALSE
 
   dim nCharHeight as Integer = GetEditCharHeight(hWnd)
+  dim endX as Integer = 0
+  if GetPhysicalLineEndClientPos(hWnd, lastIdx, endX, ptBotY) = FALSE orelse ptBotY < -10000 then
+    ptBotY = ptTopY
+  end if
 
   rcOut.left = rcClient.left
   rcOut.right = rcClient.right
-  rcOut.top = ptY
-  rcOut.bottom = ptY + nCharHeight
+  rcOut.top = ptTopY
+  rcOut.bottom = ptBotY + nCharHeight
   return TRUE
 end function
 
@@ -1025,27 +1262,12 @@ private sub InvalidateAfterContentEdit(byval hWnd as HWND, byval lineIdx as Inte
   end if
 end sub
 
-' Client x where the result gutter of a line starts: just past the line's last
-' character. Everything from here to the client right edge belongs to the overlay.
-private function GetResultGutterLeft(byval hWnd as HWND, byval lineIdx as Integer) as Integer
-  dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
-  if nLineIndex < 0 then return -1
-  dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
-
+' Client x where the result gutter starts given a physical line-end X: past line
+' text and any SpecialChar EOL marker.
+private function GetResultGutterLeftFromEndX(byval hWnd as HWND, byval nLineEndX as Integer) as Integer
   dim rcClient as RECT
   GetClientRect(hWnd, @rcClient)
-
-  dim nLineEndX as Integer
-  if g_bOldRichEdit then
-    dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
-    nLineEndX = cast(short, LoWord(res))
-  else
-    dim pt as POINT
-    SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @pt), nLineIndex + nLineLen)
-    nLineEndX = pt.x
-  end if
-
-  dim nGutterLeft as Integer = nLineEndX + SMARTMATH_RESULT_GUTTER_GAP
+  dim nGutterLeft as Integer = nLineEndX + GetOverlayGutterPad(hWnd)
   if nGutterLeft < rcClient.left then nGutterLeft = rcClient.left
   return nGutterLeft
 end function
@@ -1064,13 +1286,25 @@ private sub ValidateResultGutterForLine(byval hWnd as HWND, byval lineIdx as Int
   dim dwOptions as DWORD = SendMessage(hWnd, AEM_GETOPTIONS, 0, 0)
   if (dwOptions and AECO_ACTIVECOLUMN) then exit sub
 
+  ' Result overlay lives on the last soft-wrap row of the logical line.
+  dim firstIdx as Integer = lineIdx
+  dim lastIdx as Integer = lineIdx
+  GetSoftWrapGroupBounds(hWnd, lineIdx, firstIdx, lastIdx)
+
+  dim rcClient as RECT
+  GetClientRect(hWnd, @rcClient)
+  dim endX as Integer = 0
+  dim endY as Integer = 0
+  if GetPhysicalLineEndClientPos(hWnd, lastIdx, endX, endY) = FALSE then exit sub
+
+  dim nCharHeight as Integer = GetEditCharHeight(hWnd)
   dim rcLine as RECT
-  if GetEditLineClientRect(hWnd, lineIdx, rcLine) = FALSE then exit sub
+  rcLine.left = GetResultGutterLeftFromEndX(hWnd, endX)
+  rcLine.right = rcClient.right
+  rcLine.top = endY
+  rcLine.bottom = endY + nCharHeight
+  if rcLine.left >= rcLine.right then exit sub
 
-  dim nGutterLeft as Integer = GetResultGutterLeft(hWnd, lineIdx)
-  if nGutterLeft < 0 orelse nGutterLeft >= rcLine.right then exit sub
-
-  rcLine.left = nGutterLeft
   ValidateRect(hWnd, @rcLine)
 end sub
 
@@ -1184,6 +1418,18 @@ private sub RepaintColumnMarkerInRect(byval hDC as HDC, byval hPen as HPEN, byva
   SelectObject(hDC, hOldPen)
 end sub
 
+' Fill the overlay gutter (clipped) and restore the column marker. FALSE = no
+' intersection with prcClip / nothing drawn.
+private function ClearOverlayGutterRect(byval hDC as HDC, byref clearRect as RECT, byval prcClip as RECT ptr, byval hFill as HBRUSH, byval hMarkerPen as HPEN, byval nMarkerX as Integer) as BOOL
+  dim drawClip as RECT = clearRect
+  if prcClip <> 0 then
+    if IntersectRect(@drawClip, @clearRect, prcClip) = 0 then return FALSE
+  end if
+  if hFill <> 0 then FillRect(hDC, @drawClip, hFill)
+  RepaintColumnMarkerInRect(hDC, hMarkerPen, nMarkerX, drawClip)
+  return TRUE
+end function
+
 sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, byval bContentUnchanged as BOOL = FALSE)
   if g_bShuttingDown then exit sub
   if g_bSmartMathDocActive = FALSE then exit sub
@@ -1207,10 +1453,9 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
   dim hOldFont as HFONT
   if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
 
-  dim nCharHeight as Integer = 0
-  if not g_bOldRichEdit then
-    nCharHeight = SendMessage(hWnd, AEM_GETCHARSIZE, 0, 0)
-  end if
+  dim nCharHeight as Integer = GetEditCharHeight(hWnd)
+  dim crResult as COLORREF = Config_GetResultColor()
+  dim nErrPrefixLen as Integer = Len(SMARTMATH_ERROR_PREFIX)
 
   dim crBk as COLORREF = GetSysColor(COLOR_WINDOW)
   dim crActiveBk as COLORREF = crBk
@@ -1239,48 +1484,36 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
 
   SetBkMode(hDC, TRANSPARENT)
 
-  dim i as Integer
-  for i = 0 to nLineCount - 1
-    dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, i, 0)
-    dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
+  ' Once per paint: SpecialChar badge width, or the normal gutter gap if off.
+  dim nGutterPad as Integer = GetOverlayGutterPad(hWnd, hDC)
 
+  dim i as Integer
+  for i = nFirstVisible to nLineCount - 1
     dim ptClient_x as Integer = -10001
     dim ptClient_y as Integer = -10001
 
-    if i >= nFirstVisible then
-      dim ptClient as POINT
-      dim res as LRESULT
-      if g_bOldRichEdit then
-        res = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
-        ptClient_x = cast(short, LoWord(res))
-        ptClient_y = cast(short, HiWord(res))
-      else
-        SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptClient), nLineIndex + nLineLen)
-        ptClient_x = ptClient.x
-        ptClient_y = ptClient.y
-      end if
+    if GetPhysicalLineEndClientPos(hWnd, i, ptClient_x, ptClient_y) = FALSE then
+      continue for
+    end if
 
-      if ptClient_y > rcClient.bottom then exit for
-      if prcClip <> 0 then
-        ' Below the clip: no further visible lines.
-        if ptClient_y >= prcClip->bottom then exit for
-        ' Above the clip: skip until line height is known and line intersects.
-        if (nCharHeight > 0) andalso (ptClient_y + nCharHeight <= prcClip->top) then
-          continue for
-        end if
+    if ptClient_y > rcClient.bottom then exit for
+    if prcClip <> 0 then
+      ' Below the clip: no further visible lines.
+      if ptClient_y >= prcClip->bottom then exit for
+      ' Above the clip: skip until the line intersects.
+      if ptClient_y + nCharHeight <= prcClip->top then
+        continue for
       end if
     end if
 
     dim sRes as String = ""
     if i >= 0 andalso i < g_cacheLineCount then sRes = g_cachedRenderText(i)
-    dim bIsError as Boolean = (left(sRes, Len(SMARTMATH_ERROR_PREFIX)) = SMARTMATH_ERROR_PREFIX)
+    dim bIsError as Boolean = (left(sRes, nErrPrefixLen) = SMARTMATH_ERROR_PREFIX)
 
     if len(sRes) > 0 then
-      if i >= nFirstVisible andalso ptClient_y > -10000 then
+      if ptClient_y > -10000 then
         dim sz as SIZE
         GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
-
-        if nCharHeight <= 0 then nCharHeight = sz.cy
 
         dim lineRect as RECT
         lineRect.left = rcClient.left
@@ -1291,12 +1524,14 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
         if bIsError then
           SetTextColor(hDC, &H0000FF)
         else
-          SetTextColor(hDC, Config_GetResultColor())
+          SetTextColor(hDC, crResult)
         end if
-        dim drawX as Integer = rcClient.right - sz.cx - SMARTMATH_RESULT_RIGHT_MARGIN
-        dim drawY as Integer = lineRect.top + ((lineRect.bottom - lineRect.top) - sz.cy) \ 2
-        dim minDrawX as Integer = ptClient_x + SMARTMATH_RESULT_GUTTER_GAP
-        if minDrawX < rcClient.left then minDrawX = rcClient.left
+        dim drawX as Integer = 0
+        dim minDrawX as Integer = 0
+        GetResultOverlayDrawX(rcClient.left, rcClient.right, ptClient_x, sz.cx, nGutterPad, drawX, minDrawX)
+        ' Match AkelEdit: source glyphs sit at POSFROMCHAR Y (line top). Centering
+        ' within AEM_GETCHARSIZE height leaves a visible gap above the result.
+        dim drawY as Integer = lineRect.top
         if minDrawX < rcClient.right then
           ' Clear the full result gutter (after source text to client right), not
           ' only the new string width. Otherwise a shorter/recalculated result is
@@ -1307,16 +1542,15 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
           clearRect.top = lineRect.top
           clearRect.right = rcClient.right
           clearRect.bottom = lineRect.bottom
-          dim drawClip as RECT = clearRect
-          if prcClip <> 0 then
-            if IntersectRect(@drawClip, @clearRect, prcClip) = 0 then continue for
-          end if
+          ' Match AkelEdit: active-line bk only on the caret's physical wrap row,
+          ' not on the result row when the caret is on another wrap segment.
           dim hFill as HBRUSH = hBrushBk
           if bUseActiveLineBk andalso (i = nCaretLine) andalso (hBrushActive <> 0) then
             hFill = hBrushActive
           end if
-          if hFill <> 0 then FillRect(hDC, @drawClip, hFill)
-          RepaintColumnMarkerInRect(hDC, hMarkerPen, nMarkerX, drawClip)
+          if ClearOverlayGutterRect(hDC, clearRect, prcClip, hFill, hMarkerPen, nMarkerX) = FALSE then
+            continue for
+          end if
           dim clipRect as RECT
           clipRect.left = IIf(drawX > minDrawX, drawX, minDrawX)
           clipRect.top = lineRect.top
@@ -1329,32 +1563,23 @@ sub DrawDynamicMathResults(byval hWnd as HWND, byval prcClip as RECT ptr = 0, by
           ExtTextOut(hDC, drawX, drawY, ETO_CLIPPED, @textClip, strptr(sRes), Len(sRes), 0)
         end if
       end if
-    elseif i >= nFirstVisible andalso ptClient_y > -10000 andalso (bContentUnchanged = FALSE) then
+    elseif ptClient_y > -10000 andalso (bContentUnchanged = FALSE) then
       ' Content changed but this line has no result now: still erase any old overlay.
-      if nCharHeight <= 0 then nCharHeight = GetEditCharHeight(hWnd)
-      dim emptyLineRect as RECT
-      emptyLineRect.left = rcClient.left
-      emptyLineRect.right = rcClient.right
-      emptyLineRect.top = ptClient_y
-      emptyLineRect.bottom = ptClient_y + nCharHeight
-      dim minClearX as Integer = ptClient_x + SMARTMATH_RESULT_GUTTER_GAP
+      dim minClearX as Integer = ptClient_x + nGutterPad
       if minClearX < rcClient.left then minClearX = rcClient.left
       if minClearX < rcClient.right andalso ptClient_x > -10000 then
         dim clearEmpty as RECT
         clearEmpty.left = minClearX
-        clearEmpty.top = emptyLineRect.top
+        clearEmpty.top = ptClient_y
         clearEmpty.right = rcClient.right
-        clearEmpty.bottom = emptyLineRect.bottom
-        dim eraseClip as RECT = clearEmpty
-        if prcClip <> 0 then
-          if IntersectRect(@eraseClip, @clearEmpty, prcClip) = 0 then continue for
-        end if
+        clearEmpty.bottom = ptClient_y + nCharHeight
         dim hFillEmpty as HBRUSH = hBrushBk
         if bUseActiveLineBk andalso (i = nCaretLine) andalso (hBrushActive <> 0) then
           hFillEmpty = hBrushActive
         end if
-        if hFillEmpty <> 0 then FillRect(hDC, @eraseClip, hFillEmpty)
-        RepaintColumnMarkerInRect(hDC, hMarkerPen, nMarkerX, eraseClip)
+        if ClearOverlayGutterRect(hDC, clearEmpty, prcClip, hFillEmpty, hMarkerPen, nMarkerX) = FALSE then
+          continue for
+        end if
       end if
     end if
   next i
@@ -1684,6 +1909,10 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
         EnsureActiveLineOptionApplied(FindCurrentFrameItem())
       end if
 
+    case WM_SETFONT
+      ' SpecialChar EOL badge width depends on the edit font.
+      InvalidateEolMarkerReserve()
+
     case WM_SIZE, WM_MOUSEWHEEL, WM_VSCROLL, WM_HSCROLL
       if rcOldMargin.right > 0 then InvalidateRect(hWnd, @rcOldMargin, TRUE)
 
@@ -1706,38 +1935,37 @@ function EditGlobalProc stdcall(byval hWnd as HWND, byval uMsg as UINT, byval wP
 
       if charPos >= 0 then
         dim lineIdx as Integer = SendMessage(hWnd, EM_EXLINEFROMCHAR, 0, charPos)
-        dim sRes as String = BuildResultTextForLine(hWnd, lineIdx)
+        dim wrapFirst as Integer = lineIdx
+        dim wrapLast as Integer = lineIdx
+        GetSoftWrapGroupBounds(hWnd, lineIdx, wrapFirst, wrapLast)
+        dim sRes as String = BuildResultTextForLine(hWnd, wrapLast)
         if len(sRes) > 0 then
           dim hitResultArea as BOOL = FALSE
-          dim nLineIndex as Integer = SendMessage(hWnd, EM_LINEINDEX, lineIdx, 0)
-          dim nLineLen as Integer = SendMessage(hWnd, EM_LINELENGTH, nLineIndex, 0)
           dim ptLineEndX as Integer = rcClient.left
-          if nLineIndex >= 0 then
-            if g_bOldRichEdit then
-              dim res as LRESULT = SendMessage(hWnd, EM_POSFROMCHAR, nLineIndex + nLineLen, 0)
-              ptLineEndX = cast(short, LoWord(res))
-            else
-              dim ptLine as POINT
-              SendMessage(hWnd, EM_POSFROMCHAR, cast(WPARAM, @ptLine), nLineIndex + nLineLen)
-              ptLineEndX = ptLine.x
+          dim ptLineEndY as Integer = 0
+          if GetPhysicalLineEndClientPos(hWnd, wrapLast, ptLineEndX, ptLineEndY) then
+            dim hDC as HDC = GetDC(hWnd)
+            if hDC <> 0 then
+              dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
+              dim hOldFont as HFONT
+              if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
+              dim sz as SIZE
+              GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
+              ' Pad must be measured before ReleaseDC (hDC is invalid after).
+              dim nGutterPadHit as Integer = GetOverlayGutterPad(hWnd, hDC)
+              if hFont then SelectObject(hDC, hOldFont)
+              ReleaseDC(hWnd, hDC)
+
+              dim drawX as Integer = 0
+              dim minDrawX as Integer = 0
+              GetResultOverlayDrawX(rcClient.left, rcClient.right, ptLineEndX, sz.cx, nGutterPadHit, drawX, minDrawX)
+              dim clipLeft as Integer = IIf(drawX > minDrawX, drawX, minDrawX)
+              dim nCharHeightHit as Integer = GetEditCharHeight(hWnd)
+              if xPos >= clipLeft andalso xPos <= rcClient.right andalso _
+                 yPos >= ptLineEndY andalso yPos < ptLineEndY + nCharHeightHit then
+                hitResultArea = TRUE
+              end if
             end if
-          end if
-
-          dim hDC as HDC = GetDC(hWnd)
-          if hDC <> 0 then
-            dim hFont as HFONT = cast(HFONT, SendMessage(hWnd, WM_GETFONT, 0, 0))
-            dim hOldFont as HFONT
-            if hFont then hOldFont = cast(HFONT, SelectObject(hDC, hFont))
-            dim sz as SIZE
-            GetTextExtentPoint32(hDC, strptr(sRes), Len(sRes), @sz)
-            if hFont then SelectObject(hDC, hOldFont)
-            ReleaseDC(hWnd, hDC)
-
-            dim drawX as Integer = rcClient.right - sz.cx - SMARTMATH_RESULT_RIGHT_MARGIN
-            dim minDrawX as Integer = ptLineEndX + SMARTMATH_RESULT_GUTTER_GAP
-            if minDrawX < rcClient.left then minDrawX = rcClient.left
-            dim clipLeft as Integer = IIf(drawX > minDrawX, drawX, minDrawX)
-            if xPos >= clipLeft andalso xPos <= rcClient.right then hitResultArea = TRUE
           end if
 
           if hitResultArea then
