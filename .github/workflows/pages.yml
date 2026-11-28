@@ -2,7 +2,7 @@ name: Web calculator (GitHub Pages)
 
 on:
   push:
-    branches: [main, feature/maintenance-and-cpp-calc]
+    branches: [main, feature/maintenance-2]
     paths:
       - "cpp/calc_wasm.cpp"
       - "cpp/MathParser*.*"
